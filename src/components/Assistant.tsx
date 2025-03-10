@@ -143,6 +143,23 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   }, []); // Run only once on component mount
 
   useEffect(() => {
+    const loadChatMessages = async () => {
+      if (activeChat) {
+        try {
+          const chatMessages = await db.getChatMessages(activeChat);
+          setMessages(chatMessages);
+        } catch (error) {
+          console.error('Error loading chat messages:', error);
+        }
+      }
+    };
+    
+    if (activeChat) {
+      loadChatMessages();
+    }
+  }, [activeChat]);
+
+  useEffect(() => {
     if (messages.length > 0) {
       scrollToBottom('auto');
     }

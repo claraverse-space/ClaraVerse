@@ -55,7 +55,7 @@ function App() {
                   return <Debug />;
                 case 'dashboard':
                 default:
-                  return <Dashboard />;
+                  return <Dashboard onPageChange={setActivePage} />;
               }
             })()}
           </main>
