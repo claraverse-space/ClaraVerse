@@ -7,7 +7,11 @@ export function useDatabase() {
     totalStorage: '0 B',
     messageCount: '0',
     averageResponseTime: '0s',
-    storageType: 'Loading...'
+    storageType: 'Loading...',
+    // Add percentage changes
+    tokensChange: '0%',
+    storageChange: '0%',
+    messageChange: '0%'
   });
 
   const [recentActivities, setRecentActivities] = useState<Array<{
@@ -28,6 +32,11 @@ export function useDatabase() {
         const messageCount = await db.getMessageCount();
         const averageResponseTime = await db.getAverageResponseTime();
 
+        // Get the percentage changes
+        const tokensChange = await db.getDailyUsageChange('tokens');
+        const storageChange = await db.getDailyUsageChange('storage');
+        const messageChange = await db.getDailyUsageChange('messages');
+
         // Detect storage type
         const storageType = 'indexedDB' in window && window.indexedDB !== null ? 
           (localStorage.getItem('clara_db_migrated') === 'true' ? 'IndexedDB' : 'LocalStorage') : 
@@ -41,7 +50,10 @@ export function useDatabase() {
           totalStorage: formatBytes(totalStorage),
           messageCount: formatNumber(messageCount),
           averageResponseTime: `${avgResponseInSeconds.toFixed(2)}s`,
-          storageType
+          storageType,
+          tokensChange: `${tokensChange.percentage > 0 ? '+' : ''}${tokensChange.percentage}%`,
+          storageChange: `${storageChange.percentage > 0 ? '+' : ''}${storageChange.percentage}%`,
+          messageChange: `${messageChange.percentage > 0 ? '+' : ''}${messageChange.percentage}%`
         });
 
         const recentItems = await db.getRecentStorageItems();
