@@ -9,7 +9,8 @@
 
 Clara is a modern, feature-rich AI assistant web application that provides a seamless interface for interacting with various AI models through Ollama. Built with React, TypeScript, and Tailwind CSS, it offers a beautiful and intuitive chat experience with support for both text and image inputs.
 
-![Clara AI Assistant](https://source.unsplash.com/random/1200x630/?ai,technology)
+<!-- in assets temo.jpg -->
+![Clara AI Assistant](https://raw.githubusercontent.com/ollama/clara-ai/main/public/assets/temo.jpg)
 
 ## ✨ Features
 
