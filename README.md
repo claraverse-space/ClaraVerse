@@ -1,214 +1,102 @@
-# Clara - AI Assistant 🤖
+# Clara – Privacy-First WebUI for Ollama
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/clara-ollama/deploy-status)](https://clara-ollama.netlify.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.1-38B2AC.svg)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Clara is a modern, feature-rich AI assistant web application that provides a seamless interface for interacting with various AI models through Ollama. Built with React, TypeScript, and Tailwind CSS, it offers a beautiful and intuitive chat experience with support for both text and image inputs.
+Clara is a privacy-focused, fully client-side AI assistant that provides a secure, intuitive interface for interacting with AI models via Ollama. Unlike cloud-based solutions like OpenAI or Gemini, **Clara doesn't have any backend servers and never sends your data anywhere**. Your conversations and data remain entirely yours, securely stored in your browser.
 
-<!-- in assets temo.jpg -->
-![Clara AI Assistant](https://raw.githubusercontent.com/ollama/clara-ai/main/public/assets/temo.jpg)
+## 🔒 Privacy First
+- **Local-only data storage**: No backend, no data leaks.
+- **Direct Ollama integration**: Simply provide your local Ollama URL, and you're ready.
 
-## ✨ Features
+## ✨ Current Features
+- 💬 Real-time, secure chat with streaming responses
+- 🌓 Automatic light/dark mode
+- 📝 Markdown rendering with syntax highlighting
+- 📚 Persistent chat history (stored locally)
+- 🔍 Easy model selection and configuration
 
-### Core Features
-- 💬 Real-time chat interface with streaming responses
-- 🖼️ Image processing capabilities with compatible models
-- 📝 Markdown support with syntax highlighting
-- 🌓 Light/Dark mode with system preference sync
-- 📊 Usage statistics and analytics
-- 🔍 Advanced model selection and configuration
-- 💾 Persistent storage with chat history
-- 🎯 Context-aware conversations
+## 🚧 Upcoming Features
+- 🖼️ Image generation
+- 📱 Mobile-responsive design
+- 📎 File attachments
+- 🎤 Voice input/output
+- 🔌 Custom apps & plugin system
 
-### Chat Management
-- 🔖 Star important conversations
-- 📁 Archive old chats
-- 🗑️ Soft delete with recovery option
-- 📎 File attachment support (coming soon)
-- 🎤 Voice input support (coming soon)
-
-### Developer Features
-- 🛠️ Debug console for API testing
-- 📋 Code block copying
-- 🔧 Comprehensive model configuration
-- 📈 Response time monitoring
-- 🔍 Detailed error reporting
-
-## 🚀 Getting Started
+## 🚀 Quick Start
 
 ### Prerequisites
-
-1. **Node.js**: Version 20 or higher
-2. **Ollama**: Local installation required
-   ```bash
-   # macOS/Linux
-   curl https://ollama.ai/install.sh | sh
-   
-   # Windows
-   # Download from https://ollama.ai/download
-   ```
+- **Node.js** v20+
+- **Ollama** installed locally ([install instructions](https://ollama.ai/))
 
 ### Installation
+```bash
+git clone https://github.com/yourusername/clara-ai.git
+cd clara-ai
+npm install
+npm run dev
+```
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/clara-ai.git
-   cd clara-ai
-   ```
+### Setup Ollama
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+Start Ollama server and pull models:
+```bash
+ollama serve
 
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+# Example model
+ollama pull mistral
+```
 
-### Ollama Setup
+Configure CORS for web access:
+```bash
+sudo systemctl edit ollama.service
 
-1. Start Ollama server:
-   ```bash
-   ollama serve
-   ```
+# Add this to enable web access
+[Service]
+Environment="OLLAMA_ORIGINS=*"
 
-2. Pull required models:
-   ```bash
-   # For text-only support
-   ollama pull mistral
-   
-   # For image support
-   ollama pull llava
-   ```
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
 
-3. Configure CORS for web access:
+## 🔗 Remote Access with ngrok (optional)
+Securely access your Ollama remotely via ngrok:
 
-   Create or modify the Ollama service configuration:
-   ```bash
-   sudo systemctl edit ollama.service
-   ```
-
-   Add the following:
-   ```ini
-   [Service]
-   Environment="OLLAMA_ORIGINS=*"
-   ```
-
-   Restart Ollama:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl restart ollama
-   ```
-
-### Using ngrok for Remote Access
-
-If you're running Ollama on a different machine or need remote access, you can use ngrok to create a secure tunnel:
-
-1. Install ngrok:
-   ```bash
-   # Using npm
-   npm install -g ngrok
-   
-   # Or download from https://ngrok.com/download
-   ```
-
-2. Start ngrok tunnel:
-   ```bash
-   ngrok http 11434
-   ```
-
-3. Use the provided ngrok URL in Clara's settings:
-   ```
-   https://your-ngrok-url.ngrok.io
-   ```
-
-> ⚠️ **Important**: The ngrok URL changes each time you restart ngrok unless you have a paid account. For persistent access, consider:
-> - Using a static domain with proper CORS configuration
-> - Setting up a reverse proxy with nginx
-> - Using ngrok with a paid account for static URLs
+```bash
+npm install -g ngrok
+ngrok http 11434
+```
+Then use the generated URL in Clara's settings.
 
 ## 🏗️ Project Structure
-
 ```
 clara/
 ├── src/
-│   ├── components/           # React components
-│   │   ├── assistant_components/  # Chat-specific components
-│   │   └── ...
-│   ├── hooks/               # Custom React hooks
-│   ├── utils/               # Utility functions
-│   ├── db/                  # Database layer
-│   └── App.tsx             # Main application
-├── public/                  # Static assets
-└── package.json            # Project configuration
+│   ├── components/     # UI components
+│   ├── hooks/          # Custom hooks
+│   ├── utils/          # Helper functions
+│   ├── db/             # Local storage (IndexedDB)
+│   └── App.tsx         # Application entry
+├── public/             # Static assets
+└── package.json        # Dependencies
 ```
 
-## 🔄 Development Workflow
-
-1. Make changes to the code
-2. Test using the Debug console
-3. Build the project:
-   ```bash
-   npm run build
-   ```
-4. Preview the production build:
-   ```bash
-   npm run preview
-   ```
-
 ## 🚢 Deployment
+Deploy the `dist` directory to any static host (e.g., Netlify, GitHub Pages).
 
-The project is configured for deployment on Netlify with automatic builds and deployments.
+## 🤝 Contribute
+1. Fork repository
+2. Create feature branch (`git checkout -b feature/YourFeature`)
+3. Commit changes (`git commit -m 'Add YourFeature'`)
+4. Push branch (`git push origin feature/YourFeature`)
+5. Submit Pull Request
 
-### Manual Deployment
+## 📄 License
+MIT License – [LICENSE](LICENSE)
 
-1. Build the project:
-   ```bash
-   npm run build
-   ```
+---
 
-2. Deploy the `dist` folder to any static hosting service
-
-### Environment Variables
-
-No environment variables are required for the frontend as all configuration is handled through the UI.
-
-## 🛣️ Roadmap
-
-### Coming Soon
-- 📱 Mobile-responsive design
-- 🎤 Voice input/output
-- 📎 File attachment support
-- 🔐 Authentication system
-- 🔄 Conversation branching
-- 📊 Advanced analytics
-
-### Future Updates
-- 🌐 Multi-model conversations
-- 🤝 Collaborative features
-- 🔌 Plugin system
-- 🗣️ Multi-language support
-- 📱 Progressive Web App (PWA)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Ollama](https://ollama.ai/) for the amazing AI model serving platform
+🌟 **Built with privacy and security at its core.** 🌟
