@@ -6,7 +6,8 @@ export function useDatabase() {
     tokensUsed: '0',
     totalStorage: '0 B',
     messageCount: '0',
-    averageResponseTime: '0s'
+    averageResponseTime: '0s',
+    storageType: 'Loading...'
   });
 
   const [recentActivities, setRecentActivities] = useState<Array<{
@@ -16,32 +17,47 @@ export function useDatabase() {
     time: string;
   }>>([]);
 
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
     const updateStats = async () => {
-      const tokensUsed = await db.getTokensUsed();
-      const totalStorage = await db.getTotalStorage();
-      const messageCount = await db.getMessageCount();
-      const averageResponseTime = await db.getAverageResponseTime();
+      setIsLoading(true);
+      try {
+        const tokensUsed = await db.getTokensUsed();
+        const totalStorage = await db.getTotalStorage();
+        const messageCount = await db.getMessageCount();
+        const averageResponseTime = await db.getAverageResponseTime();
 
-      // Convert nanoseconds to seconds
-      const avgResponseInSeconds = averageResponseTime / 1_000_000_000;
+        // Detect storage type
+        const storageType = 'indexedDB' in window && window.indexedDB !== null ? 
+          (localStorage.getItem('clara_db_migrated') === 'true' ? 'IndexedDB' : 'LocalStorage') : 
+          'LocalStorage';
 
-      setStats({
-        tokensUsed: formatNumber(tokensUsed),
-        totalStorage: formatBytes(totalStorage),
-        messageCount: formatNumber(messageCount),
-        averageResponseTime: `${avgResponseInSeconds.toFixed(2)}s`
-      });
+        // Convert nanoseconds to seconds
+        const avgResponseInSeconds = averageResponseTime / 1_000_000_000;
 
-      const recentItems = await db.getRecentStorageItems();
-      setRecentActivities(
-        recentItems.map(activity => ({
-          title: activity.title,
-          desc: activity.description,
-          size: formatBytes(activity.size),
-          time: new Date(activity.timestamp).toLocaleString()
-        }))
-      );
+        setStats({
+          tokensUsed: formatNumber(tokensUsed),
+          totalStorage: formatBytes(totalStorage),
+          messageCount: formatNumber(messageCount),
+          averageResponseTime: `${avgResponseInSeconds.toFixed(2)}s`,
+          storageType
+        });
+
+        const recentItems = await db.getRecentStorageItems();
+        setRecentActivities(
+          recentItems.map(activity => ({
+            title: activity.title,
+            desc: activity.description,
+            size: formatBytes(activity.size),
+            time: new Date(activity.timestamp).toLocaleString()
+          }))
+        );
+      } catch (error) {
+        console.error("Error updating database stats:", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     updateStats();
@@ -66,6 +82,7 @@ export function useDatabase() {
 
   return {
     stats,
-    recentActivities
+    recentActivities,
+    isLoading
   };
 }

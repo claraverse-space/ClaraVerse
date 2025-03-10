@@ -1,3 +1,5 @@
+import { indexedDBService } from '../services/indexedDB';
+
 // Types
 export interface Chat {
   id: string;
@@ -60,7 +62,83 @@ export interface ModelUsage {
 const DB_PREFIX = 'clara_db_';
 
 class LocalStorageDB {
-  private getItem<T>(key: string): T | null {
+  private useIndexedDB = true; // Flag to control storage method
+  private initialized = false;
+
+  constructor() {
+    // Check if IndexedDB is supported
+    this.useIndexedDB = this.isIndexedDBSupported();
+    this.migrateDataToIndexedDB();
+  }
+
+  private isIndexedDBSupported(): boolean {
+    try {
+      return 'indexedDB' in window && window.indexedDB !== null;
+    } catch (e) {
+      console.warn('IndexedDB is not supported in this browser. Falling back to localStorage.');
+      return false;
+    }
+  }
+
+  // Migrates existing localStorage data to IndexedDB
+  private async migrateDataToIndexedDB(): Promise<void> {
+    if (!this.useIndexedDB) return;
+    
+    try {
+      // Set migration flag to avoid duplicate migrations
+      if (localStorage.getItem(`${DB_PREFIX}migrated`) === 'true') {
+        this.initialized = true;
+        return;
+      }
+
+      console.info('Migrating data from localStorage to IndexedDB...');
+      
+      // Migrate all key collections
+      await this.migrateCollection('chats');
+      await this.migrateCollection('messages');
+      await this.migrateCollection('storage');
+      await this.migrateCollection('usage');
+      
+      // Migrate settings data
+      const personalInfo = this.getItemFromLocalStorage<PersonalInfo>('personal_info');
+      if (personalInfo) {
+        await indexedDBService.put('settings', { key: 'personal_info', value: personalInfo });
+      }
+      
+      const apiConfig = this.getItemFromLocalStorage<APIConfig>('api_config');
+      if (apiConfig) {
+        await indexedDBService.put('settings', { key: 'api_config', value: apiConfig });
+      }
+      
+      // Migrate model usage data
+      const modelUsage = this.getItemFromLocalStorage<Record<string, ModelUsage>>('model_usage');
+      if (modelUsage) {
+        for (const [key, value] of Object.entries(modelUsage)) {
+          await indexedDBService.put('model_usage', value);
+        }
+      }
+      
+      localStorage.setItem(`${DB_PREFIX}migrated`, 'true');
+      console.info('Migration completed successfully');
+    } catch (error) {
+      console.error('Error migrating data to IndexedDB:', error);
+      this.useIndexedDB = false; // Fall back to localStorage on error
+    } finally {
+      this.initialized = true;
+    }
+  }
+
+  private async migrateCollection(collectionName: string): Promise<void> {
+    const items = this.getItemFromLocalStorage<any[]>(collectionName) || [];
+    if (items.length) {
+      for (const item of items) {
+        await indexedDBService.put(collectionName, item);
+      }
+      console.info(`Migrated ${items.length} ${collectionName}`);
+    }
+  }
+
+  private getItemFromLocalStorage<T>(key: string): T | null {
     try {
       const data = localStorage.getItem(`${DB_PREFIX}${key}`);
       return data ? JSON.parse(data) : null;
@@ -70,11 +148,48 @@ class LocalStorageDB {
     }
   }
 
-  private setItem(key: string, value: any): void {
+  private setItemToLocalStorage(key: string, value: any): void {
     try {
       localStorage.setItem(`${DB_PREFIX}${key}`, JSON.stringify(value));
     } catch (error) {
       console.error(`Error writing to localStorage: ${key}`, error);
+    }
+  }
+
+  private async getItem<T>(key: string): Promise<T | null> {
+    if (this.useIndexedDB) {
+      try {
+        const items = await indexedDBService.getAll<T>(key);
+        return items.length ? items : null;
+      } catch (error) {
+        console.error(`Error getting from IndexedDB: ${key}`, error);
+        // Fall back to localStorage
+        return this.getItemFromLocalStorage<T>(key);
+      }
+    } else {
+      return this.getItemFromLocalStorage<T>(key);
+    }
+  }
+
+  private async setItem(key: string, value: any): Promise<void> {
+    if (this.useIndexedDB) {
+      try {
+        // For collections, add each item to the store
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            await indexedDBService.put(key, item);
+          }
+        } else {
+          // For settings or single objects, just add with key
+          await indexedDBService.put('settings', { key, value });
+        }
+      } catch (error) {
+        console.error(`Error writing to IndexedDB: ${key}`, error);
+        // Fall back to localStorage
+        this.setItemToLocalStorage(key, value);
+      }
+    } else {
+      this.setItemToLocalStorage(key, value);
     }
   }
 
@@ -84,7 +199,7 @@ class LocalStorageDB {
 
   // Chat methods
   async createChat(title: string): Promise<string> {
-    const chats = this.getItem<Chat[]>('chats') || [];
+    const chats = await this.getItem<Chat[]>('chats') || [];
     const now = new Date().toISOString();
     const newChat: Chat = {
       id: this.generateId(),
@@ -95,36 +210,66 @@ class LocalStorageDB {
       is_starred: false,
       is_deleted: false
     };
-    chats.push(newChat);
-    this.setItem('chats', chats);
+    
+    if (this.useIndexedDB) {
+      await indexedDBService.put('chats', newChat);
+    } else {
+      chats.push(newChat);
+      await this.setItem('chats', chats);
+    }
+    
     return newChat.id;
   }
 
   async getChat(id: string): Promise<Chat | undefined> {
-    const chats = this.getItem<Chat[]>('chats') || [];
-    return chats.find(chat => chat.id === id);
+    if (this.useIndexedDB) {
+      return await indexedDBService.get<Chat>('chats', id);
+    } else {
+      const chats = await this.getItem<Chat[]>('chats') || [];
+      return chats.find(chat => chat.id === id);
+    }
   }
 
   async updateChat(id: string, updates: Partial<Chat>): Promise<string> {
-    const chats = this.getItem<Chat[]>('chats') || [];
-    const index = chats.findIndex(chat => chat.id === id);
-    if (index !== -1) {
-      chats[index] = {
-        ...chats[index],
-        ...updates,
-        updated_at: new Date().toISOString()
-      };
-      this.setItem('chats', chats);
+    if (this.useIndexedDB) {
+      const chat = await indexedDBService.get<Chat>('chats', id);
+      if (chat) {
+        const updatedChat = {
+          ...chat,
+          ...updates,
+          updated_at: new Date().toISOString()
+        };
+        await indexedDBService.put('chats', updatedChat);
+      }
+    } else {
+      const chats = await this.getItem<Chat[]>('chats') || [];
+      const index = chats.findIndex(chat => chat.id === id);
+      if (index !== -1) {
+        chats[index] = {
+          ...chats[index],
+          ...updates,
+          updated_at: new Date().toISOString()
+        };
+        await this.setItem('chats', chats);
+      }
     }
     return id;
   }
 
   async getRecentChats(limit: number = 10): Promise<Chat[]> {
-    const chats = this.getItem<Chat[]>('chats') || [];
-    return chats
-      .filter(chat => !chat.is_deleted)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      .slice(0, limit);
+    if (this.useIndexedDB) {
+      const chats = await indexedDBService.getAll<Chat>('chats');
+      return chats
+        .filter(chat => !chat.is_deleted)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, limit);
+    } else {
+      const chats = await this.getItem<Chat[]>('chats') || [];
+      return chats
+        .filter(chat => !chat.is_deleted)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, limit);
+    }
   }
 
   // Message methods
@@ -135,7 +280,6 @@ class LocalStorageDB {
     tokens: number,
     images?: string[]
   ): Promise<string> {
-    const messages = this.getItem<Message[]>('messages') || [];
     const newMessage: Message = {
       id: this.generateId(),
       chat_id: chatId,
@@ -145,141 +289,276 @@ class LocalStorageDB {
       timestamp: new Date().toISOString(),
       images
     };
-    messages.push(newMessage);
-    this.setItem('messages', messages);
+    
+    if (this.useIndexedDB) {
+      await indexedDBService.put('messages', newMessage);
+    } else {
+      const messages = await this.getItem<Message[]>('messages') || [];
+      messages.push(newMessage);
+      await this.setItem('messages', messages);
+    }
+    
     await this.updateUsage('tokens', tokens);
     await this.updateUsage('messages', 1);
     return newMessage.id;
   }
 
   async getChatMessages(chatId: string): Promise<Message[]> {
-    const messages = this.getItem<Message[]>('messages') || [];
-    return messages
-      .filter(message => message.chat_id === chatId)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    if (this.useIndexedDB) {
+      const allMessages = await indexedDBService.getAll<Message>('messages');
+      return allMessages
+        .filter(message => message.chat_id === chatId)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    } else {
+      const messages = await this.getItem<Message[]>('messages') || [];
+      return messages
+        .filter(message => message.chat_id === chatId)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }
   }
 
   // Storage methods
   async addStorageItem(item: Omit<StorageItem, 'id' | 'timestamp'>): Promise<string> {
-    const storage = this.getItem<StorageItem[]>('storage') || [];
     const newItem: StorageItem = {
       ...item,
       id: this.generateId(),
       timestamp: new Date().toISOString()
     };
-    storage.push(newItem);
-    this.setItem('storage', storage);
+    
+    if (this.useIndexedDB) {
+      await indexedDBService.put('storage', newItem);
+    } else {
+      const storage = await this.getItem<StorageItem[]>('storage') || [];
+      storage.push(newItem);
+      await this.setItem('storage', storage);
+    }
+    
     await this.updateUsage('storage', item.size);
     return newItem.id;
   }
 
   async getStorageItem(id: string): Promise<StorageItem | undefined> {
-    const storage = this.getItem<StorageItem[]>('storage') || [];
-    return storage.find(item => item.id === id);
+    if (this.useIndexedDB) {
+      return await indexedDBService.get<StorageItem>('storage', id);
+    } else {
+      const storage = await this.getItem<StorageItem[]>('storage') || [];
+      return storage.find(item => item.id === id);
+    }
   }
 
   async getRecentStorageItems(limit: number = 5): Promise<StorageItem[]> {
-    const storage = this.getItem<StorageItem[]>('storage') || [];
-    return storage
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, limit);
+    if (this.useIndexedDB) {
+      const items = await indexedDBService.getAll<StorageItem>('storage');
+      return items
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, limit);
+    } else {
+      const storage = await this.getItem<StorageItem[]>('storage') || [];
+      return storage
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, limit);
+    }
   }
 
   // Usage methods
   private async updateUsage(type: Usage['type'], value: number): Promise<void> {
-    const usage = this.getItem<Usage[]>('usage') || [];
-    usage.push({
+    const usageRecord: Usage = {
       id: this.generateId(),
       type,
       value,
       timestamp: new Date().toISOString()
-    });
-    this.setItem('usage', usage);
+    };
+    
+    if (this.useIndexedDB) {
+      await indexedDBService.put('usage', usageRecord);
+    } else {
+      const usage = await this.getItem<Usage[]>('usage') || [];
+      usage.push(usageRecord);
+      await this.setItem('usage', usage);
+    }
   }
 
   async updateModelUsage(model: string, duration: number): Promise<void> {
-    const usageKey = 'model_usage';
-    const usage = this.getItem<Record<string, ModelUsage>>(usageKey) || {};
+    const now = new Date().toISOString();
     
-    if (!usage[model]) {
-      usage[model] = {
-        name: model,
-        totalDuration: 0,
-        requestCount: 0,
-        avgDuration: 0,
-        lastUsed: new Date().toISOString()
-      };
+    if (this.useIndexedDB) {
+      const existingUsage = await indexedDBService.get<ModelUsage>('model_usage', model);
+      
+      if (!existingUsage) {
+        const newModelUsage: ModelUsage = {
+          name: model,
+          totalDuration: duration,
+          requestCount: 1,
+          avgDuration: duration,
+          lastUsed: now
+        };
+        await indexedDBService.put('model_usage', newModelUsage);
+      } else {
+        existingUsage.totalDuration += duration;
+        existingUsage.requestCount += 1;
+        existingUsage.avgDuration = existingUsage.totalDuration / existingUsage.requestCount;
+        existingUsage.lastUsed = now;
+        await indexedDBService.put('model_usage', existingUsage);
+      }
+    } else {
+      const usageKey = 'model_usage';
+      const usage = await this.getItem<Record<string, ModelUsage>>(usageKey) || {};
+      
+      if (!usage[model]) {
+        usage[model] = {
+          name: model,
+          totalDuration: 0,
+          requestCount: 0,
+          avgDuration: 0,
+          lastUsed: now
+        };
+      }
+      
+      usage[model].totalDuration += duration;
+      usage[model].requestCount += 1;
+      usage[model].avgDuration = usage[model].totalDuration / usage[model].requestCount;
+      usage[model].lastUsed = now;
+      
+      await this.setItem(usageKey, usage);
     }
-    
-    usage[model].totalDuration += duration;
-    usage[model].requestCount += 1;
-    usage[model].avgDuration = usage[model].totalDuration / usage[model].requestCount;
-    usage[model].lastUsed = new Date().toISOString();
-    
-    this.setItem(usageKey, usage);
   }
 
   async getModelUsage(): Promise<ModelUsage[]> {
-    const usage = this.getItem<Record<string, ModelUsage>>('model_usage') || {};
-    return Object.values(usage).sort((a, b) => b.requestCount - a.requestCount);
+    if (this.useIndexedDB) {
+      const models = await indexedDBService.getAll<ModelUsage>('model_usage');
+      return models.sort((a, b) => b.requestCount - a.requestCount);
+    } else {
+      const usage = await this.getItem<Record<string, ModelUsage>>('model_usage') || {};
+      return Object.values(usage).sort((a, b) => b.requestCount - a.requestCount);
+    }
   }
 
   async getTokensUsed(days: number = 30): Promise<number> {
-    const usage = this.getItem<Usage[]>('usage') || [];
     const since = new Date();
     since.setDate(since.getDate() - days);
-    return usage
-      .filter(record => 
-        record.type === 'tokens' && 
-        new Date(record.timestamp) >= since
-      )
-      .reduce((sum, record) => sum + record.value, 0);
+    
+    if (this.useIndexedDB) {
+      const records = await indexedDBService.getAll<Usage>('usage');
+      return records
+        .filter(record => 
+          record.type === 'tokens' && 
+          new Date(record.timestamp) >= since
+        )
+        .reduce((sum, record) => sum + record.value, 0);
+    } else {
+      const usage = await this.getItem<Usage[]>('usage') || [];
+      return usage
+        .filter(record => 
+          record.type === 'tokens' && 
+          new Date(record.timestamp) >= since
+        )
+        .reduce((sum, record) => sum + record.value, 0);
+    }
   }
 
   async getTotalStorage(): Promise<number> {
-    const usage = this.getItem<Usage[]>('usage') || [];
-    return usage
-      .filter(record => record.type === 'storage')
-      .reduce((sum, record) => sum + record.value, 0);
+    if (this.useIndexedDB) {
+      const records = await indexedDBService.getAll<Usage>('usage');
+      return records
+        .filter(record => record.type === 'storage')
+        .reduce((sum, record) => sum + record.value, 0);
+    } else {
+      const usage = await this.getItem<Usage[]>('usage') || [];
+      return usage
+        .filter(record => record.type === 'storage')
+        .reduce((sum, record) => sum + record.value, 0);
+    }
   }
 
   async getMessageCount(): Promise<number> {
-    const messages = this.getItem<Message[]>('messages') || [];
-    return messages.length;
+    if (this.useIndexedDB) {
+      const messages = await indexedDBService.getAll<Message>('messages');
+      return messages.length;
+    } else {
+      const messages = await this.getItem<Message[]>('messages') || [];
+      return messages.length;
+    }
   }
 
   async getAverageResponseTime(days: number = 1): Promise<number> {
-    const usage = this.getItem<Usage[]>('usage') || [];
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const records = usage.filter(
-      record => 
-        record.type === 'response_time' && 
-        new Date(record.timestamp) >= since
-    );
-    const sum = records.reduce((sum, record) => sum + record.value, 0);
-    return records.length ? sum / records.length : 0;
+    
+    if (this.useIndexedDB) {
+      const allRecords = await indexedDBService.getAll<Usage>('usage');
+      const records = allRecords.filter(
+        record => 
+          record.type === 'response_time' && 
+          new Date(record.timestamp) >= since
+      );
+      const sum = records.reduce((total, record) => total + record.value, 0);
+      return records.length ? sum / records.length : 0;
+    } else {
+      const usage = await this.getItem<Usage[]>('usage') || [];
+      const records = usage.filter(
+        record => 
+          record.type === 'response_time' && 
+          new Date(record.timestamp) >= since
+      );
+      const sum = records.reduce((sum, record) => sum + record.value, 0);
+      return records.length ? sum / records.length : 0;
+    }
   }
 
   // Settings methods
   async updatePersonalInfo(info: PersonalInfo): Promise<void> {
-    this.setItem('personal_info', info);
+    if (this.useIndexedDB) {
+      await indexedDBService.put('settings', { key: 'personal_info', value: info });
+    } else {
+      await this.setItem('personal_info', info);
+    }
   }
 
   async getPersonalInfo(): Promise<PersonalInfo | null> {
-    return this.getItem<PersonalInfo>('personal_info');
+    if (this.useIndexedDB) {
+      const record = await indexedDBService.get<{key: string, value: PersonalInfo}>('settings', 'personal_info');
+      return record ? record.value : null;
+    } else {
+      return await this.getItem<PersonalInfo>('personal_info');
+    }
   }
 
   async updateAPIConfig(config: APIConfig): Promise<void> {
-    this.setItem('api_config', config);
+    if (this.useIndexedDB) {
+      await indexedDBService.put('settings', { key: 'api_config', value: config });
+    } else {
+      await this.setItem('api_config', config);
+    }
   }
 
   async getAPIConfig(): Promise<APIConfig | null> {
-    return this.getItem<APIConfig>('api_config');
+    if (this.useIndexedDB) {
+      const record = await indexedDBService.get<{key: string, value: APIConfig}>('settings', 'api_config');
+      return record ? record.value : null;
+    } else {
+      return await this.getItem<APIConfig>('api_config');
+    }
   }
 
   // Clear all data
   async reset(): Promise<void> {
+    if (this.useIndexedDB) {
+      try {
+        // Clear all stores
+        await indexedDBService.clear('chats');
+        await indexedDBService.clear('messages');
+        await indexedDBService.clear('storage');
+        await indexedDBService.clear('usage');
+        await indexedDBService.clear('model_usage');
+        await indexedDBService.clear('settings');
+        // Remove migration flag
+        localStorage.removeItem(`${DB_PREFIX}migrated`);
+      } catch (error) {
+        console.error('Error resetting IndexedDB:', error);
+      }
+    }
+    
+    // Also clear localStorage for completeness
     Object.keys(localStorage)
       .filter(key => key.startsWith(DB_PREFIX))
       .forEach(key => localStorage.removeItem(key));
