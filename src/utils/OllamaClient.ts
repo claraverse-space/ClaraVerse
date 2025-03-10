@@ -14,6 +14,8 @@ export interface RequestOptions {
 }
 
 export class OllamaClient {
+  private abortController: AbortController | null = null;
+
   constructor(private baseUrl: string) {}
 
   /**
@@ -157,6 +159,16 @@ export class OllamaClient {
   }
 
   /**
+   * Aborts any ongoing stream requests.
+   */
+  public abortStream(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+  }
+
+  /**
    * Stream a completion for a given prompt.
    * Returns an async generator that yields JSON objects as they arrive.
    */
@@ -165,6 +177,10 @@ export class OllamaClient {
     prompt: string,
     options: RequestOptions = {}
   ): AsyncGenerator<any> {
+    // Create a new AbortController for this stream
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+    
     const payload = { model, prompt, ...options, stream: true };
     const response = await fetch(`${this.baseUrl}/api/generate`, {
       method: "POST",
@@ -173,10 +189,22 @@ export class OllamaClient {
       },
       mode: 'cors',
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.body) throw new Error("No response body for streaming completion");
-    yield* this.parseStream(response.body.getReader());
+    
+    try {
+      yield* this.parseStream(response.body.getReader(), signal);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Stream aborted");
+      } else {
+        throw error;
+      }
+    } finally {
+      this.abortController = null;
+    }
   }
 
   /**
@@ -200,6 +228,10 @@ export class OllamaClient {
     messages: ChatMessage[],
     options: RequestOptions = {}
   ): AsyncGenerator<any> {
+    // Create a new AbortController for this stream
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+    
     const payload = { model, messages, ...options, stream: true };
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: "POST",
@@ -208,10 +240,22 @@ export class OllamaClient {
       },
       mode: 'cors',
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.body) throw new Error("No response body for streaming chat");
-    yield* this.parseStream(response.body.getReader());
+    
+    try {
+      yield* this.parseStream(response.body.getReader(), signal);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log("Stream aborted");
+      } else {
+        throw error;
+      }
+    } finally {
+      this.abortController = null;
+    }
   }
 
   /**
@@ -245,15 +289,25 @@ export class OllamaClient {
    * Utility method: Parses a streaming response.
    * It yields each parsed JSON object as it is received.
    */
-  private async *parseStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<any> {
+  private async *parseStream(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    signal?: AbortSignal
+  ): AsyncGenerator<any> {
     const decoder = new TextDecoder();
     let buffer = "";
+    
     while (true) {
+      if (signal?.aborted) {
+        throw new DOMException('Stream aborted by user', 'AbortError');
+      }
+      
       const { value, done } = await reader.read();
       if (done) break;
+      
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
+      
       for (const line of lines) {
         if (line.trim()) {
           try {
@@ -264,6 +318,7 @@ export class OllamaClient {
         }
       }
     }
+    
     if (buffer.trim()) {
       try {
         yield JSON.parse(buffer);

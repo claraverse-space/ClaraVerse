@@ -443,6 +443,33 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
+  const handleStopStreaming = () => {
+    if (!client || !isProcessing) return;
+    
+    // Abort the current stream
+    client.abortStream();
+    
+    // Update the UI to show that streaming has stopped
+    setIsProcessing(false);
+    
+    // Add a note to the last message to indicate it was interrupted
+    setMessages(prev => {
+      const lastMessage = prev[prev.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant') {
+        return prev.map((msg, idx) => {
+          if (idx === prev.length - 1) {
+            return {
+              ...msg,
+              content: msg.content + "\n\n_Response was interrupted._"
+            };
+          }
+          return msg;
+        });
+      }
+      return prev;
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -500,11 +527,13 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           setInput={setInput}
           handleSend={handleSend}
           handleKeyDown={handleKeyDown}
-          isDisabled={!input.trim() || !client || !selectedModel || isProcessing}
+          isDisabled={!client || !selectedModel || (isProcessing && !input.trim())}
+          isProcessing={isProcessing}
           onNewChat={() => handleNewChat()}
           onImageUpload={handleImageUpload}
           images={images}
           onRemoveImage={removeImage}
+          handleStopStreaming={handleStopStreaming}
         />
 
         <AssistantSettings

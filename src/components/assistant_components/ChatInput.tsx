@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Send, Image as ImageIcon, Paperclip, Mic, Loader2, Plus, X } from 'lucide-react';
+import { Send, Image as ImageIcon, Paperclip, Mic, Loader2, Plus, X, Square } from 'lucide-react';
 
 interface ChatInputProps {
   input: string;
@@ -7,10 +7,12 @@ interface ChatInputProps {
   handleSend: () => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
   isDisabled: boolean;
+  isProcessing: boolean;
   onNewChat: () => void;
   onImageUpload?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   images: Array<{ id: string; preview: string }>;
   onRemoveImage: (id: string) => void;
+  handleStopStreaming: () => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -19,15 +21,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
   handleSend,
   handleKeyDown,
   isDisabled,
+  isProcessing,
   onNewChat,
   onImageUpload,
   images,
-  onRemoveImage
+  onRemoveImage,
+  handleStopStreaming
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Only show loading when there's input and the button is disabled
-  const showLoading = isDisabled && input.trim().length > 0;
-
+  
   const handleImageClick = () => {
     fileInputRef.current?.click();
   };
@@ -82,14 +84,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
                   minHeight: '24px',
                   maxHeight: '128px'
                 }}
-                disabled={showLoading}
+                disabled={isProcessing && !input}
               />
             </div>
             <div className="flex items-center gap-2">
               <button 
                 className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
                 onClick={handleImageClick}
-                disabled={showLoading}
+                disabled={isProcessing}
               >
                 <ImageIcon className="w-5 h-5" />
                 <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -106,7 +108,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               />
               <button 
                 className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={showLoading}
+                disabled={isProcessing}
               >
                 <Paperclip className="w-5 h-5" />
                 <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -115,24 +117,32 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </button>
               <button 
                 className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={showLoading}
+                disabled={isProcessing}
               >
                 <Mic className="w-5 h-5" />
                 <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                   Voice Input
                 </span>
               </button>
-              <button
-                onClick={handleSend}
-                disabled={isDisabled}
-                className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {showLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
+              
+              {isProcessing ? (
+                <button
+                  onClick={handleStopStreaming}
+                  className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1"
+                  title="Stop generating"
+                >
+                  <Square className="w-4 h-4" fill="white" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={isDisabled}
+                  className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
                   <Send className="w-5 h-5" />
-                )}
-              </button>
+                </button>
+              )}
             </div>
           </div>
         </div>
