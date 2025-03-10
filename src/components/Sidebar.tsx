@@ -25,7 +25,9 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
-      <div className={`flex items-center gap-3 px-2 py-4 ${isExpanded ? 'px-4' : 'justify-center'}`}>
+      <div className={`flex items-center py-4 ${
+        isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
+      }`}>
         <Bot className="w-8 h-8 text-sakura-500 flex-shrink-0" />
         <h1 
           className={`text-2xl font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-300 ${
@@ -43,18 +45,18 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
               <button 
                 onClick={() => onPageChange(item.id)}
                 data-page={item.id}
-                className={`w-full flex items-center gap-3 py-2 rounded-lg transition-colors ${
-                  isExpanded ? 'px-4' : 'justify-center px-2'
+                className={`w-full flex items-center rounded-lg transition-colors ${
+                  isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                 } ${
                   activePage === item.id
                     ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
-                }`}
+                } py-2`}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
                 <span 
                   className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${
-                    isExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0'
+                    isExpanded ? 'opacity-100 w-auto ml-3' : 'opacity-0 w-0'
                   }`}
                 >
                   {item.label}

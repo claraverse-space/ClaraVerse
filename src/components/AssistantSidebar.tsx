@@ -26,15 +26,22 @@ const AssistantSidebar = ({
     starred: 0,
     deleted: 0
   });
+  // Add local state to track modified chats
+  const [localChats, setLocalChats] = useState<Chat[]>([]);
+
+  // Initialize local chats from props
+  useEffect(() => {
+    setLocalChats(chats || []);
+  }, [chats]);
 
   useEffect(() => {
-    const allChats = chats || [];
+    const allChats = localChats || [];
     setCounts({
       archived: allChats.filter(chat => chat.is_archived && !chat.is_deleted).length,
       starred: allChats.filter(chat => chat.is_starred && !chat.is_deleted && !chat.is_archived).length,
       deleted: allChats.filter(chat => chat.is_deleted).length
     });
-  }, [chats]);
+  }, [localChats]);
 
   const handleChatAction = async (chatId: string, action: 'archive' | 'star' | 'delete', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -74,11 +81,20 @@ const AssistantSidebar = ({
         onChatSelect(null);
       }
 
-      // Reset view state based on action
-      if (action === 'archive' && !updates.is_archived) {
-        setShowArchived(false);
-      } else if (action === 'star' && !updates.is_starred) {
-        setShowStarred(false);
+      // Update local chats state
+      setLocalChats(prevChats => 
+        prevChats.map(c => 
+          c.id === chatId ? {...c, ...updates} : c
+        )
+      );
+
+      // Automatically show the relevant section if the action changes the chat's category
+      if (action === 'star' && updates.is_starred === true) {
+        setShowStarred(true);
+      } else if (action === 'archive' && updates.is_archived === true) {
+        setShowArchived(true);
+      } else if (action === 'delete') {
+        setShowDeleted(true);
       }
     } catch (error) {
       console.error('Error updating chat:', error);
@@ -89,7 +105,8 @@ const AssistantSidebar = ({
     }
   };
 
-  const filteredChats = chats.filter(chat => {
+  // Use localChats for filtering instead of chats from props
+  const filteredChats = localChats.filter(chat => {
     if (showArchived) return chat.is_archived && !chat.is_deleted;
     if (showStarred) return chat.is_starred && !chat.is_deleted && !chat.is_archived;
     if (showDeleted) return chat.is_deleted;
@@ -157,7 +174,9 @@ const AssistantSidebar = ({
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
-      <div className={`flex items-center gap-3 px-2 py-4 ${isExpanded ? 'px-4' : 'justify-center'}`}>
+      <div className={`flex items-center py-4 ${
+        isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
+      }`}>
         <Bot className="w-8 h-8 text-sakura-500 flex-shrink-0" />
         <h1 
           className={`text-2xl font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-300 ${
@@ -176,7 +195,7 @@ const AssistantSidebar = ({
                 key={chat.id}
                 onClick={() => onChatSelect(chat.id)}
                 className={`w-full flex items-center gap-2 py-2 rounded-lg transition-colors group relative cursor-pointer ${
-                  isExpanded ? 'px-3' : 'justify-center'
+                  isExpanded ? 'px-3' : 'justify-center px-0'
                 } ${
                   activeChat === chat.id
                     ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
@@ -185,7 +204,7 @@ const AssistantSidebar = ({
                       : 'text-gray-700 dark:text-gray-300'
                 }`}
               >
-                <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" />
+                <MessageSquare className="w-5 h-5 flex-shrink-0" />
                 {isExpanded && (
                   <div className="flex-1 text-left overflow-hidden min-w-0">
                     <div className="flex items-center gap-1">
@@ -235,8 +254,8 @@ const AssistantSidebar = ({
             <button
               key={item.label}
               onClick={item.onClick}
-              className={`w-full flex items-center gap-2 rounded-lg transition-colors ${
-                isExpanded ? 'px-3 py-2' : 'h-8 justify-center'
+              className={`w-full flex items-center rounded-lg transition-colors ${
+                isExpanded ? 'px-3 py-2 justify-start gap-2' : 'h-10 justify-center px-0'
               } ${
                 item.active
                   ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
@@ -245,7 +264,7 @@ const AssistantSidebar = ({
                     : 'text-gray-700 dark:text-gray-300'
               }`}
             >
-              <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
+              <item.icon className="w-5 h-5 flex-shrink-0" />
               {isExpanded && (
                 <>
                   <span className="text-sm">{item.label}</span>
