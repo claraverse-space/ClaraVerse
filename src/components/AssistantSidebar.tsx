@@ -88,14 +88,8 @@ const AssistantSidebar = ({
         )
       );
 
-      // Automatically show the relevant section if the action changes the chat's category
-      if (action === 'star' && updates.is_starred === true) {
-        setShowStarred(true);
-      } else if (action === 'archive' && updates.is_archived === true) {
-        setShowArchived(true);
-      } else if (action === 'delete') {
-        setShowDeleted(true);
-      }
+      // Remove automatic section switching
+      // We want to stay in the current view
     } catch (error) {
       console.error('Error updating chat:', error);
     } finally {
