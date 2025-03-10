@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --sakura-50: #fef6f9;
+    --sakura-100: #fee3ec;
+    --sakura-200: #ffc6da;
+    --sakura-300: #ff9dc1;
+    --sakura-400: #ff669d;
+    --sakura-500: #ff1a75;
+  }
+
+  .dark {
+    --sakura-50: #1a0f13;
+    --sakura-100: #2a1820;
+    --sakura-200: #3d1f2d;
+    --sakura-300: #4f2639;
+    --sakura-400: #662d46;
+    --sakura-500: #ff1a75;
+  }
+}
+
+.glassmorphic {
+  @apply bg-white/70 backdrop-blur-lg border border-white/20 dark:bg-gray-900/70 dark:border-gray-800/20;
+}
+
+/* Smooth width transitions */
+.w-0 {
+  width: 0;
+}
+
+.w-auto {
+  width: auto;
+}
+
+/* Scrollbar styling */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  @apply bg-gray-400/50 dark:bg-gray-600/50 rounded-full;
+}
+
+/* Smooth scrolling */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
