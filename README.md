@@ -1,6 +1,6 @@
 # Clara - AI Assistant 🤖
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/f0c8f7-lustrous-stroopwafel/deploy-status)](https://lustrous-stroopwafel-f0c8f7.netlify.app)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/clara-ollama/deploy-status)](https://clara-ollama.netlify.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
