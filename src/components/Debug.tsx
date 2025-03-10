@@ -153,9 +153,19 @@ const Debug = () => {
     const systemdConfig = `[Service]
 Environment="OLLAMA_ORIGINS=*"`;
 
+    // Fix the URL constructor error by checking if baseUrl is valid
+    let hostname = '';
+    try {
+      if (baseUrl && baseUrl.includes('://')) {
+        hostname = new URL(baseUrl).hostname;
+      }
+    } catch (e) {
+      hostname = 'your-server-name';
+    }
+
     const nginxConfig = `server {
     listen 80;
-    server_name ${new URL(baseUrl).hostname};
+    server_name ${hostname};
     
     location / {
         proxy_pass http://localhost:11434;
@@ -388,6 +398,7 @@ Environment="OLLAMA_ORIGINS=*"`;
                 multiple
                 onChange={handleImageUpload}
                 className="hidden"
+                data-testid="file-upload-input"
               />
             </div>
           </div>
