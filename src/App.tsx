@@ -8,7 +8,7 @@ import Assistant from './components/Assistant';
 import Onboarding from './components/Onboarding';
 import { db } from './db';
 import Apps from './components/Apps';
-import AppCreator from './components/AppCreator'; // Add this import
+import AppCreator from './components/AppCreator';
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -35,6 +35,19 @@ function App() {
       setUserInfo({ name: info.name });
     }
   };
+  
+  // Get app ID from localStorage when opening app-creator
+  useEffect(() => {
+    if (activePage === 'app-creator') {
+      const appId = localStorage.getItem('current_app_id');
+      if (!appId) {
+        // If no app ID is found, we're creating a new app
+        console.log('Creating new app');
+      } else {
+        console.log('Editing app with ID:', appId);
+      }
+    }
+  }, [activePage]);
 
   const renderContent = () => {
     if (activePage === 'assistant') {
@@ -42,7 +55,9 @@ function App() {
     }
     
     if (activePage === 'app-creator') {
-      return <AppCreator onPageChange={setActivePage} />;
+      // Get the app ID from localStorage (if editing an existing app)
+      const appId = localStorage.getItem('current_app_id');
+      return <AppCreator onPageChange={setActivePage} appId={appId || undefined} />;
     }
 
     return (

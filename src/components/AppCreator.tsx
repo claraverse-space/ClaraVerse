@@ -186,7 +186,17 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         setAppDescription(app.description);
         setAppIcon(app.icon || 'Activity');
         setAppColor(app.color || '#3B82F6');
-        setNodes(app.nodes);
+        // Restore tool icon components on loaded nodes
+        const restoredNodes = app.nodes.map((node: Node) => {
+          if (node.data && node.data.tool) {
+            const toolDefinition = toolItems.find(t => t.id === node.data.tool.id);
+            if (toolDefinition) {
+              node.data.tool.icon = toolDefinition.icon;
+            }
+          }
+          return node;
+        });
+        setNodes(restoredNodes);
         setEdges(app.edges);
         setCurrentAppId(id);
       }
@@ -231,17 +241,34 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         y: event.clientY - reactFlowBounds.top,
       });
 
-      let nodeType;
+      let nodeType: string;
       switch(toolId) {
-        case 'text_input': nodeType = 'textInputNode'; break;
-        case 'image_input': nodeType = 'imageInputNode'; break;
-        case 'llm_prompt': nodeType = 'llmPromptNode'; break;
-        case 'text_output': nodeType = 'textOutputNode'; break;
-        case 'conditional': nodeType = 'conditionalNode'; break;
-        case 'api_call': nodeType = 'apiCallNode'; break;
-        case 'text_combiner': nodeType = 'textCombinerNode'; break;
-        case 'markdown_output': nodeType = 'markdownOutputNode'; break;
-        default: nodeType = 'textInputNode';
+        case 'text_input': 
+          nodeType = 'textInputNode'; 
+          break;
+        case 'image_input': 
+          nodeType = 'imageInputNode'; 
+          break;
+        case 'llm_prompt': 
+          nodeType = 'llmPromptNode'; 
+          break;
+        case 'text_output': 
+          nodeType = 'textOutputNode'; 
+          break;
+        case 'conditional': 
+          nodeType = 'conditionalNode'; 
+          break;
+        case 'api_call': 
+          nodeType = 'apiCallNode'; 
+          break;
+        case 'text_combiner': 
+          nodeType = 'textCombinerNode'; 
+          break;
+        case 'markdown_output': 
+          nodeType = 'markdownOutputNode'; 
+          break;
+        default: 
+          nodeType = 'textInputNode';
       }
 
       const newNode: Node = {
@@ -250,7 +277,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         position,
         data: { 
           label: tool.name,
-          // Added labelStyle so the node title appears white in dark mode (dark text in light mode)
           labelStyle: { color: isDark ? '#fff' : '#000' },
           tool: tool,
           inputs: tool.inputs || [], 
@@ -290,8 +316,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           <Icon className="w-5 h-5" />
         </div>
         <div>
-          <h4 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{tool.name}</h4>
-          <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tool.description}</p>
+          <h4 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{tool.name}</h4>
+          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tool.description}</p>
         </div>
       </div>
     );
@@ -299,33 +325,21 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
 
   const internalSaveApp = async (name: string, description: string, icon: string, color: string) => {
     try {
-      let id = currentAppId;
-      
-      // Pre-save processing - ensure all configurations are properly captured
-      // This is especially important for nodes with complex configurations like LLM nodes
-      const processedNodes = nodes.map(node => {
-        // Clone the node to avoid reference issues
-        const processedNode = {...node};
-        
-        // Special handling for LLM nodes to ensure the prompts are saved
+      // Process nodes to ensure all configurations are properly captured
+      const processedNodes = nodes.map((node) => {
+        const processedNode = { ...node };
         if (node.type === 'llmPromptNode') {
           console.log('Saving LLM node configuration:', node.data.config);
-          // Make sure sensitive or complex data is properly stored
-          if (node.data.config && node.data.config.prompt) {
-            processedNode.data = {
-              ...node.data,
-              config: {
-                ...node.data.config,
-                // Ensure the prompt is properly stored
-                prompt: node.data.config.prompt,
-                model: node.data.config.model || '',
-                ollamaUrl: node.data.config.ollamaUrl || ''
-              }
-            };
-          }
-        }
-        // Special handling for TextCombiner nodes
-        else if (node.type === 'textCombinerNode') {
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              prompt: node.data.config.prompt || '',
+              model: node.data.config.model || '',
+              ollamaUrl: node.data.config.ollamaUrl || ''
+            }
+          };
+        } else if (node.type === 'textCombinerNode') {
           processedNode.data = {
             ...node.data,
             config: {
@@ -334,9 +348,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               combinedText: node.data.config.combinedText || ''
             }
           };
-        }
-        // Special handling for Conditional nodes
-        else if (node.type === 'conditionalNode') {
+        } else if (node.type === 'conditionalNode') {
           processedNode.data = {
             ...node.data,
             config: {
@@ -346,30 +358,26 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             }
           };
         }
-        
         return processedNode;
       });
-      
-      if (!id) {
-        id = await appStore.createApp(name, description);
+
+      // If there is no current app ID, create one
+      if (!currentAppId) {
+        const id = await appStore.createApp(name, description);
         setCurrentAppId(id);
       }
-      
-      // Update state with new values
       setAppName(name);
       setAppDescription(description);
       setAppIcon(icon);
       setAppColor(color);
-      
-      await appStore.updateApp(id, { 
+      await appStore.updateApp(currentAppId || '', { 
         name, 
         description, 
         icon, 
-        color,
+        color,  
         nodes: processedNodes, 
         edges 
       });
-      
       console.log(`App "${name}" saved with ${processedNodes.length} nodes and ${edges.length} edges`);
       alert(`App "${name}" saved successfully!`);
     } catch (error) {
@@ -391,13 +399,11 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setIsExecuting(true);
     try {
       const plan = generateExecutionPlan(nodes, edges);
-      
       const updateNodeOutput = (nodeId: string, output: any) => {
-        setNodes((nds) => 
+        setNodes((nds) =>
           nds.map((node) => {
             if (node.id === nodeId) {
               if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
-                // Handle both regular text output and markdown output
                 return {
                   ...node,
                   data: {
@@ -408,22 +414,18 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
                     }
                   }
                 };
-              } 
-              else if (node.type === 'textCombinerNode') {
-                // Store the input text for text combiner nodes
+              } else if (node.type === 'textCombinerNode') {
                 return {
                   ...node,
                   data: {
                     ...node.data,
                     config: {
                       ...node.data.config,
-                      inputText: typeof output === 'string' ? output : JSON.stringify(output),
+                      inputText: typeof output === 'string' ? output : JSON.stringify(output)
                     }
                   }
                 };
-              }
-              else if (node.type === 'conditionalNode') {
-                // Store the input text for conditional nodes
+              } else if (node.type === 'conditionalNode') {
                 return {
                   ...node,
                   data: {
@@ -440,7 +442,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           })
         );
       };
-      
       await executeFlow(plan, updateNodeOutput);
       console.log('App execution completed successfully');
     } catch (error) {
@@ -454,7 +455,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const nodeStyle = (node: Node) => {
     if (node.id === selectedNodeId) {
       return {
-        boxShadow: isDark 
+        boxShadow: isDark
           ? '0 0 0 2px #EC4899, 0 0 10px 2px rgba(236, 72, 153, 0.5)'
           : '0 0 0 2px #F472B6, 0 0 10px 2px rgba(244, 114, 182, 0.5)',
         zIndex: 1000
@@ -462,15 +463,15 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     }
     return {};
   };
-  
+
   const flowStyles = useMemo(() => ({
-    background: isDark ? '#1F2937' : '#F9FAFB',
+    background: isDark ? '#1F2937' : '#F9FAFB'
   }), [isDark]);
-  
+
   const minimapStyle = useMemo(() => ({
     backgroundColor: isDark ? '#374151' : '#F9FAFB',
     maskColor: isDark ? 'rgba(55, 65, 81, 0.7)' : 'rgba(249, 250, 251, 0.7)',
-    nodeBorderRadius: 2,
+    nodeBorderRadius: 2
   }), [isDark]);
 
   const minimapNodeColor = useMemo(() => (node: Node) => {
@@ -497,12 +498,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     const targetNode = nodes.find(node => node.id === connection.target);
     
     if (!sourceNode || !targetNode) return false;
-    
     const sourceType = sourceNode.data.tool.outputs;
     const targetType = targetNode.data.tool.inputs;
-    
     if (!sourceType || !targetType) return false;
-    
     return sourceType.some((type: string) => targetType.includes(type));
   }, [nodes]);
 
@@ -520,8 +518,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     <OllamaProvider>
       <div className="flex flex-col h-screen">
         <TopBar 
-          onPageChange={onPageChange} 
-          handleOpenSaveModal={handleOpenSaveModal} // pass open modal handler
+          onPageChange={onPageChange}
+          handleOpenSaveModal={handleOpenSaveModal}
           handleTestApp={handleTestApp}
           handleDebug={handleDebug}
           appName={appName}
@@ -564,6 +562,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         )}
         {showSaveModal && (
           <SaveAppModal
+            reactFlowInstance={reactFlowInstance}
             initialName={appName}
             initialDescription={appDescription}
             onSave={internalSaveApp}

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { appStore, AppData } from '../services/AppStore';
-import { Activity, Trash2, Edit, Copy, MoreHorizontal, Globe, FileText } from 'lucide-react';
+import { 
+  Activity, FileText, Code, Image, MessageSquare, Database, Globe, 
+  Sparkles, Zap, User, Settings, BarChart2, Search, Bot, Brain,
+  Command, Book, Layout, Compass, Trash2, Copy, MoreHorizontal, Plus
+} from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 
 interface AppListProps {
@@ -33,8 +37,13 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
   const handleDeleteApp = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this app? This action cannot be undone.')) {
-      await appStore.deleteApp(id);
-      loadApps();
+      try {
+        await appStore.deleteApp(id);
+        loadApps();
+      } catch (error) {
+        console.error('Error deleting app:', error);
+        alert('Failed to delete app');
+      }
     }
     setMenuOpen(null);
   };
@@ -44,11 +53,11 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
     try {
       await appStore.duplicateApp(id);
       loadApps();
-      setMenuOpen(null);
     } catch (error) {
       console.error('Error duplicating app:', error);
       alert('Failed to duplicate app');
     }
+    setMenuOpen(null);
   };
 
   const toggleMenu = (id: string, e: React.MouseEvent) => {
@@ -56,47 +65,53 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
     setMenuOpen(menuOpen === id ? null : id);
   };
 
+  // Map icon names to components
+  const iconComponents: Record<string, React.ElementType> = {
+    Activity, FileText, Code, Image, MessageSquare, Database, Globe,
+    Sparkles, Zap, User, Settings, Chart: BarChart2, Search, Bot, Brain,
+    Command, Book, Layout, Compass
+  };
+
   const getIconComponent = (iconName: string) => {
-    const icons: Record<string, React.ElementType> = {
-      Activity: Activity,
-      Globe: Globe,
-      FileText: FileText,
-      // Add more icon mappings as needed
-    };
-    
-    return icons[iconName] || Activity;
+    return iconComponents[iconName] || Activity;
   };
 
   if (isLoading) {
-    return <div className="flex justify-center items-center h-full">Loading apps...</div>;
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sakura-500"></div>
+      </div>
+    );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Your Apps</h1>
+    <div className="container mx-auto p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Applications</h2>
         <button
           onClick={onCreateNewApp}
-          className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+          className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg flex items-center gap-2 transition-colors"
         >
+          <Plus size={18} />
           Create New App
         </button>
       </div>
 
       {apps.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="inline-flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
-            <Activity className="h-8 w-8 text-sakura-500" />
+        <div className="text-center py-16 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
+          <div className="inline-flex items-center justify-center p-6 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
+            <Activity className="h-10 w-10 text-sakura-500" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No apps yet</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            Create your first app to get started
+          <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No apps yet</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+            Create your first app to start building custom workflows with text, images, and AI models.
           </p>
           <button
             onClick={onCreateNewApp}
-            className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+            className="px-5 py-2.5 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg flex items-center gap-2 mx-auto transition-colors"
           >
-            Create New App
+            <Plus size={18} />
+            Create Your First App
           </button>
         </div>
       ) : (
@@ -106,47 +121,48 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
             return (
               <div
                 key={app.id}
-                className={`relative rounded-lg border ${
-                  isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-                } shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
+                className={`glassmorphic relative rounded-lg border ${
+                  isDark ? 'border-gray-700' : 'border-gray-200'
+                } shadow-sm hover:shadow-md transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200`}
                 onClick={() => onEditApp(app.id)}
               >
                 <div 
-                  className="h-24 flex items-center justify-center" 
+                  className="h-28 flex items-center justify-center rounded-t-lg" 
                   style={{ backgroundColor: app.color || '#3B82F6' }}
                 >
-                  <IconComponent className="w-12 h-12 text-white" />
+                  <IconComponent className="w-14 h-14 text-white" />
                 </div>
                 <div className="p-4">
                   <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-1`}>
                     {app.name}
                   </h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-2`}>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4 line-clamp-2 h-10`}>
                     {app.description || 'No description'}
                   </p>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
                     <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Updated: {new Date(app.updatedAt).toLocaleDateString()}
+                      Updated {new Date(app.updatedAt).toLocaleDateString()}
                     </span>
                     <div className="relative">
                       <button
-                        className={`p-1 rounded-full ${
+                        className={`p-1.5 rounded-full ${
                           isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
                         }`}
                         onClick={(e) => toggleMenu(app.id, e)}
+                        aria-label="App options"
                       >
-                        <MoreHorizontal className="h-5 w-5 text-gray-500" />
+                        <MoreHorizontal className="h-4 w-4 text-gray-500" />
                       </button>
                       
                       {menuOpen === app.id && (
                         <div 
-                          className={`absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 ${
-                            isDark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+                          className={`absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 glassmorphic ${
+                            isDark ? 'dark:bg-gray-800/95 border border-gray-700' : 'bg-white/95 border border-gray-200'
                           }`}
                         >
                           <button
                             className={`flex w-full items-center px-4 py-2 text-sm ${
-                              isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'
+                              isDark ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-700 hover:bg-gray-100/80'
                             }`}
                             onClick={(e) => handleDuplicateApp(app.id, e)}
                           >
@@ -154,7 +170,7 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
                           </button>
                           <button
                             className={`flex w-full items-center px-4 py-2 text-sm ${
-                              isDark ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-gray-100'
+                              isDark ? 'text-red-400 hover:bg-gray-700/50' : 'text-red-600 hover:bg-gray-100/80'
                             }`}
                             onClick={(e) => handleDeleteApp(app.id, e)}
                           >
