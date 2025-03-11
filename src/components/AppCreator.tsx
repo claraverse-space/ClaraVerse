@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText } from 'lucide-react';
+import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit } from 'lucide-react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -168,15 +168,34 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [appIcon, setAppIcon] = useState('Activity');
   const [appColor, setAppColor] = useState('#3B82F6');
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    visible: boolean;
+  }>({ type: 'success', message: '', visible: false });
   
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
   useEffect(() => {
     if (appId) {
+      // We're editing an existing app
       loadApp(appId);
+    } else {
+      // We're creating a new app - reset everything
+      resetAppState();
     }
   }, [appId]);
+
+  const resetAppState = () => {
+    setNodes([]);
+    setEdges([]);
+    setAppName('New App');
+    setAppDescription('');
+    setAppIcon('Activity');
+    setAppColor('#3B82F6');
+    setCurrentAppId(undefined);
+  };
 
   const loadApp = async (id: string) => {
     try {
@@ -323,6 +342,14 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     );
   };
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message, visible: true });
+    // Auto-hide notification after 3 seconds
+    setTimeout(() => {
+      setNotification(prev => ({ ...prev, visible: false }));
+    }, 3000);
+  };
+
   const internalSaveApp = async (name: string, description: string, icon: string, color: string) => {
     try {
       // Process nodes to ensure all configurations are properly captured
@@ -344,8 +371,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             ...node.data,
             config: {
               ...node.data.config,
+              // Only store the additionalText configuration
               additionalText: node.data.config.additionalText || '',
-              combinedText: node.data.config.combinedText || ''
+              // Don't persist dynamic data like inputText or combinedText
             }
           };
         } else if (node.type === 'conditionalNode') {
@@ -361,16 +389,23 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         return processedNode;
       });
 
+      let id = currentAppId;
+      
       // If there is no current app ID, create one
-      if (!currentAppId) {
-        const id = await appStore.createApp(name, description);
+      if (!id) {
+        id = await appStore.createApp(name, description);
         setCurrentAppId(id);
+        // Also update localStorage so we're now editing this app
+        localStorage.setItem('current_app_id', id);
       }
+      
+      // Update state with new values
       setAppName(name);
       setAppDescription(description);
       setAppIcon(icon);
       setAppColor(color);
-      await appStore.updateApp(currentAppId || '', { 
+      
+      await appStore.updateApp(id, { 
         name, 
         description, 
         icon, 
@@ -378,11 +413,14 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         nodes: processedNodes, 
         edges 
       });
+      
       console.log(`App "${name}" saved with ${processedNodes.length} nodes and ${edges.length} edges`);
-      alert(`App "${name}" saved successfully!`);
+      
+      // Show success notification
+      showNotification('success', `App "${name}" saved successfully!`);
     } catch (error) {
       console.error('Error saving app:', error);
-      alert(`Error saving app: ${error instanceof Error ? error.message : String(error)}`);
+      showNotification('error', `Error saving app: ${error instanceof Error ? error.message : String(error)}`);
     }
     setShowSaveModal(false);
   };
@@ -415,13 +453,16 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
                   }
                 };
               } else if (node.type === 'textCombinerNode') {
+                // Store temporarily for UI display but don't persist to database
+                // Mark it as a temporary state value with a clear name
                 return {
                   ...node,
                   data: {
                     ...node.data,
                     config: {
                       ...node.data.config,
-                      inputText: typeof output === 'string' ? output : JSON.stringify(output)
+                      tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
+                      // Note: We use tempInputText to clearly indicate this shouldn't be persisted
                     }
                   }
                 };
@@ -557,12 +598,36 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             nodeStyle={nodeStyle}
           />
         </div>
+        
+        {/* Notification toast */}
+        {notification.visible && (
+          <div 
+            className={`fixed bottom-6 right-6 py-3 px-4 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform ${
+              notification.type === 'success' 
+                ? 'bg-green-500 text-white' 
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            {notification.type === 'success' ? (
+              <Check className="h-5 w-5" />
+            ) : (
+              <X className="h-5 w-5" />
+            )}
+            <p className="font-medium">{notification.message}</p>
+            <button 
+              onClick={() => setNotification(prev => ({ ...prev, visible: false }))} 
+              className="ml-2 opacity-70 hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        
         {debugOpen && executionJson && (
           <DebugModal jsonData={executionJson} onClose={closeDebug} />
         )}
         {showSaveModal && (
           <SaveAppModal
-            reactFlowInstance={reactFlowInstance}
             initialName={appName}
             initialDescription={appDescription}
             onSave={internalSaveApp}

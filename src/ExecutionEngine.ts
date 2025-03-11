@@ -291,6 +291,23 @@ async function executeNode(
 }
 
 /**
+ * Execute a text combiner node
+ */
+async function executeTextCombinerNode(node: any, inputs: any[], updateNodeOutput: (nodeId: string, output: any) => void): Promise<string> {
+  const inputText = inputs[0] || '';
+  const additionalText = node.data.config?.additionalText || '';
+  
+  // Combine the input text with the additional text
+  const combinedText = `${inputText}${additionalText}`;
+  
+  // Update node output for UI updates (but this won't be saved to DB)
+  updateNodeOutput(node.id, inputText); // Only for displaying in UI
+  
+  // Return the combined result
+  return combinedText;
+}
+
+/**
  * Executes the flow based on the execution plan.
  * Processes nodes in an order such that a node is executed only when all its input dependencies have been resolved.
  */

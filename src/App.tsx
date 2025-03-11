@@ -9,6 +9,8 @@ import Onboarding from './components/Onboarding';
 import { db } from './db';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
+import AppRunner from './components/AppRunner';
+import { Edit } from 'lucide-react'; // Add Edit to imports if not already there
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -36,15 +38,15 @@ function App() {
     }
   };
   
-  // Get app ID from localStorage when opening app-creator
+  // Get app ID from localStorage when opening app pages
   useEffect(() => {
-    if (activePage === 'app-creator') {
+    if (activePage === 'app-creator' || activePage === 'app-runner') {
       const appId = localStorage.getItem('current_app_id');
-      if (!appId) {
-        // If no app ID is found, we're creating a new app
-        console.log('Creating new app');
-      } else {
-        console.log('Editing app with ID:', appId);
+      
+      // For app-creator, we allow null/undefined appIds (creating new app)
+      if (activePage === 'app-runner' && !appId) {
+        // We need an app ID to run an app
+        setActivePage('apps');
       }
     }
   }, [activePage]);
@@ -55,9 +57,20 @@ function App() {
     }
     
     if (activePage === 'app-creator') {
-      // Get the app ID from localStorage (if editing an existing app)
       const appId = localStorage.getItem('current_app_id');
+      // Note: appId can be null here (for creating a new app)
       return <AppCreator onPageChange={setActivePage} appId={appId || undefined} />;
+    }
+    
+    if (activePage === 'app-runner') {
+      const appId = localStorage.getItem('current_app_id');
+      // If we have an app ID, render the AppRunner, otherwise go back to apps
+      if (appId) {
+        return <AppRunner appId={appId} onBack={() => setActivePage('apps')} />;
+      } else {
+        setActivePage('apps');
+        return null;
+      }
     }
 
     return (

@@ -25,7 +25,8 @@ import {
   Layout,
   Compass,
   Trash2,
-  Copy
+  Copy,
+  Edit
 } from 'lucide-react';
 import { appStore, AppData } from '../services/AppStore';
 import { useTheme } from '../hooks/useTheme';
@@ -104,16 +105,25 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
     setMenuOpen(menuOpen === id ? null : id);
   };
 
-  // Create a new app
+  // Create a new app - clear any existing app ID first
   const handleCreateApp = () => {
+    // Clear any existing app ID to ensure we create a new one
+    localStorage.removeItem('current_app_id'); 
     onPageChange('app-creator');
   };
 
-  // Open an existing app
+  // Open an existing app for running (not editing)
   const handleOpenApp = (appId: string) => {
-    // Navigate to app creator with the app ID
-    localStorage.setItem('current_app_id', appId); // Store the ID for the app creator to use
+    localStorage.setItem('current_app_id', appId);
+    onPageChange('app-runner');
+  };
+
+  // Open an existing app for editing
+  const handleEditApp = (appId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    localStorage.setItem('current_app_id', appId);
     onPageChange('app-creator');
+    setMenuOpen(null);
   };
 
   // Filter apps based on search query
@@ -236,6 +246,12 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                         <div className="absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700">
                           <button
                             className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                            onClick={(e) => handleEditApp(app.id, e)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" /> Edit
+                          </button>
+                          <button
+                            className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
                             onClick={(e) => handleDuplicateApp(app.id, e)}
                           >
                             <Copy className="h-4 w-4 mr-2" /> Duplicate
@@ -258,7 +274,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                       Updated: {new Date(app.updatedAt).toLocaleDateString()}
                     </span>
                     <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
-                      Open
+                      Run App
                     </button>
                   </div>
                 </div>
