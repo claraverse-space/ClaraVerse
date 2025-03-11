@@ -1,5 +1,4 @@
 import { indexedDBService } from './indexedDB';
-import { v4 as uuidv4 } from 'uuid';
 
 // Define types
 export interface AppData {
@@ -13,6 +12,16 @@ export interface AppData {
   createdAt: string;
   updatedAt: string;
   version: string;
+}
+
+// UUID v4 generation function to replace the uuid dependency
+function generateUUID(): string {
+  // Implementation based on RFC4122 version 4
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 class AppStore {
@@ -37,7 +46,7 @@ class AppStore {
    * Create a new app with basic information
    */
   async createApp(name: string, description: string): Promise<string> {
-    const id = uuidv4();
+    const id = generateUUID(); // Using our custom UUID function instead of uuidv4
     const now = new Date().toISOString();
     
     const newApp: AppData = {
@@ -172,7 +181,7 @@ class AppStore {
       throw new Error(`App with ID ${id} not found`);
     }
     
-    const newId = uuidv4();
+    const newId = generateUUID(); // Using our custom UUID function
     const now = new Date().toISOString();
     
     const duplicatedApp: AppData = {
