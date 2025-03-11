@@ -7,6 +7,8 @@ import Debug from './components/Debug';
 import Assistant from './components/Assistant';
 import Onboarding from './components/Onboarding';
 import { db } from './db';
+import Apps from './components/Apps';
+import AppCreator from './components/AppCreator'; // Add this import
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -38,6 +40,10 @@ function App() {
     if (activePage === 'assistant') {
       return <Assistant onPageChange={setActivePage} />;
     }
+    
+    if (activePage === 'app-creator') {
+      return <AppCreator onPageChange={setActivePage} />;
+    }
 
     return (
       <div className="flex h-screen">
@@ -53,6 +59,8 @@ function App() {
                   return <Settings />;
                 case 'debug':
                   return <Debug />;
+                case 'apps':
+                  return <Apps onPageChange={setActivePage} />;
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;

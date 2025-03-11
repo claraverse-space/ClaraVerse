@@ -327,4 +327,177 @@ export class OllamaClient {
       }
     }
   }
+
+  /* ===================== New Functionalities ===================== */
+
+  /**
+   * Generate a completion for a given prompt with structured outputs.
+   * The `format` parameter can be a JSON schema or "json" to enable JSON mode.
+   */
+  public async generateStructuredCompletion(
+    model: string,
+    prompt: string,
+    format: any,
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, prompt, format, ...options, stream: false };
+    return this.request("/api/generate", "POST", payload);
+  }
+
+  /**
+   * Send a chat message with structured outputs.
+   * The `format` parameter can be a JSON schema or "json" to enable JSON mode.
+   */
+  public async sendStructuredChat(
+    model: string,
+    messages: ChatMessage[],
+    format: any,
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, messages, format, ...options, stream: false };
+    return this.request("/api/chat", "POST", payload);
+  }
+
+  /**
+   * Send a chat message with function calling (tools).
+   * Pass an array of tool definitions in the `tools` parameter.
+   */
+  public async sendChatWithTools(
+    model: string,
+    messages: ChatMessage[],
+    tools: any[],
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, messages, tools, ...options, stream: false };
+    return this.request("/api/chat", "POST", payload);
+  }
+
+  /**
+   * Generate a completion in raw mode (bypassing templating).
+   */
+  public async generateRaw(
+    model: string,
+    prompt: string,
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, prompt, raw: true, ...options, stream: false };
+    return this.request("/api/generate", "POST", payload);
+  }
+
+  /**
+   * Send a chat message in raw mode (bypassing templating).
+   */
+  public async sendRawChat(
+    model: string,
+    messages: ChatMessage[],
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, messages, raw: true, ...options, stream: false };
+    return this.request("/api/chat", "POST", payload);
+  }
+
+  /**
+   * Create a new model.
+   * Options can include: from, files, adapters, template, license, system, parameters, messages, quantize.
+   */
+  public async createModel(
+    model: string,
+    options: {
+      from?: string;
+      files?: { [key: string]: string };
+      adapters?: { [key: string]: string };
+      template?: string;
+      license?: string | string[];
+      system?: string;
+      parameters?: { [key: string]: any };
+      messages?: ChatMessage[];
+      quantize?: string;
+    } = {}
+  ): Promise<any> {
+    const payload = { model, ...options };
+    return this.request("/api/create", "POST", payload);
+  }
+
+  /**
+   * Copy an existing model to a new model.
+   */
+  public async copyModel(source: string, destination: string): Promise<any> {
+    const payload = { source, destination };
+    return this.request("/api/copy", "POST", payload);
+  }
+
+  /**
+   * Delete a model.
+   */
+  public async deleteModel(model: string): Promise<any> {
+    const payload = { model };
+    return this.request("/api/delete", "DELETE", payload);
+  }
+
+  /**
+   * Push a model to the Ollama library.
+   */
+  public async pushModel(
+    model: string,
+    insecure: boolean = false,
+    stream: boolean = true
+  ): Promise<any> {
+    const payload = { model, insecure, stream };
+    return this.request("/api/push", "POST", payload);
+  }
+
+  /**
+   * Generate embeddings from a model.
+   * The input can be a single string or an array of strings.
+   */
+  public async generateEmbeddings(
+    model: string,
+    input: string | string[],
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const payload = { model, input, ...options };
+    return this.request("/api/embed", "POST", payload);
+  }
+
+  /**
+   * List models that are currently loaded into memory.
+   */
+  public async listRunningModels(): Promise<any[]> {
+    const url = `${this.baseUrl}/api/ps`;
+    try {
+      const response = await fetch(url, {
+        mode: 'cors'
+      });
+      if (response.status === 403) {
+        throw new Error('CORS error: Please configure OLLAMA_ORIGINS on the server');
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to list running models: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data.models;
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+          throw new Error(`CORS error: Unable to list running models. Please check server configuration.`);
+        }
+        throw error;
+      }
+      throw new Error('Failed to list running models');
+    }
+  }
+
+  /**
+   * Unload a model from memory.
+   * For chat models, set isChat to true; otherwise, it will use the generate endpoint.
+   */
+  public async unloadModel(model: string, isChat: boolean = false): Promise<any> {
+    if (isChat) {
+      const payload = { model, messages: [], keep_alive: 0 };
+      return this.request("/api/chat", "POST", payload);
+    } else {
+      const payload = { model, keep_alive: 0 };
+      return this.request("/api/generate", "POST", payload);
+    }
+  }
 }

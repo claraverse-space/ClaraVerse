@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increment version to trigger upgrade
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -48,6 +48,10 @@ export class IndexedDBService {
         }
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
+        }
+        // Add the apps object store
+        if (!db.objectStoreNames.contains('apps')) {
+          db.createObjectStore('apps', { keyPath: 'id' });
         }
       };
     });
