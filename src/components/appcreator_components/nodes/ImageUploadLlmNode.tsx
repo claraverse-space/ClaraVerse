@@ -3,6 +3,7 @@ import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { Settings, RefreshCw, Sparkles } from 'lucide-react';
 import { useOllama } from '../../../context/OllamaContext';
+import { db } from '../../../db';
 
 const ImageUploadLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   const { isDark } = useTheme();
@@ -11,21 +12,43 @@ const ImageUploadLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
   
-  // Store default configuration
-  if (!data.config.ollamaUrl) data.config.ollamaUrl = baseUrl;
-  
   const [model, setModel] = useState(data.config.model || '');
   const [staticText, setStaticText] = useState(data.config.staticText || 'Describe this image:');
   const [uploadedImage, setUploadedImage] = useState<string | null>(data.config.imageData || null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultText, setResultText] = useState(data.config.resultText || '');
   const [showSettings, setShowSettings] = useState(false);
-  const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || baseUrl);
+  const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || '');
   
   // Node-specific states for models
   const [nodeModels, setNodeModels] = useState<any[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeError, setNodeError] = useState<string | null>(null);
+
+  // Load user's Ollama config when component mounts
+  useEffect(() => {
+    const loadOllamaConfig = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        const configuredUrl = config?.ollama_base_url || baseUrl || 'http://localhost:11434';
+        
+        // Only set URL if it's not already set in the node config
+        if (!data.config.ollamaUrl) {
+          data.config.ollamaUrl = configuredUrl;
+          setCustomUrl(configuredUrl);
+        }
+      } catch (error) {
+        console.error("Failed to load Ollama configuration:", error);
+        // Fall back to baseUrl or localhost if there's an error
+        if (!data.config.ollamaUrl) {
+          data.config.ollamaUrl = baseUrl || 'http://localhost:11434';
+          setCustomUrl(baseUrl || 'http://localhost:11434');
+        }
+      }
+    };
+    
+    loadOllamaConfig();
+  }, []);
 
   // Function to fetch models using the node's custom URL
   const fetchModels = async (url: string) => {
@@ -58,7 +81,9 @@ const ImageUploadLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   
   // Fetch models when the component mounts or the URL changes
   useEffect(() => {
-    fetchModels(customUrl);
+    if (customUrl) {
+      fetchModels(customUrl);
+    }
   }, [customUrl]);
   
   // Handle file upload and convert to base64

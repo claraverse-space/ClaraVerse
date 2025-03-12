@@ -3,6 +3,7 @@ import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { useOllama } from '../../../context/OllamaContext';
 import { Settings, RefreshCw } from 'lucide-react';
+import { db } from '../../../db';
 
 const LLMPromptNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
@@ -12,21 +13,41 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
   
-  // Store the Ollama URL in the node config
-  if (!data.config.ollamaUrl) {
-    data.config.ollamaUrl = baseUrl;
-  }
-  
   const [model, setModel] = useState(data.config.model || '');
   const [prompt, setPrompt] = useState(data.config.prompt || '');
   const [showSettings, setShowSettings] = useState(false);
-  const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || baseUrl);
+  const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || '');
   
   // Node-specific states for models
   const [nodeModels, setNodeModels] = useState<any[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeError, setNodeError] = useState<string | null>(null);
 
+  // Load user's Ollama config when component mounts
+  useEffect(() => {
+    const loadOllamaConfig = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        const configuredUrl = config?.ollama_base_url || baseUrl || 'http://localhost:11434';
+        
+        // Only set URL if it's not already set in the node config
+        if (!data.config.ollamaUrl) {
+          data.config.ollamaUrl = configuredUrl;
+          setCustomUrl(configuredUrl);
+        }
+      } catch (error) {
+        console.error("Failed to load Ollama configuration:", error);
+        // Fall back to baseUrl or localhost if there's an error
+        if (!data.config.ollamaUrl) {
+          data.config.ollamaUrl = baseUrl || 'http://localhost:11434';
+          setCustomUrl(baseUrl || 'http://localhost:11434');
+        }
+      }
+    };
+    
+    loadOllamaConfig();
+  }, []);
+  
   // Function to fetch models using the node's custom URL
   const fetchModels = async (url: string) => {
     setNodeLoading(true);
@@ -58,7 +79,9 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   
   // Fetch models when the component mounts or the URL changes
   useEffect(() => {
-    fetchModels(customUrl);
+    if (customUrl) {
+      fetchModels(customUrl);
+    }
   }, [customUrl]);
   
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {

@@ -1,28 +1,91 @@
 import React, { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
+import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 const ApiCallNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
   const tool = data.tool;
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
+  
+  // Base state
   const [endpoint, setEndpoint] = useState(data.config.endpoint || '');
   const [method, setMethod] = useState(data.config.method || 'GET');
   
+  // Advanced configuration
+  const [queryParams, setQueryParams] = useState<{key: string, value: string}[]>(
+    data.config.queryParams || [{ key: '', value: '' }]
+  );
+  const [headers, setHeaders] = useState<{key: string, value: string}[]>(
+    data.config.headers || [{ key: 'Content-Type', value: 'application/json' }]
+  );
+  const [requestBody, setRequestBody] = useState(data.config.requestBody || '{\n  \n}');
+  
+  // UI state
+  const [showQueryParams, setShowQueryParams] = useState(false);
+  const [showHeaders, setShowHeaders] = useState(false);
+  
+  // Handle input changes
   const handleEndpointChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setEndpoint(e.target.value);
     data.config.endpoint = e.target.value;
   };
   
   const handleMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setMethod(e.target.value);
     data.config.method = e.target.value;
   };
+  
+  const handleBodyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    setRequestBody(e.target.value);
+    data.config.requestBody = e.target.value;
+  };
+  
+  // Query parameters handlers
+  const addQueryParam = () => {
+    const newParams = [...queryParams, { key: '', value: '' }];
+    setQueryParams(newParams);
+    data.config.queryParams = newParams;
+  };
+  
+  const removeQueryParam = (index: number) => {
+    const newParams = queryParams.filter((_, i) => i !== index);
+    setQueryParams(newParams);
+    data.config.queryParams = newParams;
+  };
+  
+  const updateQueryParam = (index: number, field: 'key' | 'value', value: string) => {
+    const newParams = [...queryParams];
+    newParams[index][field] = value;
+    setQueryParams(newParams);
+    data.config.queryParams = newParams;
+  };
+  
+  // Headers handlers
+  const addHeader = () => {
+    const newHeaders = [...headers, { key: '', value: '' }];
+    setHeaders(newHeaders);
+    data.config.headers = newHeaders;
+  };
+  
+  const removeHeader = (index: number) => {
+    const newHeaders = headers.filter((_, i) => i !== index);
+    setHeaders(newHeaders);
+    data.config.headers = newHeaders;
+  };
+  
+  const updateHeader = (index: number, field: 'key' | 'value', value: string) => {
+    const newHeaders = [...headers];
+    newHeaders[index][field] = value;
+    setHeaders(newHeaders);
+    data.config.headers = newHeaders;
+  };
 
-  // Use capture phase to stop events at the earliest possible point
+  // Stop event propagation
   const stopPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     e.nativeEvent.stopImmediatePropagation();
@@ -30,7 +93,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
   
   return (
     <div 
-      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-64`}
+      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-80`}
       onClick={stopPropagation}
       onMouseDown={stopPropagation}
     >
@@ -43,6 +106,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
         </div>
       </div>
       
+      {/* Request Method and URL */}
       <div className="mb-2" onClick={stopPropagation} onMouseDown={stopPropagation}>
         <div className="flex gap-2">
           <div className="w-1/4">
@@ -51,8 +115,6 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
               onChange={handleMethodChange}
               onClick={stopPropagation}
               onMouseDown={stopPropagation}
-              onKeyDown={stopPropagation}
-              onFocus={stopPropagation}
               className={`w-full p-2 rounded border ${
                 isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
               } text-sm`}
@@ -70,15 +132,151 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
               onChange={handleEndpointChange}
               onClick={stopPropagation}
               onMouseDown={stopPropagation}
-              onKeyDown={stopPropagation}
-              onFocus={stopPropagation}
-              placeholder="API Endpoint"
+              placeholder="https://api.example.com/endpoint"
               className={`w-full p-2 rounded border ${
                 isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
               } text-sm`}
             />
           </div>
         </div>
+      </div>
+      
+      {/* Query Parameters (for GET) */}
+      {method === 'GET' && (
+        <div className="mb-3 border-t border-gray-200 dark:border-gray-700 pt-2">
+          <button 
+            className={`flex justify-between items-center w-full text-xs font-medium ${
+              isDark ? 'text-gray-300' : 'text-gray-700'
+            } mb-1`}
+            onClick={() => setShowQueryParams(!showQueryParams)}
+          >
+            <span>Query Parameters</span>
+            {showQueryParams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          
+          {showQueryParams && (
+            <div className="space-y-2 mt-2">
+              {queryParams.map((param, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="Parameter name"
+                    value={param.key}
+                    onChange={(e) => updateQueryParam(index, 'key', e.target.value)}
+                    className={`flex-1 p-1 text-xs rounded border ${
+                      isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Value"
+                    value={param.value}
+                    onChange={(e) => updateQueryParam(index, 'value', e.target.value)}
+                    className={`flex-1 p-1 text-xs rounded border ${
+                      isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                  />
+                  <button
+                    onClick={() => removeQueryParam(index)}
+                    className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addQueryParam}
+                className={`flex items-center gap-1 text-xs ${
+                  isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
+                }`}
+              >
+                <Plus size={14} />
+                <span>Add Parameter</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Request Body (for POST/PUT) */}
+      {(method === 'POST' || method === 'PUT') && (
+        <div className="mb-3">
+          <label className={`block text-xs font-medium mb-1 ${
+            isDark ? 'text-gray-300' : 'text-gray-700'
+          }`}>
+            Request Body (JSON)
+          </label>
+          <textarea
+            value={requestBody}
+            onChange={handleBodyChange}
+            onClick={stopPropagation}
+            onMouseDown={stopPropagation}
+            rows={5}
+            className={`w-full p-2 rounded border font-mono text-xs ${
+              isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+            }`}
+          />
+        </div>
+      )}
+      
+      {/* Headers Section */}
+      <div className="mb-3 border-t border-gray-200 dark:border-gray-700 pt-2">
+        <button 
+          className={`flex justify-between items-center w-full text-xs font-medium ${
+            isDark ? 'text-gray-300' : 'text-gray-700'
+          } mb-1`}
+          onClick={() => setShowHeaders(!showHeaders)}
+        >
+          <span>Headers</span>
+          {showHeaders ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        
+        {showHeaders && (
+          <div className="space-y-2 mt-2">
+            {headers.map((header, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Header name"
+                  value={header.key}
+                  onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                  className={`flex-1 p-1 text-xs rounded border ${
+                    isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  }`}
+                />
+                <input
+                  type="text"
+                  placeholder="Value"
+                  value={header.value}
+                  onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                  className={`flex-1 p-1 text-xs rounded border ${
+                    isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  }`}
+                />
+                <button
+                  onClick={() => removeHeader(index)}
+                  className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={addHeader}
+              className={`flex items-center gap-1 text-xs ${
+                isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
+              }`}
+            >
+              <Plus size={14} />
+              <span>Add Header</span>
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {/* Note for users */}
+      <div className="text-xs text-center p-2 bg-blue-50 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded mb-3">
+        API requests will automatically execute when you run the flow
       </div>
       
       <Handle
@@ -95,7 +293,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
         position={Position.Bottom}
         id="text-out"
         isConnectable={isConnectable}
-        className="!bg-red-500 !w-3 !h-3"
+        className="!bg-purple-500 !w-3 !h-3"
         style={{ bottom: -6 }}
       />
     </div>
