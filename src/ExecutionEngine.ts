@@ -259,7 +259,10 @@ async function executeNode(
       const method = node.data.config.method || 'GET';
       const endpoint = node.data.config.endpoint || '';
       if (!endpoint) {
-        return 'Error: No API endpoint specified';
+        return JSON.stringify({
+          input: inputText,
+          output: 'Error: No API endpoint specified'
+        });
       }
       try {
         const response = await fetch(endpoint, {
@@ -270,17 +273,31 @@ async function executeNode(
           body: method !== 'GET' && inputText ? JSON.stringify(inputText) : undefined
         });
         if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`);
+          // Clone the response to read its text without consuming the stream
+          const errorText = await response.clone().text();
+          return JSON.stringify({
+            input: inputText,
+            output: `API error: ${response.status} ${response.statusText}. ${errorText}`
+          });
         }
+        let apiResponse;
         try {
-          const jsonResult = await response.json();
-          return JSON.stringify(jsonResult, null, 2);
+          // Clone the response before reading its body as JSON
+          apiResponse = await response.clone().json();
         } catch {
-          return await response.text();
+          // Clone again if necessary to read as text
+          apiResponse = await response.clone().text();
         }
+        return JSON.stringify({
+          input: inputText,
+          output: apiResponse
+        });
       } catch (error) {
         console.error('API error:', error);
-        return `Error: ${error instanceof Error ? error.message : String(error)}`;
+        return JSON.stringify({
+          input: inputText,
+          output: `Error: ${error instanceof Error ? error.message : String(error)}`
+        });
       }
     }
 
@@ -311,7 +328,6 @@ async function executeTextCombinerNode(node: any, inputs: any[], updateNodeOutpu
  * Executes the flow based on the execution plan.
  * Processes nodes in an order such that a node is executed only when all its input dependencies have been resolved.
  */
-
 export async function executeFlow(
   plan: ExecutionPlan,
   setNodeOutput?: (nodeId: string, output: any) => void

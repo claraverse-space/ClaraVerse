@@ -153,12 +153,27 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
   // Handle input changes
   const handleInputChange = (nodeId: string, value: string | File | null) => {
+    // Process value based on type
+    let processedValue = value;
+    
+    // If this is a File object and intended for image handling, convert to base64
+    if (value instanceof File) {
+      // Don't convert to base64 here, just store the file object
+      // The executor will handle the file correctly
+    } else if (typeof value === 'string') {
+      // For text inputs, ensure we're storing a clean string
+      processedValue = value.trim();
+    }
+    
     setInputState(prev => ({
       ...prev,
-      [nodeId]: value
+      [nodeId]: processedValue
     }));
+    
+    // Log to verify what's being stored
+    console.log(`Updated input for node ${nodeId}:`, processedValue);
   };
-  
+
   // Handle simple input for chat-like interface
   const handleSimpleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setSimpleInputValue(e.target.value);
@@ -166,6 +181,19 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     // Also update the input node state
     if (inputNodes.length === 1) {
       handleInputChange(inputNodes[0].id, e.target.value);
+    }
+  };
+
+  // Add a separate key down handler to ensure Enter key is processed properly
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); // Prevent default to avoid newline in textarea
+      
+      if (!isRunning && simpleInputValue.trim() !== '') {
+        console.log("Enter key pressed - running app with input:", simpleInputValue);
+        runApp();
+      }
+      return false;
     }
   };
 
@@ -184,27 +212,46 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         }));
       }
       
-      // Build a new version of nodes with the input values set
-      const nodesWithInputs = appData.nodes.map((node: Node) => {
+      // Clone the app data to avoid modifying the original
+      const appDataClone = JSON.parse(JSON.stringify(appData));
+      
+      // Update input node configurations with user input values
+      appDataClone.nodes = appDataClone.nodes.map((node: Node) => {
         if (inputState[node.id] !== undefined) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              config: {
-                ...node.data.config,
-                // Set appropriate config based on node type
-                ...(node.type === 'textInputNode' ? { inputText: inputState[node.id] } : {}),
-                ...(node.type === 'imageInputNode' ? { imageData: inputState[node.id] } : {})
+          if (node.type === 'textInputNode') {
+            // Update text input config directly
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                config: {
+                  ...node.data.config,
+                  text: inputState[node.id]
+                }
               }
-            }
-          };
+            };
+          } else if (node.type === 'imageInputNode') {
+            // Update image input config
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                config: {
+                  ...node.data.config,
+                  imageData: inputState[node.id]
+                }
+              }
+            };
+          }
         }
         return node;
       });
       
-      // Generate execution plan and run it
-      const plan = generateExecutionPlan(nodesWithInputs, appData.edges);
+      // Update the app with the new input values temporarily
+      await appStore.tempUpdateAppNodes(appId, appDataClone.nodes);
+      
+      // Generate execution plan and run it - no need to pass inputState anymore
+      const plan = generateExecutionPlan(appDataClone.nodes, appDataClone.edges);
       
       // Callback to update UI when nodes produce output
       const updateNodeOutput = (nodeId: string, output: any) => {
@@ -214,6 +261,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         }));
       };
       
+      // Run the flow without passing inputState since it's now in the node configs
       await executeFlow(plan, updateNodeOutput);
       setIsSuccess(true);
       
@@ -264,15 +312,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       <div className="space-y-6">
         {isRunning && (
           <div className="flex items-center justify-center py-8 animate-pulse">
-            <div className="flex flex-col items-center space-y-3">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{backgroundColor: appData?.color || '#3B82F6'}}>
-                <Loader className="w-6 h-6 text-white animate-spin" />
-              </div>
-              <p className="text-gray-600 dark:text-gray-400">Processing your request...</p>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{backgroundColor: appData?.color || '#3B82F6'}}>
+              <Loader className="w-6 h-6 text-white animate-spin" />
             </div>
+            <p className="text-gray-600 dark:text-gray-400">Processing your request...</p>
           </div>
         )}
-
         {outputNodes.map((node: Node) => {
           const output = outputState[node.id];
           if (!output && !isRunning) return null;
@@ -288,7 +333,6 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
                 {node.data.label || "Result"}
               </h3>
-              
               <div className="prose dark:prose-invert prose-md max-w-none dark-mode-prose">
                 {isRunning && !output ? (
                   <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
@@ -302,7 +346,6 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             </div>
           );
         })}
-        
         {isSuccess && (
           <div className="flex items-center justify-center py-2">
             <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm">
@@ -311,7 +354,6 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             </div>
           </div>
         )}
-        
         {error && (
           <div className="glassmorphic rounded-xl p-4 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400">
             <p>{error}</p>
@@ -336,14 +378,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               placeholder={inputNodes[0]?.data?.config?.placeholder || "Ask something..."}
               value={simpleInputValue}
               onChange={handleSimpleInputChange}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!isRunning && simpleInputValue.trim() !== '') {
-                    runApp();
-                  }
-                }
-              }}
+              onKeyDown={handleKeyDown}  // Use the dedicated handler instead of inline function
             />
             <button
               disabled={isRunning || simpleInputValue.trim() === ''}
@@ -459,7 +494,6 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 return null;
             }
           })}
-          
           <div className="flex justify-end mt-6">
             <button
               type="submit"
@@ -467,7 +501,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white ${
                 isRunning || !isFormComplete
                   ? 'bg-gray-400 cursor-not-allowed'
-                  : ''
+                  : 'bg-blue-500 hover:bg-blue-600'
               } transition-colors`}
               style={{ 
                 backgroundColor: isRunning || !isFormComplete ? undefined : appData?.color || '#3B82F6'
@@ -533,7 +567,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         <header className="glassmorphic shadow-md p-4 z-10">
           <div className="container mx-auto flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={onBack}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-300"
               >
@@ -544,7 +578,6 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{appData?.description}</p>
               </div>
             </div>
-            
             <div className="flex items-center">
               <div 
                 className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"

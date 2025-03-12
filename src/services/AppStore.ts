@@ -196,6 +196,30 @@ class AppStore {
     console.log(`Duplicated app ${id} to new ID: ${newId}`);
     return newId;
   }
+
+  /**
+   * Temporarily updates the nodes of an app for execution.
+   * This is used when running the app with user-provided inputs.
+   */
+  async tempUpdateAppNodes(appId: string, nodes: any[]): Promise<void> {
+    // Get the current app data
+    const app = await indexedDBService.get<AppData>(this.STORE_NAME, appId);
+    
+    if (!app) {
+      throw new Error(`App with id ${appId} not found`);
+    }
+    
+    // Create a modified version with updated nodes
+    const updatedApp = {
+      ...app,
+      nodes: this.deepCopyNodes(nodes) // Use our sanitization method to ensure data is safe to store
+    };
+    
+    // Store the updated app back in IndexedDB
+    await indexedDBService.put(this.STORE_NAME, updatedApp);
+    
+    console.log(`Temporarily updated nodes for app ${appId} for execution`);
+  }
 }
 
 export const appStore = new AppStore();
