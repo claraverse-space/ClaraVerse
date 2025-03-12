@@ -10,8 +10,11 @@ const executeImageTextLlm = async (context: NodeExecutionContext) => {
       return "No image provided to Image-Text LLM";
     }
 
-    // Get text input (prompt)
+    // Get text input (prompt) - ensure we're preserving whitespace
     const textInput = inputs.text || inputs['text-in'] || inputs['prompt'] || '';
+    
+    // Log the text input to check for spaces
+    console.log("Text input to ImageTextLlm:", JSON.stringify(textInput));
     
     // Process image data - remove data URL prefix if present
     let processedImageData = imageInput;
@@ -56,6 +59,7 @@ const executeImageTextLlm = async (context: NodeExecutionContext) => {
     const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
     
     // Combine system prompt and user text if both exist
+    // Preserve all whitespace in the user's text
     const finalPrompt = systemPrompt 
       ? `${systemPrompt}\n\n${textInput || 'Describe this image:'}`
       : (textInput || 'Describe this image:');

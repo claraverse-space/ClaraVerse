@@ -31,6 +31,14 @@ interface InputState {
   [nodeId: string]: string | File | null;
 }
 
+interface ChatMessage {
+  id: string;
+  content: any;
+  type: 'user' | 'ai';
+  timestamp: number;
+  isImage?: boolean;
+}
+
 const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const { isDark } = useTheme();
   const [appData, setAppData] = useState<any>(null);
@@ -41,9 +49,11 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const outputSectionRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [simpleInputValue, setSimpleInputValue] = useState('');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activePage, setActivePage] = useState('apps');
+  const [messageHistory, setMessageHistory] = useState<ChatMessage[]>([]);
   
   // Background gradient variants based on app color
   const gradientStyle = useMemo(() => {
@@ -52,6 +62,13 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       background: `linear-gradient(135deg, ${color}10, ${isDark ? '#1f293780' : '#f9fafb80'})`,
     };
   }, [appData?.color, isDark]);
+
+  // Auto-scroll to bottom when messages change - must be defined here, not conditionally
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messageHistory]);
 
   // Load app data
   useEffect(() => {
@@ -159,13 +176,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     // Process value based on type
     let processedValue = value;
     
-    // If this is a File object and intended for image handling, convert to base64
+    // If this is a File object, just store the file object
     if (value instanceof File) {
-      // Don't convert to base64 here, just store the file object
-      // The executor will handle the file correctly
+      // Don't process file objects
     } else if (typeof value === 'string') {
-      // For text inputs, ensure we're storing a clean string
-      processedValue = value.trim();
+      // For text inputs, preserve all spaces and line breaks
+      processedValue = value;
     }
     
     setInputState(prev => ({
@@ -173,52 +189,50 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       [nodeId]: processedValue
     }));
     
-    // Log to verify what's being stored
     console.log(`Updated input for node ${nodeId}:`, processedValue);
   };
 
-// Add this function after the handleInputChange function
-const handleImageUpload = (nodeId: string, file: File) => {
-  if (!file) return;
-  
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    if (event.target?.result) {
-      const imageData = event.target.result;
-      
-      // Update the app data nodes with the runtime image
-      setAppData((prevAppData: any) => {
-        const updatedNodes = prevAppData.nodes.map((node: Node) => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                runtimeImage: imageData
-              }
-            };
-          }
-          return node;
+  const handleImageUpload = (nodeId: string, file: File) => {
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const imageData = event.target.result;
+        
+        // Update the app data nodes with the runtime image
+        setAppData((prevAppData: any) => {
+          const updatedNodes = prevAppData.nodes.map((node: Node) => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  runtimeImage: imageData
+                }
+              };
+            }
+            return node;
+          });
+          
+          return {
+            ...prevAppData,
+            nodes: updatedNodes
+          };
         });
         
-        return {
-          ...prevAppData,
-          nodes: updatedNodes
-        };
-      });
-      
-      // Also update the input state for UI tracking
-      setInputState(prev => ({
-        ...prev,
-        [nodeId]: file
-      }));
-      
-      console.log(`Updated runtime image for node ${nodeId}`);
-    }
+        // Also update the input state for UI tracking
+        setInputState(prev => ({
+          ...prev,
+          [nodeId]: file
+        }));
+        
+        console.log(`Updated runtime image for node ${nodeId}`);
+      }
+    };
+    
+    reader.readAsDataURL(file);
   };
-  
-  reader.readAsDataURL(file);
-};
 
   // Handle simple input for chat-like interface
   const handleSimpleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -250,13 +264,43 @@ const handleImageUpload = (nodeId: string, file: File) => {
     setIsSuccess(false);
     
     try {
-      // For simple input mode, make sure we sync the values
+      // Create a message for user input
+      const userInputs: any[] = [];
+      
+      // For simple input mode with single text node
       if (isSimpleApp && inputNodes.length === 1) {
         setInputState(prev => ({
           ...prev,
           [inputNodes[0].id]: simpleInputValue
         }));
+        userInputs.push(simpleInputValue);
+      } 
+      // For more complex inputs, include all non-empty inputs
+      else {
+        inputNodes.forEach(node => {
+          const input = inputState[node.id];
+          if (input) {
+            if (node.type === 'imageInputNode' && input instanceof File) {
+              userInputs.push(`[Image: ${input.name}]`);
+            } else if (typeof input === 'string' && input.trim() !== '') {
+              userInputs.push(input);
+            }
+          }
+        });
       }
+      
+      // Add user message to history
+      const userMessageId = `user-${Date.now()}`;
+      setMessageHistory(prev => [
+        ...prev,
+        {
+          id: userMessageId,
+          content: userInputs.length === 1 ? userInputs[0] : userInputs.join('\n'),
+          type: 'user',
+          timestamp: Date.now(),
+          isImage: inputNodes.some(node => node.type === 'imageInputNode' && inputState[node.id] instanceof File)
+        }
+      ]);
       
       // Clone the app data to avoid modifying the original
       const appDataClone = JSON.parse(JSON.stringify(appData));
@@ -298,12 +342,26 @@ const handleImageUpload = (nodeId: string, file: File) => {
       // Generate execution plan and run it
       const plan = generateExecutionPlan(appDataClone.nodes, appDataClone.edges);
       
-      // Callback to update UI when nodes produce output
+      // Custom callback to update UI and add to message history
       const updateNodeOutput = (nodeId: string, output: any) => {
         setOutputState(prev => ({
-          ...prev,
+          ...prev, 
           [nodeId]: output
         }));
+        
+        // Only add outputs from output nodes to the message history
+        const node = outputNodes.find(n => n.id === nodeId);
+        if (node) {
+          setMessageHistory(prev => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}-${nodeId}`,
+              content: output,
+              type: 'ai',
+              timestamp: Date.now()
+            }
+          ]);
+        }
       };
       
       // Run the flow
@@ -317,6 +375,17 @@ const handleImageUpload = (nodeId: string, file: File) => {
     } catch (err) {
       console.error('Error running app:', err);
       setError(err instanceof Error ? err.message : "An error occurred while running the app");
+      
+      // Add error to message history
+      setMessageHistory(prev => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          content: err instanceof Error ? err.message : "An error occurred while running the app",
+          type: 'ai',
+          timestamp: Date.now()
+        }
+      ]);
     } finally {
       setIsRunning(false);
     }
@@ -332,9 +401,9 @@ const handleImageUpload = (nodeId: string, file: File) => {
     }
   };
 
-  // Render all outputs in a unified markdown format
+  // Replace renderOutputs with chat-like message history display
   const renderOutputs = () => {
-    if (Object.keys(outputState).length === 0 && !isRunning) {
+    if (messageHistory.length === 0 && !isRunning) {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
           <div className="w-16 h-16 rounded-full bg-opacity-20" style={{backgroundColor: appData?.color || '#3B82F6'}}>
@@ -344,7 +413,7 @@ const handleImageUpload = (nodeId: string, file: File) => {
             })}
           </div>
           <h3 className="text-xl font-medium text-gray-900 dark:text-white">
-            Run this app to see results
+            Send a message to start
           </h3>
           <p className="text-gray-600 dark:text-gray-400 max-w-md">
             {appData?.description || "Enter your information and run the app to get started."}
@@ -354,68 +423,101 @@ const handleImageUpload = (nodeId: string, file: File) => {
     }
 
     return (
-      <div className="space-y-6">
-        {isRunning && (
-          <div className="flex items-center justify-center py-8 animate-pulse">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{backgroundColor: appData?.color || '#3B82F6'}}>
-              <Loader className="w-6 h-6 text-white animate-spin" />
-            </div>
-            <p className="ml-3 text-gray-600 dark:text-gray-400">Processing your request...</p>
-          </div>
-        )}
-        {outputNodes.map((node: Node) => {
-          const output = outputState[node.id];
-          if (!output && !isRunning) return null;
+      <div className="space-y-6 flex flex-col">
+        {/* Message history */}
+        {messageHistory.map((message, index) => {
+          const isUserMessage = message.type === 'user';
           
           return (
             <div 
-              key={node.id}
-              className="glassmorphic rounded-xl p-6 transition-all duration-300 shadow-lg markdown-wrapper"
-              style={{
-                borderLeft: `4px solid ${appData?.color || '#3B82F6'}`
-              }}
+              key={message.id}
+              className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} w-full mb-4`}
             >
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-                {node.data.label || "Result"}
-              </h3>
-              <div className="prose dark:prose-invert prose-md max-w-none dark-mode-prose">
-                {isRunning && !output ? (
-                  <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
-                    <Loader className="w-4 h-4 animate-spin" />
-                    <span>Generating response...</span>
-                  </div>
+              <div 
+                className={`max-w-[85%] p-4 rounded-xl ${
+                  isUserMessage 
+                    ? 'bg-opacity-80 rounded-tr-none ml-auto' 
+                    : 'bg-opacity-80 rounded-tl-none mr-auto'
+                } ${
+                  isUserMessage
+                    ? isDark 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-blue-500 text-white'
+                    : isDark 
+                      ? 'bg-gray-800 text-white' 
+                      : 'bg-white text-gray-900'
+                } shadow-sm`}
+                style={{
+                  borderColor: isUserMessage ? appData?.color : undefined
+                }}
+              >
+                {isUserMessage ? (
+                  message.isImage ? (
+                    <div className="prose dark:prose-invert max-w-none">
+                      <p>{message.content}</p>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                  )
                 ) : (
-                  <ReactMarkdown>{formatOutputForMarkdown(output)}</ReactMarkdown>
+                  <div className="prose dark:prose-invert prose-md max-w-none dark-mode-prose">
+                    <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
+                  </div>
                 )}
+                <div className={`text-xs ${isUserMessage ? 'text-blue-200 dark:text-blue-300' : 'text-gray-400 dark:text-gray-500'} mt-2 text-right`}>
+                  {new Date(message.timestamp).toLocaleTimeString()}
+                </div>
               </div>
             </div>
           );
         })}
-        {isSuccess && (
-          <div className="flex items-center justify-center py-2">
-            <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm">
-              <Check className="w-4 h-4" />
-              <span className="text-sm font-medium">Completed successfully</span>
+        
+        {/* Loading indicator for in-progress responses */}
+        {isRunning && (
+          <div className="flex justify-start w-full">
+            <div className={`max-w-[85%] p-4 rounded-xl bg-opacity-80 rounded-tl-none ${
+              isDark ? 'bg-gray-800' : 'bg-white'
+            } shadow-sm flex items-center gap-2`}>
+              <div className="animate-pulse">
+                <Loader className="w-5 h-5 text-gray-500 dark:text-gray-400 animate-spin" />
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">
+                Processing...
+              </div>
             </div>
           </div>
         )}
-        {error && (
-          <div className="glassmorphic rounded-xl p-4 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400">
-            <p>{error}</p>
+        
+        {/* Error display */}
+        {error && !isRunning && !messageHistory.some(m => m.content === error && m.type === 'ai') && (
+          <div className="flex justify-start w-full">
+            <div className="max-w-[85%] p-4 rounded-xl bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-sm">
+              {error}
+            </div>
+          </div>
+        )}
+        
+        {/* Success indicator */}
+        {isSuccess && !isRunning && (
+          <div className="flex justify-center my-2">
+            <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm">
+              <Check className="w-4 h-4" />
+              <span>Completed</span>
+            </div>
           </div>
         )}
       </div>
     );
   };
 
-  // Render simple chat-like interface or full form based on app structure
+  // Render all outputs in a unified markdown format
   const renderInputSection = () => {
     if (isSimpleApp) {
       return (
         <div className="glassmorphic rounded-xl p-3 shadow-lg">
           <div className="flex items-center gap-2">
             <textarea
-              className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 resize-none min-h-[48px] max-h-[120px] overflow-y-auto"
+              className="flex-1 p-2.5 border rounded-lg focus:ring-1 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 resize-none min-h-[40px] max-h-[120px] text-sm"
               style={{ 
                 focusRing: appData?.color || '#3B82F6',
                 borderRadius: '0.75rem'
@@ -428,7 +530,7 @@ const handleImageUpload = (nodeId: string, file: File) => {
             <button
               disabled={isRunning || simpleInputValue.trim() === ''}
               onClick={runApp}
-              className={`h-[48px] w-[48px] flex items-center justify-center rounded-lg shadow-sm ${
+              className={`h-[40px] w-[40px] flex items-center justify-center rounded-lg shadow-sm ${
                 isRunning || simpleInputValue.trim() === ''
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'text-white hover:opacity-90'
@@ -438,9 +540,9 @@ const handleImageUpload = (nodeId: string, file: File) => {
               }}
             >
               {isRunning ? (
-                <Loader className="w-5 h-5 animate-spin text-white" />
+                <Loader className="w-4 h-4 animate-spin text-white" />
               ) : (
-                <Send className="w-5 h-5 text-white" />
+                <Send className="w-4 h-4 text-white" />
               )}
             </button>
           </div>
@@ -448,118 +550,142 @@ const handleImageUpload = (nodeId: string, file: File) => {
       );
     }
 
+    // Check if we have both image and text inputs for a horizontal layout
+    const hasImageInput = inputNodes.some(node => node.type === 'imageInputNode');
+    const hasTextInput = inputNodes.some(node => node.type === 'textInputNode');
+    const useHorizontalLayout = hasImageInput && hasTextInput;
+
     return (
-      <div className="glassmorphic rounded-xl p-6 shadow-lg">
-        <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">
-          {inputNodes.length > 0 ? "Enter Your Information" : "Run the App"}
-        </h2>
-        
+      <div className="glassmorphic rounded-xl p-4 shadow-lg">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             runApp();
           }}
         >
-          {inputNodes.map((node: Node) => {
-            switch (node.type) {
-              case 'textInputNode':
-                return (
-                  <div key={node.id} className="mb-6">
-                    <label className="block mb-2 font-medium text-gray-900 dark:text-white">
-                      {node.data.label || "Text Input"}
-                      {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
-                    </label>
-                    <div className="relative">
-                      <textarea
-                        className="w-full p-4 border rounded-lg focus:ring-2 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                        style={{ 
-                          focusRing: appData?.color || '#3B82F6'
-                        }}
-                        rows={4}
-                        placeholder={node.data.config?.placeholder || "Enter text here..."}
-                        value={inputState[node.id] as string || ''}
-                        onChange={(e) => handleInputChange(node.id, e.target.value)}
-                      />
-                    </div>
-                    {node.data.config?.description && (
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
-                    )}
-                  </div>
-                );
-                
-              case 'imageInputNode':
-                return (
-                  <div key={node.id} className="mb-6">
-                    <label className="block mb-2 font-medium text-gray-900 dark:text-white">
-                      {node.data.label || "Image Input"}
-                      {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
-                    </label>
-                    <div className="flex items-center justify-center w-full">
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
-                        {inputState[node.id] instanceof File ? (
-                          <div className="flex flex-col items-center justify-center py-2">
-                            <div className="relative w-16 h-16 mb-2">
-                              <img
-                                src={URL.createObjectURL(inputState[node.id] as File)}
-                                alt="Preview"
-                                className="w-full h-full object-cover rounded"
-                              />
-                            </div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {(inputState[node.id] as File).name}
-                            </p>
-                          </div>
-                        ) : node.data.runtimeImage ? (
-                          <div className="flex flex-col items-center justify-center py-2">
-                            <div className="relative w-16 h-16 mb-2">
-                              <img
-                                src={node.data.runtimeImage}
-                                alt="Preview"
-                                className="w-full h-full object-cover rounded"
-                              />
-                            </div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Current image
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-2">
-                            <ImageIcon className="w-8 h-8 mb-2 text-gray-500 dark:text-gray-400" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Click to upload image
-                            </p>
-                          </div>
-                        )}
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              handleImageUpload(node.id, e.target.files[0]);
-                            }
+          <div className={`grid ${useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7 gap-4' : 'grid-cols-1 gap-3'}`}>
+            {inputNodes.map((node: Node) => {
+              switch (node.type) {
+                case 'textInputNode':
+                  return (
+                    <div key={node.id} className={useHorizontalLayout ? "md:col-span-5" : ""}>
+                      {node.data.label && (
+                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                          {node.data.label}
+                          {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
+                        </label>
+                      )}
+                      <div className="relative">
+                        <textarea
+                          className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                          style={{ 
+                            focusRing: appData?.color || '#3B82F6',
+                            minHeight: useHorizontalLayout ? '120px' : '80px'
                           }}
+                          placeholder={node.data.config?.placeholder || "Enter text here..."}
+                          value={inputState[node.id] as string || ''}
+                          onChange={(e) => handleInputChange(node.id, e.target.value)}
                         />
-                      </label>
+                      </div>
+                      {node.data.config?.description && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
+                      )}
                     </div>
-                    {node.data.config?.description && (
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
-                    )}
-                  </div>
-                );
-                
-              default:
-                return null;
-            }
-          })}
-          <div className="flex justify-end mt-6">
+                  );
+                  
+                case 'imageInputNode':
+                  return (
+                    <div key={node.id} className={useHorizontalLayout ? "md:col-span-2" : ""}>
+                      {node.data.label && (
+                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                          {node.data.label}
+                          {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
+                        </label>
+                      )}
+                      <div className="flex justify-center w-full h-full">
+                        <label className={`
+                          flex flex-col items-center justify-center w-full border border-dashed 
+                          rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700
+                          bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600
+                          transition-all duration-200
+                          ${useHorizontalLayout ? 'h-[120px]' : 'h-16'}
+                        `}>
+                          {inputState[node.id] instanceof File ? (
+                            <div className={`flex ${useHorizontalLayout ? 'flex-col' : 'flex-row'} items-center justify-center h-full w-full p-2`}>
+                              <div className={`${useHorizontalLayout ? 'w-16 h-16 mb-2' : 'w-10 h-10 mr-3'} shrink-0`}>
+                                <img
+                                  src={URL.createObjectURL(inputState[node.id] as File)}
+                                  alt="Preview"
+                                  className="w-full h-full object-cover rounded"
+                                />
+                              </div>
+                              <div className={`${useHorizontalLayout ? 'text-center' : 'text-left'}`}>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+                                  {(inputState[node.id] as File).name}
+                                </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                  Click to replace
+                                </p>
+                              </div>
+                            </div>
+                          ) : node.data.runtimeImage ? (
+                            <div className={`flex ${useHorizontalLayout ? 'flex-col' : 'flex-row'} items-center justify-center h-full w-full p-2`}>
+                              <div className={`${useHorizontalLayout ? 'w-16 h-16 mb-2' : 'w-10 h-10 mr-3'} shrink-0`}>
+                                <img
+                                  src={node.data.runtimeImage}
+                                  alt="Preview"
+                                  className="w-full h-full object-cover rounded"
+                                />
+                              </div>
+                              <div className={`${useHorizontalLayout ? 'text-center' : 'text-left'}`}>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Image selected
+                                </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                  Click to replace
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={`flex flex-col items-center justify-center p-2 ${useHorizontalLayout ? 'py-4' : ''}`}>
+                              <ImageIcon className={`${useHorizontalLayout ? 'w-8 h-8 mb-2' : 'w-5 h-5 mb-1'} text-gray-400`} />
+                              <p className="text-xs text-center text-gray-500 dark:text-gray-400 px-2">
+                                {useHorizontalLayout ? 'Click to upload an image' : 'Upload image'}
+                              </p>
+                            </div>
+                          )}
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageUpload(node.id, e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {node.data.config?.description && !useHorizontalLayout && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
+                      )}
+                    </div>
+                  );
+                  
+                default:
+                  return null;
+              }
+            })}
+          </div>
+          
+          <div className="flex justify-end mt-4">
             <button
               type="submit"
               disabled={isRunning || !isFormComplete}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm shadow-sm ${
                 isRunning || !isFormComplete
                   ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600'
+                  : 'hover:opacity-90'
               } transition-colors`}
               style={{ 
                 backgroundColor: isRunning || !isFormComplete ? undefined : appData?.color || '#3B82F6'
@@ -568,12 +694,12 @@ const handleImageUpload = (nodeId: string, file: File) => {
               {isRunning ? (
                 <>
                   <Loader className="w-4 h-4 animate-spin" />
-                  Processing...
+                  <span>Processing...</span>
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4" />
-                  Run
+                  <Send className="w-4 h-4" />
+                  <span>Send</span>
                 </>
               )}
             </button>
@@ -671,6 +797,7 @@ const handleImageUpload = (nodeId: string, file: File) => {
             >
               <div className="container mx-auto max-w-4xl">
                 {renderOutputs()}
+                <div ref={messagesEndRef} />
               </div>
               
               {/* Scroll to top button */}
