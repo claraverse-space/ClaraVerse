@@ -85,7 +85,7 @@ export const executeFlow = async (
     const node = plan.nodes[nodeId];
     
     try {
-      console.log(`Executing node: ${nodeId}, type: ${node.type}`);
+      console.log(`Executing node: ${nodeId}, original type: "${node.type}"`);
       
       // Get all inputs for this node
       if (plan.edges[nodeId]) {
@@ -102,10 +102,38 @@ export const executeFlow = async (
         }
       }
       
-      // Look up the executor for this node type
-      if (hasNodeExecutor(node.type)) {
-        const executor = getNodeExecutor(node.type);
-        const result = await executor?.execute({
+      // Debug: Log current registered executor keys (hardcoded known types)
+      console.log("Known executor types: ", [
+        "textInputNode",
+        "imageInputNode",
+        "llmPromptNode",
+        "imageLlmPromptNode",
+        "textOutputNode",
+        "conditionalNode",
+        "apiCallNode",
+        "textCombinerNode",
+        "markdownOutputNode",
+        "staticTextNode"
+      ]);
+      
+      // Normalize node type: if not found, try lowercasing the first letter.
+      let nodeType = node.type;
+      if (!hasNodeExecutor(nodeType)) {
+        const normalizedType = node.type.charAt(0).toLowerCase() + node.type.slice(1);
+        console.log(`Normalized node type from "${node.type}" to "${normalizedType}"`);
+        nodeType = normalizedType;
+      } else {
+        console.log(`Executor found for node type "${node.type}" without normalization`);
+      }
+      
+      if (hasNodeExecutor(nodeType)) {
+        const executor = getNodeExecutor(nodeType);
+        if (!executor) {
+          throw new Error(`Executor registered but not found for node type: ${nodeType}`);
+        }
+        
+        console.log(`Inputs for node ${nodeId}:`, plan.nodeInputs[nodeId]);
+        const result = await executor.execute({
           node,
           inputs: plan.nodeInputs[nodeId],
           updateNodeOutput
@@ -114,13 +142,76 @@ export const executeFlow = async (
         nodeOutputs[nodeId] = result;
         console.log(`Node ${nodeId} executed successfully with result:`, result);
       } else {
-        throw new Error(`No executor found for node type: ${node.type}`);
+        // Special case for imageLlmPromptNode - try to handle it directly if the registry failed
+        if (node.type === 'ImageLlmPromptNode' || node.type === 'imageLlmPromptNode') {
+          console.warn('No executor found for ImageLlmPromptNode; using fallback execution');
+          const result = await handleImageLlmPromptFallback(node, plan.nodeInputs[nodeId], updateNodeOutput);
+          nodeOutputs[nodeId] = result;
+        } else {
+          throw new Error(`No executor found for node type: ${node.type}`);
+        }
       }
     } catch (error) {
       console.error(`Error executing node ${nodeId}:`, error);
       nodeOutputs[nodeId] = `Error: ${error instanceof Error ? error.message : String(error)}`;
+      
+      // Make sure output nodes get updated even on error
+      if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+        updateNodeOutput(node.id, `Error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
   return nodeOutputs;
 };
+
+// Fallback handler for ImageLlmPromptNode in case registration fails
+async function handleImageLlmPromptFallback(node: any, inputs: any, updateNodeOutput: any) {
+  try {
+    // Log what we're receiving
+    console.log('Fallback handling for Image LLM with inputs:', inputs);
+    
+    const imageData = inputs.image || inputs['image-in'] || Object.values(inputs)[0];
+    if (!imageData) {
+      throw new Error("No image input provided to Image LLM node");
+    }
+
+    const config = node.data.config || {};
+    const model = config.model || 'llava';
+    const staticText = config.staticText || 'Describe this image:';
+    const ollamaUrl = config.ollamaUrl || 'http://localhost:11434';
+
+    console.log(`Fallback Image LLM with model: ${model}`);
+    
+    // Process image data
+    let processedImageData = imageData;
+    if (typeof imageData === 'string' && imageData.startsWith('data:image/')) {
+      processedImageData = imageData.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+    }
+    
+    const response = await fetch(`${ollamaUrl}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model,
+        prompt: staticText,
+        images: [processedImageData],
+        stream: false
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Ollama API error: ${error}`);
+    }
+
+    const result = await response.json();
+    console.log('Fallback Image LLM response:', result);
+    return result.response || "No response from model";
+  } catch (error) {
+    console.error("Error in Image LLM fallback execution:", error);
+    return `Error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}

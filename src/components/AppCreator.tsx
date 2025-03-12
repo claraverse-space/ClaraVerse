@@ -69,19 +69,6 @@ const toolItems: ToolItem[] = [
     outputs: ['text']
   },
   {
-    id: 'image_llm_prompt',
-    name: 'Image LLM',
-    description: 'Process images with an LLM',
-    icon: Sparkles,
-    color: 'bg-violet-500',
-    bgColor: 'bg-violet-100',
-    lightColor: '#8B5CF6',
-    darkColor: '#A78BFA',
-    category: 'process',
-    inputs: ['image'],
-    outputs: ['text']
-  },
-  {
     id: 'conditional',
     name: 'Conditional',
     description: 'Branch logic based on conditions',
@@ -143,18 +130,6 @@ const toolItems: ToolItem[] = [
     category: 'function',
     inputs: ['text'],
     outputs: ['text']
-  },
-  {
-    id: 'markdown_output',
-    name: 'Markdown Output',
-    description: 'Display formatted markdown text',
-    icon: FileText,
-    color: 'bg-emerald-500',
-    bgColor: 'bg-emerald-100',
-    lightColor: '#10B981',
-    darkColor: '#34D399',
-    category: 'output',
-    inputs: ['text']
   }
 ];
 
@@ -277,9 +252,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'llm_prompt': 
           nodeType = 'llmPromptNode'; 
           break;
-        case 'image_llm_prompt': 
-          nodeType = 'imageLlmPromptNode'; 
-          break;
         case 'text_output': 
           nodeType = 'textOutputNode'; 
           break;
@@ -291,9 +263,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           break;
         case 'text_combiner': 
           nodeType = 'textCombinerNode'; 
-          break;
-        case 'markdown_output': 
-          nodeType = 'markdownOutputNode'; 
           break;
         default: 
           nodeType = 'textInputNode';

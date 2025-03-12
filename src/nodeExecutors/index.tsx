@@ -3,12 +3,14 @@ import './TextInputExecutor';
 import './ImageInputExecutor';
 import './LlmPromptExecutor';
 import './ImageLlmPromptExecutor';
+import './ImageUploadLlmExecutor';
 import './TextOutputExecutor';
 import './TextCombinerExecutor';
 import './ConditionalExecutor';
 import './ApiCallExecutor';
 import './MarkdownOutputExecutor';
 import './StaticTextExecutor';
-export * from './NodeExecutorRegistry';
+import './ImageDescriptionOutputExecutor';
 
+// Export the registry API - only need this once
 export * from './NodeExecutorRegistry';

@@ -9,6 +9,8 @@ import TextCombinerNode from './TextCombinerNode';
 import MarkdownOutputNode from './MarkdownOutputNode';
 import StaticTextNode from './StaticTextNode';
 import ImageLlmPromptNode from './ImageLlmPromptNode';
+import ImageUploadLlmNode from './ImageUploadLlmNode';
+import ImageDescriptionOutputNode from './ImageDescriptionOutputNode';
 
 // Type for our node registry
 export interface NodeTypeDefinition {
@@ -22,12 +24,14 @@ const NODE_TYPES = {
   imageInputNode: ImageInputNode,
   llmPromptNode: LLMPromptNode,
   imageLlmPromptNode: ImageLlmPromptNode,
+  imageUploadLlmNode: ImageUploadLlmNode,
   textOutputNode: TextOutputNode,
   conditionalNode: ConditionalNode,
   apiCallNode: ApiCallNode,
   textCombinerNode: TextCombinerNode,
   markdownOutputNode: MarkdownOutputNode,
   staticTextNode: StaticTextNode,
+  imageDescriptionOutputNode: ImageDescriptionOutputNode,
 };
 
 // Get a specific node by type

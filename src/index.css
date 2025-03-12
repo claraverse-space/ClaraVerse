@@ -72,3 +72,116 @@
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out forwards;
 }
+
+/* App runner animations */
+@keyframes slideInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-slide-up {
+  animation: slideInUp 0.4s ease-out forwards;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s infinite ease-in-out;
+}
+
+/* Auto-resize textarea */
+textarea {
+  min-height: 2.5rem;
+  transition: height 0.2s ease;
+}
+
+/* Enhanced glassmorphism */
+.glassmorphic-card {
+  @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border border-white/30 dark:border-gray-700/30 shadow-xl;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode specific styles for app runner */
+.dark .app-runner-container {
+  color-scheme: dark;
+}
+
+/* Ensure markdown content has proper colors in dark mode */
+.dark .markdown-wrapper {
+  color-scheme: dark;
+}
+
+.dark-mode-prose {
+  color-scheme: dark;
+}
+
+.dark .dark-mode-prose {
+  --tw-prose-body: #e5e7eb;
+  --tw-prose-headings: #f9fafb;
+  --tw-prose-lead: #d1d5db;
+  --tw-prose-links: #93c5fd;
+  --tw-prose-bold: #f9fafb;
+  --tw-prose-counters: #d1d5db;
+  --tw-prose-bullets: #d1d5db;
+  --tw-prose-hr: #374151;
+  --tw-prose-quotes: #f3f4f6;
+  --tw-prose-quote-borders: #374151;
+  --tw-prose-captions: #9ca3af;
+  --tw-prose-code: #f9fafb;
+  --tw-prose-pre-code: #e5e7eb;
+  --tw-prose-pre-bg: #1f2937;
+  --tw-prose-th-borders: #374151;
+  --tw-prose-td-borders: #374151;
+}
+
+/* Code blocks in dark mode */
+.dark .prose pre {
+  background-color: #1f2937;
+  border: 1px solid #374151;
+}
+
+.dark .prose code {
+  color: #f9fafb;
+  background-color: #374151;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-weight: 500;
+}
+
+.dark .prose a {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+/* Lists in dark mode */
+.dark .prose ul, 
+.dark .prose ol {
+  color: #e5e7eb;
+}
+
+/* Table styling in dark mode */
+.dark .prose table {
+  border-color: #374151;
+}
+
+.dark .prose thead {
+  color: #f9fafb;
+  border-bottom-color: #4b5563;
+}
+
+.dark .prose tbody tr {
+  border-bottom-color: #374151;
+}
