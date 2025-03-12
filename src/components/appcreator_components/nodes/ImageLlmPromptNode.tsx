@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { useOllama } from '../../../context/OllamaContext';
-import { Settings, RefreshCw } from 'lucide-react';
+import { Settings, RefreshCw, Sparkles } from 'lucide-react';
 
-const LLMPromptNode = ({ data, isConnectable }: any) => {
+const ImageLlmPromptNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
   const { baseUrl } = useOllama();
 
@@ -18,7 +18,7 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   }
   
   const [model, setModel] = useState(data.config.model || '');
-  const [prompt, setPrompt] = useState(data.config.prompt || '');
+  const [staticText, setStaticText] = useState(data.config.staticText || 'Describe this image:');
   const [showSettings, setShowSettings] = useState(false);
   const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || baseUrl);
   
@@ -67,10 +67,10 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
     data.config.model = e.target.value;
   };
   
-  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleStaticTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     e.stopPropagation(); // Prevent event bubbling
-    setPrompt(e.target.value);
-    data.config.prompt = e.target.value;
+    setStaticText(e.target.value);
+    data.config.staticText = e.target.value;
   };
   
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,29 +202,35 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
       
       <div className="mb-2" onClick={stopPropagation} onMouseDown={stopPropagation}>
         <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-          System Prompt
+          Static Text (sent with image)
         </label>
         <textarea 
-          value={prompt}
-          onChange={handlePromptChange}
+          value={staticText}
+          onChange={handleStaticTextChange}
           onClick={stopPropagation}
           onMouseDown={stopPropagation}
           onKeyDown={stopPropagation}
           onFocus={stopPropagation}
-          placeholder="Enter system prompt..."
+          placeholder="Enter text to send with the image..."
           className={`w-full p-2 rounded border ${
             isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
           } text-sm`}
           rows={3}
         />
+        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            <span>Uses the /generate endpoint for image processing</span>
+          </div>
+        </div>
       </div>
       
       <Handle
         type="target"
         position={Position.Top}
-        id="text-in"
+        id="image-in"
         isConnectable={isConnectable}
-        className="!bg-blue-500 !w-3 !h-3"
+        className="!bg-pink-500 !w-3 !h-3"
         style={{ top: -6 }}
       />
       
@@ -240,4 +246,4 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   );
 };
 
-export default LLMPromptNode;
+export default ImageLlmPromptNode;

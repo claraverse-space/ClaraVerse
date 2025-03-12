@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit } from 'lucide-react';
+import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image } from 'lucide-react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -16,14 +16,7 @@ import { useTheme } from '../hooks/useTheme';
 import TopBar from './appcreator_components/TopBar';
 import ToolsSidebar from './appcreator_components/ToolsSidebar';
 import FlowCanvas from './appcreator_components/FlowCanvas';
-import TextInputNode from './appcreator_components/nodes/TextInputNode';
-import ImageInputNode from './appcreator_components/nodes/ImageInputNode';
-import LLMPromptNode from './appcreator_components/nodes/LLMPromptNode';
-import TextOutputNode from './appcreator_components/nodes/TextOutputNode';
-import ConditionalNode from './appcreator_components/nodes/ConditionalNode';
-import ApiCallNode from './appcreator_components/nodes/ApiCallNode';
-import TextCombinerNode from './appcreator_components/nodes/TextCombinerNode';
-import MarkdownOutputNode from './appcreator_components/nodes/MarkdownOutputNode';
+import { getAllNodeTypes } from './appcreator_components/nodes/NodeRegistry';
 import { executeFlow, generateExecutionPlan } from '../ExecutionEngine';
 import DebugModal from './DebugModal';
 import { OllamaProvider } from '../context/OllamaContext';
@@ -72,7 +65,20 @@ const toolItems: ToolItem[] = [
     lightColor: '#8B5CF6',
     darkColor: '#A78BFA',
     category: 'process',
-    inputs: ['text', 'image'],
+    inputs: ['text'],
+    outputs: ['text']
+  },
+  {
+    id: 'image_llm_prompt',
+    name: 'Image LLM',
+    description: 'Process images with an LLM',
+    icon: Sparkles,
+    color: 'bg-violet-500',
+    bgColor: 'bg-violet-100',
+    lightColor: '#8B5CF6',
+    darkColor: '#A78BFA',
+    category: 'process',
+    inputs: ['image'],
     outputs: ['text']
   },
   {
@@ -104,7 +110,7 @@ const toolItems: ToolItem[] = [
     id: 'image_input',
     name: 'Image Input',
     description: 'Accept image uploads',
-    icon: MousePointer,
+    icon: Image,
     color: 'bg-pink-500',
     bgColor: 'bg-pink-100',
     lightColor: '#EC4899',
@@ -271,6 +277,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'llm_prompt': 
           nodeType = 'llmPromptNode'; 
           break;
+        case 'image_llm_prompt': 
+          nodeType = 'imageLlmPromptNode'; 
+          break;
         case 'text_output': 
           nodeType = 'textOutputNode'; 
           break;
@@ -366,6 +375,17 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               ollamaUrl: node.data.config.ollamaUrl || ''
             }
           };
+        } else if (node.type === 'imageLlmPromptNode') {
+          console.log('Saving Image LLM node configuration:', node.data.config);
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              staticText: node.data.config.staticText || '',
+              model: node.data.config.model || '',
+              ollamaUrl: node.data.config.ollamaUrl || ''
+            }
+          };
         } else if (node.type === 'textCombinerNode') {
           processedNode.data = {
             ...node.data,
@@ -383,6 +403,15 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               ...node.data.config,
               condition: node.data.config.condition || '',
               inputText: node.data.config.inputText || ''
+            }
+          };
+        } else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+          // Clean up any runtime-only output data before saving
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              outputText: ''  // Don't persist output data
             }
           };
         }
@@ -523,16 +552,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setSelectedNodeId(node.id);
   }, []);
 
-  const nodeTypes = useMemo(() => ({
-    textInputNode: TextInputNode,
-    textOutputNode: TextOutputNode,
-    llmPromptNode: LLMPromptNode,
-    imageInputNode: ImageInputNode,
-    conditionalNode: ConditionalNode,
-    apiCallNode: ApiCallNode,
-    textCombinerNode: TextCombinerNode,
-    markdownOutputNode: MarkdownOutputNode,
-  }), []);
+  const nodeTypes = useMemo(() => getAllNodeTypes(), []);
 
   const isValidConnection = useCallback((connection: Connection) => {
     const sourceNode = nodes.find(node => node.id === connection.source);
