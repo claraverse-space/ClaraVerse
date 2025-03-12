@@ -555,6 +555,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           appName={appName}
           setAppName={setAppName}
           isExecuting={isExecuting}
+          appId={currentAppId}  // Pass the current app ID
         />
         <div className="flex flex-1 overflow-hidden">
           <ToolsSidebar

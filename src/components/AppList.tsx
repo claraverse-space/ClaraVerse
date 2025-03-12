@@ -3,7 +3,8 @@ import { appStore, AppData } from '../services/AppStore';
 import { 
   Activity, FileText, Code, Image, MessageSquare, Database, Globe, 
   Sparkles, Zap, User, Settings, BarChart2, Search, Bot, Brain,
-  Command, Book, Layout, Compass, Trash2, Copy, MoreHorizontal, Plus
+  Command, Book, Layout, Compass, Copy, MoreHorizontal, Plus,
+  Check, X
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 
@@ -17,6 +18,7 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
   const [apps, setApps] = useState<AppData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadApps();
@@ -32,20 +34,6 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleDeleteApp = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm('Are you sure you want to delete this app? This action cannot be undone.')) {
-      try {
-        await appStore.deleteApp(id);
-        loadApps();
-      } catch (error) {
-        console.error('Error deleting app:', error);
-        alert('Failed to delete app');
-      }
-    }
-    setMenuOpen(null);
   };
 
   const handleDuplicateApp = async (id: string, e: React.MouseEvent) => {
@@ -97,6 +85,22 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
         </button>
       </div>
 
+      {/* Show success notification */}
+      {deleteSuccess && (
+        <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 flex items-center justify-between">
+          <div className="flex items-center">
+            <Check className="w-5 h-5 text-green-500 mr-2" />
+            <span className="text-green-700 dark:text-green-300">{deleteSuccess}</span>
+          </div>
+          <button 
+            onClick={() => setDeleteSuccess(null)}
+            className="text-green-500 hover:text-green-700 dark:hover:text-green-300"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {apps.length === 0 ? (
         <div className="text-center py-16 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
           <div className="inline-flex items-center justify-center p-6 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
@@ -133,16 +137,10 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
                   <IconComponent className="w-14 h-14 text-white" />
                 </div>
                 <div className="p-4">
-                  <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-1`}>
-                    {app.name}
-                  </h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4 line-clamp-2 h-10`}>
-                    {app.description || 'No description'}
-                  </p>
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Updated {new Date(app.updatedAt).toLocaleDateString()}
-                    </span>
+                  <div className="flex justify-between items-start">
+                    <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-1`}>
+                      {app.name}
+                    </h3>
                     <div className="relative">
                       <button
                         className={`p-1.5 rounded-full ${
@@ -168,16 +166,23 @@ const AppList: React.FC<AppListProps> = ({ onEditApp, onCreateNewApp }) => {
                           >
                             <Copy className="h-4 w-4 mr-2" /> Duplicate
                           </button>
-                          <button
-                            className={`flex w-full items-center px-4 py-2 text-sm ${
-                              isDark ? 'text-red-400 hover:bg-gray-700/50' : 'text-red-600 hover:bg-gray-100/80'
-                            }`}
-                            onClick={(e) => handleDeleteApp(app.id, e)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
-                          </button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} mb-4 line-clamp-2 h-10`}>
+                    {app.description || 'No description'}
+                  </p>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Updated {new Date(app.updatedAt).toLocaleDateString()}
+                    </span>
+                    <div className="relative">
+                      <button
+                        className="text-sakura-500 hover:text-sakura-600 text-sm font-medium"
+                      >
+                        Edit
+                      </button>
                     </div>
                   </div>
                 </div>

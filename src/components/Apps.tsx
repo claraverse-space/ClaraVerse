@@ -24,9 +24,10 @@ import {
   Book,
   Layout,
   Compass,
-  Trash2,
   Copy,
-  Edit
+  Edit,
+  Check,
+  X
 } from 'lucide-react';
 import { appStore, AppData } from '../services/AppStore';
 import { useTheme } from '../hooks/useTheme';
@@ -42,6 +43,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
   const [apps, setApps] = useState<AppData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   // Map icon names to components
   const iconComponents: Record<string, React.ElementType> = {
@@ -71,16 +73,41 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
     }
   };
 
-  // Handle app deletion
+  // Handle app deletion - Fixed function
   const handleDeleteApp = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this app? This action cannot be undone.')) {
+    e.preventDefault(); // Prevent any default actions or bubbling
+    
+    // Make the confirmation message more explicit about irreversible deletion
+    const confirmMessage = 'WARNING: This action is irreversible. All app data, configurations, and history will be permanently deleted.\n\nAre you absolutely sure you want to delete this app?';
+    
+    if (window.confirm(confirmMessage)) {
       try {
+        // Get the app name for the success message
+        const appToDelete = apps.find(app => app.id === id);
+        const appName = appToDelete?.name || 'App';
+        
+        // Delete the app
         await appStore.deleteApp(id);
-        await loadApps(); // Reload the apps after deletion
+        
+        // Clear app ID from localStorage if it's the currently selected app
+        if (localStorage.getItem('current_app_id') === id) {
+          localStorage.removeItem('current_app_id');
+        }
+        
+        // Show success message
+        setDeleteSuccess(`"${appName}" has been permanently deleted.`);
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          setDeleteSuccess(null);
+        }, 3000);
+        
+        // Reload the apps list
+        await loadApps();
       } catch (error) {
         console.error('Error deleting app:', error);
-        alert('Failed to delete app');
+        alert('Failed to delete app. Please try again.');
       }
     }
     setMenuOpen(null);
@@ -154,6 +181,22 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           Create and manage your Clara-powered applications
         </p>
       </div>
+      
+      {/* Show success notification */}
+      {deleteSuccess && (
+        <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 flex items-center justify-between">
+          <div className="flex items-center">
+            <Check className="w-5 h-5 text-green-500 mr-2" />
+            <span className="text-green-700 dark:text-green-300">{deleteSuccess}</span>
+          </div>
+          <button 
+            onClick={() => setDeleteSuccess(null)}
+            className="text-green-500 hover:text-green-700 dark:hover:text-green-300"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       
       {/* Search and Controls */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-8">
@@ -255,12 +298,6 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                             onClick={(e) => handleDuplicateApp(app.id, e)}
                           >
                             <Copy className="h-4 w-4 mr-2" /> Duplicate
-                          </button>
-                          <button
-                            className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
-                            onClick={(e) => handleDeleteApp(app.id, e)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </button>
                         </div>
                       )}
