@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image } from 'lucide-react';
+import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image, ImagePlus } from 'lucide-react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -22,6 +22,7 @@ import DebugModal from './DebugModal';
 import { OllamaProvider } from '../context/OllamaContext';
 import { appStore } from '../services/AppStore';
 import SaveAppModal from './appcreator_components/SaveAppModal';
+import ToolSidebar from './appcreator_components/ToolSidebar';
 
 interface AppCreatorProps {
   onPageChange: (page: string) => void;
@@ -129,6 +130,19 @@ const toolItems: ToolItem[] = [
     darkColor: '#818CF8',
     category: 'function',
     inputs: ['text'],
+    outputs: ['text']
+  },
+  {
+    id: 'image_text_llm',
+    name: 'Image + Text LLM',
+    description: 'Process image and text with a vision model',
+    icon: ImagePlus,
+    color: 'bg-violet-500',
+    bgColor: 'bg-violet-100',
+    lightColor: '#8B5CF6',
+    darkColor: '#7C3AED',
+    category: 'function',
+    inputs: ['image', 'text'],
     outputs: ['text']
   }
 ];
@@ -264,6 +278,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'text_combiner': 
           nodeType = 'textCombinerNode'; 
           break;
+        case 'image_text_llm': // Add this case for our new node
+          nodeType = 'imageTextLlmNode';
+          break;
         default: 
           nodeType = 'textInputNode';
       }
@@ -344,16 +361,19 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               ollamaUrl: node.data.config.ollamaUrl || ''
             }
           };
-        } else if (node.type === 'imageLlmPromptNode') {
-          console.log('Saving Image LLM node configuration:', node.data.config);
+        } else if (node.type === 'imageTextLlmNode') {
+          console.log('Saving ImageTextLLM node configuration:', node.data.config);
           processedNode.data = {
             ...node.data,
             config: {
               ...node.data.config,
-              staticText: node.data.config.staticText || '',
+              systemPrompt: node.data.config.systemPrompt || '',
               model: node.data.config.model || '',
               ollamaUrl: node.data.config.ollamaUrl || ''
-            }
+            },
+            // Also save at root level for compatibility
+            model: node.data.config.model || '',
+            ollamaUrl: node.data.config.ollamaUrl || ''
           };
         } else if (node.type === 'textCombinerNode') {
           processedNode.data = {
@@ -543,6 +563,16 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const closeDebug = () => {
     setDebugOpen(false);
   };
+
+  // Add this effect to ensure the toolItems array is processed correctly
+  useEffect(() => {
+    console.log("Tool items initialized:", toolItems);
+    
+    // Make sure ImagePlus is imported
+    if (!toolItems.some(tool => tool.id === 'image_text_llm')) {
+      console.warn("Image Text LLM tool not found in toolItems!");
+    }
+  }, []);
 
   return (
     <OllamaProvider>

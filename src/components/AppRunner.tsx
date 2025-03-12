@@ -177,6 +177,49 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     console.log(`Updated input for node ${nodeId}:`, processedValue);
   };
 
+// Add this function after the handleInputChange function
+const handleImageUpload = (nodeId: string, file: File) => {
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    if (event.target?.result) {
+      const imageData = event.target.result;
+      
+      // Update the app data nodes with the runtime image
+      setAppData((prevAppData: any) => {
+        const updatedNodes = prevAppData.nodes.map((node: Node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                runtimeImage: imageData
+              }
+            };
+          }
+          return node;
+        });
+        
+        return {
+          ...prevAppData,
+          nodes: updatedNodes
+        };
+      });
+      
+      // Also update the input state for UI tracking
+      setInputState(prev => ({
+        ...prev,
+        [nodeId]: file
+      }));
+      
+      console.log(`Updated runtime image for node ${nodeId}`);
+    }
+  };
+  
+  reader.readAsDataURL(file);
+};
+
   // Handle simple input for chat-like interface
   const handleSimpleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setSimpleInputValue(e.target.value);
@@ -234,15 +277,14 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               }
             };
           } else if (node.type === 'imageInputNode') {
-            // Update image input config
+            // For image nodes, use either runtimeImage or config.image
+            // We don't modify config.image at runtime, we use runtimeImage instead
             return {
               ...node,
               data: {
                 ...node.data,
-                config: {
-                  ...node.data.config,
-                  imageData: inputState[node.id]
-                }
+                // Preserve runtimeImage if it exists (it was set when user uploaded an image)
+                runtimeImage: node.data.runtimeImage || node.data.config?.image
               }
             };
           }
@@ -253,7 +295,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       // Update the app with the new input values temporarily
       await appStore.tempUpdateAppNodes(appId, appDataClone.nodes);
       
-      // Generate execution plan and run it - no need to pass inputState anymore
+      // Generate execution plan and run it
       const plan = generateExecutionPlan(appDataClone.nodes, appDataClone.edges);
       
       // Callback to update UI when nodes produce output
@@ -264,7 +306,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         }));
       };
       
-      // Run the flow without passing inputState since it's now in the node configs
+      // Run the flow
       await executeFlow(plan, updateNodeOutput);
       setIsSuccess(true);
       
@@ -467,6 +509,19 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                               {(inputState[node.id] as File).name}
                             </p>
                           </div>
+                        ) : node.data.runtimeImage ? (
+                          <div className="flex flex-col items-center justify-center py-2">
+                            <div className="relative w-16 h-16 mb-2">
+                              <img
+                                src={node.data.runtimeImage}
+                                alt="Preview"
+                                className="w-full h-full object-cover rounded"
+                              />
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              Current image
+                            </p>
+                          </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center py-2">
                             <ImageIcon className="w-8 h-8 mb-2 text-gray-500 dark:text-gray-400" />
@@ -481,7 +536,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                           accept="image/*"
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
-                              handleInputChange(node.id, e.target.files[0]);
+                              handleImageUpload(node.id, e.target.files[0]);
                             }
                           }}
                         />

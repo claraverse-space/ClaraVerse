@@ -12,11 +12,6 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-
-// 1) Import Prism-based syntax highlighter
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-// 2) Import a specific Prism theme (NOT as default)
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { Message } from '../../db';
 import { db } from '../../db';
 

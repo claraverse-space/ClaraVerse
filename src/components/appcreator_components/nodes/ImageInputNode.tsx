@@ -3,12 +3,14 @@ import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { Image, Upload } from 'lucide-react';
 
-const ImageInputNode = ({ data, isConnectable }: any) => {
+const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
   const { isDark } = useTheme();
   const tool = data.tool;
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
-  const [image, setImage] = useState(data.config.image || null);
+  
+  // Initialize with either runtime image or config image
+  const [image, setImage] = useState(data.runtimeImage || data.config?.image || null);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation(); // Prevent event bubbling
@@ -18,8 +20,19 @@ const ImageInputNode = ({ data, isConnectable }: any) => {
       
       reader.onload = (event) => {
         if (event.target?.result) {
-          setImage(event.target.result);
-          data.config.image = event.target.result;
+          const imageData = event.target.result;
+          setImage(imageData);
+          
+          // Store in the appropriate location based on mode
+          if (isRunnerMode) {
+            // In runner mode, store in runtimeImage
+            data.runtimeImage = imageData;
+            console.log("Updated runtime image:", data.id);
+          } else {
+            // In editor mode, store in config
+            if (!data.config) data.config = {};
+            data.config.image = imageData;
+          }
         }
       };
       
@@ -29,7 +42,9 @@ const ImageInputNode = ({ data, isConnectable }: any) => {
   
   return (
     <div 
-      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-64`}
+      className={`p-3 rounded-lg border ${
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      } ${isRunnerMode ? 'border-blue-400 dark:border-blue-600' : ''} shadow-md w-64`}
       onClick={(e) => e.stopPropagation()} // Stop event propagation
     >
       <div className="flex items-center gap-2 mb-2">
@@ -37,7 +52,7 @@ const ImageInputNode = ({ data, isConnectable }: any) => {
           <Icon className="w-5 h-5 text-white" />
         </div>
         <div className="font-medium text-sm">
-          {data.label}
+          {isRunnerMode ? `${data.label} (Click to change)` : data.label}
         </div>
       </div>
       
@@ -55,7 +70,12 @@ const ImageInputNode = ({ data, isConnectable }: any) => {
               onClick={(e) => {
                 e.stopPropagation();
                 setImage(null);
-                data.config.image = null;
+                
+                if (isRunnerMode) {
+                  data.runtimeImage = null;
+                } else {
+                  data.config.image = null;
+                }
               }}
             >
               ×
@@ -80,6 +100,12 @@ const ImageInputNode = ({ data, isConnectable }: any) => {
           </label>
         )}
       </div>
+      
+      {isRunnerMode && (
+        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
+          {image ? "Click × to replace with another image" : "Upload an image"}
+        </p>
+      )}
       
       <Handle
         type="source"

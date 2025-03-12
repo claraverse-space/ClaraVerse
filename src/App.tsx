@@ -11,6 +11,8 @@ import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
 import { Edit } from 'lucide-react'; // Add Edit to imports if not already there
+import NodeRegistryDebug from './debug/NodeRegistryDebug'; // Add NodeRegistryDebug to imports
+import ToolbarDebug from './debug/ToolbarDebug'; // Add this import
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -94,6 +96,12 @@ function App() {
                   return <Dashboard onPageChange={setActivePage} />;
               }
             })()}
+            {import.meta.env.DEV && (
+              <>
+                <NodeRegistryDebug />
+                <ToolbarDebug />
+              </>
+            )}
           </main>
         </div>
       </div>
@@ -110,5 +118,8 @@ function App() {
     </div>
   );
 }
+
+// or a similar initialization file
+// Check if there's any tool registration code here and add your node if needed
 
 export default App;

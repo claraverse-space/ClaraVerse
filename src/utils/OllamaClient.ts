@@ -266,10 +266,33 @@ export class OllamaClient {
     model: string,
     prompt: string,
     images: string[],
-    options: RequestOptions = {}
+    options: RequestOptions = {},
+    customBaseUrl?: string
   ): Promise<any> {
-    const payload = { model, prompt, images, ...options, stream: false };
-    return this.request("/api/generate", "POST", payload);
+    const baseUrl = customBaseUrl || this.baseUrl;
+    
+    console.log(`Generating with images using URL: ${baseUrl}`);
+    
+    const response = await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        images,
+        stream: false,
+        ...options
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Ollama API error: ${errorText}`);
+    }
+
+    return await response.json();
   }
 
   /**

@@ -113,7 +113,8 @@ export const executeFlow = async (
         "apiCallNode",
         "textCombinerNode",
         "markdownOutputNode",
-        "staticTextNode"
+        "staticTextNode",
+        "imageTextLlmNode" // Add our new node type
       ]);
       
       // Normalize node type: if not found, try lowercasing the first letter.
@@ -177,11 +178,19 @@ async function handleImageLlmPromptFallback(node: any, inputs: any, updateNodeOu
     }
 
     const config = node.data.config || {};
-    const model = config.model || 'llava';
-    const staticText = config.staticText || 'Describe this image:';
-    const ollamaUrl = config.ollamaUrl || 'http://localhost:11434';
+    const model = config.model || node.data?.model;
+    if (!model) {
+      throw new Error("No model selected for Image LLM node");
+    }
+    
+    const staticText = config.staticText || node.data?.staticText || 'Describe this image:';
+    const ollamaUrl = config.ollamaUrl || node.data?.ollamaUrl;
+    if (!ollamaUrl) {
+      throw new Error("No Ollama URL configured for Image LLM node");
+    }
 
     console.log(`Fallback Image LLM with model: ${model}`);
+    console.log(`Using URL: ${ollamaUrl}`);
     
     // Process image data
     let processedImageData = imageData;
@@ -189,7 +198,10 @@ async function handleImageLlmPromptFallback(node: any, inputs: any, updateNodeOu
       processedImageData = imageData.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
     }
     
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
+    // Make sure we're using the correct URL by trimming any trailing slashes
+    const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
+    
+    const response = await fetch(`${baseUrl}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

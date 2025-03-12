@@ -7,6 +7,7 @@ import ApiCallNode from './ApiCallNode';
 import TextCombinerNode from './TextCombinerNode';
 import MarkdownOutputNode from './MarkdownOutputNode';
 import StaticTextNode from './StaticTextNode';
+import ImageTextLlmNode from './ImageTextLlmNode';
 
 // Type for our node registry
 export interface NodeTypeDefinition {
@@ -25,7 +26,10 @@ const NODE_TYPES = {
   textCombinerNode: TextCombinerNode,
   markdownOutputNode: MarkdownOutputNode,
   staticTextNode: StaticTextNode,
+  imageTextLlmNode: ImageTextLlmNode, // Ensure this line exists
 };
+
+console.log("Registered node types:", Object.keys(NODE_TYPES)); // Add this debug line
 
 // Get a specific node by type
 export const getNodeType = (type: string) => {

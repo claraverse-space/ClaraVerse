@@ -116,8 +116,8 @@ async function executeNode(
     }
 
     case 'imageInputNode': {
-      // Returns the configured image.
-      return node.data.config.image || null;
+      // First check for a runtime image, then fall back to the configured image
+      return node.data.runtimeImage || node.data.config.image || null;
     }
 
     case 'llmPromptNode': {
@@ -298,6 +298,88 @@ async function executeNode(
           input: inputText,
           output: `Error: ${error instanceof Error ? error.message : String(error)}`
         });
+      }
+    }
+
+    case 'imageTextLlmNode': {
+      // Get the image input
+      let imageInput = null;
+      // Get the text input
+      let textInput = '';
+      
+      // Process all outputs that have been passed to this node.
+      Object.entries(nodeOutputs).forEach(([sourceId, output]) => {
+        if (typeof output === 'string') {
+          if (output.startsWith('data:image')) {
+            // Handle base64 image strings
+            imageInput = output;
+          } else if (output.trim() !== '') {
+            // Handle text input
+            textInput += output + '\n';
+          }
+        } else if (output && typeof output === 'object') {
+          // Handle different image object formats
+          if (output.base64) {
+            imageInput = output.base64;
+          } else if (output.src) {
+            imageInput = output.src;
+          } else if (output.data) {
+            imageInput = output.data;
+          } else if (output.url) {
+            // If it's a URL to an image, add it as text for now
+            textInput += output.url + '\n';
+          }
+        }
+      });
+      
+      if (!imageInput) {
+        return "No image provided to Image-Text LLM";
+      }
+
+      // Process image data - remove data URL prefix if present
+      let processedImageData = imageInput;
+      if (typeof imageInput === 'string' && imageInput.startsWith('data:image/')) {
+        processedImageData = imageInput.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+      }
+
+      const config = node.data.config || {};
+      const model = config.model || node.data?.model;
+      if (!model) {
+        return "Error: No model selected. Please configure the node with a model.";
+      }
+      
+      const systemPrompt = config.systemPrompt || node.data?.systemPrompt || '';
+      const ollamaUrl = config.ollamaUrl || node.data?.ollamaUrl;
+      if (!ollamaUrl) {
+        return "Error: No Ollama URL configured. Please set the URL in the node settings.";
+      }
+
+      // Combine system prompt and user text if both exist
+      const finalPrompt = systemPrompt 
+        ? `${systemPrompt}\n\n${textInput || 'Describe this image:'}`
+        : (textInput || 'Describe this image:');
+
+      try {
+        // Make sure we're using the correct URL by trimming any trailing slashes
+        const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
+        
+        // Use generate API for image inputs
+        console.log('Using multimodal generation with image and text');
+        console.log(`URL: ${baseUrl}/api/generate`);
+        
+        const response = await ollamaClient.generateWithImages(
+          model,
+          finalPrompt,
+          [processedImageData],
+          { stream: false },
+          baseUrl  // Pass the baseUrl to the client
+        );
+        
+        // Extract response content
+        return response?.response || 'No response from Ollama';
+      } catch (error) {
+        console.error('Image-Text LLM error:', error);
+        return `Error: ${error instanceof Error ? error.message : String(error)}`;
       }
     }
 
