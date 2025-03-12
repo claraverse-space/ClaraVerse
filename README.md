@@ -1,11 +1,14 @@
-# Clara – Privacy-First AI Assistant & App Builder that has no Docker or Backend requirement.
+# Clara
+## Privacy-First AI Assistant & App Builder that has no Docker or Backend requirement.
 
 <div align="center">
 
-<!-- link to clara access and we promise no data is sent anywhere other than your pc  https://clara-ollama.netlify.app/-->
+<!-- link to clara access and we promise no data is sent anywhere other than your pc  https://clara-ollama.netlify.app/ just the link to the app-->
 
-[![Clara]](https://clara-ollama.netlify.app/)
+### 🚀 Live Demo, 
+Link to the Clara App: [Clara](https://clara-ollama.netlify.app/)
 
+[![Clara](https://img.shields.io/badge/Clara-0.1.0-FFD700.svg)](https://clara-ollama.netlify.app/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
