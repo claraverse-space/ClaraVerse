@@ -1,4 +1,10 @@
-# Clara – Privacy-First GenAI WebUI for Open Source Models
+# Clara – Privacy-First AI Assistant & App Builder that has no Docker or Backend requirement.
+
+<div align="center">
+
+<!-- link to clara access and we promise no data is sent anywhere other than your pc  https://clara-ollama.netlify.app/-->
+
+[![Clara]](https://clara-ollama.netlify.app/)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
@@ -6,72 +12,146 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.1-38B2AC.svg)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Clara is a privacy-focused, fully client-side AI assistant that provides a secure, intuitive interface for interacting with AI models via Ollama. Unlike cloud-based solutions like OpenAI or Gemini, **Clara doesn't have any backend servers and never sends your data anywhere**. Your conversations and data remain entirely yours, securely stored in your browser.
+**Your local AI assistant that respects your privacy**
 
-## 🔒 Privacy First
-- **Local-only data storage**: No backend, no data leaks.
-- **Direct Ollama integration**: Simply provide your local Ollama URL, and you're ready.
+</div>
 
-## ✨ Current Features
-- 💬 Real-time, secure chat with streaming responses
-- 🌓 Automatic light/dark mode
-- 📝 Markdown rendering with syntax highlighting
-- 📚 Persistent chat history (stored locally)
-- 🔍 Easy model selection and configuration
+## 🔒 Privacy First, No Exceptions
 
-## 🚧 Upcoming Features
-- 🖼️ Image generation
-- 📱 Mobile-responsive design
-- 📎 File attachments
-- 🎤 Voice input/output
-- 🔌 Custom apps & plugin system
+Clara is a completely client-side AI assistant that works with Ollama running on your machine or network. Unlike cloud-based solutions:
 
-## 🚀 Quick Start
+- **No data leaves your device** without your explicit permission
+- **Zero tracking or telemetry**
+- **All data stored locally** in your browser's IndexedDB
+- **Direct connection** to your Ollama instance
+
+## ✨ Features
+
+### Chat Interface
+- 💬 Real-time chat with streaming responses
+- 🤖 Support for all Ollama models (Llama, Mistral, Phi, etc.)
+- 🖼️ Image understanding with multimodal models
+- 💾 Persistent conversation history stored locally
+- 📝 Rich markdown support with code highlighting
+
+### App Builder
+- 🧩 Visual node-based flow builder
+- 📊 Text input/output nodes
+- 🖼️ Image input nodes
+- 🤖 LLM integration nodes
+- ⚡ Conditional logic nodes
+- 🌐 API call nodes
+- ✍️ Text combiner nodes
+- 🔄 Reusable app templates
+- 💻 Run apps with user inputs
+
+### System
+- 🌓 Beautiful light/dark mode
+- 🔍 Model management and selection
+- 📱 Responsive design
+- 🛠️ Custom API configurations
+
+## 🔮 Coming Soon
+- 🎨 Image generation with Stable Diffusion
+- 🔊 Voice input and output
+- 👥 Character personalities for chat
+- 📚 Knowledge base integration 
+- 📊 Data visualization nodes
+- 📄 PDF document processing
+- 🔌 Plugin system for extensibility
+- 📱 PWA for mobile installation
+- 🚀 Local RAG with vector databases
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js** v20+
-- **Ollama** installed locally ([install instructions](https://ollama.ai/))
+- **Node.js** (v18+ recommended)
+- **Ollama** installed locally ([install instructions below](#installing-ollama))
 
 ### Installation
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/clara-ai.git
 cd clara-ai
+
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
 ```
 
-### Setup Ollama
+## 🐳 Installing Ollama
 
-Start Ollama server and pull models:
+### Windows
+1. Download the installer from the [official site](https://ollama.ai/download/windows)
+2. Run the installer and follow the prompts
+3. After installation, Ollama will be available at `http://localhost:11434`
+4. Enable CORS by creating a file named `config.json` in `%USERPROFILE%\.ollama` with:
+   ```json
+   {
+     "origins": ["*"]
+   }
+   ```
+
+### macOS
+1. Download Ollama from the [official site](https://ollama.ai/download/mac)
+2. Install the application
+3. Run Ollama from Applications folder
+4. Ollama will be available at `http://localhost:11434`
+5. Enable CORS by creating or editing `~/.ollama/config.json`:
+   ```json
+   {
+     "origins": ["*"]
+   }
+   ```
+
+### Linux
+1. Install Ollama using the command:
+   ```bash
+   curl -fsSL https://ollama.ai/install.sh | sh
+   ```
+2. Start Ollama:
+   ```bash
+   ollama serve
+   ```
+3. Enable CORS by creating or editing `~/.ollama/config.json`:
+   ```json
+   {
+     "origins": ["*"]
+   }
+   ```
+
+### Pulling Models
+Once Ollama is running, you can pull models:
 ```bash
-ollama serve
+# Pull a basic model
+ollama pull llama3
 
-# Example model
-ollama pull mistral
+# Pull multimodal (image understanding) model
+ollama pull llava
 ```
 
-Configure CORS for web access:
-```bash
-sudo systemctl edit ollama.service
+## 🌐 Remote Access Options
 
-# Add this to enable web access
-[Service]
-Environment="OLLAMA_ORIGINS=*"
+### Using Ollama on Another Computer
+If you're running Ollama on another computer on your network, just enter the IP address in Clara's settings: `http://{IP_ADDRESS}:11434`
 
-sudo systemctl daemon-reload
-sudo systemctl restart ollama
-```
-
-## 🔗 Remote Access with ngrok (optional)
-Securely access your Ollama remotely via ngrok:
+### Using ngrok for Remote Access
+To access Ollama from anywhere:
 
 ```bash
+# Install ngrok
 npm install -g ngrok
+
+# Expose Ollama API
 ngrok http 11434
 ```
-Then use the generated URL in Clara's settings.
 
-## 🏗️ Project Structure
+Then use the provided ngrok URL in Clara's settings.
+
+## 🏗️ Project Architecture
+Clara is built with a modular architecture:
 ```
 clara/
 ├── src/
