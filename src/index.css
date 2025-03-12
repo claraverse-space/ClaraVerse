@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 @layer base {
   :root {
     --sakura-50: #fef6f9;
@@ -20,6 +21,70 @@
     --sakura-400: #662d46;
     --sakura-500: #ff1a75;
   }
+}
+
+/* Complete cleanup of code blocks in markdown for both light and dark mode */
+.prose pre, 
+.prose code,
+.dark .prose pre,
+.dark .prose code {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Completely remove code syntax highlighting for all spans */
+.prose pre code span,
+.dark .prose pre code span {
+  background: transparent !important;
+  color: #e5e7eb !important;
+  border: none !important;
+  font-weight: normal !important;
+  text-decoration: none !important;
+}
+
+/* Make code blocks consistent in both modes */
+.prose pre,
+.dark .prose pre {
+  background-color: #1E1E1E !important;
+  color: #e5e7eb !important;
+  border-radius: 4px !important;
+  padding: 0.75rem 1rem !important;
+  border: none !important;
+}
+
+/* Ensure code text is visible in both modes with no highlighting */
+.prose pre code,
+.dark .prose pre code {
+  color: #e5e7eb !important;
+  background-color: transparent !important;
+  padding: 0 !important;
+}
+
+/* Inline code styling for both modes */
+.prose :not(pre) > code,
+.dark .prose :not(pre) > code {
+  background-color: #f3f4f6 !important;
+  color: #1f2937 !important;
+  padding: 0.2em 0.4em !important;
+  border-radius: 0.25rem !important;
+  border: none !important;
+}
+
+/* Dark mode inline code */
+.dark .prose :not(pre) > code {
+  background-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+/* Override any theme-specific syntax highlighting */
+.prose pre [class*="language-"],
+.prose code [class*="language-"],
+.dark .prose pre [class*="language-"],
+.dark .prose code [class*="language-"] {
+  color: #e5e7eb !important;
+  background: transparent !important;
+  text-shadow: none !important;
+  font-family: monospace !important;
 }
 
 .glassmorphic {
