@@ -8,6 +8,7 @@ import TextCombinerNode from './TextCombinerNode';
 import MarkdownOutputNode from './MarkdownOutputNode';
 import StaticTextNode from './StaticTextNode';
 import ImageTextLlmNode from './ImageTextLlmNode';
+import GetClipboardTextNode from './GetClipboardTextNode';
 
 // Type for our node registry
 export interface NodeTypeDefinition {
@@ -26,7 +27,8 @@ const NODE_TYPES = {
   textCombinerNode: TextCombinerNode,
   markdownOutputNode: MarkdownOutputNode,
   staticTextNode: StaticTextNode,
-  imageTextLlmNode: ImageTextLlmNode, // Ensure this line exists
+  imageTextLlmNode: ImageTextLlmNode, 
+  getClipboardTextNode: GetClipboardTextNode, 
 };
 
 console.log("Registered node types:", Object.keys(NODE_TYPES)); // Add this debug line

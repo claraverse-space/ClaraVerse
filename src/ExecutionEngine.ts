@@ -390,28 +390,22 @@ async function executeNode(
       return staticText;
     }
 
+    case 'getClipboardTextNode': {
+      try {
+        const clipboardText = await navigator.clipboard.readText();
+        return clipboardText;
+      } catch (error) {
+        console.error('Error accessing clipboard:', error);
+        return 'Error: Could not access clipboard. Please ensure permissions are granted.';
+      }
+    }
+
     default: {
       return `Unsupported node type: ${node.type}`;
     }
   }
 }
 
-/**
- * Execute a text combiner node
- */
-async function executeTextCombinerNode(node: any, inputs: any[], updateNodeOutput: (nodeId: string, output: any) => void): Promise<string> {
-  const inputText = inputs[0] || '';
-  const additionalText = node.data.config?.additionalText || '';
-  
-  // Combine the input text with the additional text
-  const combinedText = `${inputText}${additionalText}`;
-  
-  // Update node output for UI updates (but this won't be saved to DB)
-  updateNodeOutput(node.id, inputText); // Only for displaying in UI
-  
-  // Return the combined result
-  return combinedText;
-}
 
 /**
  * Executes the flow based on the execution plan.

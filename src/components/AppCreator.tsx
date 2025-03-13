@@ -156,7 +156,21 @@ const toolItems: ToolItem[] = [
     darkColor: '#DC2626',
     category: 'input',
     outputs: ['text']
-  }
+  },
+  {
+    id: 'get_clipboard_text',
+    name: 'Get Clipboard Text',
+    description: 'Retrieve text from system clipboard',
+    icon: Sparkles,
+    color: 'bg-emerald-500',
+    bgColor: 'bg-emerald-100',
+    lightColor: '#10B981',
+    darkColor: '#059669',
+    category: 'input',
+    inputs: [],
+    outputs: ['text']
+  },
+
 ];
 
 const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
@@ -296,6 +310,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'static_text': 
           nodeType = 'staticTextNode';
           break;
+        case 'get_clipboard_text':
+          nodeType = 'getClipboardTextNode';
+          break;
         default: 
           nodeType = 'textInputNode';
       }
@@ -416,6 +433,14 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             config: {
               ...node.data.config,
               outputText: ''  // Don't persist output data
+            }
+          };
+        } else  if (node.type === 'getClipboardTextNode') {
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              previewText: undefined // Don't save preview text
             }
           };
         }

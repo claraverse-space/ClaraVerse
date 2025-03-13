@@ -132,6 +132,17 @@ const DEFAULT_TOOLS = [
     darkColor: '#0D9488',
     category: 'output'
   },
+  {
+    id: 'getClipboardTextNode',
+    name: 'Get Clipboard Text',
+    description: 'Retrieve text from system clipboard',
+    icon: Clipboard,
+    color: 'bg-emerald-500',
+    bgColor: 'bg-emerald-100',
+    lightColor: '#10B981',
+    darkColor: '#059669',
+    category: 'input'
+  },
 ];
 
 const ToolSidebar = ({ tools, onDragStart }: ToolSidebarProps) => {
