@@ -113,8 +113,8 @@ export const executeFlow = async (
         "apiCallNode",
         "textCombinerNode",
         "markdownOutputNode",
-        "staticTextNode",
-        "imageTextLlmNode" // Add our new node type
+        "staticTextNode", // Ensure this is included
+        "imageTextLlmNode" 
       ]);
       
       // Normalize node type: if not found, try lowercasing the first letter.

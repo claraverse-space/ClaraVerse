@@ -383,6 +383,13 @@ async function executeNode(
       }
     }
 
+    case 'staticTextNode': {
+      // Get the static text from the node's configuration
+      const config = node.data.config || {};
+      const staticText = config.staticText || '';
+      return staticText;
+    }
+
     default: {
       return `Unsupported node type: ${node.type}`;
     }

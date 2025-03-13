@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image, ImagePlus } from 'lucide-react';
+import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image, ImagePlus, TextQuote } from 'lucide-react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -144,6 +144,18 @@ const toolItems: ToolItem[] = [
     category: 'function',
     inputs: ['image', 'text'],
     outputs: ['text']
+  },
+  {
+    id: 'static_text',
+    name: 'Static Text',
+    description: 'Fixed text content that does not change',
+    icon: TextQuote,
+    color: 'bg-red-500',
+    bgColor: 'bg-red-100',
+    lightColor: '#F87171',
+    darkColor: '#DC2626',
+    category: 'input',
+    outputs: ['text']
   }
 ];
 
@@ -278,8 +290,11 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'text_combiner': 
           nodeType = 'textCombinerNode'; 
           break;
-        case 'image_text_llm': // Add this case for our new node
+        case 'image_text_llm': 
           nodeType = 'imageTextLlmNode';
+          break;
+        case 'static_text': 
+          nodeType = 'staticTextNode';
           break;
         default: 
           nodeType = 'textInputNode';
