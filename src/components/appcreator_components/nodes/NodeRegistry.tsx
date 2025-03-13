@@ -9,6 +9,7 @@ import MarkdownOutputNode from './MarkdownOutputNode';
 import StaticTextNode from './StaticTextNode';
 import ImageTextLlmNode from './ImageTextLlmNode';
 import GetClipboardTextNode from './GetClipboardTextNode';
+import ConcatTextNode from './ConcatTextNode';
 
 // Type for our node registry
 export interface NodeTypeDefinition {
@@ -29,6 +30,7 @@ const NODE_TYPES = {
   staticTextNode: StaticTextNode,
   imageTextLlmNode: ImageTextLlmNode, 
   getClipboardTextNode: GetClipboardTextNode, 
+  concatTextNode: ConcatTextNode,
 };
 
 console.log("Registered node types:", Object.keys(NODE_TYPES)); // Add this debug line

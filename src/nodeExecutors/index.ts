@@ -8,6 +8,9 @@ import './StaticTextExecutor';
 import './ApiCallExecutor';
 import './ConditionalExecutor';
 import './ImageTextLlmExecutor';
+import './GetClipboardTextExecutor';
+import './ConcatTextExecutor';
+
 
 // This file is imported by main.tsx to ensure all executors are registered
 // before the application starts running

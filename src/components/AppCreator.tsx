@@ -1,14 +1,10 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { ArrowLeft, Save, Play, Grid, MousePointer, Activity, Settings, Type, FileText, Check, X, Edit, Sparkles, Image, ImagePlus, TextQuote } from 'lucide-react';
-import ReactFlow, { 
-  Background, 
-  Controls, 
-  MiniMap, 
+import {  Grid, MousePointer, Activity, Settings, Type, FileText, Check, X,  Sparkles, Image, ImagePlus, TextQuote } from 'lucide-react';
+import  { 
   addEdge, 
   useNodesState, 
   useEdgesState,
   Node,
-  Edge, 
   Connection
 } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -22,7 +18,6 @@ import DebugModal from './DebugModal';
 import { OllamaProvider } from '../context/OllamaContext';
 import { appStore } from '../services/AppStore';
 import SaveAppModal from './appcreator_components/SaveAppModal';
-import ToolSidebar from './appcreator_components/ToolSidebar';
 
 interface AppCreatorProps {
   onPageChange: (page: string) => void;
@@ -170,7 +165,19 @@ const toolItems: ToolItem[] = [
     inputs: [],
     outputs: ['text']
   },
-
+  {
+    id: 'concat_text',
+    name: 'Concat Text',
+    description: 'Concatenates text inputs',
+    icon: FileText,
+    color: 'bg-indigo-500',
+    bgColor: 'bg-indigo-100',
+    lightColor: '#6366F1',
+    darkColor: '#818CF8',
+    category: 'function',
+    inputs: ['text'],
+    outputs: ['text']
+  }
 ];
 
 const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
@@ -313,6 +320,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         case 'get_clipboard_text':
           nodeType = 'getClipboardTextNode';
           break;
+        case 'concat_text': 
+          nodeType = 'concatTextNode'; 
+          break;
         default: 
           nodeType = 'textInputNode';
       }
@@ -348,26 +358,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setIsDragging(false);
   };
 
-  const renderToolItem = (tool: ToolItem) => {
-    const Icon = tool.icon;
-    return (
-      <div
-        key={tool.id}
-        draggable
-        onDragStart={(e) => onDragStart(e, tool)}
-        onDragEnd={onDragEnd}
-        className={`flex items-center gap-3 p-3 rounded-lg ${isDark ? 'bg-gray-800 shadow-sm border-gray-700' : 'bg-white shadow-sm border-gray-200'} border cursor-grab transition-all hover:shadow-md`}
-      >
-        <div className={`p-2 rounded-lg ${tool.color} text-white`}>
-          <Icon className="w-5 h-5" />
-        </div>
-        <div>
-          <h4 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{tool.name}</h4>
-          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tool.description}</p>
-        </div>
-      </div>
-    );
-  };
+
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message, visible: true });
@@ -402,28 +393,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               systemPrompt: node.data.config.systemPrompt || '',
               model: node.data.config.model || '',
               ollamaUrl: node.data.config.ollamaUrl || ''
-            },
-            // Also save at root level for compatibility
-            model: node.data.config.model || '',
-            ollamaUrl: node.data.config.ollamaUrl || ''
-          };
-        } else if (node.type === 'textCombinerNode') {
-          processedNode.data = {
-            ...node.data,
-            config: {
-              ...node.data.config,
-              // Only store the additionalText configuration
-              additionalText: node.data.config.additionalText || '',
-              // Don't persist dynamic data like inputText or combinedText
-            }
-          };
-        } else if (node.type === 'conditionalNode') {
-          processedNode.data = {
-            ...node.data,
-            config: {
-              ...node.data.config,
-              condition: node.data.config.condition || '',
-              inputText: node.data.config.inputText || ''
             }
           };
         } else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
@@ -435,12 +404,30 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               outputText: ''  // Don't persist output data
             }
           };
-        } else  if (node.type === 'getClipboardTextNode') {
+        } else if (node.type === 'conditionalNode') {
           processedNode.data = {
             ...node.data,
             config: {
               ...node.data.config,
-              previewText: undefined // Don't save preview text
+              condition: node.data.config.condition || '',
+              inputText: node.data.config.inputText || ''
+            }
+          };
+        } else if (node.type === 'getClipboardTextNode') {
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              inputText: node.data.config.inputText || ''
+            }
+          };
+        } else if (node.type === 'concatTextNode') {
+          processedNode.data = {
+            ...node.data,
+            config: {
+              ...node.data.config,
+              outputText: '', // Don't persist output data
+              topFirst: node.data.config.topFirst !== undefined ? node.data.config.topFirst : true,
             }
           };
         }
@@ -448,18 +435,18 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
       });
 
       let id = currentAppId;
-      
       // If there is no current app ID, create one
       if (!id) {
         id = await appStore.createApp(name, description);
         setCurrentAppId(id);
         // Also update localStorage so we're now editing this app
         localStorage.setItem('current_app_id', id);
+      } else {
+        await appStore.createApp(name, description);
+        // Update state with new values
+        setAppName(name);
+        setAppDescription(description);
       }
-      
-      // Update state with new values
-      setAppName(name);
-      setAppDescription(description);
       setAppIcon(icon);
       setAppColor(color);
       
@@ -467,17 +454,15 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         name, 
         description, 
         icon, 
-        color,  
+        color, 
         nodes: processedNodes, 
         edges 
       });
       
       console.log(`App "${name}" saved with ${processedNodes.length} nodes and ${edges.length} edges`);
-      
-      // Show success notification
       showNotification('success', `App "${name}" saved successfully!`);
     } catch (error) {
-      console.error('Error saving app:', error);
+      console.error('Error saving app:', error);  
       showNotification('error', `Error saving app: ${error instanceof Error ? error.message : String(error)}`);
     }
     setShowSaveModal(false);
@@ -496,50 +481,45 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     try {
       const plan = generateExecutionPlan(nodes, edges);
       const updateNodeOutput = (nodeId: string, output: any) => {
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id === nodeId) {
-              if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      outputText: typeof output === 'string' ? output : JSON.stringify(output)
-                    }
+        setNodes((nds) => nds.map((node) => {
+          if (node.id === nodeId) {
+            if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  config: {
+                    ...node.data.config,
+                    outputText: typeof output === 'string' ? output : JSON.stringify(output)
                   }
-                };
-              } else if (node.type === 'textCombinerNode') {
-                // Store temporarily for UI display but don't persist to database
-                // Mark it as a temporary state value with a clear name
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
-                      // Note: We use tempInputText to clearly indicate this shouldn't be persisted
-                    }
+                }
+              };
+            } else if (node.type === 'textCombinerNode') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  config: {
+                    ...node.data.config,
+                    tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
                   }
-                };
-              } else if (node.type === 'conditionalNode') {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      inputText: typeof output === 'string' ? output : JSON.stringify(output)
-                    }
+                }
+              };
+            } else if (node.type === 'conditionalNode') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  config: {
+                    ...node.data.config,
+                    inputText: typeof output === 'string' ? output : JSON.stringify(output)
                   }
-                };
-              }
+                }
+              };
             }
-            return node;
-          })
-        );
+          }
+          return node;
+        }));
       };
       await executeFlow(plan, updateNodeOutput);
       console.log('App execution completed successfully');
@@ -586,7 +566,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const isValidConnection = useCallback((connection: Connection) => {
     const sourceNode = nodes.find(node => node.id === connection.source);
     const targetNode = nodes.find(node => node.id === connection.target);
-    
     if (!sourceNode || !targetNode) return false;
     const sourceType = sourceNode.data.tool.outputs;
     const targetType = targetNode.data.tool.inputs;
@@ -604,11 +583,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setDebugOpen(false);
   };
 
-  // Add this effect to ensure the toolItems array is processed correctly
   useEffect(() => {
     console.log("Tool items initialized:", toolItems);
-    
-    // Make sure ImagePlus is imported
     if (!toolItems.some(tool => tool.id === 'image_text_llm')) {
       console.warn("Image Text LLM tool not found in toolItems!");
     }
@@ -625,7 +601,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           appName={appName}
           setAppName={setAppName}
           isExecuting={isExecuting}
-          appId={currentAppId}  // Pass the current app ID
+          appId={currentAppId}
         />
         <div className="flex flex-1 overflow-hidden">
           <ToolsSidebar
@@ -658,8 +634,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             nodeStyle={nodeStyle}
           />
         </div>
-        
-        {/* Notification toast */}
         {notification.visible && (
           <div 
             className={`fixed bottom-6 right-6 py-3 px-4 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform ${
@@ -675,14 +649,13 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             )}
             <p className="font-medium">{notification.message}</p>
             <button 
-              onClick={() => setNotification(prev => ({ ...prev, visible: false }))} 
+              onClick={() => setNotification(prev => ({ ...prev, visible: false }))}
               className="ml-2 opacity-70 hover:opacity-100"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
-        
         {debugOpen && executionJson && (
           <DebugModal jsonData={executionJson} onClose={closeDebug} />
         )}

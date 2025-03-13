@@ -12,14 +12,8 @@ interface ToolsSidebarProps {
 
 const ToolsSidebar: React.FC<ToolsSidebarProps> = ({
   toolItems,
-  isDark,
-  selectedTool,
   onDragStart,
-  onDragEnd
 }) => {
-  // Add console logging to debug what tools are being passed
-  console.log("ToolItems in ToolsSidebar:", toolItems);
-  
   // Make sure we're passing the complete toolItems array
   return (
     <ToolSidebar 

@@ -390,6 +390,32 @@ async function executeNode(
       return staticText;
     }
 
+    case 'concatTextNode': {
+      // Get inputs from both handles
+      const topInput = nodeOutputs['top-in'] || '';
+      const bottomInput = nodeOutputs['bottom-in'] || '';
+      
+      // For debugging
+      console.log('concatTextNode inputs:', { 
+        topInput: nodeOutputs['top-in'], 
+        bottomInput: nodeOutputs['bottom-in'],
+        allInputs: nodeOutputs 
+      });
+      
+      // Get configuration for order (default to top first if not specified)
+      const config = node.data.config || {};
+      const topFirst = config.topFirst !== undefined ? config.topFirst : true;
+      
+      // Combine the texts based on the specified order
+      const result = topFirst 
+        ? `${topInput}${bottomInput}` 
+        : `${bottomInput}${topInput}`;
+        
+      console.log(`Concat result: "${result}"`);
+      
+      return result;
+    }
+
     case 'getClipboardTextNode': {
       try {
         const clipboardText = await navigator.clipboard.readText();
@@ -423,14 +449,15 @@ export async function executeFlow(
   const processedNodeIds = new Set<string>();
 
   // Build a map of node connections.
-  const nodeConnections: { [nodeId: string]: { sourceId: string; sourceHandle: string }[] } = {};
+  const nodeConnections: { [nodeId: string]: { sourceId: string; sourceHandle: string; targetHandle: string }[] } = {};
   plan.edges.forEach((edge) => {
     if (!nodeConnections[edge.target]) {
       nodeConnections[edge.target] = [];
     }
     nodeConnections[edge.target].push({
       sourceId: edge.source,
-      sourceHandle: edge.sourceHandle || 'default'
+      sourceHandle: edge.sourceHandle || 'default',
+      targetHandle: edge.targetHandle || 'default'
     });
   });
 
@@ -472,10 +499,15 @@ export async function executeFlow(
 
     for (const node of readyNodes) {
       // Gather inputs from connected source nodes.
-      const inputs: { [sourceId: string]: any } = {};
+      const inputs: { [key: string]: any } = {};
       if (nodeConnections[node.id]) {
         nodeConnections[node.id].forEach((conn) => {
+          // Store by both source ID and target handle for flexibility
           inputs[conn.sourceId] = nodeOutputs[conn.sourceId];
+          // Additionally store by target handle ID for nodes that need it (like concatTextNode)
+          if (conn.targetHandle) {
+            inputs[conn.targetHandle] = nodeOutputs[conn.sourceId];
+          }
         });
       }
       

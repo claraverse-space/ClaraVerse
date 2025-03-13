@@ -143,11 +143,10 @@ const DEFAULT_TOOLS = [
     darkColor: '#059669',
     category: 'input'
   },
+
 ];
 
 const ToolSidebar = ({ tools, onDragStart }: ToolSidebarProps) => {
-  console.log("Tools in sidebar:", tools); // Debug statement
-  
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [displayedTools, setDisplayedTools] = useState<ToolItem[]>([]);

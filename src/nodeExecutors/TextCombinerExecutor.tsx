@@ -10,7 +10,9 @@ const executeTextCombiner = async (context: NodeExecutionContext) => {
   
   // Update the node's visual state with the input text
   if (updateNodeOutput) {
-    updateNodeOutput(node.id, textInput);
+    updateNodeOutput(node.id, {
+      tempInputText: textInput
+    });
   }
   
   return combined;
