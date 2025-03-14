@@ -100,7 +100,9 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
             <div className={`p-1 rounded-md ${selectedTool.color} text-white`}>
               {React.createElement(selectedTool.icon, { className: "w-4 h-4" })}
             </div>
-            <span className="text-sm font-medium">{selectedTool.name}</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">
+              {selectedTool.name}
+            </span>
           </div>
         </div>
       )}

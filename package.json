@@ -15,14 +15,18 @@
     "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
+    "inquirer": "^12.4.3",
     "lucide-react": "^0.344.0",
+    "openai": "^4.87.3",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
     "react-syntax-highlighter": "^15.6.1",
     "reactflow": "^11.11.4",
-    "remark-gfm": "^4.0.0"
+    "remark-gfm": "^4.0.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

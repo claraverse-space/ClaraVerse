@@ -1,10 +1,13 @@
 import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
 
-const executeApiCall = async (context: NodeExecutionContext) => {
+const executeApiCall = async (context: NodeExecutionContext): Promise<string> => {
   const { node, inputs } = context;
   
+  // Declare textInput in the outer scope so it's available in the catch block
+  let textInput = '';
+
   try {
-    const textInput = inputs.text || inputs['text-in'] || inputs.default || '';
+    textInput = inputs.text || inputs['text-in'] || inputs.default || '';
     const config = node.data.config || {};
     const endpoint = config.endpoint || '';
     const method = config.method || 'GET';

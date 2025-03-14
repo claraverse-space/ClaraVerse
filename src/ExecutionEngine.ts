@@ -1,5 +1,7 @@
 import { OllamaClient } from './utils/OllamaClient';
 import { Node, Edge } from 'reactflow';
+// Add import for NodeExecutorRegistry
+import { getNodeExecutor } from './nodeExecutors/NodeExecutorRegistry';
 
 export interface ExecutionPlan {
   nodes: Node[];
@@ -64,372 +66,63 @@ function findReadyNodes(
 
 /**
  * Executes a single node given the execution context.
- * Each node type is handled in its respective branch.
+ * Each node type should have a registered executor. The switch statement
+ * below should only be used as a fallback for node types without executors.
  */
 async function executeNode(
   node: Node,
-  context: ExecutionContext
+  context: ExecutionContext,
+  outputHandledNodes: Set<string>
 ): Promise<any> {
-  const { nodeOutputs, ollamaClient } = context;
+  const { nodeOutputs, ollamaClient, setNodeOutput } = context;
 
-  switch (node.type) {
-    case 'textInputNode': {
-      // Returns the configured text.
-      return node.data.config.text || '';
-    }
-
-    case 'textOutputNode': {
-      // For a text output node, get the first input from connected nodes
-      const inputValues = Object.values(nodeOutputs);
-      // If we have any input, use the first one
-      if (inputValues.length > 0) {
-        const input = inputValues[0];
-        return typeof input === 'string' ? input : JSON.stringify(input);
-      }
-      return 'No input received';
-    }
-
-    case 'markdownOutputNode': {
-      // Similar to text output, but intended for markdown display
-      const inputValues = Object.values(nodeOutputs);
-      if (inputValues.length > 0) {
-        const input = inputValues[0];
-        return typeof input === 'string' ? input : JSON.stringify(input);
-      }
-      return 'No input received';
-    }
-
-    case 'textCombinerNode': {
-      // Get the input text from connected nodes
-      const inputValues = Object.values(nodeOutputs);
-      let inputText = '';
-      
-      // Combine all inputs
-      if (inputValues.length > 0) {
-        const input = inputValues[0];
-        inputText = typeof input === 'string' ? input : JSON.stringify(input);
-      }
-      
-      // Combine with the additional text from the node config
-      const additionalText = node.data.config.additionalText || '';
-      return `${inputText}${additionalText}`;
-    }
-
-    case 'imageInputNode': {
-      // First check for a runtime image, then fall back to the configured image
-      return node.data.runtimeImage || node.data.config.image || null;
-    }
-
-    case 'llmPromptNode': {
-      // Collect inputs from all connected nodes.
-      let inputText = '';
-      let images: string[] = [];
-      let hasImage = false;
-
-      // Process all outputs that have been passed to this node.
-      Object.entries(nodeOutputs).forEach(([sourceId, output]) => {
-        if (typeof output === 'string') {
-          if (output.startsWith('data:image')) {
-            // Handle base64 image strings
-            hasImage = true;
-            // Extract base64 content without the prefix
-            images.push(output.split(',')[1]);
-          } else if (output.trim() !== '') {
-            // Handle text input
-            inputText += output + '\n';
-          }
-        } else if (output && typeof output === 'object') {
-          // Handle different image object formats
-          if (output.base64) {
-            hasImage = true;
-            // For base64 data, ensure we don't have the data:image prefix
-            const base64Data = output.base64.includes('data:image') 
-              ? output.base64.split(',')[1] 
-              : output.base64;
-            images.push(base64Data);
-          } else if (output.src) {
-            hasImage = true;
-            // If src contains base64 data with prefix, extract it
-            const base64Data = output.src.includes('data:image') 
-              ? output.src.split(',')[1] 
-              : output.src;
-            images.push(base64Data);
-          } else if (output.data) {
-            hasImage = true;
-            // If data contains base64 data with prefix, extract it
-            const base64Data = output.data.includes('data:image') 
-              ? output.data.split(',')[1] 
-              : output.data;
-            images.push(base64Data);
-          } else if (output.url) {
-            // If it's a URL to an image, add it as text for now
-            inputText += output.url + '\n';
-          }
+  // First check if there's a registered executor for this node type
+  const executor = getNodeExecutor(node.type);
+  if (executor) {
+    // Create a tracking function to know if the executor handled the output
+    const trackingUpdateNodeOutput = setNodeOutput
+      ? (nodeId: string, output: any) => {
+          outputHandledNodes.add(nodeId); // Track that this node's output was handled
+          setNodeOutput(nodeId, output);
         }
-      });
+      : undefined;
 
-      // Fallback: if no text has been accumulated, use the first available input.
-      if (!inputText && Object.values(nodeOutputs).length > 0 && !hasImage) {
-        const firstValue = Object.values(nodeOutputs)[0];
-        if (typeof firstValue === 'string') {
-          inputText = firstValue;
-        }
-      }
-
-      const systemPrompt = node.data.config.prompt || '';
-      const model = node.data.config.model;
-      if (!model) {
-        return 'Error: No model selected';
-      }
-
-      try {
-        let response;
-        
-        if (hasImage && images.length > 0) {
-          // Use generate API for image inputs with simplified parameters schema
-          console.log('Using multimodal generation with image');
-          response = await ollamaClient.generateWithImages(
-            model,
-            inputText.trim(),
-            images,
-            { stream: false }  // Simplified schema without system and num_predict
-          );
-        } else {
-          // Use chat API for text-only inputs
-          console.log('Using chat API for text-only input');
-          const messages = [
-            { role: "system" as const, content: systemPrompt },
-            { role: "user" as const, content: inputText.trim() }
-          ];
-          response = await ollamaClient.sendChat(
-            model,
-            messages,
-            { num_predict: 1000 }
-          );
-        }
-        
-        // Extract response content regardless of API used
-        if (response) {
-          if (response.message) {
-            return response.message.content;
-          } else if (response.response) {
-            return response.response;
-          } else {
-            return 'No response from Ollama';
-          }
-        } else {
-          return 'No response from Ollama';
-        }
-      } catch (error) {
-        console.error('LLM error:', error);
-        return `Error: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    }
-
-    case 'conditionalNode': {
-      // Gets the first available input text.
-      const inputText = Object.values(nodeOutputs)[0] || '';
-      try {
-        const condition = node.data.config.condition || '';
-        let result = false;
-
-        // If the condition is of the form contains('substring')
-        if (condition.includes('contains(')) {
-          const match = condition.match(/contains\(['"](.+)['"]\)/);
-          const searchTerm = match ? match[1] : '';
-          if (searchTerm) {
-            result = String(inputText).includes(searchTerm);
-          }
-        } else if (condition.trim()) {
-          // Simple check - directly look for the condition text in the input
-          result = String(inputText).includes(condition);
-        }
-        
-        console.log(`Condition check result for "${condition}": ${result}`);
-        return { result, output: inputText };
-      } catch (error) {
-        console.error('Condition error:', error);
-        return { result: false, output: inputText, error: String(error) };
-      }
-    }
-
-    case 'apiCallNode': {
-      // Gets the first available input text.
-      const inputText = Object.values(nodeOutputs)[0] || '';
-      const method = node.data.config.method || 'GET';
-      const endpoint = node.data.config.endpoint || '';
-      if (!endpoint) {
-        return JSON.stringify({
-          input: inputText,
-          output: 'Error: No API endpoint specified'
-        });
-      }
-      try {
-        const response = await fetch(endpoint, {
-          method,
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: method !== 'GET' && inputText ? JSON.stringify(inputText) : undefined
-        });
-        if (!response.ok) {
-          // Clone the response to read its text without consuming the stream
-          const errorText = await response.clone().text();
-          return JSON.stringify({
-            input: inputText,
-            output: `API error: ${response.status} ${response.statusText}. ${errorText}`
-          });
-        }
-        let apiResponse;
-        try {
-          // Clone the response before reading its body as JSON
-          apiResponse = await response.clone().json();
-        } catch {
-          // Clone again if necessary to read as text
-          apiResponse = await response.clone().text();
-        }
-        return JSON.stringify({
-          input: inputText,
-          output: apiResponse
-        });
-      } catch (error) {
-        console.error('API error:', error);
-        return JSON.stringify({
-          input: inputText,
-          output: `Error: ${error instanceof Error ? error.message : String(error)}`
-        });
-      }
-    }
-
-    case 'imageTextLlmNode': {
-      // Get the image input
-      let imageInput = null;
-      // Get the text input
-      let textInput = '';
-      
-      // Process all outputs that have been passed to this node.
-      Object.entries(nodeOutputs).forEach(([sourceId, output]) => {
-        if (typeof output === 'string') {
-          if (output.startsWith('data:image')) {
-            // Handle base64 image strings
-            imageInput = output;
-          } else if (output.trim() !== '') {
-            // Handle text input
-            textInput += output + '\n';
-          }
-        } else if (output && typeof output === 'object') {
-          // Handle different image object formats
-          if (output.base64) {
-            imageInput = output.base64;
-          } else if (output.src) {
-            imageInput = output.src;
-          } else if (output.data) {
-            imageInput = output.data;
-          } else if (output.url) {
-            // If it's a URL to an image, add it as text for now
-            textInput += output.url + '\n';
-          }
-        }
-      });
-      
-      if (!imageInput) {
-        return "No image provided to Image-Text LLM";
-      }
-
-      // Process image data - remove data URL prefix if present
-      let processedImageData = imageInput;
-      if (typeof imageInput === 'string' && imageInput.startsWith('data:image/')) {
-        processedImageData = imageInput.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
-      }
-
-      const config = node.data.config || {};
-      const model = config.model || node.data?.model;
-      if (!model) {
-        return "Error: No model selected. Please configure the node with a model.";
-      }
-      
-      const systemPrompt = config.systemPrompt || node.data?.systemPrompt || '';
-      const ollamaUrl = config.ollamaUrl || node.data?.ollamaUrl;
-      if (!ollamaUrl) {
-        return "Error: No Ollama URL configured. Please set the URL in the node settings.";
-      }
-
-      // Combine system prompt and user text if both exist
-      const finalPrompt = systemPrompt 
-        ? `${systemPrompt}\n\n${textInput || 'Describe this image:'}`
-        : (textInput || 'Describe this image:');
-
-      try {
-        // Make sure we're using the correct URL by trimming any trailing slashes
-        const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
-        
-        // Use generate API for image inputs
-        console.log('Using multimodal generation with image and text');
-        console.log(`URL: ${baseUrl}/api/generate`);
-        
-        const response = await ollamaClient.generateWithImages(
-          model,
-          finalPrompt,
-          [processedImageData],
-          { stream: false },
-          baseUrl  // Pass the baseUrl to the client
-        );
-        
-        // Extract response content
-        return response?.response || 'No response from Ollama';
-      } catch (error) {
-        console.error('Image-Text LLM error:', error);
-        return `Error: ${error instanceof Error ? error.message : String(error)}`;
-      }
-    }
-
-    case 'staticTextNode': {
-      // Get the static text from the node's configuration
-      const config = node.data.config || {};
-      const staticText = config.staticText || '';
-      return staticText;
-    }
-
-    case 'concatTextNode': {
-      // Get inputs from both handles
-      const topInput = nodeOutputs['top-in'] || '';
-      const bottomInput = nodeOutputs['bottom-in'] || '';
-      
-      // For debugging
-      console.log('concatTextNode inputs:', { 
-        topInput: nodeOutputs['top-in'], 
-        bottomInput: nodeOutputs['bottom-in'],
-        allInputs: nodeOutputs 
-      });
-      
-      // Get configuration for order (default to top first if not specified)
-      const config = node.data.config || {};
-      const topFirst = config.topFirst !== undefined ? config.topFirst : true;
-      
-      // Combine the texts based on the specified order
-      const result = topFirst 
-        ? `${topInput}${bottomInput}` 
-        : `${bottomInput}${topInput}`;
-        
-      console.log(`Concat result: "${result}"`);
-      
-      return result;
-    }
-
-    case 'getClipboardTextNode': {
-      try {
-        const clipboardText = await navigator.clipboard.readText();
-        return clipboardText;
-      } catch (error) {
-        console.error('Error accessing clipboard:', error);
-        return 'Error: Could not access clipboard. Please ensure permissions are granted.';
-      }
-    }
-
-    default: {
-      return `Unsupported node type: ${node.type}`;
+    // Create NodeExecutionContext for the executor
+    const executionContext = {
+      node,
+      inputs: nodeOutputs,
+      ollamaClient,
+      updateNodeOutput: trackingUpdateNodeOutput
+    };
+    
+    try {
+      return await executor.execute(executionContext);
+    } catch (error) {
+      console.error(`Error in node executor for ${node.type}:`, error);
+      return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
+
+  // Fall back to basic handling for node types without registered executors
+  // This is a temporary fallback - ideally all node types should have registered executors
+  console.warn(`No registered executor found for node type: ${node.type}`);
+  
+  // Simple fallback implementation for basic node types
+  if (node.type === 'textInputNode') {
+    return node.data.config?.text || '';
+  } 
+  else if (node.type === 'staticTextNode') {
+    return node.data.config?.staticText || '';
+  }
+  else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+    const inputValue = Object.values(nodeOutputs)[0];
+    return inputValue !== undefined 
+      ? (typeof inputValue === 'string' ? inputValue : JSON.stringify(inputValue)) 
+      : 'No input received';
+  }
+  
+  // Log unhandled node types and return a message
+  return `Unhandled node type: ${node.type} - Please implement a proper executor for this node type`;
 }
 
 
@@ -482,6 +175,9 @@ export async function executeFlow(
   // Copy of nodes to track what remains.
   let remainingNodes = [...plan.nodes];
 
+  // Set to track nodes that have already handled their own output
+  const outputHandledNodes = new Set<string>();
+
   // Execution context.
   const context: ExecutionContext = {
     nodeOutputs,
@@ -512,7 +208,7 @@ export async function executeFlow(
       }
       
       try {
-        const output = await executeNode(node, { ...context, nodeOutputs: inputs });
+        const output = await executeNode(node, { ...context, nodeOutputs: inputs }, outputHandledNodes);
         nodeOutputs[node.id] = output;
         processedNodeIds.add(node.id);
         
@@ -532,7 +228,10 @@ export async function executeFlow(
             }
           }
         } 
-        else if (setNodeOutput) {
+        // Only call setNodeOutput if:
+        // 1. It's not a conditional node OR it doesn't have the expected format AND
+        // 2. The node hasn't already handled its own output through an executor
+        else if (setNodeOutput && !outputHandledNodes.has(node.id)) {
           setNodeOutput(node.id, output);
         }
       } catch (error) {

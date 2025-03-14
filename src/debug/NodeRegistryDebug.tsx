@@ -32,10 +32,7 @@ const NodeRegistryDebug = () => {
   }, []);
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Node Registry Debug</h2>
-      <p>Check browser console for node registration information</p>
-    </div>
+""
   );
 };
 

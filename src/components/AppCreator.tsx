@@ -1,190 +1,51 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import {  Grid, MousePointer, Activity, Settings, Type, FileText, Check, X,  Sparkles, Image, ImagePlus, TextQuote } from 'lucide-react';
-import  { 
-  addEdge, 
-  useNodesState, 
-  useEdgesState,
-  Node,
-  Connection
-} from 'reactflow';
+import {
+  Grid,
+  MousePointer,
+  Activity,
+  Settings,
+  Type,
+  FileText,
+  Check,
+  X,
+  Sparkles,
+  Image,
+  ImagePlus,
+  TextQuote,
+  Video,
+  Clock,
+} from 'lucide-react';
+import { addEdge, useNodesState, useEdgesState, Node, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTheme } from '../hooks/useTheme';
 import TopBar from './appcreator_components/TopBar';
 import ToolsSidebar from './appcreator_components/ToolsSidebar';
 import FlowCanvas from './appcreator_components/FlowCanvas';
-import { getAllNodeTypes } from './appcreator_components/nodes/NodeRegistry';
+import { getAllNodeTypes, getToolItems } from './appcreator_components/nodes/NodeRegistry';
 import { executeFlow, generateExecutionPlan } from '../ExecutionEngine';
 import DebugModal from './DebugModal';
 import { OllamaProvider } from '../context/OllamaContext';
 import { appStore } from '../services/AppStore';
 import SaveAppModal from './appcreator_components/SaveAppModal';
 
+// Helper to convert a tool ID (e.g., "api_call") to a node type key (e.g., "apiCallNode")
+const convertToolIdToNodeType = (toolId: string): string => {
+  const parts = toolId.split('_');
+  const camelCase =
+    parts[0] + parts.slice(1).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+  return camelCase + 'Node';
+};
+
 interface AppCreatorProps {
   onPageChange: (page: string) => void;
   appId?: string;
 }
 
-export interface ToolItem {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ElementType;
-  color: string;
-  bgColor: string;
-  lightColor: string;
-  darkColor: string;
-  category: 'input' | 'process' | 'output' | 'function';
-  inputs?: string[];
-  outputs?: string[];
-}
-
-const toolItems: ToolItem[] = [
-  {
-    id: 'text_input',
-    name: 'Text Input',
-    description: 'Accept text input from users',
-    icon: MousePointer,
-    color: 'bg-blue-500',
-    bgColor: 'bg-blue-100',
-    lightColor: '#3B82F6',
-    darkColor: '#60A5FA',
-    category: 'input',
-    outputs: ['text']
-  },
-  {
-    id: 'llm_prompt',
-    name: 'LLM Prompt',
-    description: 'Process text with an LLM',
-    icon: Activity,
-    color: 'bg-purple-500',
-    bgColor: 'bg-purple-100',
-    lightColor: '#8B5CF6',
-    darkColor: '#A78BFA',
-    category: 'process',
-    inputs: ['text'],
-    outputs: ['text']
-  },
-  {
-    id: 'conditional',
-    name: 'Conditional',
-    description: 'Branch logic based on conditions',
-    icon: Grid,
-    color: 'bg-yellow-500',
-    bgColor: 'bg-yellow-100',
-    lightColor: '#F59E0B',
-    darkColor: '#FBBF24',
-    category: 'function',
-    inputs: ['text'],
-    outputs: ['text']
-  },
-  {
-    id: 'text_output',
-    name: 'Text Output',
-    description: 'Display text to users',
-    icon: MousePointer,
-    color: 'bg-green-500',
-    bgColor: 'bg-green-100',
-    lightColor: '#10B981',
-    darkColor: '#34D399',
-    category: 'output',
-    inputs: ['text']
-  },
-  {
-    id: 'image_input',
-    name: 'Image Input',
-    description: 'Accept image uploads',
-    icon: Image,
-    color: 'bg-pink-500',
-    bgColor: 'bg-pink-100',
-    lightColor: '#EC4899',
-    darkColor: '#F472B6',
-    category: 'input',
-    outputs: ['image']
-  },
-  {
-    id: 'api_call',
-    name: 'API Call',
-    description: 'Make external API requests',
-    icon: Settings,
-    color: 'bg-red-500',
-    bgColor: 'bg-red-100',
-    lightColor: '#EF4444',
-    darkColor: '#F87171',
-    category: 'function',
-    inputs: ['text'],
-    outputs: ['text']
-  },
-  {
-    id: 'text_combiner',
-    name: 'Text Combiner',
-    description: 'Combine input text with additional text',
-    icon: Type,
-    color: 'bg-indigo-500',
-    bgColor: 'bg-indigo-100',
-    lightColor: '#6366F1',
-    darkColor: '#818CF8',
-    category: 'function',
-    inputs: ['text'],
-    outputs: ['text']
-  },
-  {
-    id: 'image_text_llm',
-    name: 'Image + Text LLM',
-    description: 'Process image and text with a vision model',
-    icon: ImagePlus,
-    color: 'bg-violet-500',
-    bgColor: 'bg-violet-100',
-    lightColor: '#8B5CF6',
-    darkColor: '#7C3AED',
-    category: 'function',
-    inputs: ['image', 'text'],
-    outputs: ['text']
-  },
-  {
-    id: 'static_text',
-    name: 'Static Text',
-    description: 'Fixed text content that does not change',
-    icon: TextQuote,
-    color: 'bg-red-500',
-    bgColor: 'bg-red-100',
-    lightColor: '#F87171',
-    darkColor: '#DC2626',
-    category: 'input',
-    outputs: ['text']
-  },
-  {
-    id: 'get_clipboard_text',
-    name: 'Get Clipboard Text',
-    description: 'Retrieve text from system clipboard',
-    icon: Sparkles,
-    color: 'bg-emerald-500',
-    bgColor: 'bg-emerald-100',
-    lightColor: '#10B981',
-    darkColor: '#059669',
-    category: 'input',
-    inputs: [],
-    outputs: ['text']
-  },
-  {
-    id: 'concat_text',
-    name: 'Concat Text',
-    description: 'Concatenates text inputs',
-    icon: FileText,
-    color: 'bg-indigo-500',
-    bgColor: 'bg-indigo-100',
-    lightColor: '#6366F1',
-    darkColor: '#818CF8',
-    category: 'function',
-    inputs: ['text'],
-    outputs: ['text']
-  }
-];
-
 const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const { isDark } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedTool, setSelectedTool] = useState<ToolItem | null>(null);
+  const [selectedTool, setSelectedTool] = useState<any>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [executionJson, setExecutionJson] = useState<any>(null);
@@ -196,21 +57,29 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [appIcon, setAppIcon] = useState('Activity');
   const [appColor, setAppColor] = useState('#3B82F6');
-  const [notification, setNotification] = useState<{
-    type: 'success' | 'error';
-    message: string;
-    visible: boolean;
-  }>({ type: 'success', message: '', visible: false });
-  
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string; visible: boolean; }>({
+    type: 'success',
+    message: '',
+    visible: false,
+  });
+
+  // Sidebar resizing state
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
+  // Instead of hardcoding toolItems, get them dynamically from node metadata
+  const toolItems = useMemo(() => getToolItems(), []);
+
+  // Use a ref to store the nodeTypes so they remain stable across renders
+  const nodeTypesRef = useRef(getAllNodeTypes());
+  const nodeTypes = nodeTypesRef.current;
+
   useEffect(() => {
     if (appId) {
-      // We're editing an existing app
       loadApp(appId);
     } else {
-      // We're creating a new app - reset everything
       resetAppState();
     }
   }, [appId]);
@@ -233,9 +102,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         setAppDescription(app.description);
         setAppIcon(app.icon || 'Activity');
         setAppColor(app.color || '#3B82F6');
-        // Restore tool icon components on loaded nodes
         const restoredNodes = app.nodes.map((node: Node) => {
           if (node.data && node.data.tool) {
+            // Restore tool icon from dynamic toolItems
             const toolDefinition = toolItems.find(t => t.id === node.data.tool.id);
             if (toolDefinition) {
               node.data.tool.icon = toolDefinition.icon;
@@ -252,23 +121,32 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     }
   };
 
-  const onConnect = useCallback((params: Connection) => {
-    setEdges((eds) => addEdge({ 
-      ...params, 
-      animated: true, 
-      type: 'smoothstep',
-      style: { 
-        stroke: isDark ? '#EC4899' : '#F472B6',
-        strokeWidth: 2 
-      }
-    }, eds));
-  }, [setEdges, isDark]);
+  const onConnect = useCallback(
+    (params: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            animated: true,
+            type: 'smoothstep',
+            style: {
+              stroke: isDark ? '#EC4899' : '#F472B6',
+              strokeWidth: 2,
+            },
+          },
+          eds
+        )
+      );
+    },
+    [setEdges, isDark]
+  );
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  // onDrop handler uses the helper to compute the node type dynamically
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -277,10 +155,10 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
 
       const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
       const toolId = event.dataTransfer.getData('application/reactflow');
-      
       if (!toolId) return;
 
-      const tool = toolItems.find(t => t.id === toolId);
+      // Find the tool metadata by ID
+      const tool = toolItems.find((t) => t.id === toolId);
       if (!tool) return;
 
       const position = reactFlowInstance.project({
@@ -288,65 +166,28 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         y: event.clientY - reactFlowBounds.top,
       });
 
-      let nodeType: string;
-      switch(toolId) {
-        case 'text_input': 
-          nodeType = 'textInputNode'; 
-          break;
-        case 'image_input': 
-          nodeType = 'imageInputNode'; 
-          break;
-        case 'llm_prompt': 
-          nodeType = 'llmPromptNode'; 
-          break;
-        case 'text_output': 
-          nodeType = 'textOutputNode'; 
-          break;
-        case 'conditional': 
-          nodeType = 'conditionalNode'; 
-          break;
-        case 'api_call': 
-          nodeType = 'apiCallNode'; 
-          break;
-        case 'text_combiner': 
-          nodeType = 'textCombinerNode'; 
-          break;
-        case 'image_text_llm': 
-          nodeType = 'imageTextLlmNode';
-          break;
-        case 'static_text': 
-          nodeType = 'staticTextNode';
-          break;
-        case 'get_clipboard_text':
-          nodeType = 'getClipboardTextNode';
-          break;
-        case 'concat_text': 
-          nodeType = 'concatTextNode'; 
-          break;
-        default: 
-          nodeType = 'textInputNode';
-      }
+      const nodeType = convertToolIdToNodeType(toolId);
 
       const newNode: Node = {
         id: `${toolId}_${Date.now()}`,
         type: nodeType,
         position,
-        data: { 
+        data: {
           label: tool.name,
           labelStyle: { color: isDark ? '#fff' : '#000' },
           tool: tool,
-          inputs: tool.inputs || [], 
+          inputs: tool.inputs || [],
           outputs: tool.outputs || [],
-          config: {}
-        }
+          config: {},
+        },
       };
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [reactFlowInstance, setNodes, isDark]
+    [reactFlowInstance, setNodes, isDark, toolItems]
   );
 
-  const onDragStart = (event: React.DragEvent<HTMLDivElement>, tool: ToolItem) => {
+  const onDragStart = (event: React.DragEvent<HTMLDivElement>, tool: any) => {
     event.dataTransfer.setData('application/reactflow', tool.id);
     event.dataTransfer.effectAllowed = 'move';
     setSelectedTool(tool);
@@ -358,19 +199,21 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setIsDragging(false);
   };
 
-
-
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message, visible: true });
-    // Auto-hide notification after 3 seconds
     setTimeout(() => {
-      setNotification(prev => ({ ...prev, visible: false }));
+      setNotification((prev) => ({ ...prev, visible: false }));
     }, 3000);
   };
 
-  const internalSaveApp = async (name: string, description: string, icon: string, color: string) => {
+  const internalSaveApp = async (
+    name: string,
+    description: string,
+    icon: string,
+    color: string,
+    customIconUrl?: string
+  ) => {
     try {
-      // Process nodes to ensure all configurations are properly captured
       const processedNodes = nodes.map((node) => {
         const processedNode = { ...node };
         if (node.type === 'llmPromptNode') {
@@ -381,8 +224,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               ...node.data.config,
               prompt: node.data.config.prompt || '',
               model: node.data.config.model || '',
-              ollamaUrl: node.data.config.ollamaUrl || ''
-            }
+              ollamaUrl: node.data.config.ollamaUrl || '',
+            },
           };
         } else if (node.type === 'imageTextLlmNode') {
           console.log('Saving ImageTextLLM node configuration:', node.data.config);
@@ -392,17 +235,16 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               ...node.data.config,
               systemPrompt: node.data.config.systemPrompt || '',
               model: node.data.config.model || '',
-              ollamaUrl: node.data.config.ollamaUrl || ''
-            }
+              ollamaUrl: node.data.config.ollamaUrl || '',
+            },
           };
         } else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
-          // Clean up any runtime-only output data before saving
           processedNode.data = {
             ...node.data,
             config: {
               ...node.data.config,
-              outputText: ''  // Don't persist output data
-            }
+              outputText: '',
+            },
           };
         } else if (node.type === 'conditionalNode') {
           processedNode.data = {
@@ -410,59 +252,52 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             config: {
               ...node.data.config,
               condition: node.data.config.condition || '',
-              inputText: node.data.config.inputText || ''
-            }
+              inputText: node.data.config.inputText || '',
+            },
           };
         } else if (node.type === 'getClipboardTextNode') {
           processedNode.data = {
             ...node.data,
             config: {
               ...node.data.config,
-              inputText: node.data.config.inputText || ''
-            }
+              inputText: node.data.config.inputText || '',
+            },
           };
         } else if (node.type === 'concatTextNode') {
           processedNode.data = {
             ...node.data,
             config: {
               ...node.data.config,
-              outputText: '', // Don't persist output data
+              outputText: '',
               topFirst: node.data.config.topFirst !== undefined ? node.data.config.topFirst : true,
-            }
+            },
           };
         }
         return processedNode;
       });
 
       let id = currentAppId;
-      // If there is no current app ID, create one
       if (!id) {
         id = await appStore.createApp(name, description);
         setCurrentAppId(id);
-        // Also update localStorage so we're now editing this app
         localStorage.setItem('current_app_id', id);
-      } else {
-        await appStore.createApp(name, description);
-        // Update state with new values
-        setAppName(name);
-        setAppDescription(description);
       }
       setAppIcon(icon);
       setAppColor(color);
-      
-      await appStore.updateApp(id, { 
-        name, 
-        description, 
-        icon, 
-        color, 
-        nodes: processedNodes, 
-        edges 
+
+      await appStore.updateApp(id, {
+        name,
+        description,
+        icon,
+        color,
+        nodes: processedNodes,
+        edges,
       });
-      
+
       console.log(`App "${name}" saved with ${processedNodes.length} nodes and ${edges.length} edges`);
       showNotification('success', `App "${name}" saved successfully!`);
     } catch (error) {
-      console.error('Error saving app:', error);  
+      console.error('Error saving app:', error);
       showNotification('error', `Error saving app: ${error instanceof Error ? error.message : String(error)}`);
     }
     setShowSaveModal(false);
@@ -481,45 +316,47 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     try {
       const plan = generateExecutionPlan(nodes, edges);
       const updateNodeOutput = (nodeId: string, output: any) => {
-        setNodes((nds) => nds.map((node) => {
-          if (node.id === nodeId) {
-            if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  config: {
-                    ...node.data.config,
-                    outputText: typeof output === 'string' ? output : JSON.stringify(output)
-                  }
-                }
-              };
-            } else if (node.type === 'textCombinerNode') {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  config: {
-                    ...node.data.config,
-                    tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
-                  }
-                }
-              };
-            } else if (node.type === 'conditionalNode') {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  config: {
-                    ...node.data.config,
-                    inputText: typeof output === 'string' ? output : JSON.stringify(output)
-                  }
-                }
-              };
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id === nodeId) {
+              if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    config: {
+                      ...node.data.config,
+                      outputText: typeof output === 'string' ? output : JSON.stringify(output),
+                    },
+                  },
+                };
+              } else if (node.type === 'textCombinerNode') {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    config: {
+                      ...node.data.config,
+                      tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
+                    },
+                  },
+                };
+              } else if (node.type === 'conditionalNode') {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    config: {
+                      ...node.data.config,
+                      inputText: typeof output === 'string' ? output : JSON.stringify(output),
+                    },
+                  },
+                };
+              }
             }
-          }
-          return node;
-        }));
+            return node;
+          })
+        );
       };
       await executeFlow(plan, updateNodeOutput);
       console.log('App execution completed successfully');
@@ -537,20 +374,20 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         boxShadow: isDark
           ? '0 0 0 2px #EC4899, 0 0 10px 2px rgba(236, 72, 153, 0.5)'
           : '0 0 0 2px #F472B6, 0 0 10px 2px rgba(244, 114, 182, 0.5)',
-        zIndex: 1000
+        zIndex: 1000,
       };
     }
     return {};
   };
 
   const flowStyles = useMemo(() => ({
-    background: isDark ? '#1F2937' : '#F9FAFB'
+    background: isDark ? '#1F2937' : '#F9FAFB',
   }), [isDark]);
 
   const minimapStyle = useMemo(() => ({
     backgroundColor: isDark ? '#374151' : '#F9FAFB',
     maskColor: isDark ? 'rgba(55, 65, 81, 0.7)' : 'rgba(249, 250, 251, 0.7)',
-    nodeBorderRadius: 2
+    nodeBorderRadius: 2,
   }), [isDark]);
 
   const minimapNodeColor = useMemo(() => (node: Node) => {
@@ -561,17 +398,18 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setSelectedNodeId(node.id);
   }, []);
 
-  const nodeTypes = useMemo(() => getAllNodeTypes(), []);
-
-  const isValidConnection = useCallback((connection: Connection) => {
-    const sourceNode = nodes.find(node => node.id === connection.source);
-    const targetNode = nodes.find(node => node.id === connection.target);
-    if (!sourceNode || !targetNode) return false;
-    const sourceType = sourceNode.data.tool.outputs;
-    const targetType = targetNode.data.tool.inputs;
-    if (!sourceType || !targetType) return false;
-    return sourceType.some((type: string) => targetType.includes(type));
-  }, [nodes]);
+  const isValidConnection = useCallback(
+    (connection: Connection) => {
+      const sourceNode = nodes.find((node) => node.id === connection.source);
+      const targetNode = nodes.find((node) => node.id === connection.target);
+      if (!sourceNode || !targetNode) return false;
+      const sourceType = sourceNode.data.tool.outputs;
+      const targetType = targetNode.data.tool.inputs;
+      if (!sourceType || !targetType) return false;
+      return sourceType.some((type: string) => targetType.includes(type));
+    },
+    [nodes]
+  );
 
   const handleDebug = () => {
     const plan = generateExecutionPlan(nodes, edges);
@@ -583,17 +421,39 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setDebugOpen(false);
   };
 
+  // Resizable sidebar drag handler
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = startWidth + (e.clientX - startX);
+      if (newWidth > 200 && newWidth < 500) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   useEffect(() => {
-    console.log("Tool items initialized:", toolItems);
-    if (!toolItems.some(tool => tool.id === 'image_text_llm')) {
-      console.warn("Image Text LLM tool not found in toolItems!");
+    console.log('Tool items initialized:', toolItems);
+    if (!toolItems.some((tool) => tool.id === 'image_text_llm')) {
+      console.warn('Image Text LLM tool not found in toolItems!');
     }
-  }, []);
+  }, [toolItems]);
 
   return (
     <OllamaProvider>
       <div className="flex flex-col h-screen">
-        <TopBar 
+        <TopBar
           onPageChange={onPageChange}
           handleOpenSaveModal={handleOpenSaveModal}
           handleTestApp={handleTestApp}
@@ -604,13 +464,20 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           appId={currentAppId}
         />
         <div className="flex flex-1 overflow-hidden">
-          <ToolsSidebar
-            toolItems={toolItems}
-            isDark={isDark}
-            selectedTool={selectedTool}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-          />
+          <div
+            ref={sidebarRef}
+            style={{ width: sidebarWidth }}
+            className="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700"
+          >
+            <ToolsSidebar
+              toolItems={toolItems}
+              isDark={isDark}
+              selectedTool={selectedTool}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+            />
+            <div onMouseDown={handleMouseDown} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize z-10" />
+          </div>
           <FlowCanvas
             nodes={nodes}
             edges={edges}
@@ -635,34 +502,25 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           />
         </div>
         {notification.visible && (
-          <div 
+          <div
             className={`fixed bottom-6 right-6 py-3 px-4 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform ${
-              notification.type === 'success' 
-                ? 'bg-green-500 text-white' 
-                : 'bg-red-500 text-white'
+              notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
             }`}
           >
-            {notification.type === 'success' ? (
-              <Check className="h-5 w-5" />
-            ) : (
-              <X className="h-5 w-5" />
-            )}
+            {notification.type === 'success' ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
             <p className="font-medium">{notification.message}</p>
-            <button 
-              onClick={() => setNotification(prev => ({ ...prev, visible: false }))}
-              className="ml-2 opacity-70 hover:opacity-100"
-            >
+            <button onClick={() => setNotification((prev) => ({ ...prev, visible: false }))} className="ml-2 opacity-70 hover:opacity-100">
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
-        {debugOpen && executionJson && (
-          <DebugModal jsonData={executionJson} onClose={closeDebug} />
-        )}
+        {debugOpen && executionJson && <DebugModal jsonData={executionJson} onClose={closeDebug} />}
         {showSaveModal && (
           <SaveAppModal
             initialName={appName}
             initialDescription={appDescription}
+            initialIcon={appIcon}
+            initialColor={appColor}
             onSave={internalSaveApp}
             onCancel={handleCloseSaveModal}
           />

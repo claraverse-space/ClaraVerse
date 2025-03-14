@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
+import { MousePointer } from 'lucide-react';
 
 const TextInputNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
@@ -8,25 +9,27 @@ const TextInputNode = ({ data, isConnectable }: any) => {
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
   const [text, setText] = useState(data.config.text || '');
-  
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value);
     data.config.text = e.target.value;
   };
-  
+
   return (
-    <div className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-64`}>
+    <div
+      className={`p-3 rounded-lg border ${
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      } shadow-md w-64`}
+    >
       <div className="flex items-center gap-2 mb-2">
         <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
           <Icon className="w-5 h-5 text-white" />
         </div>
-        <div className="font-medium text-sm">
-          {data.label}
-        </div>
+        <div className="font-medium text-sm">{data.label}</div>
       </div>
-      
+
       <div className="mb-2">
-        <textarea 
+        <textarea
           value={text}
           onChange={handleChange}
           placeholder="Enter text input..."
@@ -36,7 +39,7 @@ const TextInputNode = ({ data, isConnectable }: any) => {
           rows={3}
         />
       </div>
-      
+
       <Handle
         type="source"
         position={Position.Bottom}
@@ -47,6 +50,21 @@ const TextInputNode = ({ data, isConnectable }: any) => {
       />
     </div>
   );
+};
+
+// Export metadata as a named export for NodeRegistry
+export const metadata = {
+  id: 'text_input',
+  name: 'Text Input',
+  description: 'Accept text input from users',
+  icon: MousePointer,
+  color: 'bg-blue-500',
+  bgColor: 'bg-blue-100',
+  lightColor: '#3B82F6',
+  darkColor: '#60A5FA',
+  category: 'input',
+  inputs: [],
+  outputs: ['text'],
 };
 
 export default TextInputNode;

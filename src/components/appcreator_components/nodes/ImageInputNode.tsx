@@ -9,33 +9,25 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
   
-  // Initialize with either runtime image or config image
   const [image, setImage] = useState(data.runtimeImage || data.config?.image || null);
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const reader = new FileReader();
-      
       reader.onload = (event) => {
         if (event.target?.result) {
           const imageData = event.target.result;
           setImage(imageData);
-          
-          // Store in the appropriate location based on mode
           if (isRunnerMode) {
-            // In runner mode, store in runtimeImage
             data.runtimeImage = imageData;
-            console.log("Updated runtime image:", data.id);
           } else {
-            // In editor mode, store in config
             if (!data.config) data.config = {};
             data.config.image = imageData;
           }
         }
       };
-      
       reader.readAsDataURL(file);
     }
   };
@@ -45,13 +37,13 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
       className={`p-3 rounded-lg border ${
         isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       } ${isRunnerMode ? 'border-blue-400 dark:border-blue-600' : ''} shadow-md w-64`}
-      onClick={(e) => e.stopPropagation()} // Stop event propagation
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center gap-2 mb-2">
         <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
           <Icon className="w-5 h-5 text-white" />
         </div>
-        <div className="font-medium text-sm">
+        <div className="font-medium text-sm text-gray-900 dark:text-white">
           {isRunnerMode ? `${data.label} (Click to change)` : data.label}
         </div>
       </div>
@@ -70,7 +62,6 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
               onClick={(e) => {
                 e.stopPropagation();
                 setImage(null);
-                
                 if (isRunnerMode) {
                   data.runtimeImage = null;
                 } else {
@@ -117,6 +108,21 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
       />
     </div>
   );
+};
+
+// Export metadata as a named export
+export const metadata = {
+  id: 'image_input',
+  name: 'Image Input',
+  description: 'Accept image uploads',
+  icon: Image,
+  color: 'bg-pink-500',
+  bgColor: 'bg-pink-100',
+  lightColor: '#EC4899',
+  darkColor: '#F472B6',
+  category: 'input',
+  inputs: [],
+  outputs: ['image'],
 };
 
 export default ImageInputNode;

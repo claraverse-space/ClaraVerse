@@ -3,13 +3,15 @@ import {
   Save, X, ChevronRight, Activity, FileText, Code, 
   Image, MessageSquare, Database, Globe, Sparkles, 
   Zap, User, Settings, BarChart2, Search, Bot, Brain,
-  Command, Book, Layout, Compass
+  Command, Book, Layout, Compass, Folder, Plus
 } from 'lucide-react';
 
 interface SaveAppModalProps {
   initialName: string;
   initialDescription: string;
-  onSave: (name: string, description: string, icon: string, bgColor: string) => void;
+  initialIcon?: string;
+  initialColor?: string;
+  onSave: (name: string, description: string, icon: string, bgColor: string, customIconUrl?: string) => void;
   onCancel: () => void;
 }
 
@@ -33,10 +35,11 @@ const availableIcons = [
   { name: 'Command', component: Command },
   { name: 'Book', component: Book },
   { name: 'Layout', component: Layout },
-  { name: 'Compass', component: Compass }
+  { name: 'Compass', component: Compass },
+  { name: 'Folder', component: Folder }
 ];
 
-// Color options
+// Predefined color options
 const colorOptions = [
   { name: 'Blue', value: '#3B82F6', textColor: 'white' },
   { name: 'Purple', value: '#8B5CF6', textColor: 'white' },
@@ -50,18 +53,48 @@ const colorOptions = [
   { name: 'Gray', value: '#6B7280', textColor: 'white' }
 ];
 
-const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescription, onSave, onCancel }) => {
+const SaveAppModal: React.FC<SaveAppModalProps> = ({ 
+  initialName, 
+  initialDescription, 
+  initialIcon = 'Activity', 
+  initialColor = '#3B82F6', 
+  onSave, 
+  onCancel 
+}) => {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const [selectedIcon, setSelectedIcon] = useState('Activity');
-  const [selectedColor, setSelectedColor] = useState('#3B82F6');
+  const [selectedIcon, setSelectedIcon] = useState(initialIcon);
+  const [selectedColor, setSelectedColor] = useState(initialColor);
   const [activeTab, setActiveTab] = useState('general');
   const [isVisible, setIsVisible] = useState(false);
+  
+  // States for custom options
+  const [customIconUrl, setCustomIconUrl] = useState('');
+  const [customColorActive, setCustomColorActive] = useState(false);
 
   // Animation effect for modal entrance
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  // Determine what to show in the header icon preview
+  const renderIconPreview = () => {
+    if (selectedIcon === 'custom') {
+      return customIconUrl ? (
+        <img 
+          src={customIconUrl} 
+          alt="Custom Icon" 
+          className="w-12 h-12 object-contain" 
+          style={{ filter: 'brightness(0) invert(1)' }}
+        />
+      ) : (
+        <Plus className="w-12 h-12 text-white" />
+      );
+    }
+    const iconObj = availableIcons.find(icon => icon.name === selectedIcon);
+    const IconComponent = iconObj?.component || Activity;
+    return <IconComponent className="w-12 h-12 text-white" />;
+  };
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50">
@@ -89,9 +122,7 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
             </button>
           </div>
           
-          {React.createElement(availableIcons.find(icon => icon.name === selectedIcon)?.component || Activity, { 
-            className: "w-12 h-12 text-white" 
-          })}
+          {renderIconPreview()}
         </div>
         
         {/* App name overlay */}
@@ -163,6 +194,7 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
           
           {activeTab === 'appearance' && (
             <div className="space-y-6">
+              {/* Icon selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                   App Icon
@@ -187,9 +219,37 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
                       })}
                     </button>
                   ))}
+                  {/* Custom icon button */}
+                  <button
+                    onClick={() => setSelectedIcon('custom')}
+                    className={`p-3 rounded-lg flex items-center justify-center transition-all ${
+                      selectedIcon === 'custom'
+                        ? 'bg-sakura-100 dark:bg-sakura-900/70 border-2 border-sakura-500'
+                        : 'bg-gray-100/80 dark:bg-gray-700/80 hover:bg-gray-200 dark:hover:bg-gray-600/80 border-2 border-transparent backdrop-blur-sm'
+                    }`}
+                  >
+                    <Plus className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                  </button>
                 </div>
+                {selectedIcon === 'custom' && (
+                  <div className="mt-3">
+                    <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+                      Custom Icon URL
+                    </label>
+                    <input
+                      type="text"
+                      value={customIconUrl}
+                      onChange={(e) => setCustomIconUrl(e.target.value)}
+                      placeholder="https://example.com/icon.svg"
+                      className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 
+                        bg-white/80 dark:bg-gray-700/80 text-gray-900 dark:text-white 
+                        focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-shadow backdrop-blur-sm"
+                    />
+                  </div>
+                )}
               </div>
               
+              {/* Color selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                   Theme Color
@@ -198,7 +258,10 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
                   {colorOptions.map(color => (
                     <button
                       key={color.name}
-                      onClick={() => setSelectedColor(color.value)}
+                      onClick={() => {
+                        setSelectedColor(color.value);
+                        setCustomColorActive(false);
+                      }}
                       className={`h-10 rounded-lg transition-all ${
                         selectedColor === color.value 
                           ? 'ring-2 ring-offset-2 ring-sakura-500 dark:ring-offset-gray-800' 
@@ -206,18 +269,39 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
                       }`}
                       style={{ backgroundColor: color.value }}
                       title={color.name}
-                    >
-                      {selectedColor === color.value && (
-                        <div className="flex items-center justify-center h-full">
-                          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M7.5 13.5L4 10L3 11L7.5 15.5L17.5 5.5L16.5 4.5L7.5 13.5Z" 
-                                  fill={color.textColor === 'white' ? 'white' : 'black'} />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
+                    />
                   ))}
+                  {/* Custom color button */}
+                  <button
+                    onClick={() => setCustomColorActive(!customColorActive)}
+                    className={`h-10 rounded-lg flex items-center justify-center transition-all border-2 ${
+                      customColorActive 
+                        ? 'ring-2 ring-offset-2 ring-sakura-500 dark:ring-offset-gray-800' 
+                        : 'border-transparent'
+                    } bg-gray-100/80 dark:bg-gray-700/80 hover:bg-gray-200 dark:hover:bg-gray-600/80`}
+                    title="Custom Color"
+                  >
+                    <Plus className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                  </button>
                 </div>
+                {customColorActive && (
+                  <div className="mt-3 flex items-center space-x-3">
+                    <input
+                      type="color"
+                      value={selectedColor}
+                      onChange={(e) => setSelectedColor(e.target.value)}
+                      className="w-10 h-10 p-0 border-0 rounded"
+                    />
+                    <input
+                      type="text"
+                      value={selectedColor}
+                      onChange={(e) => setSelectedColor(e.target.value)}
+                      className="w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 
+                        bg-white/80 dark:bg-gray-700/80 text-gray-900 dark:text-white"
+                      placeholder="#HEXCODE"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -233,7 +317,7 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({ initialName, initialDescrip
             Cancel
           </button>
           <button 
-            onClick={() => onSave(name, description, selectedIcon, selectedColor)} 
+            onClick={() => onSave(name, description, selectedIcon, selectedColor, customIconUrl)} 
             className="px-4 py-2 rounded-md bg-sakura-500/90 hover:bg-sakura-600 text-white transition-colors flex items-center gap-2"
           >
             <Save className="w-4 h-4" />

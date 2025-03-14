@@ -14,7 +14,6 @@ const ToolsSidebar: React.FC<ToolsSidebarProps> = ({
   toolItems,
   onDragStart,
 }) => {
-  // Make sure we're passing the complete toolItems array
   return (
     <ToolSidebar 
       tools={toolItems} 

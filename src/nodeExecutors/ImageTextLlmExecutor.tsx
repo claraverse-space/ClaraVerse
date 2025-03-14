@@ -1,103 +1,101 @@
 import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
 
-const executeImageTextLlm = async (context: NodeExecutionContext) => {
-  const { node, inputs, updateNodeOutput } = context;
-  
+const executeImageTextLlm = async (context: NodeExecutionContext): Promise<string> => {
+  const { node, inputs, ollamaClient } = context;
+
   try {
-    // Get image input
-    const imageInput = inputs.image || inputs['image-in'] || '';
+    // Get the image input and text input from the node inputs
+    let imageInput: string | null = null;
+    let textInput: string = '';
+
+    // Process all outputs that have been passed to this node
+    Object.entries(inputs).forEach(([sourceId, output]) => {
+      if (typeof output === 'string') {
+        if (output.startsWith('data:image')) {
+          // Handle base64 image strings
+          imageInput = output;
+        } else if (output.trim() !== '') {
+          // Handle text input
+          textInput += output + '\n';
+        }
+      } else if (output && typeof output === 'object') {
+        // Handle different image object formats
+        if (output.base64) {
+          imageInput = output.base64;
+        } else if (output.src) {
+          imageInput = output.src;
+        } else if (output.data) {
+          imageInput = output.data;
+        } else if (output.url) {
+          // If it's a URL to an image, add it as text for now
+          textInput += output.url + '\n';
+        }
+      }
+    });
+
     if (!imageInput) {
       return "No image provided to Image-Text LLM";
     }
 
-    // Get text input (prompt) - ensure we're preserving whitespace
-    const textInput = inputs.text || inputs['text-in'] || inputs['prompt'] || '';
-    
-    // Log the text input to check for spaces
-    console.log("Text input to ImageTextLlm:", JSON.stringify(textInput));
-    
-    // Process image data - remove data URL prefix if present
+    // Process image data – remove data URL prefix if present
     let processedImageData = imageInput;
-    if (typeof imageInput === 'string' && imageInput.startsWith('data:image/')) {
-      processedImageData = imageInput.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+    if (typeof imageInput === 'string') {
+      // Strip off any data URL prefix to get pure base64
+      if (imageInput.includes('base64,')) {
+        processedImageData = imageInput.split('base64,')[1];
+      } else if (imageInput.startsWith('data:')) {
+        // Alternative handling for other data URL formats
+        processedImageData = imageInput.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+      }
+      
+      // Ensure we have clean base64 without any whitespace
+      processedImageData = processedImageData.trim();
     }
 
-    // Get configuration data from all possible locations with detailed logging
-    console.log('Node structure for debugging:', {
-      id: node.id,
-      type: node.type,
-      configExists: !!node.data?.config,
-      ollamaUrlInConfig: node.data?.config?.ollamaUrl,
-      ollamaUrlDirect: node.data?.ollamaUrl
-    });
-    
-    // Get configuration from the node
-    const config = node.data?.config || {};
-    
-    // Get model name - NEVER use a hardcoded fallback model
+    // Log the first few characters for debugging
+    console.log(`Processed image data (first 20 chars): ${processedImageData.substring(0, 20)}...`);
+
+    // Extract configuration values from the node
+    const config = node.data.config || {};
     const model = config.model || node.data?.model;
     if (!model) {
-      console.error('No model specified in node configuration');
       return "Error: No model selected. Please configure the node with a model.";
     }
     
-    // Get system prompt
     const systemPrompt = config.systemPrompt || node.data?.systemPrompt || '';
-    
-    // Get URL - NEVER use a hardcoded fallback URL
     const ollamaUrl = config.ollamaUrl || node.data?.ollamaUrl;
     if (!ollamaUrl) {
-      console.error('No Ollama URL specified in node configuration');
       return "Error: No Ollama URL configured. Please set the URL in the node settings.";
     }
 
-    console.log(`EXECUTING Image-Text LLM`);
-    console.log(`MODEL: ${model}`);
-    console.log(`URL: ${ollamaUrl}`);
-    
-    // Make sure we're using the correct URL by trimming any trailing slashes
-    const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
-    
     // Combine system prompt and user text if both exist
-    // Preserve all whitespace in the user's text
     const finalPrompt = systemPrompt 
       ? `${systemPrompt}\n\n${textInput || 'Describe this image:'}`
       : (textInput || 'Describe this image:');
-    
-    console.log(`Making API request to ${baseUrl}/api/generate`);
-    
-    const response = await fetch(`${baseUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        prompt: finalPrompt,
-        images: [processedImageData],
-        stream: false
-      }),
-    });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Ollama API error: ${error}`);
-    }
-
-    const result = await response.json();
-    const output = result.response || "No response from model";
+    // Ensure the base URL has no trailing slash
+    const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
     
-    if (updateNodeOutput) {
-      updateNodeOutput(node.id, output);
-    }
+    // Use generate API for image inputs
+    console.log('Using multimodal generation with image and text');
+    console.log(`URL: ${baseUrl}/api/generate`);
     
-    return output;
+    const response = await ollamaClient.generateWithImages(
+      model,
+      finalPrompt,
+      [processedImageData],
+      { stream: false },
+      baseUrl  // Pass the base URL to the client
+    );
+    
+    // Extract and return the response content
+    return response?.response || 'No response from Ollama';
   } catch (error) {
-    console.error("Error in Image-Text LLM node execution:", error);
+    console.error('Error in Image-Text LLM node execution:', error);
     return `Error: ${error instanceof Error ? error.message : String(error)}`;
   }
 };
 
 registerNodeExecutor('imageTextLlmNode', {
-  execute: executeImageTextLlm
+  execute: executeImageTextLlm,
 });

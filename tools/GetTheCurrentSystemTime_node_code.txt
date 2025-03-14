@@ -1,0 +1,29 @@
+----- Node UI Code -----
+import React from 'react';
+import { Handle, Position } from 'reactflow';
+
+const GetTheCurrentSystemTimeNode = ({ data, isConnectable }) => {
+  return (
+    <div className="node-container">
+      <div className="node-header">Get The Current System Time</div>
+      <div className="node-content">
+        <p>Hello, world!</p>
+      </div>
+      <Handle type="source" position={Position.Bottom} isConnectable={isConnectable} />
+    </div>
+  );
+};
+
+export default GetTheCurrentSystemTimeNode;
+
+----- Node Executor Code -----
+import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
+
+const executeGetTheCurrentSystemTime = async (context) => {
+  // This executor simply returns a constant string "Hello, world!"
+  return "Hello, world!";
+};
+
+registerNodeExecutor('getTheCurrentSystemTimeNode', {
+  execute: executeGetTheCurrentSystemTime
+});

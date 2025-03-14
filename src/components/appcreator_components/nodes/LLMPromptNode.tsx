@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { useOllama } from '../../../context/OllamaContext';
-import { Settings, RefreshCw } from 'lucide-react';
+import { Settings, RefreshCw, Activity } from 'lucide-react';
 import { db } from '../../../db';
 
 const LLMPromptNode = ({ data, isConnectable }: any) => {
@@ -18,26 +18,21 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   const [showSettings, setShowSettings] = useState(false);
   const [customUrl, setCustomUrl] = useState(data.config.ollamaUrl || '');
   
-  // Node-specific states for models
   const [nodeModels, setNodeModels] = useState<any[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeError, setNodeError] = useState<string | null>(null);
 
-  // Load user's Ollama config when component mounts
   useEffect(() => {
     const loadOllamaConfig = async () => {
       try {
         const config = await db.getAPIConfig();
         const configuredUrl = config?.ollama_base_url || baseUrl || 'http://localhost:11434';
-        
-        // Only set URL if it's not already set in the node config
         if (!data.config.ollamaUrl) {
           data.config.ollamaUrl = configuredUrl;
           setCustomUrl(configuredUrl);
         }
       } catch (error) {
         console.error("Failed to load Ollama configuration:", error);
-        // Fall back to baseUrl or localhost if there's an error
         if (!data.config.ollamaUrl) {
           data.config.ollamaUrl = baseUrl || 'http://localhost:11434';
           setCustomUrl(baseUrl || 'http://localhost:11434');
@@ -46,25 +41,20 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
     };
     
     loadOllamaConfig();
-  }, []);
+  }, [baseUrl, data]);
   
-  // Function to fetch models using the node's custom URL
   const fetchModels = async (url: string) => {
     setNodeLoading(true);
     setNodeError(null);
-    
     try {
       const response = await fetch(`${url}/api/tags`);
       if (!response.ok) {
         throw new Error(`Failed to fetch models: ${response.statusText}`);
       }
-      
-      const data = await response.json();
-      setNodeModels(data.models || []);
-      
-      // If we have models but no model is selected, select the first one
-      if (data.models?.length > 0 && !model) {
-        const firstModel = data.models[0]?.name;
+      const json = await response.json();
+      setNodeModels(json.models || []);
+      if (json.models?.length > 0 && !model) {
+        const firstModel = json.models[0]?.name;
         if (firstModel) {
           setModel(firstModel);
           data.config.model = firstModel;
@@ -77,7 +67,6 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
     }
   };
   
-  // Fetch models when the component mounts or the URL changes
   useEffect(() => {
     if (customUrl) {
       fetchModels(customUrl);
@@ -85,34 +74,33 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   }, [customUrl]);
   
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setModel(e.target.value);
     data.config.model = e.target.value;
   };
   
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setPrompt(e.target.value);
     data.config.prompt = e.target.value;
   };
   
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setCustomUrl(e.target.value);
     data.config.ollamaUrl = e.target.value;
   };
 
   const handleSettingsClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent event bubbling
+    e.stopPropagation();
     setShowSettings(!showSettings);
   };
 
   const handleRefreshClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent event bubbling
-    fetchModels(customUrl); // Use node's custom URL to refresh models
+    e.stopPropagation();
+    fetchModels(customUrl);
   };
   
-  // Use capture phase to stop events at the earliest possible point
   const stopPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     e.nativeEvent.stopImmediatePropagation();
@@ -120,7 +108,9 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
   
   return (
     <div 
-      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-72`}
+      className={`p-3 rounded-lg border ${
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      } shadow-md w-72`}
       onClick={stopPropagation}
       onMouseDown={stopPropagation}
     >
@@ -129,9 +119,7 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
           <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">
-            {data.label}
-          </div>
+          <div className="font-medium text-sm">{data.label}</div>
         </div>
         <button 
           onClick={handleSettingsClick}
@@ -261,6 +249,21 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
       />
     </div>
   );
+};
+
+// Export metadata as a named export for NodeRegistry
+export const metadata = {
+  id: 'llm_prompt',
+  name: 'LLM Prompt',
+  description: 'Process text with an LLM',
+  icon: Activity,
+  color: 'bg-purple-500',
+  bgColor: 'bg-purple-100',
+  lightColor: '#8B5CF6',
+  darkColor: '#A78BFA',
+  category: 'process',
+  inputs: ['text'],
+  outputs: ['text'],
 };
 
 export default LLMPromptNode;

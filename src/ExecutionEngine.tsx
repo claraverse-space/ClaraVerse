@@ -1,6 +1,13 @@
 import { Node, Edge } from 'reactflow';
 import { getNodeExecutor, hasNodeExecutor } from './nodeExecutors/NodeExecutorRegistry';
 
+interface OllamaClient {
+  // Add any required properties and methods here
+  // This is a basic example, adjust according to your actual Ollama client implementation
+  baseUrl: string;
+  generate?: (options: any) => Promise<any>;
+}
+
 interface ExecutionPlan {
   nodes: Record<string, any>;
   edges: Record<string, any>;
@@ -73,7 +80,8 @@ export const generateExecutionPlan = (nodes: Node[], edges: Edge[]): ExecutionPl
 
 export const executeFlow = async (
   plan: ExecutionPlan,
-  updateNodeOutput: (nodeId: string, output: any) => void
+  updateNodeOutput: (nodeId: string, output: any) => void,
+  ollamaClient: OllamaClient
 ) => {
   console.log('Executing flow with plan:', plan);
 
@@ -133,11 +141,11 @@ export const executeFlow = async (
           throw new Error(`Executor registered but not found for node type: ${nodeType}`);
         }
         
-        console.log(`Inputs for node ${nodeId}:`, plan.nodeInputs[nodeId]);
         const result = await executor.execute({
           node,
           inputs: plan.nodeInputs[nodeId],
-          updateNodeOutput
+          updateNodeOutput,
+          ollamaClient
         });
         
         nodeOutputs[nodeId] = result;

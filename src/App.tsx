@@ -10,7 +10,6 @@ import { db } from './db';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
-import { Edit } from 'lucide-react'; // Add Edit to imports if not already there
 import NodeRegistryDebug from './debug/NodeRegistryDebug'; // Add NodeRegistryDebug to imports
 import ToolbarDebug from './debug/ToolbarDebug'; // Add this import
 

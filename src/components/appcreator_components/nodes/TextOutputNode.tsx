@@ -1,6 +1,7 @@
 import React from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
+import { MousePointer } from 'lucide-react';
 
 const TextOutputNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
@@ -10,7 +11,9 @@ const TextOutputNode = ({ data, isConnectable }: any) => {
   
   return (
     <div 
-      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-64`}
+      className={`p-3 rounded-lg border ${
+        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+      } shadow-md w-64`}
       onClick={(e) => e.stopPropagation()} // Stop event propagation
     >
       <div className="flex items-center gap-2 mb-2">
@@ -40,6 +43,21 @@ const TextOutputNode = ({ data, isConnectable }: any) => {
       />
     </div>
   );
+};
+
+// Export metadata as a named export so that NodeRegistry can pick it up.
+export const metadata = {
+  id: 'text_output',
+  name: 'Text Output',
+  description: 'Display text to users',
+  icon: MousePointer,
+  color: 'bg-green-500',
+  bgColor: 'bg-green-100',
+  lightColor: '#10B981',
+  darkColor: '#34D399',
+  category: 'output',
+  inputs: ['text'],
+  outputs: [],
 };
 
 export default TextOutputNode;
