@@ -3,18 +3,15 @@ import { Client, BasePipe } from '@stable-canvas/comfyui-client';
 import { ImageIcon, Wand2, Download, RefreshCw, Trash2, ChevronLeft, X, Plus } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-
-// If you're using IndexedDB or similar for storing configs
 import { db, type APIConfig } from '../db';
 
-/** 
- * Example model name mapping.
- * Adjust these to match the filenames that exist in your ComfyUI. 
- */
+// Map your UI “model name” to the actual .safetensors or model path
 const MODEL_MAP: Record<string, string> = {
-  'stable-diffusion-xl': 'FLUX1/flux1-dev-fp8.safetensors',
+  'stable-diffusion-xl': 'SDXL/sd_xl_base_1.0.safetensors',
+  'flux':"FLUX1/flux1-dev-fp8.safetensors"
 };
 
+// For your resolution preset buttons
 interface Resolution {
   label: string;
   width: number;
@@ -29,28 +26,24 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Mobile', width: 720, height: 1280 },
 ];
 
-const MODELS = [
-  'stable-diffusion-xl',
-  'stable-diffusion-2.1',
-  'stable-diffusion-1.5',
-  'dall-e-3',
-  'midjourney-v5'
-];
+const MODELS = ['stable-diffusion-xl', 'flux'];
 
 interface ImageGenProps {
   onPageChange?: (page: string) => void;
 }
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
-  // Prompt & generation states
+  // ──────────────────────────────────────────────
+  // State: prompts, generation, etc.
+  // ──────────────────────────────────────────────
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
 
-  // Toggle the sidebar
+  // Side panel (settings) toggle
   const [showSettings, setShowSettings] = useState(false);
 
-  // Settings for generation
+  // Generation settings
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [negativeTags, setNegativeTags] = useState<string[]>([]);
   const [steps, setSteps] = useState(50);
@@ -58,16 +51,17 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
   const [negativeInput, setNegativeInput] = useState('');
 
-  // Store the user's ComfyUI API config (loaded from DB)
+  // ──────────────────────────────────────────────
+  // State for API config (loaded from DB)
+  // ──────────────────────────────────────────────
   const [apiConfig, setApiConfig] = useState<APIConfig>({
+    comfyui_base_url: '',
     ollama_base_url: '',
-    comfyui_base_url: ''
   });
 
-  // ComfyUI client reference
-  const [client, setClient] = useState<Client | null>(null);
-
-  // Load the ComfyUI base URL from IndexedDB on mount
+  // ──────────────────────────────────────────────
+  // Load user's ComfyUI config from IndexedDB
+  // ──────────────────────────────────────────────
   useEffect(() => {
     const loadApiConfig = async () => {
       try {
@@ -82,30 +76,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     loadApiConfig();
   }, []);
 
-  // Initialize the client once we have the comfyui_base_url
-  useEffect(() => {
-    if (!apiConfig.comfyui_base_url) return; // If no URL set, do nothing
-
-    try {
-      // Try to parse the user’s configured URL
-      const url = new URL(apiConfig.comfyui_base_url);
-      // e.g. "http://127.0.0.1:8188" => url.host = "127.0.0.1:8188"
-      const c = new Client({
-        api_host: url.host,
-      });
-      c.connect();
-      setClient(c);
-
-      // Cleanup on unmount
-      return () => {
-        c.close();
-      };
-    } catch (err) {
-      console.warn('Invalid ComfyUI base URL:', err);
-    }
-  }, [apiConfig.comfyui_base_url]);
-
-  // Add negative tags
+  // ──────────────────────────────────────────────
+  // Negative prompt tags handlers
+  // ──────────────────────────────────────────────
   const handleAddTag = (tag: string) => {
     const trimmedTag = tag.trim();
     if (trimmedTag && !negativeTags.includes(trimmedTag)) {
@@ -125,50 +98,86 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setNegativeTags((tags) => tags.filter((tag) => tag !== tagToRemove));
   };
 
-  // Main "Generate" handler
+  // ──────────────────────────────────────────────
+  // Utility: Convert ArrayBuffer to base64
+  // ──────────────────────────────────────────────
+  const arrayBufferToDataURL = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64String = window.btoa(binary);
+    return `data:image/png;base64,${base64String}`;
+  };
+
+  // ──────────────────────────────────────────────
+  // Main Generate handler
+  // ──────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    if (!client) {
-      console.warn('No ComfyUI client available. Check your ComfyUI base URL in Settings.');
-      return;
-    }
 
     setIsGenerating(true);
 
+    // Figure out the user’s actual configured host/port
+    let apiHost = '127.0.0.1:8188'; // fallback if user’s config is invalid
+    if (apiConfig.comfyui_base_url) {
+      try {
+        const url = new URL(apiConfig.comfyui_base_url);
+        apiHost = url.host;
+      } catch (err) {
+        console.warn('Invalid ComfyUI base URL, using default 127.0.0.1:8188');
+      }
+    }
+
+    // Create client (on demand) and connect
+    const client = new Client({ api_host: apiHost });
+
     try {
-      // Build the pipeline
+    // wait for connection
+    let  data = client.connect();
+
+    console.log(data);
+
+    //  wait for some time
+     await new Promise((resolve) => setTimeout(resolve, 1000));
+
       const pipe = new BasePipe()
         .with(client)
-        .model(MODEL_MAP[selectedModel] || MODEL_MAP['stable-diffusion-1.5'])
+        .model(MODEL_MAP[selectedModel] || MODEL_MAP['stable-diffusion-xl'])
         .prompt(prompt)
         .negative(negativeTags.join(', '))
         .steps(steps)
         .cfg(guidanceScale)
         .size(selectedResolution.width, selectedResolution.height)
-        // Optionally specify sampler:
-        // .sampler('euler') 
         .save();
 
-      // Wait for images to be generated
+      // Wait for images
       const { images } = await pipe.wait();
 
-      // images is an array of { dataUrl: string }
-      const newImageUrls = images.map((img) => img.dataUrl);
-
-      // Show them
+      // Convert each image’s ArrayBuffer → base64 data URL
+      const newImageUrls = images.map((img) => arrayBufferToDataURL(img.data));
       setGeneratedImages((prev) => [...prev, ...newImageUrls]);
+
     } catch (err) {
       console.error('Error generating images:', err);
     } finally {
+      // Clean up
+      client.close();
       setIsGenerating(false);
     }
   };
 
+  // ──────────────────────────────────────────────
   // Remove an image from the grid
+  // ──────────────────────────────────────────────
   const handleDelete = (index: number) => {
     setGeneratedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // ──────────────────────────────────────────────
+  // Render
+  // ──────────────────────────────────────────────
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
