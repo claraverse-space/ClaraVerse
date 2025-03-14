@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Home, Bot, Image, Settings, HelpCircle, ChevronRight, Bug, Grid } from 'lucide-react';
+import { useState } from 'react';
+import { Home, Bot, Settings, HelpCircle, ChevronRight, Bug, Grid, ImageIcon } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -12,8 +12,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
   const menuItems = [
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     { icon: Bot, label: 'Chat', id: 'assistant' },
-    { icon: Image, label: 'ImageGen', id: 'imageGen' },
     { icon: Grid, label: 'Apps', id: 'apps' },
+    { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: Bug, label: 'Debug', id: 'debug' },
     { icon: HelpCircle, label: 'Help', id: 'help' },

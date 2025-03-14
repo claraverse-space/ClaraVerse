@@ -1,4 +1,4 @@
-import  { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './components/Dashboard';
@@ -10,10 +10,9 @@ import { db } from './db';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
-import NodeRegistryDebug from './debug/NodeRegistryDebug'; 
-import ToolbarDebug from './debug/ToolbarDebug';
 import ImageGen from './components/ImageGen';
-import { ImageGenProvider } from './context/ImageGenContext';
+import NodeRegistryDebug from './debug/NodeRegistryDebug';
+import ToolbarDebug from './debug/ToolbarDebug';
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -41,14 +40,11 @@ function App() {
     }
   };
   
-  // Get app ID from localStorage when opening app pages
   useEffect(() => {
     if (activePage === 'app-creator' || activePage === 'app-runner') {
       const appId = localStorage.getItem('current_app_id');
       
-      // For app-creator, we allow null/undefined appIds (creating new app)
       if (activePage === 'app-runner' && !appId) {
-        // We need an app ID to run an app
         setActivePage('apps');
       }
     }
@@ -61,19 +57,21 @@ function App() {
     
     if (activePage === 'app-creator') {
       const appId = localStorage.getItem('current_app_id');
-      // Note: appId can be null here (for creating a new app)
       return <AppCreator onPageChange={setActivePage} appId={appId || undefined} />;
     }
     
     if (activePage === 'app-runner') {
       const appId = localStorage.getItem('current_app_id');
-      // If we have an app ID, render the AppRunner, otherwise go back to apps
       if (appId) {
         return <AppRunner appId={appId} onBack={() => setActivePage('apps')} />;
       } else {
         setActivePage('apps');
         return null;
       }
+    }
+
+    if (activePage === 'image-gen') {
+      return <ImageGen onPageChange={setActivePage} />;
     }
 
     return (
@@ -92,12 +90,6 @@ function App() {
                   return <Debug />;
                 case 'apps':
                   return <Apps onPageChange={setActivePage} />;
-                case 'imageGen':
-                  return (
-                    <ImageGenProvider>
-                      <ImageGen />
-                    </ImageGenProvider>
-                  );
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;
