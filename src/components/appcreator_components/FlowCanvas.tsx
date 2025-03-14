@@ -13,7 +13,7 @@ import ReactFlow, {
   ReactFlowInstance
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { ToolItem } from '../AppCreator';
+import { NodeMetadata } from '../appcreator_components/nodes/NodeRegistry';
 
 interface FlowCanvasProps {
   nodes: Node[];
@@ -22,7 +22,6 @@ interface FlowCanvasProps {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   onNodeClick?: (event: React.MouseEvent, node: Node) => void;
-  reactFlowInstance: ReactFlowInstance | null;
   setReactFlowInstance: (instance: ReactFlowInstance) => void;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -30,12 +29,11 @@ interface FlowCanvasProps {
   flowStyles: React.CSSProperties;
   isDark: boolean;
   reactFlowWrapper: React.RefObject<HTMLDivElement>;
-  selectedTool: ToolItem | null;
+  selectedTool: NodeMetadata | null;
   isDragging: boolean;
   isValidConnection?: (connection: Connection) => boolean;
   minimapStyle?: React.CSSProperties;
   minimapNodeColor?: (node: Node) => string;
-  nodeStyle?: (node: Node) => React.CSSProperties;
 }
 
 const FlowCanvas: React.FC<FlowCanvasProps> = ({
@@ -45,7 +43,6 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
   onEdgesChange,
   onConnect,
   onNodeClick,
-  reactFlowInstance,
   setReactFlowInstance,
   onDrop,
   onDragOver,
@@ -57,8 +54,7 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
   isDragging,
   isValidConnection,
   minimapStyle,
-  minimapNodeColor,
-  nodeStyle
+  minimapNodeColor
 }) => {
   return (
     <div 
@@ -91,7 +87,7 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
           nodeStrokeWidth={3}
           nodeBorderRadius={2}
           nodeStrokeColor={isDark ? '#1F2937' : '#F9FAFB'}
-          nodeColor={minimapNodeColor || ((node) => isDark ? '#9ca3af' : '#fff')}
+          nodeColor={minimapNodeColor || ((_node) => isDark ? '#9ca3af' : '#fff')}
         />
       </ReactFlow>
       {isDragging && selectedTool && (
@@ -100,9 +96,7 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
             <div className={`p-1 rounded-md ${selectedTool.color} text-white`}>
               {React.createElement(selectedTool.icon, { className: "w-4 h-4" })}
             </div>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
-              {selectedTool.name}
-            </span>
+            <span className="text-sm font-medium">{selectedTool.name}</span>
           </div>
         </div>
       )}

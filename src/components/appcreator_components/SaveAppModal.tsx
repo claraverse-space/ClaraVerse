@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Save, X, ChevronRight, Activity, FileText, Code, 
+  Save, X, Activity, FileText, Code, 
   Image, MessageSquare, Database, Globe, Sparkles, 
   Zap, User, Settings, BarChart2, Search, Bot, Brain,
   Command, Book, Layout, Compass, Folder, Plus

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './components/Dashboard';
@@ -10,8 +10,10 @@ import { db } from './db';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
-import NodeRegistryDebug from './debug/NodeRegistryDebug'; // Add NodeRegistryDebug to imports
-import ToolbarDebug from './debug/ToolbarDebug'; // Add this import
+import NodeRegistryDebug from './debug/NodeRegistryDebug'; 
+import ToolbarDebug from './debug/ToolbarDebug';
+import ImageGen from './components/ImageGen';
+import { ImageGenProvider } from './context/ImageGenContext';
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -90,6 +92,12 @@ function App() {
                   return <Debug />;
                 case 'apps':
                   return <Apps onPageChange={setActivePage} />;
+                case 'imageGen':
+                  return (
+                    <ImageGenProvider>
+                      <ImageGen />
+                    </ImageGenProvider>
+                  );
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;
@@ -117,8 +125,5 @@ function App() {
     </div>
   );
 }
-
-// or a similar initialization file
-// Check if there's any tool registration code here and add your node if needed
 
 export default App;

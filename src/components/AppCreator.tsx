@@ -1,19 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
-  Grid,
-  MousePointer,
-  Activity,
-  Settings,
-  Type,
-  FileText,
   Check,
   X,
-  Sparkles,
-  Image,
-  ImagePlus,
-  TextQuote,
-  Video,
-  Clock,
 } from 'lucide-react';
 import { addEdge, useNodesState, useEdgesState, Node, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -146,14 +134,13 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // onDrop handler uses the helper to compute the node type dynamically
+  // Updated onDrop handler using screenToFlowPosition instead of project
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
       if (!reactFlowWrapper.current || !reactFlowInstance) return;
 
-      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
       const toolId = event.dataTransfer.getData('application/reactflow');
       if (!toolId) return;
 
@@ -161,9 +148,9 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
       const tool = toolItems.find((t) => t.id === toolId);
       if (!tool) return;
 
-      const position = reactFlowInstance.project({
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
       });
 
       const nodeType = convertToolIdToNodeType(toolId);
@@ -211,7 +198,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     description: string,
     icon: string,
     color: string,
-    customIconUrl?: string
   ) => {
     try {
       const processedNodes = nodes.map((node) => {
@@ -368,35 +354,24 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     }
   };
 
-  const nodeStyle = (node: Node) => {
-    if (node.id === selectedNodeId) {
-      return {
-        boxShadow: isDark
-          ? '0 0 0 2px #EC4899, 0 0 10px 2px rgba(236, 72, 153, 0.5)'
-          : '0 0 0 2px #F472B6, 0 0 10px 2px rgba(244, 114, 182, 0.5)',
-        zIndex: 1000,
-      };
-    }
-    return {};
-  };
-
-  const flowStyles = useMemo(() => ({
-    background: isDark ? '#1F2937' : '#F9FAFB',
-  }), [isDark]);
-
-  const minimapStyle = useMemo(() => ({
-    backgroundColor: isDark ? '#374151' : '#F9FAFB',
-    maskColor: isDark ? 'rgba(55, 65, 81, 0.7)' : 'rgba(249, 250, 251, 0.7)',
-    nodeBorderRadius: 2,
-  }), [isDark]);
-
-  const minimapNodeColor = useMemo(() => (node: Node) => {
-    return isDark ? '#9ca3af' : '#fff';
-  }, [isDark]);
-
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    setSelectedNodeId(node.id);
-  }, []);
+  // Highlight the clicked node by updating its style
+  const onNodeClick = useCallback((_event: React.MouseEvent, clickedNode: Node) => {
+    setSelectedNodeId(clickedNode.id);
+    setNodes(nds =>
+      nds.map(node => ({
+        ...node,
+        style: node.id === clickedNode.id 
+          ? {
+              ...node.style,
+              boxShadow: isDark
+                ? '0 0 0 2px #EC4899, 0 0 10px 2px rgba(236, 72, 153, 0.5)'
+                : '0 0 0 2px #F472B6, 0 0 10px 2px rgba(244, 114, 182, 0.5)',
+              zIndex: 1000,
+            }
+          : { ...node.style, boxShadow: 'none' }
+      }))
+    );
+  }, [isDark, setNodes]);
 
   const isValidConnection = useCallback(
     (connection: Connection) => {
@@ -450,6 +425,20 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     }
   }, [toolItems]);
 
+  const flowStyles = useMemo(() => ({
+    background: isDark ? '#1F2937' : '#F9FAFB',
+  }), [isDark]);
+
+  const minimapStyle = useMemo(() => ({
+    backgroundColor: isDark ? '#374151' : '#F9FAFB',
+    maskColor: isDark ? 'rgba(55, 65, 81, 0.7)' : 'rgba(249, 250, 251, 0.7)',
+    nodeBorderRadius: 2,
+  }), [isDark]);
+
+  const minimapNodeColor = useMemo(() => (_node: Node) => {
+    return isDark ? '#FFFFFFFF' : '#fff';
+  }, [isDark]);
+
   return (
     <OllamaProvider>
       <div className="flex flex-col h-screen">
@@ -485,7 +474,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
-            reactFlowInstance={reactFlowInstance}
             setReactFlowInstance={setReactFlowInstance}
             onDrop={onDrop}
             onDragOver={onDragOver}
@@ -498,7 +486,6 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             isValidConnection={isValidConnection}
             minimapStyle={minimapStyle}
             minimapNodeColor={minimapNodeColor}
-            nodeStyle={nodeStyle}
           />
         </div>
         {notification.visible && (

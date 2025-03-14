@@ -1,25 +1,42 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
+import {
   ArrowLeft, Play, Loader, Check, ImageIcon, Send,
-  // Import all icon components that might be used by apps
   Activity, FileText, Code, MessageSquare, Database, Globe,
   Sparkles, Zap, User, Settings, BarChart2 as Chart, Search, Bot, Brain,
   Command, Book, Layout, Compass
 } from 'lucide-react';
+import { Node } from 'reactflow';
+import ReactMarkdown from 'react-markdown';
+
 import { appStore } from '../services/AppStore';
 import { executeFlow, generateExecutionPlan } from '../ExecutionEngine';
-import { Node, Edge } from 'reactflow';
 import { useTheme } from '../hooks/useTheme';
-import ReactMarkdown from 'react-markdown';
 import { OllamaProvider } from '../context/OllamaContext';
+
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
 // Create an icon mapping for dynamic access
 const iconMap: Record<string, React.ElementType> = {
-  Activity, FileText, Code, Image: ImageIcon, MessageSquare, Database, Globe,
-  Sparkles, Zap, User, Settings, Chart, Search, Bot, Brain,
-  Command, Book, Layout, Compass
+  Activity,
+  FileText,
+  Code,
+  Image: ImageIcon,
+  MessageSquare,
+  Database,
+  Globe,
+  Sparkles,
+  Zap,
+  User,
+  Settings,
+  Chart,
+  Search,
+  Bot,
+  Brain,
+  Command,
+  Book,
+  Layout,
+  Compass,
 };
 
 interface AppRunnerProps {
@@ -45,32 +62,34 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [inputState, setInputState] = useState<InputState>({});
-  const [outputState, setOutputState] = useState<{[nodeId: string]: any}>({});
+  const [outputState, setOutputState] = useState<{ [nodeId: string]: any }>({});
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-  const outputSectionRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [simpleInputValue, setSimpleInputValue] = useState('');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activePage, setActivePage] = useState('apps');
   const [messageHistory, setMessageHistory] = useState<ChatMessage[]>([]);
-  
-  // Background gradient variants based on app color
+
+  // Refs for scrolling
+  const outputSectionRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Dynamically generate a background gradient for the container
   const gradientStyle = useMemo(() => {
     const color = appData?.color || '#3B82F6';
     return {
-      background: `linear-gradient(135deg, ${color}10, ${isDark ? '#1f293780' : '#f9fafb80'})`,
+      background: `linear-gradient(135deg, ${color}10, ${
+        isDark ? '#1f293780' : '#f9fafb80'
+      })`,
     };
   }, [appData?.color, isDark]);
 
-  // Auto-scroll to bottom when messages change - must be defined here, not conditionally
+  // Scroll to bottom whenever messages update
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messageHistory]);
 
-  // Load app data
+  // Load the app data when component mounts
   useEffect(() => {
     const loadApp = async () => {
       try {
@@ -78,63 +97,72 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         const app = await appStore.getApp(appId);
         if (app) {
           setAppData(app);
-          
-          // Initialize input state for input nodes
-          const inputNodes = app.nodes.filter((node: Node) => 
-            node.type === 'textInputNode' || node.type === 'imageInputNode'
+
+          // Initialize input state for text/image input nodes
+          const inputNodes = app.nodes.filter(
+            (node: Node) =>
+              node.type === 'textInputNode' || node.type === 'imageInputNode'
           );
-          
+
           const initialInputs = inputNodes.reduce((acc: InputState, node: Node) => {
             acc[node.id] = '';
             return acc;
           }, {});
-          
+
           setInputState(initialInputs);
         } else {
-          setError("App not found");
+          setError('App not found');
         }
       } catch (err) {
-        setError("Failed to load app");
+        setError('Failed to load app');
         console.error(err);
       } finally {
         setIsLoading(false);
       }
     };
-    
+
     loadApp();
   }, [appId]);
 
-  // Analyze app structure to determine flow pattern
+  // Analyze app structure to categorize nodes
   const { inputNodes, outputNodes, processingNodes } = useMemo(() => {
     if (!appData) {
-      return { inputNodes: [], outputNodes: [], processingNodes: [] };
+      return {
+        inputNodes: [],
+        outputNodes: [],
+        processingNodes: [],
+      };
     }
-    
-    const inputs = appData.nodes.filter((node: Node) => 
-      node.type === 'textInputNode' || node.type === 'imageInputNode'
+
+    const inputs = appData.nodes.filter(
+      (node: Node) =>
+        node.type === 'textInputNode' || node.type === 'imageInputNode'
     );
-    
-    const outputs = appData.nodes.filter((node: Node) => 
-      node.type === 'textOutputNode' || node.type === 'markdownOutputNode'
+    const outputs = appData.nodes.filter(
+      (node: Node) =>
+        node.type === 'textOutputNode' || node.type === 'markdownOutputNode'
     );
-    
-    const processing = appData.nodes.filter((node: Node) => 
-      !inputs.includes(node) && !outputs.includes(node)
+    const processing = appData.nodes.filter(
+      (node: Node) => !inputs.includes(node) && !outputs.includes(node)
     );
-    
-    return { 
-      inputNodes: inputs, 
+
+    return {
+      inputNodes: inputs,
       outputNodes: outputs,
-      processingNodes: processing
+      processingNodes: processing,
     };
   }, [appData]);
-  
+
+  // Determine if this is a "simple" app (one text input, one or more outputs)
   const isSimpleApp = useMemo(() => {
-    return inputNodes.length === 1 && 
-           outputNodes.length >= 1 && 
-           inputNodes[0].type === 'textInputNode';
+    return (
+      inputNodes.length === 1 &&
+      outputNodes.length >= 1 &&
+      inputNodes[0].type === 'textInputNode'
+    );
   }, [inputNodes, outputNodes]);
-  
+
+  // Check if all required form inputs are complete
   const isFormComplete = useMemo(() => {
     if (!inputNodes.length) return true;
     return Object.entries(inputState).every(([nodeId, value]) => {
@@ -150,57 +178,40 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     });
   }, [inputState, inputNodes]);
 
-  // Scroll handling
+  // Show/hide "scroll to top" button
   useEffect(() => {
     const handleScroll = () => {
       if (outputSectionRef.current) {
         setShowScrollTop(outputSectionRef.current.scrollTop > 300);
       }
     };
-    
     const outputSection = outputSectionRef.current;
-    if (outputSection) {
-      outputSection.addEventListener('scroll', handleScroll);
-      return () => {
-        outputSection.removeEventListener('scroll', handleScroll);
-      };
-    }
+    outputSection?.addEventListener('scroll', handleScroll);
+
+    return () => outputSection?.removeEventListener('scroll', handleScroll);
   }, []);
-  
+
   const scrollToTop = () => {
     outputSectionRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Handle input changes
+  // Handle input changes for text or image
   const handleInputChange = (nodeId: string, value: string | File | null) => {
-    // Process value based on type
-    let processedValue = value;
-    
-    // If this is a File object, just store the file object
-    if (value instanceof File) {
-      // Don't process file objects
-    } else if (typeof value === 'string') {
-      // For text inputs, preserve all spaces and line breaks
-      processedValue = value;
-    }
-    
-    setInputState(prev => ({
+    setInputState((prev) => ({
       ...prev,
-      [nodeId]: processedValue
+      [nodeId]: value,
     }));
-    
-    console.log(`Updated input for node ${nodeId}:`, processedValue);
   };
 
   const handleImageUpload = (nodeId: string, file: File) => {
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
         const imageData = event.target.result;
-        
-        // Update the app data nodes with the runtime image
+
+        // Update the node's runtime image
         setAppData((prevAppData: any) => {
           const updatedNodes = prevAppData.nodes.map((node: Node) => {
             if (node.id === nodeId) {
@@ -208,215 +219,193 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 ...node,
                 data: {
                   ...node.data,
-                  runtimeImage: imageData
-                }
+                  runtimeImage: imageData,
+                },
               };
             }
             return node;
           });
-          
-          return {
-            ...prevAppData,
-            nodes: updatedNodes
-          };
+
+          return { ...prevAppData, nodes: updatedNodes };
         });
-        
-        // Also update the input state for UI tracking
-        setInputState(prev => ({
-          ...prev,
-          [nodeId]: file
-        }));
-        
-        console.log(`Updated runtime image for node ${nodeId}`);
+
+        setInputState((prev) => ({ ...prev, [nodeId]: file }));
       }
     };
-    
     reader.readAsDataURL(file);
   };
 
-  // Handle simple input for chat-like interface
-  const handleSimpleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  // For simple chat-like apps
+  const handleSimpleInputChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
     setSimpleInputValue(e.target.value);
-    
-    // Also update the input node state
+
     if (inputNodes.length === 1) {
       handleInputChange(inputNodes[0].id, e.target.value);
     }
   };
 
-  // Add a separate key down handler to ensure Enter key is processed properly
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault(); // Prevent default to avoid newline in textarea
-      
+      e.preventDefault();
       if (!isRunning && simpleInputValue.trim() !== '') {
-        console.log("Enter key pressed - running app with input:", simpleInputValue);
         runApp();
       }
-      return false;
     }
   };
 
-  // Run the app
+  // Main "Run App" function
   const runApp = async () => {
     setIsRunning(true);
     setError(null);
     setIsSuccess(false);
-    
+
     try {
-      // Create a message for user input
+      // Gather user inputs
       const userInputs: any[] = [];
-      
-      // For simple input mode with single text node
+
+      // For a single text input app
       if (isSimpleApp && inputNodes.length === 1) {
-        setInputState(prev => ({
+        setInputState((prev) => ({
           ...prev,
-          [inputNodes[0].id]: simpleInputValue
+          [inputNodes[0].id]: simpleInputValue,
         }));
         userInputs.push(simpleInputValue);
-      } 
-      // For more complex inputs, include all non-empty inputs
-      else {
-        inputNodes.forEach(node => {
-          const input = inputState[node.id];
-          if (input) {
-            if (node.type === 'imageInputNode' && input instanceof File) {
-              userInputs.push(`[Image: ${input.name}]`);
-            } else if (typeof input === 'string' && input.trim() !== '') {
-              userInputs.push(input);
+      } else {
+        // Collect all non-empty inputs
+        inputNodes.forEach((node) => {
+          const inputVal = inputState[node.id];
+          if (inputVal) {
+            if (node.type === 'imageInputNode' && inputVal instanceof File) {
+              userInputs.push(`[Image: ${inputVal.name}]`);
+            } else if (typeof inputVal === 'string' && inputVal.trim() !== '') {
+              userInputs.push(inputVal);
             }
           }
         });
       }
-      
-      // Add user message to history
-      const userMessageId = `user-${Date.now()}`;
-      setMessageHistory(prev => [
+
+      // Add user message to chat history
+      setMessageHistory((prev) => [
         ...prev,
         {
-          id: userMessageId,
+          id: `user-${Date.now()}`,
           content: userInputs.length === 1 ? userInputs[0] : userInputs.join('\n'),
           type: 'user',
           timestamp: Date.now(),
-          isImage: inputNodes.some(node => node.type === 'imageInputNode' && inputState[node.id] instanceof File)
-        }
+          isImage: inputNodes.some(
+            (node) => node.type === 'imageInputNode' && inputState[node.id] instanceof File
+          ),
+        },
       ]);
-      
-      // Clone the app data to avoid modifying the original
+
+      // Clone app data to inject runtime inputs
       const appDataClone = JSON.parse(JSON.stringify(appData));
-      
-      // Update input node configurations with user input values
+
+      // Update input node configs
       appDataClone.nodes = appDataClone.nodes.map((node: Node) => {
         if (inputState[node.id] !== undefined) {
           if (node.type === 'textInputNode') {
-            // Update text input config directly
             return {
               ...node,
               data: {
                 ...node.data,
                 config: {
                   ...node.data.config,
-                  text: inputState[node.id]
-                }
-              }
+                  text: inputState[node.id],
+                },
+              },
             };
           } else if (node.type === 'imageInputNode') {
-            // For image nodes, use either runtimeImage or config.image
-            // We don't modify config.image at runtime, we use runtimeImage instead
             return {
               ...node,
               data: {
                 ...node.data,
-                // Preserve runtimeImage if it exists (it was set when user uploaded an image)
-                runtimeImage: node.data.runtimeImage || node.data.config?.image
-              }
+                runtimeImage: node.data.runtimeImage || node.data.config?.image,
+              },
             };
           }
         }
         return node;
       });
-      
-      // Update the app with the new input values temporarily
+
+      // Update app store temporarily
       await appStore.tempUpdateAppNodes(appId, appDataClone.nodes);
-      
-      // Generate execution plan and run it
+
+      // Generate execution plan & run
       const plan = generateExecutionPlan(appDataClone.nodes, appDataClone.edges);
-      
-      // Custom callback to update UI and add to message history
+
+      // Callback to capture node outputs
       const updateNodeOutput = (nodeId: string, output: any) => {
-        setOutputState(prev => ({
-          ...prev, 
-          [nodeId]: output
-        }));
-        
-        // Only add outputs from output nodes to the message history
-        const node = outputNodes.find(n => n.id === nodeId);
+        setOutputState((prev) => ({ ...prev, [nodeId]: output }));
+
+        // Only push output from "output" nodes into the chat
+        const node = outputNodes.find((n) => n.id === nodeId);
         if (node) {
-          setMessageHistory(prev => [
+          setMessageHistory((prev) => [
             ...prev,
             {
               id: `ai-${Date.now()}-${nodeId}`,
               content: output,
               type: 'ai',
-              timestamp: Date.now()
-            }
+              timestamp: Date.now(),
+            },
           ]);
         }
       };
-      
-      // Run the flow
+
+      // Execute the flow
       await executeFlow(plan, updateNodeOutput);
       setIsSuccess(true);
-      
-      // Clear simple input after successful run
+
+      // Clear input if it's a simple app
       if (isSimpleApp) {
         setSimpleInputValue('');
       }
     } catch (err) {
       console.error('Error running app:', err);
-      setError(err instanceof Error ? err.message : "An error occurred while running the app");
-      
-      // Add error to message history
-      setMessageHistory(prev => [
+      const errorMessage =
+        err instanceof Error ? err.message : 'An error occurred while running the app';
+      setError(errorMessage);
+
+      setMessageHistory((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          content: err instanceof Error ? err.message : "An error occurred while running the app",
+          content: errorMessage,
           type: 'ai',
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ]);
     } finally {
       setIsRunning(false);
     }
   };
 
-  // Format the output for markdown rendering
+  // Helper to format output for Markdown
   const formatOutputForMarkdown = (output: any): string => {
     if (typeof output === 'string') return output;
     try {
       return JSON.stringify(output, null, 2);
-    } catch (e) {
+    } catch {
       return String(output);
     }
   };
 
-  // Replace renderOutputs with chat-like message history display
+  // Render the chat-like message output
   const renderOutputs = () => {
+    // If no messages yet, show a friendly empty state (icon removed)
     if (messageHistory.length === 0 && !isRunning) {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-opacity-20" style={{backgroundColor: appData?.color || '#3B82F6'}}>
-            {React.createElement(iconMap[appData?.icon || 'Activity'], { 
-              className: "w-8 h-8 m-4", 
-              style: { color: appData?.color || '#3B82F6' } 
-            })}
-          </div>
-          <h3 className="text-xl font-medium text-gray-900 dark:text-white">
+          {/* Removed the icon wrapper here */}
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
             Send a message to start
           </h3>
           <p className="text-gray-600 dark:text-gray-400 max-w-md">
-            {appData?.description || "Enter your information and run the app to get started."}
+            {appData?.description ||
+              'Enter your information and run the app to get started.'}
           </p>
         </div>
       );
@@ -424,79 +413,75 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
     return (
       <div className="space-y-6 flex flex-col">
-        {/* Message history */}
-        {messageHistory.map((message, index) => {
+        {messageHistory.map((message) => {
           const isUserMessage = message.type === 'user';
-          
           return (
-            <div 
+            <div
               key={message.id}
-              className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} w-full mb-4`}
+              className={`flex mb-4 ${
+                isUserMessage ? 'justify-end' : 'justify-start'
+              }`}
             >
-              <div 
-                className={`max-w-[85%] p-4 rounded-xl ${
-                  isUserMessage 
-                    ? 'bg-opacity-80 rounded-tr-none ml-auto' 
-                    : 'bg-opacity-80 rounded-tl-none mr-auto'
-                } ${
-                  isUserMessage
-                    ? isDark 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-blue-500 text-white'
-                    : isDark 
-                      ? 'bg-gray-800 text-white' 
+              <div
+                className={`max-w-[85%] p-4 rounded-xl shadow-sm relative 
+                  ${isUserMessage ? 'rounded-tr-none ml-auto' : 'rounded-tl-none mr-auto'}
+                  ${
+                    isUserMessage
+                      ? isDark
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-blue-500 text-white'
+                      : isDark
+                      ? 'bg-gray-800 text-white'
                       : 'bg-white text-gray-900'
-                } shadow-sm`}
-                style={{
-                  borderColor: isUserMessage ? appData?.color : undefined
-                }}
+                  }
+                `}
               >
                 {isUserMessage ? (
-                  message.isImage ? (
-                    <div className="prose dark:prose-invert max-w-none">
-                      <p>{message.content}</p>
-                    </div>
-                  ) : (
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  )
+                  // If the user message is an image, you can custom-handle that here
+                  <div className="whitespace-pre-wrap">{message.content}</div>
                 ) : (
                   <div className="prose dark:prose-invert prose-md max-w-none dark-mode-prose">
                     <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
                   </div>
                 )}
-                <div className={`text-xs ${isUserMessage ? 'text-blue-200 dark:text-blue-300' : 'text-gray-400 dark:text-gray-500'} mt-2 text-right`}>
+                {/* Timestamp */}
+                <div
+                  className={`text-xs mt-2 text-right ${
+                    isUserMessage
+                      ? 'text-blue-200 dark:text-blue-100'
+                      : 'text-gray-400 dark:text-gray-500'
+                  }`}
+                >
                   {new Date(message.timestamp).toLocaleTimeString()}
                 </div>
               </div>
             </div>
           );
         })}
-        
+
         {/* Loading indicator for in-progress responses */}
         {isRunning && (
           <div className="flex justify-start w-full">
-            <div className={`max-w-[85%] p-4 rounded-xl bg-opacity-80 rounded-tl-none ${
-              isDark ? 'bg-gray-800' : 'bg-white'
-            } shadow-sm flex items-center gap-2`}>
-              <div className="animate-pulse">
-                <Loader className="w-5 h-5 text-gray-500 dark:text-gray-400 animate-spin" />
-              </div>
-              <div className="text-gray-500 dark:text-gray-400">
-                Processing...
-              </div>
+            <div
+              className={`max-w-[85%] p-4 rounded-xl bg-opacity-80 rounded-tl-none flex items-center gap-2 shadow-sm
+                ${isDark ? 'bg-gray-800' : 'bg-white'}
+              `}
+            >
+              <Loader className="w-5 h-5 animate-spin text-gray-500 dark:text-gray-400" />
+              <div className="text-gray-500 dark:text-gray-400">Processing...</div>
             </div>
           </div>
         )}
-        
+
         {/* Error display */}
-        {error && !isRunning && !messageHistory.some(m => m.content === error && m.type === 'ai') && (
+        {error && !isRunning && (
           <div className="flex justify-start w-full">
             <div className="max-w-[85%] p-4 rounded-xl bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-sm">
               {error}
             </div>
           </div>
         )}
-        
+
         {/* Success indicator */}
         {isSuccess && !isRunning && (
           <div className="flex justify-center my-2">
@@ -510,19 +495,17 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
   };
 
-  // Render all outputs in a unified markdown format
+  // Render text & image inputs
   const renderInputSection = () => {
     if (isSimpleApp) {
       return (
-        <div className="glassmorphic rounded-xl p-3 shadow-lg">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-lg">
           <div className="flex items-center gap-2">
             <textarea
-              className="flex-1 p-2.5 border rounded-lg focus:ring-1 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 resize-none min-h-[40px] max-h-[120px] text-sm"
-              style={{ 
-                focusRing: appData?.color || '#3B82F6',
-                borderRadius: '0.75rem'
-              }}
-              placeholder={inputNodes[0]?.data?.config?.placeholder || "Ask something..."}
+              className="flex-1 p-2.5 border rounded-lg focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 resize-none min-h-[40px] max-h-[120px] text-sm"
+              placeholder={
+                inputNodes[0]?.data?.config?.placeholder || 'Ask something...'
+              }
               value={simpleInputValue}
               onChange={handleSimpleInputChange}
               onKeyDown={handleKeyDown}
@@ -530,13 +513,18 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             <button
               disabled={isRunning || simpleInputValue.trim() === ''}
               onClick={runApp}
-              className={`h-[40px] w-[40px] flex items-center justify-center rounded-lg shadow-sm ${
-                isRunning || simpleInputValue.trim() === ''
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'text-white hover:opacity-90'
-              } transition-colors`}
-              style={{ 
-                backgroundColor: isRunning || simpleInputValue.trim() === '' ? undefined : appData?.color || '#3B82F6'
+              className={`h-[40px] w-[40px] flex items-center justify-center rounded-lg shadow-sm transition-colors
+                ${
+                  isRunning || simpleInputValue.trim() === ''
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'text-white hover:opacity-90'
+                }
+              `}
+              style={{
+                backgroundColor:
+                  isRunning || simpleInputValue.trim() === ''
+                    ? undefined
+                    : appData?.color || '#3B82F6',
               }}
             >
               {isRunning ? (
@@ -550,145 +538,195 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       );
     }
 
-    // Check if we have both image and text inputs for a horizontal layout
-    const hasImageInput = inputNodes.some(node => node.type === 'imageInputNode');
-    const hasTextInput = inputNodes.some(node => node.type === 'textInputNode');
+    // If both text and image inputs, consider a horizontal layout
+    const hasImageInput = inputNodes.some((node) => node.type === 'imageInputNode');
+    const hasTextInput = inputNodes.some((node) => node.type === 'textInputNode');
     const useHorizontalLayout = hasImageInput && hasTextInput;
 
     return (
-      <div className="glassmorphic rounded-xl p-4 shadow-lg">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-lg">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             runApp();
           }}
         >
-          <div className={`grid ${useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7 gap-4' : 'grid-cols-1 gap-3'}`}>
+          <div
+            className={`grid gap-4 ${
+              useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7' : 'grid-cols-1'
+            }`}
+          >
             {inputNodes.map((node: Node) => {
-              switch (node.type) {
-                case 'textInputNode':
-                  return (
-                    <div key={node.id} className={useHorizontalLayout ? "md:col-span-5" : ""}>
-                      {node.data.label && (
-                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                          {node.data.label}
-                          {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
-                        </label>
-                      )}
-                      <div className="relative">
-                        <textarea
-                          className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                          style={{ 
-                            focusRing: appData?.color || '#3B82F6',
-                            minHeight: useHorizontalLayout ? '120px' : '80px'
-                          }}
-                          placeholder={node.data.config?.placeholder || "Enter text here..."}
-                          value={inputState[node.id] as string || ''}
-                          onChange={(e) => handleInputChange(node.id, e.target.value)}
-                        />
-                      </div>
-                      {node.data.config?.description && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
-                      )}
-                    </div>
-                  );
-                  
-                case 'imageInputNode':
-                  return (
-                    <div key={node.id} className={useHorizontalLayout ? "md:col-span-2" : ""}>
-                      {node.data.label && (
-                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                          {node.data.label}
-                          {node.data.config?.isRequired && <span className="text-red-500 ml-1">*</span>}
-                        </label>
-                      )}
-                      <div className="flex justify-center w-full h-full">
-                        <label className={`
-                          flex flex-col items-center justify-center w-full border border-dashed 
-                          rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700
+              if (node.type === 'textInputNode') {
+                return (
+                  <div
+                    key={node.id}
+                    className={useHorizontalLayout ? 'md:col-span-5' : ''}
+                  >
+                    {node.data.label && (
+                      <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                        {node.data.label}
+                        {node.data.config?.isRequired && (
+                          <span className="text-red-500 ml-1">*</span>
+                        )}
+                      </label>
+                    )}
+                    <textarea
+                      className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
+                      style={{ minHeight: useHorizontalLayout ? '120px' : '80px' }}
+                      placeholder={node.data.config?.placeholder || 'Enter text...'}
+                      value={(inputState[node.id] as string) || ''}
+                      onChange={(e) => handleInputChange(node.id, e.target.value)}
+                    />
+                    {node.data.config?.description && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {node.data.config.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+              if (node.type === 'imageInputNode') {
+                return (
+                  <div
+                    key={node.id}
+                    className={useHorizontalLayout ? 'md:col-span-2' : ''}
+                  >
+                    {node.data.label && (
+                      <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                        {node.data.label}
+                        {node.data.config?.isRequired && (
+                          <span className="text-red-500 ml-1">*</span>
+                        )}
+                      </label>
+                    )}
+                    <div className="flex justify-center w-full h-full">
+                      <label
+                        className={`
+                          flex flex-col items-center justify-center w-full border border-dashed rounded-lg cursor-pointer
+                          hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200
                           bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600
-                          transition-all duration-200
-                          ${useHorizontalLayout ? 'h-[120px]' : 'h-16'}
-                        `}>
-                          {inputState[node.id] instanceof File ? (
-                            <div className={`flex ${useHorizontalLayout ? 'flex-col' : 'flex-row'} items-center justify-center h-full w-full p-2`}>
-                              <div className={`${useHorizontalLayout ? 'w-16 h-16 mb-2' : 'w-10 h-10 mr-3'} shrink-0`}>
-                                <img
-                                  src={URL.createObjectURL(inputState[node.id] as File)}
-                                  alt="Preview"
-                                  className="w-full h-full object-cover rounded"
-                                />
-                              </div>
-                              <div className={`${useHorizontalLayout ? 'text-center' : 'text-left'}`}>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
-                                  {(inputState[node.id] as File).name}
-                                </p>
-                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
-                                  Click to replace
-                                </p>
-                              </div>
+                          ${
+                            useHorizontalLayout
+                              ? 'h-[120px]'
+                              : 'h-16'
+                          }
+                        `}
+                      >
+                        {inputState[node.id] instanceof File ? (
+                          <div
+                            className={`flex items-center justify-center p-2 w-full h-full ${
+                              useHorizontalLayout
+                                ? 'flex-col'
+                                : 'flex-row'
+                            }`}
+                          >
+                            <div
+                              className={`shrink-0 ${
+                                useHorizontalLayout
+                                  ? 'w-16 h-16 mb-2'
+                                  : 'w-10 h-10 mr-3'
+                              }`}
+                            >
+                              <img
+                                src={URL.createObjectURL(
+                                  inputState[node.id] as File
+                                )}
+                                alt="Preview"
+                                className="w-full h-full object-cover rounded"
+                              />
                             </div>
-                          ) : node.data.runtimeImage ? (
-                            <div className={`flex ${useHorizontalLayout ? 'flex-col' : 'flex-row'} items-center justify-center h-full w-full p-2`}>
-                              <div className={`${useHorizontalLayout ? 'w-16 h-16 mb-2' : 'w-10 h-10 mr-3'} shrink-0`}>
-                                <img
-                                  src={node.data.runtimeImage}
-                                  alt="Preview"
-                                  className="w-full h-full object-cover rounded"
-                                />
-                              </div>
-                              <div className={`${useHorizontalLayout ? 'text-center' : 'text-left'}`}>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  Image selected
-                                </p>
-                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
-                                  Click to replace
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className={`flex flex-col items-center justify-center p-2 ${useHorizontalLayout ? 'py-4' : ''}`}>
-                              <ImageIcon className={`${useHorizontalLayout ? 'w-8 h-8 mb-2' : 'w-5 h-5 mb-1'} text-gray-400`} />
-                              <p className="text-xs text-center text-gray-500 dark:text-gray-400 px-2">
-                                {useHorizontalLayout ? 'Click to upload an image' : 'Upload image'}
+                            <div className="text-left">
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+                                {(inputState[node.id] as File).name}
+                              </p>
+                              <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                Click to replace
                               </p>
                             </div>
-                          )}
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleImageUpload(node.id, e.target.files[0]);
-                              }
-                            }}
-                          />
-                        </label>
-                      </div>
-                      {node.data.config?.description && !useHorizontalLayout && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{node.data.config.description}</p>
-                      )}
+                          </div>
+                        ) : node.data.runtimeImage ? (
+                          <div
+                            className={`flex items-center justify-center p-2 w-full h-full ${
+                              useHorizontalLayout
+                                ? 'flex-col'
+                                : 'flex-row'
+                            }`}
+                          >
+                            <div
+                              className={`shrink-0 ${
+                                useHorizontalLayout
+                                  ? 'w-16 h-16 mb-2'
+                                  : 'w-10 h-10 mr-3'
+                              }`}
+                            >
+                              <img
+                                src={node.data.runtimeImage}
+                                alt="Preview"
+                                className="w-full h-full object-cover rounded"
+                              />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Image selected
+                              </p>
+                              <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                Click to replace
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex flex-col items-center justify-center p-2 ${
+                              useHorizontalLayout ? 'py-4' : ''
+                            }`}
+                          >
+                            <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                              Click to upload an image
+                            </p>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleImageUpload(node.id, e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </label>
                     </div>
-                  );
-                  
-                default:
-                  return null;
+                    {node.data.config?.description && !useHorizontalLayout && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {node.data.config.description}
+                      </p>
+                    )}
+                  </div>
+                );
               }
+              return null;
             })}
           </div>
-          
+
           <div className="flex justify-end mt-4">
             <button
               type="submit"
               disabled={isRunning || !isFormComplete}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm shadow-sm ${
-                isRunning || !isFormComplete
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'hover:opacity-90'
-              } transition-colors`}
-              style={{ 
-                backgroundColor: isRunning || !isFormComplete ? undefined : appData?.color || '#3B82F6'
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm shadow-sm transition-colors
+                ${
+                  isRunning || !isFormComplete
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'hover:opacity-90'
+                }
+              `}
+              style={{
+                backgroundColor:
+                  isRunning || !isFormComplete
+                    ? undefined
+                    : appData?.color || '#3B82F6',
               }}
             >
               {isRunning ? (
@@ -709,16 +747,25 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
   };
 
+  // Loading screen
   if (isLoading) {
     return (
       <div className="flex h-screen">
         <Sidebar activePage={activePage} onPageChange={onBack} />
         <div className="flex-1 flex flex-col">
-          <Topbar userName={appData?.name || "App Runner"} />
-          <div className="flex-1 flex items-center justify-center" style={gradientStyle}>
+          <Topbar userName={appData?.name || 'App Runner'} />
+          <div
+            className="flex-1 flex items-center justify-center"
+            style={gradientStyle}
+          >
             <div className="flex flex-col items-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: appData?.color || '#3B82F6' }}></div>
-              <p className="mt-4 text-gray-600 dark:text-gray-400">Loading app...</p>
+              <div
+                className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2"
+                style={{ borderColor: appData?.color || '#3B82F6' }}
+              />
+              <p className="mt-4 text-gray-600 dark:text-gray-400">
+                Loading app...
+              </p>
             </div>
           </div>
         </div>
@@ -726,22 +773,38 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
   }
 
+  // Error screen for app load issues
   if (error && !appData) {
     return (
       <div className="flex h-screen">
         <Sidebar activePage={activePage} onPageChange={onBack} />
         <div className="flex-1 flex flex-col">
           <Topbar userName="App Error" />
-          <div className="flex-1 flex items-center justify-center" style={gradientStyle}>
-            <div className="text-center glassmorphic p-8 rounded-xl">
+          <div
+            className="flex-1 flex items-center justify-center"
+            style={gradientStyle}
+          >
+            <div className="text-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-8 rounded-xl shadow-md">
               <div className="flex justify-center">
                 <div className="bg-red-100 dark:bg-red-900/20 p-2 rounded-full">
-                  <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-8 h-8 text-red-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </div>
               </div>
-              <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{error}</h2>
+              <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
+                {error}
+              </h2>
               <button
                 onClick={onBack}
                 className="mt-6 px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors"
@@ -756,42 +819,47 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
   }
 
+  // Main UI
   return (
     <OllamaProvider>
       <div className="flex h-screen">
         <Sidebar activePage={activePage} onPageChange={onBack} />
         <div className="flex-1 flex flex-col">
-          <Topbar userName={appData?.name || "App Runner"} />
+          <Topbar userName={appData?.name || 'App Runner'} />
           <div className="flex-1 overflow-hidden flex flex-col" style={gradientStyle}>
-            {/* App Info Bar */}
-            <div className="glassmorphic m-4 p-4 rounded-xl flex items-center justify-between shadow-sm">
+            {/* Header / Info Section */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 m-4 p-4 rounded-xl flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-3">
-                <div 
+                <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"
                   style={{ backgroundColor: appData?.color || '#3B82F6' }}
                 >
-                  {appData?.icon && (
-                    React.createElement(iconMap[appData.icon] || Activity, { 
-                      className: "w-6 h-6 text-white" 
-                    })
-                  )}
+                  {appData?.icon &&
+                    React.createElement(iconMap[appData.icon] || Activity, {
+                      className: 'w-6 h-6 text-white',
+                    })}
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{appData?.name}</h1>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{appData?.description}</p>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                    {appData?.name}
+                  </h1>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1">
+                    {appData?.description}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={onBack}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 text-gray-700 dark:text-gray-300"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-700 dark:text-gray-300
+                  hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back to Apps</span>
               </button>
             </div>
-            
-            {/* Output Section - Scrollable area */}
-            <div 
+
+            {/* Main Output Section */}
+            <div
               ref={outputSectionRef}
               className="flex-1 overflow-y-auto px-4 py-2 scroll-smooth"
             >
@@ -799,22 +867,33 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 {renderOutputs()}
                 <div ref={messagesEndRef} />
               </div>
-              
-              {/* Scroll to top button */}
+
+              {/* Scroll-to-top button */}
               {showScrollTop && (
                 <button
                   onClick={scrollToTop}
-                  className="fixed bottom-24 right-6 p-2 rounded-full shadow-lg z-10 opacity-90 hover:opacity-100 transition-opacity"
+                  className="fixed bottom-24 right-6 p-2 rounded-full shadow-lg z-10
+                  opacity-90 hover:opacity-100 transition-opacity"
                   style={{ backgroundColor: appData?.color || '#3B82F6' }}
                 >
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  <svg
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 15l7-7 7 7"
+                    />
                   </svg>
                 </button>
               )}
             </div>
-            
-            {/* Input Section - Fixed at bottom */}
+
+            {/* Input Section */}
             <div className="p-4">
               <div className="container mx-auto max-w-4xl">
                 {renderInputSection()}

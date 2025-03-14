@@ -11,6 +11,7 @@ import './ConcatTextExecutor';
 import './WebcamInputExecutor';
 import './LlmPromptExecutor';
 import './ImageInputExecutor';
+import './structuredLLMExecutor'
 
 
 // This file is imported by main.tsx to ensure all executors are registered

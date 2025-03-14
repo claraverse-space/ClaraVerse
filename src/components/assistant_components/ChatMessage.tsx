@@ -20,6 +20,17 @@ interface ChatMessageProps {
   showTokens: boolean;
 }
 
+// Custom hook to get the window width
+const useWindowWidth = () => {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const handleResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  return width;
+};
+
 interface ThinkingBlockProps {
   content: string;
 }
@@ -107,6 +118,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, showTokens }) => {
   const [userName, setUserName] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedMessage, setCopiedMessage] = useState(false);
+  const windowWidth = useWindowWidth();
 
   useEffect(() => {
     const loadUserName = async () => {
@@ -142,14 +154,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, showTokens }) => {
     ? message.content.split('</think>').pop()?.trim() || message.content
     : message.content;
 
+  // Determine max width based on window size (e.g., 80% of window width with a maximum cap)
+  const computedMaxWidth = Math.min(windowWidth * 1.8, 900); // 600px is the cap
+
   return (
     <div className={`flex ${isAssistant ? 'justify-start' : 'justify-end'}`}>
       <div
-        className={`max-w-[80%] rounded p-3 shadow-sm relative group ${
+        className={`rounded p-3 shadow-sm relative group ${
           isAssistant
             ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
             : 'bg-sakura-500 text-white'
         }`}
+        style={{ maxWidth: computedMaxWidth }}
       >
         {/* Header (Icon + Name) */}
         <div className="flex items-center gap-1 mb-1">
@@ -166,28 +182,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, showTokens }) => {
         <div className="prose dark:prose-invert max-w-none prose-base">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            // 3) Use custom renderers to integrate Prism
             components={{
-              code: ({ node, inline, className, children, ...props }) => {
+              code: ({ node, className, children, ...props }) => {
                 const match = /language-(\w+)/.exec(className || '');
                 const codeText = String(children).replace(/\n$/, '');
-
-                // For multi-line code blocks with a recognized language
-                if (!inline && match) {
+                if ( match) {
                   return (
                     <div className="relative my-2">
                       <pre 
                         className="p-4 rounded-md bg-[#1E1E1E] text-[#e5e7eb]"
-                        style={{ 
-                          margin: 0, 
-                          fontSize: '0.9rem',
-                          border: 'none',
-                          boxShadow: 'none'
-                        }}
+                        style={{ margin: 0, fontSize: '0.9rem' }}
                       >
                         <code className="language-plaintext font-mono">{codeText}</code>
                       </pre>
-                      {/* Copy Button */}
                       <button
                         onClick={() => handleCopyCode(codeText)}
                         className="absolute top-1 right-1 p-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -202,12 +209,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, showTokens }) => {
                     </div>
                   );
                 }
-
-                // For inline code or unknown language
                 return (
                   <code
                     className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200"
-                    style={{ border: 'none', boxShadow: 'none' }} // Remove border and shadow
                     {...props}
                   >
                     {children}
