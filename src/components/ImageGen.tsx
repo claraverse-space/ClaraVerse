@@ -131,7 +131,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
 
     // Create client (on demand) and connect
-    const client = new Client({ api_host: apiHost });
+    const client = new Client({ api_host: apiHost , ssl: true});
 
     try {
     // wait for connection
