@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Save, User, Globe } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig } from '../db';
-import { useTheme } from '../hooks/useTheme';
+// import { useTheme } from '../hooks/useTheme';
 
 const Settings = () => {
-  const { isDark, toggleTheme } = useTheme();
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
     email: '',
@@ -14,7 +13,8 @@ const Settings = () => {
   });
 
   const [apiConfig, setApiConfig] = useState<APIConfig>({
-    ollama_base_url: ''
+    ollama_base_url: '',
+    comfyui_base_url: ''
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -125,6 +125,19 @@ const Settings = () => {
               onChange={(e) => setApiConfig(prev => ({ ...prev, ollama_base_url: e.target.value }))}
               className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
               placeholder="http://localhost:11434"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              ComfyUI Base URL
+            </label>
+            <input
+              type="url"
+              value={apiConfig.comfyui_base_url}
+              onChange={(e) => setApiConfig(prev => ({ ...prev, comfyui_base_url: e.target.value }))}
+              className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+              placeholder="http://localhost:8188"
             />
           </div>
         </div>

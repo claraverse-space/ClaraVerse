@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Client, BasePipe } from '@stable-canvas/comfyui-client'; 
 import { ImageIcon, Wand2, Download, RefreshCw, Trash2, ChevronLeft, X, Plus } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
-interface ImageGenProps {
-  onPageChange?: (page: string) => void;
-}
+// If you're using IndexedDB or similar for storing configs
+import { db, type APIConfig } from '../db';
+
+/** 
+ * Example model name mapping.
+ * Adjust these to match the filenames that exist in your ComfyUI. 
+ */
+const MODEL_MAP: Record<string, string> = {
+  'stable-diffusion-xl': 'FLUX1/flux1-dev-fp8.safetensors',
+};
 
 interface Resolution {
   label: string;
@@ -29,13 +37,20 @@ const MODELS = [
   'midjourney-v5'
 ];
 
+interface ImageGenProps {
+  onPageChange?: (page: string) => void;
+}
+
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
+  // Prompt & generation states
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+
+  // Toggle the sidebar
   const [showSettings, setShowSettings] = useState(false);
-  
-  // Settings state
+
+  // Settings for generation
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [negativeTags, setNegativeTags] = useState<string[]>([]);
   const [steps, setSteps] = useState(50);
@@ -43,10 +58,58 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
   const [negativeInput, setNegativeInput] = useState('');
 
+  // Store the user's ComfyUI API config (loaded from DB)
+  const [apiConfig, setApiConfig] = useState<APIConfig>({
+    ollama_base_url: '',
+    comfyui_base_url: ''
+  });
+
+  // ComfyUI client reference
+  const [client, setClient] = useState<Client | null>(null);
+
+  // Load the ComfyUI base URL from IndexedDB on mount
+  useEffect(() => {
+    const loadApiConfig = async () => {
+      try {
+        const storedConfig = await db.getAPIConfig();
+        if (storedConfig) {
+          setApiConfig(storedConfig);
+        }
+      } catch (error) {
+        console.error('Failed to load API config:', error);
+      }
+    };
+    loadApiConfig();
+  }, []);
+
+  // Initialize the client once we have the comfyui_base_url
+  useEffect(() => {
+    if (!apiConfig.comfyui_base_url) return; // If no URL set, do nothing
+
+    try {
+      // Try to parse the user’s configured URL
+      const url = new URL(apiConfig.comfyui_base_url);
+      // e.g. "http://127.0.0.1:8188" => url.host = "127.0.0.1:8188"
+      const c = new Client({
+        api_host: url.host,
+      });
+      c.connect();
+      setClient(c);
+
+      // Cleanup on unmount
+      return () => {
+        c.close();
+      };
+    } catch (err) {
+      console.warn('Invalid ComfyUI base URL:', err);
+    }
+  }, [apiConfig.comfyui_base_url]);
+
+  // Add negative tags
   const handleAddTag = (tag: string) => {
     const trimmedTag = tag.trim();
     if (trimmedTag && !negativeTags.includes(trimmedTag)) {
-      setNegativeTags([...negativeTags, trimmedTag]);
+      setNegativeTags((prev) => [...prev, trimmedTag]);
       setNegativeInput('');
     }
   };
@@ -59,46 +122,74 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
-    setNegativeTags(negativeTags.filter(tag => tag !== tagToRemove));
+    setNegativeTags((tags) => tags.filter((tag) => tag !== tagToRemove));
   };
 
+  // Main "Generate" handler
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    
+    if (!client) {
+      console.warn('No ComfyUI client available. Check your ComfyUI base URL in Settings.');
+      return;
+    }
+
     setIsGenerating(true);
-    // TODO: Implement actual image generation
-    // For now just simulate a delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Add a placeholder image for demonstration
-    setGeneratedImages(prev => [
-      ...prev,
-      'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?w=800&auto=format&fit=crop'
-    ]);
-    setIsGenerating(false);
+
+    try {
+      // Build the pipeline
+      const pipe = new BasePipe()
+        .with(client)
+        .model(MODEL_MAP[selectedModel] || MODEL_MAP['stable-diffusion-1.5'])
+        .prompt(prompt)
+        .negative(negativeTags.join(', '))
+        .steps(steps)
+        .cfg(guidanceScale)
+        .size(selectedResolution.width, selectedResolution.height)
+        // Optionally specify sampler:
+        // .sampler('euler') 
+        .save();
+
+      // Wait for images to be generated
+      const { images } = await pipe.wait();
+
+      // images is an array of { dataUrl: string }
+      const newImageUrls = images.map((img) => img.dataUrl);
+
+      // Show them
+      setGeneratedImages((prev) => [...prev, ...newImageUrls]);
+    } catch (err) {
+      console.error('Error generating images:', err);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
+  // Remove an image from the grid
   const handleDelete = (index: number) => {
-    setGeneratedImages(prev => prev.filter((_, i) => i !== index));
+    setGeneratedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
     <div className="flex h-screen">
+      {/* Sidebar */}
       <Sidebar activePage="image-gen" onPageChange={onPageChange || (() => {})} />
-      
+
+      {/* Main area */}
       <div className="flex-1 flex flex-col">
         <Topbar userName="User" onPageChange={onPageChange} />
-        
+
         <div className="flex-1 overflow-hidden flex">
           {/* Main Content */}
-          <div 
+          <div
             className={`flex-1 overflow-y-auto transition-all duration-300 ${
               showSettings ? 'pr-80' : 'pr-0'
             }`}
           >
-            <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${
-              showSettings ? 'max-w-5xl' : 'max-w-7xl'
-            }`}>
+            <div
+              className={`mx-auto space-y-8 p-6 transition-all duration-300 ${
+                showSettings ? 'max-w-5xl' : 'max-w-7xl'
+              }`}
+            >
               {/* Header */}
               <div className="mb-8">
                 <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
@@ -109,7 +200,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 </p>
               </div>
 
-              {/* Input Section */}
+              {/* Prompt Input */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="space-y-4">
                   <div>
@@ -124,12 +215,17 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     />
                   </div>
 
+                  {/* Generate button & toggle sidebar */}
                   <div className="flex justify-between items-center">
                     <button
                       onClick={() => setShowSettings(!showSettings)}
                       className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                     >
-                      <ChevronLeft className={`w-6 h-6 transform transition-transform ${showSettings ? 'rotate-180' : ''}`} />
+                      <ChevronLeft
+                        className={`w-6 h-6 transform transition-transform ${
+                          showSettings ? 'rotate-180' : ''
+                        }`}
+                      />
                     </button>
                     <button
                       onClick={handleGenerate}
@@ -158,11 +254,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                   <h2 className="text-lg font-medium text-gray-900 dark:text-white">
                     Generated Images
                   </h2>
-                  <div className={`grid gap-6 ${
-                    showSettings 
-                      ? 'grid-cols-1 sm:grid-cols-2' 
-                      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                  }`}>
+                  <div
+                    className={`grid gap-6 ${
+                      showSettings
+                        ? 'grid-cols-1 sm:grid-cols-2'
+                        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                    }`}
+                  >
                     {generatedImages.map((image, index) => (
                       <div
                         key={index}
@@ -205,7 +303,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     No images generated yet
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                    Enter a description above and click generate to create your first AI-powered image.
+                    Enter a description above and click generate to create your first AI-powered
+                    image.
                   </p>
                 </div>
               )}
@@ -213,7 +312,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           </div>
 
           {/* Settings Sidebar */}
-          <div 
+          <div
             className={`w-80 glassmorphic border-l border-gray-200 dark:border-gray-700 fixed right-0 top-16 bottom-0 transform transition-transform duration-300 ${
               showSettings ? 'translate-x-0' : 'translate-x-full'
             }`}
@@ -233,8 +332,10 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                   onChange={(e) => setSelectedModel(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                 >
-                  {MODELS.map(model => (
-                    <option key={model} value={model}>{model}</option>
+                  {MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -245,13 +346,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                   Negative Prompts
                 </label>
                 <div className="flex flex-wrap gap-2 mb-2">
-                  {negativeTags.map(tag => (
-                    <span 
+                  {negativeTags.map((tag) => (
+                    <span
                       key={tag}
                       className="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-sm flex items-center gap-1"
                     >
                       {tag}
-                      <button 
+                      <button
                         onClick={() => handleRemoveTag(tag)}
                         className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                       >
@@ -339,7 +440,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             </div>
           </div>
         </div>
-      </div>
+      </div> 
     </div>
   );
 };

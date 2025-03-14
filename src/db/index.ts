@@ -51,6 +51,7 @@ export interface PersonalInfo {
 
 export interface APIConfig {
   ollama_base_url: string;
+  comfyui_base_url: string;
 }
 
 export interface ModelUsage {
