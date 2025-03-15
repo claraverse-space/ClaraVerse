@@ -272,7 +272,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           .size(width, height)
           .steps(steps)
           .cfg(guidanceScale)
-          .lora(selectedLora, loraStrength);
+          .lora(selectedLora);
       } else {
         pipeline = new BasePipe()
           .with(client!)
@@ -286,17 +286,19 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
       // If user selected a VAE => pipeline.vae(selectedVae)
 
-      const { images } = await pipeline.save().wait();
-      // images is an array of ArrayBuffers
-      const base64Images: string[] = images.map((arrBuf: ArrayBuffer) => {
-        const b64 = arrayBufferToBase64(arrBuf);
-        return `data:image/png;base64,${b64}`;
-      });
+      await pipeline.save().wait().then(({ images }) => { 
+        console.log('Generated images:', images[0].data);
+        console.log( arrayBufferToBase64(images[0].data) );
+
+      const base64Images: string[] = images.map((img) => {
+        const base64 = arrayBufferToBase64(img.data);
+        return `data:${img.mime};base64,${base64}`;
+        });
 
       // Save each image to local DB
       for (const dataUrl of base64Images) {
         try {
-          await db.addStorageItem({
+           db.addStorageItem({
             title: 'Generated Image',
             description: `Prompt: ${prompt}`,
             size: dataUrl.length,
@@ -311,7 +313,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
       // Show them in the UI
       setGeneratedImages(prev => [...prev, ...base64Images]);
-
+    });
     } catch (err) {
       console.error('Error generating image:', err);
     } finally {
