@@ -40,9 +40,19 @@ if (!(db as any).deleteStorageItem) {
 
 interface GalleryProps {
   onPageChange?: (page: string) => void;
+  userName?: string;
+  userAvatar?: string;
+  isDarkMode?: boolean;
+  onToggleDarkMode?: () => void;
 }
 
-const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
+const Gallery: React.FC<GalleryProps> = ({ 
+  onPageChange, 
+  userName = "User", 
+  userAvatar = "/user-avatar.png",
+  isDarkMode = false,
+  onToggleDarkMode = () => {}
+}) => {
   // States
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,7 +60,7 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
   const [sortBy, setSortBy] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('masonry');
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(isDarkMode);
 
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedBulk, setSelectedBulk] = useState<Set<string>>(new Set());
@@ -61,6 +71,17 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
   const [editedPrompt, setEditedPrompt] = useState('');
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+
+  // Sync dark mode with parent component
+  useEffect(() => {
+    setDarkMode(isDarkMode);
+  }, [isDarkMode]);
+
+  // Handle dark mode toggle
+  const handleDarkModeToggle = () => {
+    setDarkMode(!darkMode);
+    onToggleDarkMode();
+  };
 
   // Load images on mount
   useEffect(() => {
@@ -324,51 +345,56 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
 
   return (
     <div className={`${darkMode ? 'dark' : ''} h-screen flex flex-col`}>
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar activePage="gallery" onPageChange={onPageChange || (() => {})} />
-        <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex overflow-hidden relative">
+        <div className="z-10">
+          <Sidebar activePage="gallery" onPageChange={onPageChange || (() => {})} />
+        </div>
+        <div className="flex-1 flex flex-col z-0">
           <Topbar 
-            userName="User" 
+            userName={userName}
+            userAvatar={userAvatar}
             onPageChange={onPageChange} 
-            extraButtons={
-              <button 
-                onClick={() => setDarkMode(prev => !prev)} 
-                className="p-2 bg-white/20 dark:bg-gray-800/30 backdrop-blur-md border border-white/30 dark:border-gray-700/50 rounded-lg transition-all duration-300 shadow-sm text-gray-700 dark:text-gray-200"
-                title="Toggle Dark Mode"
-              >
-                {darkMode ? 'Light' : 'Dark'}
-              </button>
-            }
+            isDarkMode={darkMode}
+            onToggleDarkMode={handleDarkModeToggle}
           />
-          <div className="flex-1 overflow-hidden bg-gradient-to-br from-gray-50 to-sakura-50 dark:from-gray-900 dark:to-gray-800">
-            <FilterBar 
-              searchQuery={searchQuery} 
-              setSearchQuery={setSearchQuery}
-              filter={filter}
-              setFilter={setFilter}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              toggleBulkMode={toggleBulkMode}
-              handleDownloadAll={handleDownloadAll}
-            />
-            {bulkMode && (
-              <BulkActionBar 
-                handleSelectAll={handleSelectAll}
-                handleDeselectAll={handleDeselectAll}
-                handleBulkDelete={handleBulkDelete}
-                handleBulkDownload={handleBulkDownload}
-                handleBulkShare={handleBulkShare}
+          <div className="flex-1 overflow-hidden bg-gradient-to-br from-purple-50/80 via-sakura-50/80 to-blue-50/80 dark:from-gray-900/90 dark:via-gray-800/90 dark:to-blue-900/90 backdrop-blur-sm">
+            <div className="mx-4 mt-4 rounded-xl overflow-hidden backdrop-blur-md bg-white/70 dark:bg-gray-800/60 shadow-lg border border-white/50 dark:border-gray-700/30">
+              <FilterBar 
+                searchQuery={searchQuery} 
+                setSearchQuery={setSearchQuery}
+                filter={filter}
+                setFilter={setFilter}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                toggleBulkMode={toggleBulkMode}
+                handleDownloadAll={handleDownloadAll}
+                isDarkMode={darkMode}
               />
+            </div>
+            
+            {bulkMode && (
+              <div className="mx-4 mt-4 rounded-xl overflow-hidden backdrop-blur-md bg-white/70 dark:bg-gray-800/60 shadow-lg border border-white/50 dark:border-gray-700/30">
+                <BulkActionBar 
+                  handleSelectAll={handleSelectAll}
+                  handleDeselectAll={handleDeselectAll}
+                  handleBulkDelete={handleBulkDelete}
+                  handleBulkDownload={handleBulkDownload}
+                  handleBulkShare={handleBulkShare}
+                  selectedCount={selectedBulk.size}
+                  isDarkMode={darkMode}
+                />
+              </div>
             )}
-            <div className="p-6 overflow-y-auto">
+            
+            <div className="p-4 h-full overflow-y-auto">
               {isLoading ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sakura-500"></div>
                 </div>
               ) : displayedImages.length === 0 ? (
-                <div className="text-center py-16">
+                <div className="text-center py-16 backdrop-blur-md bg-white/50 dark:bg-gray-800/50 rounded-xl border border-white/50 dark:border-gray-700/30 shadow-lg">
                   <p className="text-xl font-medium text-gray-900 dark:text-white mb-2">No images found</p>
                   <p className="text-gray-600 dark:text-gray-400">Start generating some amazing images!</p>
                 </div>
@@ -384,12 +410,14 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
                   handleLike={handleLike}
                   handleDownload={handleDownload}
                   handleDelete={handleDelete}
+                  isDarkMode={darkMode}
                 />
               )}
             </div>
           </div>
         </div>
       </div>
+      
       {selectedImage && (
         <ImagePreviewModal 
           image={selectedImage}
@@ -408,9 +436,11 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
           saveEditedPrompt={saveEditedPrompt}
           handleCopyPrompt={handleCopyPrompt}
           formatDate={formatDate}
+          isDarkMode={darkMode}
         />
       )}
-      {toast.show && <ToastNotification message={toast.message} type={toast.type} />}
+      
+      {toast.show && <ToastNotification message={toast.message} type={toast.type} glassmorphic={true} />}
     </div>
   );
 };
