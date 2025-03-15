@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  ImageIcon, 
-  Wand2, 
-  Download, 
-  RefreshCw, 
-  Trash2, 
-  Settings, 
-  X, 
-  Plus, 
-  ChevronDown, 
-  ChevronUp 
+import {
+  ImageIcon,
+  Wand2,
+  Download,
+  RefreshCw,
+  Trash2,
+  Settings,
+  X,
+  Plus,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
@@ -36,17 +36,26 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Mobile', width: 720, height: 1280 },
 ];
 
+// Utility function to convert an ArrayBuffer to a base64 string
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
 // Basic full-screen loading overlay with silly "dino"
 function LoadingOverlay() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white text-center">
       <div>
-        {/* Very silly ASCII dino or any placeholder you like */}
         <pre className="mb-4">
           {`
-          /\\_./\\
-         ( o.o  )
-          > ^ < 
+         /\\_./\\
+        ( o.o  )
+         > ^ < 
           `}
         </pre>
         <p className="text-lg">Generating Image... Please wait!</p>
@@ -61,17 +70,19 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  
-  // If user tries to generate without a model selected, we block
   const [mustSelectModel, setMustSelectModel] = useState(false);
 
   // System stats
   const [systemStats, setSystemStats] = useState<any>(null);
 
-  // ComfyUI client data
+  // ComfyUI data
   const [sdModels, setSDModels] = useState<string[]>([]);
   const [loras, setLoras] = useState<string[]>([]);
   const [vaes, setVAEs] = useState<string[]>([]);
+
+  // If you want to see *every* event from the WsClient
+  // we'll store a ref to the client so we can listen to events
+  const clientRef = useRef<Client | null>(null);
 
   // Basic "debug" status
   const [comfyStatus, setComfyStatus] = useState({
@@ -106,7 +117,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const edgeRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // 1) Connect to ComfyUI, fetch data
+  // (1) Connect to ComfyUI, fetch data
   useEffect(() => {
     const fetchAndConnectClient = async () => {
       try {
@@ -120,9 +131,28 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         }
 
         const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        clientRef.current = client;  // keep a reference so we can listen to events
+
+        // (A) Connect
         client.connect();
         console.log('ComfyUI client connected');
 
+        // (B) Listen for *all* events
+        // We can do client.events.onAny((event, ...args) => { ... }) 
+        // but "onAny" might not be available in the shipped eventemitter 
+        // Instead let's do a known set of events or wildcard if supported:
+        client.events.on('connected', () => {
+          console.log('[client event] connected');
+        });
+        client.events.on('disconnected', () => {
+          console.log('[client event] disconnected');
+        });
+        client.events.on('message', (msg) => {
+          console.log('[client event] message ->', msg);
+        });
+        // ... you can add more known events if needed
+
+        // (C) Fetch lists
         try {
           const sdModelsResp = await client.getSDModels();
           setSDModels(sdModelsResp);
@@ -151,16 +181,23 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         } catch (err) {
           console.error('Error fetching system stats:', err);
         }
-        client.close();
       } catch (error) {
         console.error('Error connecting to ComfyUI client:', error);
       }
     };
 
     fetchAndConnectClient();
+
+    // On unmount, close the client
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.close();
+        clientRef.current = null;
+      }
+    };
   }, []);
 
-  // 2) Automatic show/hide of the right panel
+  // (2) Automatic show/hide of the right panel
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const windowWidth = window.innerWidth;
@@ -198,57 +235,47 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     };
   }, []);
 
-  // 3) Toggle the right drawer
+  // Toggle the right drawer
   const handleSettingsClick = () => {
     setShowSettings(!showSettings);
   };
 
-  // 4) Generation logic
+  // Generation logic
   const handleGenerate = async () => {
-    // If no model is selected, open settings and require user to pick a model
     if (!selectedModel) {
       setMustSelectModel(true);
       setShowSettings(true);
       return;
     }
-
     setMustSelectModel(false);
     setIsGenerating(true);
 
-    // Show the "loading overlay" (ASCII dino) while generating
     try {
-      // Get comfyUI base URL from DB again if needed,
-      // or store a reference from earlier. For brevity, we'll fetch again:
-      const config = await db.getAPIConfig();
-      let comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
-      const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
-      client.connect();
+      // If client is not set for some reason, re-create it here
+      let client = clientRef.current;
+      if (!client) {
+        const config = await db.getAPIConfig();
+        const url = config?.comfyui_base_url || '127.0.0.1:8188';
+        client = new Client({ api_host: url, ssl: true });
+        client.connect();
+      }
 
-      // Decide whether to use EfficientPipe (if LoRA is selected) or BasePipe
-      let pipeline: BasePipe | EfficientPipe;
       const [width, height] = [selectedResolution.width, selectedResolution.height];
 
+      let pipeline: BasePipe | EfficientPipe;
       if (selectedLora) {
-        // Use EfficientPipe
         pipeline = new EfficientPipe()
-          .with(client)
+          .with(client!)
           .model(selectedModel)
           .prompt(prompt)
           .negative(negativeTags.join(', '))
           .size(width, height)
           .steps(steps)
-          .cfg(guidanceScale);
-
-        // Add the LoRA
-        pipeline.lora(selectedLora, loraStrength);
-
-        // If you had a second or third LoRA, you can chain them:
-        // pipeline.lora('myOtherLora.safetensors');
-
+          .cfg(guidanceScale)
+          .lora(selectedLora, loraStrength);
       } else {
-        // Use BasePipe
         pipeline = new BasePipe()
-          .with(client)
+          .with(client!)
           .model(selectedModel)
           .prompt(prompt)
           .negative(negativeTags.join(', '))
@@ -257,64 +284,42 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           .cfg(guidanceScale);
       }
 
-      // If user selected a VAE, you could add it here; for now we keep it dummy
-      // pipeline.vae(selectedVae)
+      // If user selected a VAE => pipeline.vae(selectedVae)
 
-      // Kick off generation
-      const { images } = await pipeline.save().wait().finally(() => {
-        // close the client once done
-        client.close();
-      });
-
-      console.log('Generation completed, images:', images);
-
-      // images is an array of Buffers. Convert each to base64 data URL
-      const base64Images: string[] = images.map((imgBuffer: Buffer) => {
-        const b64 = imgBuffer.toString('base64');
+      const { images } = await pipeline.save().wait();
+      // images is an array of ArrayBuffers
+      const base64Images: string[] = images.map((arrBuf: ArrayBuffer) => {
+        const b64 = arrayBufferToBase64(arrBuf);
         return `data:image/png;base64,${b64}`;
       });
 
-      // Insert into our local DB for later retrieval
-      // We'll do so for each image
-      for (const b64Url of base64Images) {
+      // Save each image to local DB
+      for (const dataUrl of base64Images) {
         try {
           await db.addStorageItem({
             title: 'Generated Image',
             description: `Prompt: ${prompt}`,
-            size: b64Url.length,
+            size: dataUrl.length,
             type: 'image',
             mime_type: 'image/png',
-            data: b64Url
+            data: dataUrl
           });
         } catch (err) {
           console.error('Error saving image to DB:', err);
         }
       }
 
-      // Also show them at the bottom
+      // Show them in the UI
       setGeneratedImages(prev => [...prev, ...base64Images]);
 
-    } catch (error) {
-      console.error('Error during generation:', error);
+    } catch (err) {
+      console.error('Error generating image:', err);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // 5) Basic debug click
-  const handleDebugClick = () => {
-    setComfyStatus(prev => ({
-      ...prev,
-      isConnected: true,
-      systemLoad: {
-        cpu: Math.random() * 100,
-        memory: Math.random() * 100,
-        gpu: Math.random() * 100
-      }
-    }));
-  };
-
-  // 6) Negative prompts
+  // Negative prompts
   const handleNegativeTagAdd = () => {
     if (negativeInput.trim()) {
       setNegativeTags([...negativeTags, negativeInput.trim()]);
@@ -333,7 +338,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
   };
 
-  // 7) Delete an image from the UI
   const handleDelete = (index: number) => {
     setGeneratedImages(prev => prev.filter((_, i) => i !== index));
   };
@@ -346,9 +350,22 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }));
   };
 
+  // Debug click
+  const handleDebugClick = () => {
+    setComfyStatus(prev => ({
+      ...prev,
+      isConnected: true,
+      systemLoad: {
+        cpu: Math.random() * 100,
+        memory: Math.random() * 100,
+        gpu: Math.random() * 100
+      }
+    }));
+  };
+
   return (
     <div className="flex h-screen">
-      {/* If you have a separate file for Sidebar, import from there. */}
+      {/* Sidebar that might show other data too */}
       <Sidebar
         activePage="image-gen"
         onPageChange={onPageChange || (() => {})}
@@ -364,8 +381,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           onPageChange={onPageChange}
           systemStats={systemStats}
         />
-        
-        {/* If generating is true, show loading overlay */}
+
+        {/* Loading overlay */}
         {isGenerating && <LoadingOverlay />}
 
         <div className="flex-1 overflow-hidden flex">
@@ -375,7 +392,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
               {/* Prompt area */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="space-y-4">
-                  {/* Possibly display a small warning if no model is selected */}
                   {mustSelectModel && (
                     <div className="bg-red-100 text-red-800 p-2 rounded">
                       <strong>Please select a model from the side panel first.</strong>
