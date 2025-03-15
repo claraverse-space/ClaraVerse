@@ -1,45 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ImageIcon, 
-  Download, 
-  Search, 
-  SlidersHorizontal, 
-  Heart, 
-  Share2, 
-  Eye, 
-  ZoomIn, 
-  X 
-} from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import FilterBar from './gallery_components/FilterBar';
+import BulkActionBar from './gallery_components/BulkActionBar';
+import GalleryGrid from './gallery_components/GalleryGrid';
+import ImagePreviewModal from './gallery_components/ImagePreviewModal';
+import ToastNotification from './gallery_components/ToastNotification';
 import { db } from '../db';
 import { indexedDBService } from '../services/indexedDB';
+import { GalleryImage } from '../types';
 
-// Extend db with getStorageItems if not available
+// Extend db with fallback methods if not available
 if (!(db as any).getStorageItems) {
   (db as any).getStorageItems = async () => {
     try {
-      // Attempt to retrieve all items from the "storage" store using IndexedDB.
       return await indexedDBService.getAll('storage');
     } catch (error) {
       console.error('IndexedDB retrieval failed, falling back to localStorage', error);
-      // Fallback for localStorage using your DB prefix from your DB file.
       const data = localStorage.getItem('clara_db_storage');
       return data ? JSON.parse(data) : [];
     }
   };
 }
-
-// Types for Gallery Images – mapped from StorageItem
-interface GalleryImage {
-  id: string;
-  url: string;
-  prompt: string;
-  createdAt: string;
-  likes: number;
-  views: number;
-  model: string;
-  resolution: string;
+if (!(db as any).deleteStorageItem) {
+  (db as any).deleteStorageItem = async (id: string) => {
+    try {
+      await indexedDBService.delete('storage', id);
+    } catch (error) {
+      console.error('IndexedDB deletion failed, falling back to localStorage', error);
+      const data = localStorage.getItem('clara_db_storage');
+      if (data) {
+        const items = JSON.parse(data);
+        const updated = items.filter((item: any) => item.id !== id);
+        localStorage.setItem('clara_db_storage', JSON.stringify(updated));
+      }
+    }
+  };
 }
 
 interface GalleryProps {
@@ -47,24 +43,32 @@ interface GalleryProps {
 }
 
 const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
+  // States
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('masonry');
+  const [darkMode, setDarkMode] = useState(false);
 
-  // Load images from DB (using your "storage" collection)
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedBulk, setSelectedBulk] = useState<Set<string>>(new Set());
+
+  const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState('');
+
+  const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+
+  // Load images on mount
   useEffect(() => {
     const loadImages = async () => {
       setIsLoading(true);
       try {
-        // Retrieve all stored items using the new getStorageItems method.
         const storedItems = await (db as any).getStorageItems();
-        // Filter to include only items with type "image".
         const imageItems = storedItems.filter((item: any) => item.type === 'image');
-        // Map storage items to the GalleryImage interface.
         const galleryImages: GalleryImage[] = imageItems.map((item: any, idx: number) => {
           let finalPrompt = item.description ?? '';
           if (finalPrompt.startsWith('Prompt:')) {
@@ -72,18 +76,19 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
           }
           return {
             id: item.id ?? `img-${idx}`,
-            url: item.data, // base64 data URL
+            url: item.data,
             prompt: finalPrompt,
             createdAt: item.timestamp || new Date().toISOString(),
-            likes: 0,          // Adjust if you track likes
-            views: 0,          // Adjust if you track views
-            model: 'SD-Model', // Adjust if stored in the item
-            resolution: '1024x1024' // Adjust if stored in the item
+            likes: item.likes ?? 0,
+            views: item.views ?? 0,
+            model: item.model || 'SD-Model',
+            resolution: item.resolution || '1024x1024'
           };
         });
         setImages(galleryImages);
       } catch (error) {
         console.error('Error loading images from DB:', error);
+        showToast('Failed to load images', 'error');
       } finally {
         setIsLoading(false);
       }
@@ -92,23 +97,21 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
     loadImages();
   }, []);
 
-  // Apply search, filter, and sorting on images
-  function applyFilterAndSort(items: GalleryImage[]) {
-    let filtered = [...items];
+  const showToast = (message: string, type = 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
+  };
 
-    // Filter (e.g., favorites or recent)
-    if (filter === 'favorites') {
-      filtered = filtered.filter(img => img.likes > 20);
+  // Apply search, filter, and sort
+  const applyFilterAndSort = (items: GalleryImage[]) => {
+    let filtered = [...items];
+    if (filter === 'favorites' || filter === 'liked') {
+      filtered = filtered.filter(img => img.likes > 0);
     } else if (filter === 'recent') {
       const now = Date.now();
       const oneWeek = 7 * 24 * 60 * 60 * 1000;
-      filtered = filtered.filter(img => {
-        const createdTime = new Date(img.createdAt).getTime();
-        return now - createdTime < oneWeek;
-      });
+      filtered = filtered.filter(img => now - new Date(img.createdAt).getTime() < oneWeek);
     }
-
-    // Search by prompt, model, or resolution
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       filtered = filtered.filter(
@@ -118,8 +121,6 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
           img.resolution.toLowerCase().includes(q)
       );
     }
-
-    // Sort images
     if (sortBy === 'newest') {
       filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else if (sortBy === 'oldest') {
@@ -127,235 +128,289 @@ const Gallery: React.FC<GalleryProps> = ({ onPageChange }) => {
     } else if (sortBy === 'popular') {
       filtered.sort((a, b) => b.likes - a.likes);
     }
-
     return filtered;
-  }
+  };
 
   const displayedImages = applyFilterAndSort(images);
 
+  // Handlers
   const handleImageClick = (image: GalleryImage) => {
-    setSelectedImage(image);
+    if (bulkMode) {
+      toggleBulkSelection(image.id);
+    } else {
+      setSelectedImage(image);
+      setZoom(1);
+      setIsEditingPrompt(false);
+    }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+  const toggleBulkMode = () => {
+    setBulkMode(!bulkMode);
+    if (bulkMode) setSelectedBulk(new Set());
+  };
+
+  const toggleBulkSelection = (imageId: string) => {
+    setSelectedBulk(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(imageId)) {
+        newSet.delete(imageId);
+      } else {
+        newSet.add(imageId);
+      }
+      return newSet;
     });
   };
 
-  // Download helper: triggers a direct download without opening a new tab.
   const handleDownload = (image: GalleryImage) => {
     const a = document.createElement('a');
     a.href = image.url;
-    a.download = `generated-image.png`;
+    a.download = `generated-image-${image.id}.png`;
     a.click();
+    showToast('Image downloaded successfully');
   };
 
-  return (
-    <div className="flex h-screen">
-      <Sidebar activePage="gallery" onPageChange={onPageChange || (() => {})} />
-      
-      <div className="flex-1 flex flex-col">
-        <Topbar userName="User" onPageChange={onPageChange} />
-        
-        <div className="flex-1 overflow-hidden bg-gradient-to-br from-gray-50 to-sakura-50 dark:from-gray-900 dark:to-gray-800">
-          {/* Search and Filters Bar */}
-          <div className="sticky top-0 z-10 glassmorphic border-b border-gray-200 dark:border-gray-700 p-4">
-            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row gap-4 items-center">
-              <div className="relative flex-grow max-w-2xl">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search by prompt, model, or resolution..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-white"
-                />
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-white"
-                >
-                  <option value="all">All Images</option>
-                  <option value="favorites">Favorites</option>
-                  <option value="recent">Recent</option>
-                </select>
-                
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-white"
-                >
-                  <option value="newest">Newest First</option>
-                  <option value="oldest">Oldest First</option>
-                  <option value="popular">Most Popular</option>
-                </select>
-                
-                <button
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'masonry' : 'grid')}
-                  className="p-2 rounded-lg bg-white/50 border border-gray-200 hover:bg-gray-100 dark:bg-gray-800/50 dark:border-gray-700 dark:hover:bg-gray-700"
-                >
-                  <SlidersHorizontal className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                </button>
-              </div>
-            </div>
-          </div>
+  const handleLike = (imageId: string) => {
+    setImages(prev =>
+      prev.map(img => (img.id === imageId ? { ...img, likes: img.likes === 0 ? 1 : 0 } : img))
+    );
+    if (selectedImage && selectedImage.id === imageId) {
+      setSelectedImage(prev => (prev ? { ...prev, likes: prev.likes === 0 ? 1 : 0 } : prev));
+    }
+    showToast(
+      images.find(img => img.id === imageId)?.likes === 0
+        ? 'Added to favorites'
+        : 'Removed from favorites'
+    );
+  };
 
-          {/* Gallery Content */}
-          <div className="p-6 overflow-y-auto">
-            <div className="max-w-7xl mx-auto">
+  const handleDelete = async (imageId: string) => {
+    if (!window.confirm('Are you sure you want to delete this image?')) return;
+    try {
+      await (db as any).deleteStorageItem(imageId);
+      setImages(prev => prev.filter(img => img.id !== imageId));
+      if (selectedImage && selectedImage.id === imageId) {
+        setSelectedImage(null);
+      }
+      setSelectedBulk(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(imageId);
+        return newSet;
+      });
+      showToast('Image deleted successfully');
+    } catch (error) {
+      console.error('Error deleting image from DB:', error);
+      showToast('Failed to delete image', 'error');
+    }
+  };
+
+  const handleCopyPrompt = (prompt: string) => {
+    navigator.clipboard.writeText(prompt)
+      .then(() => showToast('Prompt copied to clipboard!'))
+      .catch(() => showToast('Failed to copy prompt', 'error'));
+  };
+
+  const handleShare = (image: GalleryImage) => {
+    if (navigator.share) {
+      navigator.share({ title: 'Check out this image', text: image.prompt, url: image.url })
+        .then(() => showToast('Shared successfully'))
+        .catch(error => {
+          console.error('Error sharing:', error);
+          showToast('Failed to share image', 'error');
+        });
+    } else {
+      showToast('Web Share API not supported on this device', 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedBulk.size === 0) {
+      showToast('No images selected', 'error');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${selectedBulk.size} selected images?`)) return;
+    
+    try {
+      let deleteCount = 0;
+      for (let id of selectedBulk) {
+        await (db as any).deleteStorageItem(id);
+        deleteCount++;
+      }
+      
+      setImages(prev => prev.filter(img => !selectedBulk.has(img.id)));
+      setSelectedBulk(new Set());
+      showToast(`${deleteCount} images deleted successfully`);
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      showToast('Some images could not be deleted', 'error');
+    }
+  };
+
+  const handleBulkDownload = () => {
+    if (selectedBulk.size === 0) {
+      showToast('No images selected', 'error');
+      return;
+    }
+    
+    let downloadCount = 0;
+    selectedBulk.forEach(id => {
+      const img = images.find(image => image.id === id);
+      if (img) {
+        handleDownload(img);
+        downloadCount++;
+      }
+    });
+    
+    showToast(`Downloading ${downloadCount} images`);
+  };
+
+  const handleBulkShare = () => {
+    if (selectedBulk.size === 0) {
+      showToast('No images selected', 'error');
+      return;
+    }
+    
+    const firstSelected = images.find(img => selectedBulk.has(img.id));
+    if (firstSelected) handleShare(firstSelected);
+  };
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 3));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.5));
+
+  const startEditingPrompt = () => {
+    setEditedPrompt(selectedImage?.prompt || '');
+    setIsEditingPrompt(true);
+  };
+
+  const saveEditedPrompt = () => {
+    if (selectedImage) {
+      setImages(prev =>
+        prev.map(img => (img.id === selectedImage.id ? { ...img, prompt: editedPrompt } : img))
+      );
+      setSelectedImage({ ...selectedImage, prompt: editedPrompt });
+      setIsEditingPrompt(false);
+      showToast('Prompt updated successfully');
+      // Persist changes to DB if needed.
+    }
+  };
+
+  const handleDownloadAll = () => {
+    if (displayedImages.length === 0) {
+      showToast('No images to download', 'error');
+      return;
+    }
+    
+    displayedImages.forEach(img => handleDownload(img));
+    showToast(`Downloading ${displayedImages.length} images`);
+  };
+
+  const handleSelectAll = () => {
+    if (!bulkMode) {
+      setBulkMode(true);
+    }
+    
+    const newSelection = new Set<string>();
+    displayedImages.forEach(img => newSelection.add(img.id));
+    setSelectedBulk(newSelection);
+    showToast(`Selected ${newSelection.size} images`);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedBulk(new Set());
+    showToast('All images deselected');
+  };
+
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  return (
+    <div className={`${darkMode ? 'dark' : ''} h-screen flex flex-col`}>
+      <div className="flex-1 flex overflow-hidden">
+        <Sidebar activePage="gallery" onPageChange={onPageChange || (() => {})} />
+        <div className="flex-1 flex flex-col">
+          <Topbar 
+            userName="User" 
+            onPageChange={onPageChange} 
+            extraButtons={
+              <button 
+                onClick={() => setDarkMode(prev => !prev)} 
+                className="p-2 bg-white/20 dark:bg-gray-800/30 backdrop-blur-md border border-white/30 dark:border-gray-700/50 rounded-lg transition-all duration-300 shadow-sm text-gray-700 dark:text-gray-200"
+                title="Toggle Dark Mode"
+              >
+                {darkMode ? 'Light' : 'Dark'}
+              </button>
+            }
+          />
+          <div className="flex-1 overflow-hidden bg-gradient-to-br from-gray-50 to-sakura-50 dark:from-gray-900 dark:to-gray-800">
+            <FilterBar 
+              searchQuery={searchQuery} 
+              setSearchQuery={setSearchQuery}
+              filter={filter}
+              setFilter={setFilter}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              toggleBulkMode={toggleBulkMode}
+              handleDownloadAll={handleDownloadAll}
+            />
+            {bulkMode && (
+              <BulkActionBar 
+                handleSelectAll={handleSelectAll}
+                handleDeselectAll={handleDeselectAll}
+                handleBulkDelete={handleBulkDelete}
+                handleBulkDownload={handleBulkDownload}
+                handleBulkShare={handleBulkShare}
+              />
+            )}
+            <div className="p-6 overflow-y-auto">
               {isLoading ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sakura-500"></div>
                 </div>
               ) : displayedImages.length === 0 ? (
                 <div className="text-center py-16">
-                  <ImageIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No images found</h3>
+                  <p className="text-xl font-medium text-gray-900 dark:text-white mb-2">No images found</p>
                   <p className="text-gray-600 dark:text-gray-400">Start generating some amazing images!</p>
                 </div>
               ) : (
-                <div
-                  className={`grid gap-6 ${
-                    viewMode === 'grid'
-                      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-[200px]'
-                  }`}
-                >
-                  {displayedImages.map((image) => (
-                    <div
-                      key={image.id}
-                      className={`group relative overflow-hidden rounded-xl glassmorphic transition-all duration-300 hover:shadow-xl ${
-                        viewMode === 'masonry' ? 'row-span-1' : ''
-                      }`}
-                      onClick={() => handleImageClick(image)}
-                    >
-                      <img
-                        src={image.url}
-                        alt={image.prompt}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                      
-                      {/* Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                          <p className="text-sm line-clamp-2 mb-2">{image.prompt}</p>
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-3">
-                              <span className="flex items-center gap-1">
-                                <Heart className="w-4 h-4" /> {image.likes}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Eye className="w-4 h-4" /> {image.views}
-                              </span>
-                            </div>
-                            <span>{formatDate(image.createdAt)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Quick Actions */}
-                      <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Optionally add zoom logic here
-                          }}
-                          className="p-2 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white transition-colors"
-                        >
-                          <ZoomIn className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Optionally add share logic here
-                          }}
-                          className="p-2 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white transition-colors"
-                        >
-                          <Share2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownload(image);
-                          }}
-                          className="p-2 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <GalleryGrid 
+                  images={displayedImages}
+                  viewMode={viewMode}
+                  bulkMode={bulkMode}
+                  selectedBulk={selectedBulk}
+                  onImageClick={handleImageClick}
+                  toggleBulkSelection={toggleBulkSelection}
+                  formatDate={formatDate}
+                  handleLike={handleLike}
+                  handleDownload={handleDownload}
+                  handleDelete={handleDelete}
+                />
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Image Preview Modal */}
       {selectedImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setSelectedImage(null)}
-        >
-          <div
-            className="max-w-7xl w-full h-full p-4 flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative w-full h-full flex items-center">
-              <img
-                src={selectedImage.url}
-                alt={selectedImage.prompt}
-                className="max-w-full max-h-full mx-auto rounded-lg shadow-2xl"
-              />
-              <div className="absolute top-4 right-4 flex gap-2">
-                <button
-                  onClick={() => {
-                    /* Share logic if desired */
-                  }}
-                  className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                >
-                  <Share2 className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => handleDownload(selectedImage)}
-                  className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                >
-                  <Download className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="absolute bottom-4 left-4 right-4 p-4 bg-white/10 backdrop-blur-sm rounded-lg text-white">
-                <p className="text-lg mb-2">{selectedImage.prompt}</p>
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-4">
-                    <span>{selectedImage.model}</span>
-                    <span>{selectedImage.resolution}</span>
-                    <span className="flex items-center gap-1">
-                      <Heart className="w-4 h-4" /> {selectedImage.likes}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-4 h-4" /> {selectedImage.views}
-                    </span>
-                  </div>
-                  <span>{formatDate(selectedImage.createdAt)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ImagePreviewModal 
+          image={selectedImage}
+          onClose={() => { setSelectedImage(null); setIsEditingPrompt(false); }}
+          zoom={zoom}
+          handleZoomIn={handleZoomIn}
+          handleZoomOut={handleZoomOut}
+          handleLike={handleLike}
+          handleDownload={handleDownload}
+          handleShare={handleShare}
+          handleDelete={handleDelete}
+          isEditingPrompt={isEditingPrompt}
+          editedPrompt={editedPrompt}
+          setEditedPrompt={setEditedPrompt}
+          startEditingPrompt={startEditingPrompt}
+          saveEditedPrompt={saveEditedPrompt}
+          handleCopyPrompt={handleCopyPrompt}
+          formatDate={formatDate}
+        />
       )}
+      {toast.show && <ToastNotification message={toast.message} type={toast.type} />}
     </div>
   );
 };

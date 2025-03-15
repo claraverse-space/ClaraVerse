@@ -34,6 +34,9 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Landscape (3:2)', width: 1216, height: 832 },
   { label: 'Wide (16:9)', width: 1280, height: 720 },
   { label: 'Mobile', width: 720, height: 1280 },
+  { label: '4K', width: 3840, height: 2160 },
+  { label: '2K', width: 2560, height: 1440 },
+  { label: 'Custom', width: 0, height: 0 },
 ];
 
 // Utility function to convert an ArrayBuffer to a base64 string
@@ -105,6 +108,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [steps, setSteps] = useState(50);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
+  const [customWidth, setCustomWidth] = useState<number>(1024);
+  const [customHeight, setCustomHeight] = useState<number>(1024);
 
   const [expandedSections, setExpandedSections] = useState({
     model: true,
@@ -137,15 +142,29 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         client.connect();
         console.log('ComfyUI client connected');
 
+        // Log the initial WebSocket readyState
+        if (client.ws) {
+          console.log('Initial WebSocket readyState:', client.ws.readyState);
+        }
+
         // (B) Listen for events
         client.events.on('connected', () => {
           console.log('[client event] connected');
+          if (client.ws) {
+            console.log('WebSocket readyState:', client.ws.readyState);
+          }
         });
         client.events.on('disconnected', () => {
           console.log('[client event] disconnected');
+          if (client.ws) {
+            console.log('WebSocket readyState:', client.ws.readyState);
+          }
         });
         client.events.on('message', (msg) => {
           console.log('[client event] message ->', msg);
+          if (client.ws) {
+            console.log('WebSocket readyState:', client.ws.readyState);
+          }
         });
 
         // (C) Fetch lists
@@ -256,7 +275,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         client.connect();
       }
 
-      const [width, height] = [selectedResolution.width, selectedResolution.height];
+      let width = selectedResolution.width;
+      let height = selectedResolution.height;
+      // If custom resolution is selected, use the custom values
+      if (selectedResolution.label === 'Custom') {
+        width = customWidth;
+        height = customHeight;
+      }
 
       let pipeline: BasePipe | EfficientPipe;
       if (selectedLora) {
@@ -687,24 +712,50 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 </button>
                 
                 {expandedSections.resolution && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {RESOLUTIONS.map((res) => (
-                      <button
-                        key={res.label}
-                        onClick={() => setSelectedResolution(res)}
-                        className={`p-2 rounded-lg text-sm text-center transition-colors ${
-                          selectedResolution === res
-                            ? 'bg-sakura-500 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        <div>{res.label}</div>
-                        <div className="text-xs opacity-75">
-                          {res.width}×{res.height}
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      {RESOLUTIONS.map((res) => (
+                        <button
+                          key={res.label}
+                          onClick={() => setSelectedResolution(res)}
+                          className={`p-2 rounded-lg text-sm text-center transition-colors ${
+                            selectedResolution.label === res.label
+                              ? 'bg-sakura-500 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <div>{res.label}</div>
+                          {res.label !== 'Custom' && (
+                            <div className="text-xs opacity-75">
+                              {res.width}×{res.height}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedResolution.label === 'Custom' && (
+                      <div className="mt-4 space-y-2">
+                        <div>
+                          <label className="block text-sm text-gray-700 dark:text-gray-300">Custom Width</label>
+                          <input
+                            type="number"
+                            value={customWidth}
+                            onChange={(e) => setCustomWidth(parseInt(e.target.value))}
+                            className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                          />
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                        <div>
+                          <label className="block text-sm text-gray-700 dark:text-gray-300">Custom Height</label>
+                          <input
+                            type="number"
+                            value={customHeight}
+                            onChange={(e) => setCustomHeight(parseInt(e.target.value))}
+                            className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
