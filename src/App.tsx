@@ -6,13 +6,14 @@ import Settings from './components/Settings';
 import Debug from './components/Debug';
 import Assistant from './components/Assistant';
 import Onboarding from './components/Onboarding';
-import { db } from './db';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
 import ImageGen from './components/ImageGen';
+import Gallery from './components/Gallery';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
+import { db } from './db';
 
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -72,6 +73,10 @@ function App() {
 
     if (activePage === 'image-gen') {
       return <ImageGen onPageChange={setActivePage} />;
+    }
+
+    if (activePage === 'gallery') {
+      return <Gallery onPageChange={setActivePage} />;
     }
 
     return (

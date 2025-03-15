@@ -1,17 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { Client, BasePipe } from '@stable-canvas/comfyui-client'; 
-import { ImageIcon, Wand2, Download, RefreshCw, Trash2, ChevronLeft, X, Plus } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  ImageIcon, 
+  Wand2, 
+  Download, 
+  RefreshCw, 
+  Trash2, 
+  Settings, 
+  X, 
+  Plus, 
+  ChevronDown, 
+  ChevronUp 
+} from 'lucide-react';
 import Sidebar from './Sidebar';
-import Topbar from './Topbar';
-import { db, type APIConfig } from '../db';
+import ImageGenHeader from './ImageGenHeader';
+import { db } from '../db';
 
-// Map your UI “model name” to the actual .safetensors or model path
-const MODEL_MAP: Record<string, string> = {
-  'stable-diffusion-xl': 'SDXL/sd_xl_base_1.0.safetensors',
-  'flux':"FLUX1/flux1-dev-fp8.safetensors"
-};
+// ComfyUI client & pipes
+import { Client, BasePipe, EfficientPipe } from "@stable-canvas/comfyui-client";
 
-// For your resolution preset buttons
+interface ImageGenProps {
+  onPageChange?: (page: string) => void;
+}
+
 interface Resolution {
   label: string;
   width: number;
@@ -26,192 +36,352 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Mobile', width: 720, height: 1280 },
 ];
 
-const MODELS = ['stable-diffusion-xl', 'flux'];
-
-interface ImageGenProps {
-  onPageChange?: (page: string) => void;
+// Basic full-screen loading overlay with silly "dino"
+function LoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white text-center">
+      <div>
+        {/* Very silly ASCII dino or any placeholder you like */}
+        <pre className="mb-4">
+          {`
+          /\\_./\\
+         ( o.o  )
+          > ^ < 
+          `}
+        </pre>
+        <p className="text-lg">Generating Image... Please wait!</p>
+      </div>
+    </div>
+  );
 }
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
-  // ──────────────────────────────────────────────
-  // State: prompts, generation, etc.
-  // ──────────────────────────────────────────────
+  // Local UI states
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-
-  // Side panel (settings) toggle
   const [showSettings, setShowSettings] = useState(false);
+  
+  // If user tries to generate without a model selected, we block
+  const [mustSelectModel, setMustSelectModel] = useState(false);
 
-  // Generation settings
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  // System stats
+  const [systemStats, setSystemStats] = useState<any>(null);
+
+  // ComfyUI client data
+  const [sdModels, setSDModels] = useState<string[]>([]);
+  const [loras, setLoras] = useState<string[]>([]);
+  const [vaes, setVAEs] = useState<string[]>([]);
+
+  // Basic "debug" status
+  const [comfyStatus, setComfyStatus] = useState({
+    isConnected: false,
+    systemLoad: {
+      cpu: 0,
+      memory: 0,
+      gpu: 0
+    }
+  });
+
+  // Settings
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedLora, setSelectedLora] = useState<string>('');
+  const [loraStrength, setLoraStrength] = useState<number>(0.75);
+  const [selectedVae, setSelectedVae] = useState<string>('');
   const [negativeTags, setNegativeTags] = useState<string[]>([]);
+  const [negativeInput, setNegativeInput] = useState('');
+  
   const [steps, setSteps] = useState(50);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
-  const [negativeInput, setNegativeInput] = useState('');
 
-  // ──────────────────────────────────────────────
-  // State for API config (loaded from DB)
-  // ──────────────────────────────────────────────
-  const [apiConfig, setApiConfig] = useState<APIConfig>({
-    comfyui_base_url: '',
-    ollama_base_url: '',
+  const [expandedSections, setExpandedSections] = useState({
+    model: true,
+    lora: false,
+    vae: false,
+    negative: false,
+    resolution: true
   });
 
-  // ──────────────────────────────────────────────
-  // Load user's ComfyUI config from IndexedDB
-  // ──────────────────────────────────────────────
+  const edgeRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // 1) Connect to ComfyUI, fetch data
   useEffect(() => {
-    const loadApiConfig = async () => {
+    const fetchAndConnectClient = async () => {
       try {
-        const storedConfig = await db.getAPIConfig();
-        if (storedConfig) {
-          setApiConfig(storedConfig);
+        const config = await db.getAPIConfig();
+        console.log('API Config:', config);
+        
+        let comfyuiBaseUrl = config?.comfyui_base_url;
+        if (!comfyuiBaseUrl) {
+          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
+          comfyuiBaseUrl = '127.0.0.1:8188';
         }
+
+        const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        client.connect();
+        console.log('ComfyUI client connected');
+
+        try {
+          const sdModelsResp = await client.getSDModels();
+          setSDModels(sdModelsResp);
+          console.log('SD Models:', sdModelsResp);
+        } catch (err) {
+          console.error('Error fetching SD Models:', err);
+        }
+        try {
+          const lorasResp = await client.getLoRAs();
+          setLoras(lorasResp);
+          console.log('LoRAs:', lorasResp);
+        } catch (err) {
+          console.error('Error fetching LoRAs:', err);
+        }
+        try {
+          const vaesResp = await client.getVAEs();
+          setVAEs(vaesResp);
+          console.log('VAEs:', vaesResp);
+        } catch (err) {
+          console.error('Error fetching VAEs:', err);
+        }
+        try {
+          const sysStats = await client.getSystemStats();
+          setSystemStats(sysStats);
+          console.log('System Stats:', sysStats);
+        } catch (err) {
+          console.error('Error fetching system stats:', err);
+        }
+        client.close();
       } catch (error) {
-        console.error('Failed to load API config:', error);
+        console.error('Error connecting to ComfyUI client:', error);
       }
     };
-    loadApiConfig();
+
+    fetchAndConnectClient();
   }, []);
 
-  // ──────────────────────────────────────────────
-  // Negative prompt tags handlers
-  // ──────────────────────────────────────────────
-  const handleAddTag = (tag: string) => {
-    const trimmedTag = tag.trim();
-    if (trimmedTag && !negativeTags.includes(trimmedTag)) {
-      setNegativeTags((prev) => [...prev, trimmedTag]);
-      setNegativeInput('');
-    }
+  // 2) Automatic show/hide of the right panel
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const windowWidth = window.innerWidth;
+      const edgeThreshold = 20;
+
+      if (e.clientX >= windowWidth - edgeThreshold) {
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+        }
+        setShowSettings(true);
+      } else if (e.clientX < windowWidth - 320) {
+        const sidebarBounds = edgeRef.current?.getBoundingClientRect();
+        if (sidebarBounds) {
+          const insideSidebar =
+            e.clientX >= sidebarBounds.left &&
+            e.clientX <= sidebarBounds.right &&
+            e.clientY >= sidebarBounds.top &&
+            e.clientY <= sidebarBounds.bottom;
+
+          if (!insideSidebar) {
+            hoverTimeoutRef.current = setTimeout(() => {
+              setShowSettings(false);
+            }, 300);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 3) Toggle the right drawer
+  const handleSettingsClick = () => {
+    setShowSettings(!showSettings);
   };
 
-  const handleNegativeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === ' ' || e.key === ',' || e.key === 'Enter') {
-      e.preventDefault();
-      handleAddTag(negativeInput);
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setNegativeTags((tags) => tags.filter((tag) => tag !== tagToRemove));
-  };
-
-  // ──────────────────────────────────────────────
-  // Utility: Convert ArrayBuffer to base64
-  // ──────────────────────────────────────────────
-  const arrayBufferToDataURL = (buffer: ArrayBuffer) => {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64String = window.btoa(binary);
-    return `data:image/png;base64,${base64String}`;
-  };
-
-  // ──────────────────────────────────────────────
-  // Main Generate handler
-  // ──────────────────────────────────────────────
+  // 4) Generation logic
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    // If no model is selected, open settings and require user to pick a model
+    if (!selectedModel) {
+      setMustSelectModel(true);
+      setShowSettings(true);
+      return;
+    }
 
+    setMustSelectModel(false);
     setIsGenerating(true);
 
-    // Figure out the user’s actual configured host/port
-    let apiHost = '127.0.0.1:8188'; // fallback if user’s config is invalid
-    if (apiConfig.comfyui_base_url) {
-      try {
-        const url = new URL(apiConfig.comfyui_base_url);
-        apiHost = url.host;
-      } catch (err) {
-        console.warn('Invalid ComfyUI base URL, using default 127.0.0.1:8188');
-      }
-    }
-
-    // Create client (on demand) and connect
-    const client = new Client({ api_host: apiHost , ssl: true});
-
+    // Show the "loading overlay" (ASCII dino) while generating
     try {
-    // wait for connection
-    let  data = client.connect();
+      // Get comfyUI base URL from DB again if needed,
+      // or store a reference from earlier. For brevity, we'll fetch again:
+      const config = await db.getAPIConfig();
+      let comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
+      const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+      client.connect();
 
-    console.log(data);
+      // Decide whether to use EfficientPipe (if LoRA is selected) or BasePipe
+      let pipeline: BasePipe | EfficientPipe;
+      const [width, height] = [selectedResolution.width, selectedResolution.height];
 
-    //  wait for some time
-     await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (selectedLora) {
+        // Use EfficientPipe
+        pipeline = new EfficientPipe()
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale);
 
-      const pipe = new BasePipe()
-        .with(client)
-        .model(MODEL_MAP[selectedModel] || MODEL_MAP['stable-diffusion-xl'])
-        .prompt(prompt)
-        .negative(negativeTags.join(', '))
-        .steps(steps)
-        .cfg(guidanceScale)
-        .size(selectedResolution.width, selectedResolution.height)
-        .save();
+        // Add the LoRA
+        pipeline.lora(selectedLora, loraStrength);
 
-      // Wait for images
-      const { images } = await pipe.wait();
+        // If you had a second or third LoRA, you can chain them:
+        // pipeline.lora('myOtherLora.safetensors');
 
-      // Convert each image’s ArrayBuffer → base64 data URL
-      const newImageUrls = images.map((img) => arrayBufferToDataURL(img.data));
-      setGeneratedImages((prev) => [...prev, ...newImageUrls]);
+      } else {
+        // Use BasePipe
+        pipeline = new BasePipe()
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale);
+      }
 
-    } catch (err) {
-      console.error('Error generating images:', err);
+      // If user selected a VAE, you could add it here; for now we keep it dummy
+      // pipeline.vae(selectedVae)
+
+      // Kick off generation
+      const { images } = await pipeline.save().wait().finally(() => {
+        // close the client once done
+        client.close();
+      });
+
+      console.log('Generation completed, images:', images);
+
+      // images is an array of Buffers. Convert each to base64 data URL
+      const base64Images: string[] = images.map((imgBuffer: Buffer) => {
+        const b64 = imgBuffer.toString('base64');
+        return `data:image/png;base64,${b64}`;
+      });
+
+      // Insert into our local DB for later retrieval
+      // We'll do so for each image
+      for (const b64Url of base64Images) {
+        try {
+          await db.addStorageItem({
+            title: 'Generated Image',
+            description: `Prompt: ${prompt}`,
+            size: b64Url.length,
+            type: 'image',
+            mime_type: 'image/png',
+            data: b64Url
+          });
+        } catch (err) {
+          console.error('Error saving image to DB:', err);
+        }
+      }
+
+      // Also show them at the bottom
+      setGeneratedImages(prev => [...prev, ...base64Images]);
+
+    } catch (error) {
+      console.error('Error during generation:', error);
     } finally {
-      // Clean up
-      client.close();
       setIsGenerating(false);
     }
   };
 
-  // ──────────────────────────────────────────────
-  // Remove an image from the grid
-  // ──────────────────────────────────────────────
-  const handleDelete = (index: number) => {
-    setGeneratedImages((prev) => prev.filter((_, i) => i !== index));
+  // 5) Basic debug click
+  const handleDebugClick = () => {
+    setComfyStatus(prev => ({
+      ...prev,
+      isConnected: true,
+      systemLoad: {
+        cpu: Math.random() * 100,
+        memory: Math.random() * 100,
+        gpu: Math.random() * 100
+      }
+    }));
   };
 
-  // ──────────────────────────────────────────────
-  // Render
-  // ──────────────────────────────────────────────
+  // 6) Negative prompts
+  const handleNegativeTagAdd = () => {
+    if (negativeInput.trim()) {
+      setNegativeTags([...negativeTags, negativeInput.trim()]);
+      setNegativeInput('');
+    }
+  };
+
+  const handleNegativeTagRemove = (tagToRemove: string) => {
+    setNegativeTags(negativeTags.filter(tag => tag !== tagToRemove));
+  };
+
+  const handleNegativeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      handleNegativeTagAdd();
+    }
+  };
+
+  // 7) Delete an image from the UI
+  const handleDelete = (index: number) => {
+    setGeneratedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Expand/collapse setting sections
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   return (
     <div className="flex h-screen">
-      {/* Sidebar */}
-      <Sidebar activePage="image-gen" onPageChange={onPageChange || (() => {})} />
-
-      {/* Main area */}
+      {/* If you have a separate file for Sidebar, import from there. */}
+      <Sidebar
+        activePage="image-gen"
+        onPageChange={onPageChange || (() => {})}
+        sdModels={sdModels}
+        loras={loras}
+        vaes={vaes}
+        systemStats={systemStats}
+      />
+      
       <div className="flex-1 flex flex-col">
-        <Topbar userName="User" onPageChange={onPageChange} />
+        <ImageGenHeader
+          userName="User"
+          onPageChange={onPageChange}
+          systemStats={systemStats}
+        />
+        
+        {/* If generating is true, show loading overlay */}
+        {isGenerating && <LoadingOverlay />}
 
         <div className="flex-1 overflow-hidden flex">
-          {/* Main Content */}
-          <div
-            className={`flex-1 overflow-y-auto transition-all duration-300 ${
-              showSettings ? 'pr-80' : 'pr-0'
-            }`}
-          >
-            <div
-              className={`mx-auto space-y-8 p-6 transition-all duration-300 ${
-                showSettings ? 'max-w-5xl' : 'max-w-7xl'
-              }`}
-            >
-              {/* Header */}
-              <div className="mb-8">
-                <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-                  Image Generation
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Create unique images using AI-powered image generation
-                </p>
-              </div>
-
-              {/* Prompt Input */}
+          <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
+            <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
+              
+              {/* Prompt area */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="space-y-4">
+                  {/* Possibly display a small warning if no model is selected */}
+                  {mustSelectModel && (
+                    <div className="bg-red-100 text-red-800 p-2 rounded">
+                      <strong>Please select a model from the side panel first.</strong>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Describe your image
@@ -224,18 +394,18 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     />
                   </div>
 
-                  {/* Generate button & toggle sidebar */}
                   <div className="flex justify-between items-center">
-                    <button
-                      onClick={() => setShowSettings(!showSettings)}
-                      className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                    <button 
+                      onClick={handleSettingsClick}
+                      className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 cursor-pointer transition-colors"
                     >
-                      <ChevronLeft
-                        className={`w-6 h-6 transform transition-transform ${
+                      <Settings 
+                        className={`w-6 h-6 text-gray-600 dark:text-gray-400 transition-transform duration-300 ${
                           showSettings ? 'rotate-180' : ''
                         }`}
                       />
                     </button>
+
                     <button
                       onClick={handleGenerate}
                       disabled={isGenerating || !prompt.trim()}
@@ -257,19 +427,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 </div>
               </div>
 
-              {/* Generated Images Grid */}
+              {/* List of generated images */}
               {generatedImages.length > 0 && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-medium text-gray-900 dark:text-white">
                     Generated Images
                   </h2>
-                  <div
-                    className={`grid gap-6 ${
-                      showSettings
-                        ? 'grid-cols-1 sm:grid-cols-2'
-                        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-                    }`}
-                  >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {generatedImages.map((image, index) => (
                       <div
                         key={index}
@@ -302,7 +466,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 </div>
               )}
 
-              {/* Empty State */}
+              {/* Message if no images generated yet */}
               {generatedImages.length === 0 && !isGenerating && (
                 <div className="text-center py-16 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
                   <div className="inline-flex items-center justify-center p-6 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
@@ -312,86 +476,166 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     No images generated yet
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                    Enter a description above and click generate to create your first AI-powered
-                    image.
+                    Enter a description above and click generate to create your first AI-powered image.
                   </p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Settings Sidebar */}
-          <div
+          {/* Right-side settings drawer */}
+          <div 
+            ref={edgeRef}
             className={`w-80 glassmorphic border-l border-gray-200 dark:border-gray-700 fixed right-0 top-16 bottom-0 transform transition-transform duration-300 ${
               showSettings ? 'translate-x-0' : 'translate-x-full'
             }`}
           >
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 h-full overflow-y-auto">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
                 Generation Settings
               </h3>
 
-              {/* Model Selection */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Model
-                </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+              {/* Model Section */}
+              <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <button
+                  onClick={() => toggleSection('model')}
+                  className="flex items-center justify-between w-full"
                 >
-                  {MODELS.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</span>
+                  {expandedSections.model ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {expandedSections.model && (
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                  >
+                    <option value="">-- Select a Model --</option>
+                    {sdModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* LoRA Section */}
+              <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <button
+                  onClick={() => toggleSection('lora')}
+                  className="flex items-center justify-between w-full"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">LoRA</span>
+                  {expandedSections.lora ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {expandedSections.lora && (
+                  <div className="space-y-3">
+                    <select
+                      value={selectedLora}
+                      onChange={(e) => setSelectedLora(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    >
+                      <option value="">-- No LoRA --</option>
+                      {loras.map((loraName) => (
+                        <option key={loraName} value={loraName}>{loraName}</option>
+                      ))}
+                    </select>
+                    
+                    {selectedLora && (
+                      <div className="space-y-2">
+                        <label className="block text-sm text-gray-700 dark:text-gray-300">
+                          Strength: {loraStrength.toFixed(2)}
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={loraStrength}
+                          onChange={(e) => setLoraStrength(parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* VAE Section */}
+              <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <button
+                  onClick={() => toggleSection('vae')}
+                  className="flex items-center justify-between w-full"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">VAE Model</span>
+                  {expandedSections.vae ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {expandedSections.vae && (
+                  <select
+                    value={selectedVae}
+                    onChange={(e) => setSelectedVae(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                  >
+                    <option value="">-- No VAE --</option>
+                    {vaes.map((vaeName) => (
+                      <option key={vaeName} value={vaeName}>{vaeName}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Negative Prompts */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Negative Prompts
-                </label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {negativeTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-sm flex items-center gap-1"
-                    >
-                      {tag}
+              <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
+                <button
+                  onClick={() => toggleSection('negative')}
+                  className="flex items-center justify-between w-full"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompts</span>
+                  {expandedSections.negative ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {expandedSections.negative && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={negativeInput}
+                        onChange={(e) => setNegativeInput(e.target.value)}
+                        onKeyDown={handleNegativeInputKeyDown}
+                        placeholder="Add negative prompt..."
+                        className="flex-1 px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      />
                       <button
-                        onClick={() => handleRemoveTag(tag)}
-                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        onClick={handleNegativeTagAdd}
+                        className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600"
                       >
-                        <X className="w-3 h-3" />
+                        <Plus className="w-5 h-5" />
                       </button>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={negativeInput}
-                    onChange={(e) => setNegativeInput(e.target.value)}
-                    onKeyDown={handleNegativeInputKeyDown}
-                    placeholder="Add tags..."
-                    className="flex-1 px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100 text-sm"
-                  />
-                  <button
-                    onClick={() => handleAddTag(negativeInput)}
-                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                  >
-                    <Plus className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Press space, comma, or enter to add tags
-                </p>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {negativeTags.map((tag, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700"
+                        >
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{tag}</span>
+                          <button
+                            onClick={() => handleNegativeTagRemove(tag)}
+                            className="p-0.5 hover:text-red-500"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Steps Slider */}
+              {/* Steps */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Steps: {steps}
@@ -406,7 +650,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 />
               </div>
 
-              {/* Guidance Scale Slider */}
+              {/* Guidance Scale */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Guidance Scale: {guidanceScale.toFixed(1)}
@@ -422,34 +666,41 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 />
               </div>
 
-              {/* Resolution Selection */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Resolution
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {RESOLUTIONS.map((resolution) => (
-                    <button
-                      key={resolution.label}
-                      onClick={() => setSelectedResolution(resolution)}
-                      className={`p-2 rounded-lg text-sm text-center transition-colors ${
-                        selectedResolution === resolution
-                          ? 'bg-sakura-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      <div>{resolution.label}</div>
-                      <div className="text-xs opacity-75">
-                        {resolution.width}×{resolution.height}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+              {/* Resolution */}
+              <div className="space-y-4">
+                <button
+                  onClick={() => toggleSection('resolution')}
+                  className="flex items-center justify-between w-full"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution</span>
+                  {expandedSections.resolution ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {expandedSections.resolution && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {RESOLUTIONS.map((res) => (
+                      <button
+                        key={res.label}
+                        onClick={() => setSelectedResolution(res)}
+                        className={`p-2 rounded-lg text-sm text-center transition-colors ${
+                          selectedResolution === res
+                            ? 'bg-sakura-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        <div>{res.label}</div>
+                        <div className="text-xs opacity-75">
+                          {res.width}×{res.height}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
-      </div> 
+      </div>
     </div>
   );
 };
