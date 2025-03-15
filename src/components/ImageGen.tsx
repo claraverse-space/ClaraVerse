@@ -101,7 +101,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedVae, setSelectedVae] = useState<string>('');
   const [negativeTags, setNegativeTags] = useState<string[]>([]);
   const [negativeInput, setNegativeInput] = useState('');
-  
+
   const [steps, setSteps] = useState(50);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
@@ -137,10 +137,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         client.connect();
         console.log('ComfyUI client connected');
 
-        // (B) Listen for *all* events
-        // We can do client.events.onAny((event, ...args) => { ... }) 
-        // but "onAny" might not be available in the shipped eventemitter 
-        // Instead let's do a known set of events or wildcard if supported:
+        // (B) Listen for events
         client.events.on('connected', () => {
           console.log('[client event] connected');
         });
@@ -150,7 +147,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         client.events.on('message', (msg) => {
           console.log('[client event] message ->', msg);
         });
-        // ... you can add more known events if needed
 
         // (C) Fetch lists
         try {
@@ -290,30 +286,30 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         console.log('Generated images:', images[0].data);
         console.log( arrayBufferToBase64(images[0].data) );
 
-      const base64Images: string[] = images.map((img) => {
-        const base64 = arrayBufferToBase64(img.data);
-        return `data:${img.mime};base64,${base64}`;
+        const base64Images: string[] = images.map((img) => {
+          const base64 = arrayBufferToBase64(img.data);
+          return `data:${img.mime};base64,${base64}`;
         });
 
-      // Save each image to local DB
-      for (const dataUrl of base64Images) {
-        try {
-           db.addStorageItem({
-            title: 'Generated Image',
-            description: `Prompt: ${prompt}`,
-            size: dataUrl.length,
-            type: 'image',
-            mime_type: 'image/png',
-            data: dataUrl
-          });
-        } catch (err) {
-          console.error('Error saving image to DB:', err);
+        // Save each image to local DB
+        for (const dataUrl of base64Images) {
+          try {
+            db.addStorageItem({
+              title: 'Generated Image',
+              description: `Prompt: ${prompt}`,
+              size: dataUrl.length,
+              type: 'image',
+              mime_type: 'image/png',
+              data: dataUrl
+            });
+          } catch (err) {
+            console.error('Error saving image to DB:', err);
+          }
         }
-      }
 
-      // Show them in the UI
-      setGeneratedImages(prev => [...prev, ...base64Images]);
-    });
+        // Show them in the UI
+        setGeneratedImages(prev => [...prev, ...base64Images]);
+      });
     } catch (err) {
       console.error('Error generating image:', err);
     } finally {
@@ -340,8 +336,17 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
   };
 
+  // Delete a generated image from the UI
   const handleDelete = (index: number) => {
     setGeneratedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Helper: Download image directly
+  const handleDownload = (imageDataUrl: string, index: number) => {
+    const a = document.createElement('a');
+    a.href = imageDataUrl;
+    a.download = `generated-${index + 1}.png`;
+    a.click();
   };
 
   // Expand/collapse setting sections
@@ -352,22 +357,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }));
   };
 
-  // Debug click
-  const handleDebugClick = () => {
-    setComfyStatus(prev => ({
-      ...prev,
-      isConnected: true,
-      systemLoad: {
-        cpu: Math.random() * 100,
-        memory: Math.random() * 100,
-        gpu: Math.random() * 100
-      }
-    }));
-  };
-
   return (
     <div className="flex h-screen">
-      {/* Sidebar that might show other data too */}
+      {/* Sidebar */}
       <Sidebar
         activePage="image-gen"
         onPageChange={onPageChange || (() => {})}
@@ -464,7 +456,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                         />
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                           <button
-                            onClick={() => window.open(image, '_blank')}
+                            onClick={() => handleDownload(image, index)}
                             className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
                             title="Download"
                           >
@@ -494,7 +486,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     No images generated yet
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                    Enter a description above and click generate to create your first AI-powered image.
+                    Enter a description above and click Generate to create your first AI-powered image.
                   </p>
                 </div>
               )}
