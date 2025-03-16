@@ -11,11 +11,15 @@ interface LoadingStatus {
 interface InitialLoadingOverlayProps {
   loadingStatus: LoadingStatus;
   connectionError: string | null;
+  onNavigateHome?: () => void;  // New prop for navigation
+  onRetry?: () => void;         // New prop for retry function
 }
 
 const InitialLoadingOverlay: React.FC<InitialLoadingOverlayProps> = ({
   loadingStatus,
-  connectionError
+  connectionError,
+  onNavigateHome,
+  onRetry
 }) => {
   // Calculate overall progress percentage
   const calculateProgress = () => {
@@ -80,6 +84,22 @@ const InitialLoadingOverlay: React.FC<InitialLoadingOverlayProps> = ({
                 ? 'ComfyUI is taking too long to respond. Please check if ComfyUI is running properly and not overloaded.'
                 : 'Please make sure ComfyUI is running and accessible at the configured URL.'}
             </p>
+            
+            {/* Adding navigation buttons */}
+            <div className="mt-6 flex space-x-4 justify-center">
+              <button 
+                onClick={onRetry}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+              >
+                Keep Waiting
+              </button>
+              <button 
+                onClick={onNavigateHome}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
+              >
+                Go Back Home
+              </button>
+            </div>
           </div>
         ) : (
           <>

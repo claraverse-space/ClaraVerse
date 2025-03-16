@@ -156,7 +156,10 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           comfyuiBaseUrl = '127.0.0.1:8188';
         }
 
-        const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        // based on the baseURL decide ssl true or false
+        let ssl_type =  comfyuiBaseUrl.includes('https') ? true : false;
+        console.log('SSL Type:', ssl_type);
+        const client = new Client({ api_host: comfyuiBaseUrl, ssl: ssl_type });
         clientRef.current = client;
         client.connect();
         console.log('ComfyUI client connected');
@@ -390,6 +393,136 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }, 300);
   }, []);
 
+  // Add a function to retry the connection
+  const handleRetryConnection = useCallback(() => {
+    console.log("Retrying connection...");
+    setConnectionError(null);
+    setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
+    
+    if (clientRef.current) {
+      try {
+        clientRef.current.close();
+      } catch (e) {
+        console.error("Error closing existing client:", e);
+      }
+      clientRef.current = null;
+    }
+    
+    // Re-initialize the connection
+    const fetchAndConnectClient = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        let comfyuiBaseUrl = config?.comfyui_base_url;
+        if (!comfyuiBaseUrl) {
+          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
+          comfyuiBaseUrl = '127.0.0.1:8188';
+        }
+
+        const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        clientRef.current = client;
+        client.connect();
+        console.log('ComfyUI client connected');
+
+        if (client.socket) {
+          client.socket.addEventListener('open', (e) => {
+            console.log('Debug: WebSocket open:', e);
+            setWsStatus('Connected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
+          });
+          client.socket.addEventListener('message', (e) => {
+            console.log('Debug: WebSocket message:', e);
+          });
+          client.socket.addEventListener('close', (e) => {
+            console.log('Debug: WebSocket close:', e);
+            setWsStatus('Disconnected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('WebSocket connection closed unexpectedly');
+          });
+          client.socket.addEventListener('error', (e) => {
+            console.log('Debug: WebSocket error:', e);
+            setWsStatus('Error');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('Error establishing WebSocket connection');
+          });
+        }
+
+        // Try to wait for connection to establish with timeout
+        try {
+          await waitForClientConnection(client);
+          // Continue with model loading if connection successful
+          loadModelsAndData(client);
+        } catch (connErr) {
+          console.error("Connection retry failed:", connErr);
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+        }
+      } catch (error) {
+        console.error('Error connecting to ComfyUI client:', error);
+        setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+      }
+    };
+    
+    fetchAndConnectClient();
+  }, []);
+  
+  // Helper function to load models and data
+  const loadModelsAndData = async (client: Client) => {
+    // Try to load SD Models
+    try {
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
+      const sdModelsResp = await client.getSDModels();
+      setSDModels(sdModelsResp);
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'success' }));
+      
+      const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
+      if (lastUsedModel && sdModelsResp.includes(lastUsedModel)) {
+        setSelectedModel(lastUsedModel);
+      }
+    } catch (err) {
+      console.error('Error fetching SD Models:', err);
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'error' }));
+    }
+    
+    // Try to load LoRAs, VAEs, and system stats
+    try {
+      setLoadingStatus(prev => ({ ...prev, loras: 'loading' }));
+      const lorasResp = await client.getLoRAs();
+      setLoras(lorasResp);
+      setLoadingStatus(prev => ({ ...prev, loras: 'success' }));
+    } catch (err) {
+      console.error('Error fetching LoRAs:', err);
+      setLoadingStatus(prev => ({ ...prev, loras: 'error' }));
+    }
+    try {
+      setLoadingStatus(prev => ({ ...prev, vaes: 'loading' }));
+      const vaesResp = await client.getVAEs();
+      setVAEs(vaesResp);
+      setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
+    } catch (err) {
+      console.error('Error fetching VAEs:', err);
+      setLoadingStatus(prev => ({ ...prev, vaes: 'error' }));
+    }
+    try {
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'loading' }));
+      const sysStats = await client.getSystemStats();
+      setSystemStats(sysStats);
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'success' }));
+    } catch (err) {
+      console.error('Error fetching system stats:', err);
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
+    }
+
+    setIsInitialSetupComplete(true);
+  };
+
+  // Handling home navigation
+  const handleNavigateHome = useCallback(() => {
+    console.log("Navigating back to home/dashboard");
+    if (onPageChange) {
+      onPageChange('dashboard');
+    }
+  }, [onPageChange]);
+
   // (3) Generation logic: Build and execute the pipeline with improved error handling
   const handleGenerate = async () => {
     setGenerationError(null);
@@ -565,7 +698,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       {!isInitialSetupComplete && (
         <InitialLoadingOverlay 
           loadingStatus={loadingStatus} 
-          connectionError={connectionError} 
+          connectionError={connectionError}
+          onNavigateHome={handleNavigateHome}
+          onRetry={handleRetryConnection}
         />
       )}
       <Sidebar
@@ -585,6 +720,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             error={generationError}
             onCancel={handleCancelGeneration}
             onRetry={handleRetryGeneration}
+            onNavigateHome={handleNavigateHome}
           />
         )}
         <div className="flex-1 overflow-hidden flex">

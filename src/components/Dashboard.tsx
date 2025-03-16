@@ -40,10 +40,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     try {
       const client = new Client({
         api_host: url,
-        secure: url.startsWith('https')
+        ssl: url.startsWith('https')
       });
       await client.connect();
       setComfyStatus('connected');
+      await client.disconnect();
     } catch (error) {
       console.error('ComfyUI connection error:', error);
       setComfyStatus('disconnected');

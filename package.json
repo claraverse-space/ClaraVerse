@@ -2,6 +2,11 @@
   "name": "clara-ai",
   "private": true,
   "version": "0.1.2",
+  "description": "Clara AI",
+  "author": {
+    "name": "badboysm890",
+    "email": "praveensm890@gmail.com"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

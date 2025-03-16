@@ -3,9 +3,20 @@ import React, { useState, useEffect } from 'react';
 interface LoadingOverlayProps {
   progress?: { value: number; max: number } | null;
   images?: string[];
+  error?: string | null;
+  onCancel?: () => void;
+  onRetry?: () => void;
+  onNavigateHome?: () => void;  // New prop for navigation
 }
 
-const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ progress, images = [] }) => {
+const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ 
+  progress, 
+  images = [], 
+  error, 
+  onCancel,
+  onRetry,
+  onNavigateHome
+}) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   // Carousel effect - cycle through images every 3 seconds
@@ -27,7 +38,7 @@ const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ progress, images = [] }
       <div className="relative max-w-2xl w-full px-6">
         {/* Progress indicator */}
         <div className="absolute -top-16 left-0 w-full">
-          {progress && (
+          {progress && !error && (
             <div className="w-full">
               <div className="flex justify-between text-sm mb-1 opacity-80">
                 <span>Generating...</span>
@@ -45,7 +56,36 @@ const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ progress, images = [] }
 
         {/* Main content */}
         <div className="bg-gray-900/70 p-6 rounded-xl border border-gray-700 shadow-2xl backdrop-blur-md">
-          {images.length > 0 ? (
+          {error ? (
+            <div className="flex flex-col items-center">
+              <h3 className="text-xl font-medium mb-4 text-red-400">Generation Error</h3>
+              
+              <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-4 mb-4 w-full">
+                <p className="text-sm text-red-300">{error}</p>
+              </div>
+              
+              <div className="flex space-x-4 mt-4">
+                <button
+                  onClick={onRetry}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium transition-colors"
+                >
+                  Retry Generation
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onNavigateHome}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium transition-colors"
+                >
+                  Go Back Home
+                </button>
+              </div>
+            </div>
+          ) : images.length > 0 ? (
             <div className="flex flex-col items-center">
               <h3 className="text-xl font-medium mb-4">Creating your masterpiece...</h3>
               
@@ -113,7 +153,7 @@ const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ progress, images = [] }
             </div>
           )}
           
-          {progress && (
+          {progress && !error && (
             <div className="mt-6 text-sm text-gray-400">
               Step {progress.value} of {progress.max}
             </div>
