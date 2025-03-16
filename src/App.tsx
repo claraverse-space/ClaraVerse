@@ -16,7 +16,7 @@ import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
 
 function App() {
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userInfo, setUserInfo] = useState<{ name: string } | null>(null);
 
@@ -50,6 +50,13 @@ function App() {
       }
     }
   }, [activePage]);
+
+  useEffect(() => {
+    console.log('Storing activePage:', activePage);
+    localStorage.setItem('activePage', activePage);
+  }, [activePage]);
+
+  
 
   const renderContent = () => {
     if (activePage === 'assistant') {
