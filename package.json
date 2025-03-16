@@ -74,30 +74,49 @@
   },
   "build": {
     "appId": "com.clara-ai.app",
-    "icon": "public/logo.png",
     "productName": "Clara",
     "files": [  
       "dist/**/*",
       "electron/**/*"
     ],
     "directories": {
-      "buildResources": "public",
+      "buildResources": "assets",
       "output": "release"
     },
     "mac": {
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icons/mac/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "assets/icons/win/icon.ico"
     },
     "linux": {
       "target": [
         "deb",
         "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "assets/icons/png",
+      "desktop": {
+        "StartupNotify": "false",
+        "Encoding": "UTF-8",
+        "MimeType": "x-scheme-handler/clara"
+      },
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
     }
   }
 }

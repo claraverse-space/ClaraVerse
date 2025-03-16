@@ -7,10 +7,12 @@ import {
   XCircle,
   ArrowRight,
   ImageIcon,
-  Wand2
+  Wand2,
+  MessageSquare
 } from 'lucide-react';
 import { db } from '../db';
 import { Client } from '@stable-canvas/comfyui-client';
+import axios from 'axios';
 
 interface DashboardProps {
   onPageChange?: (page: string) => void;
@@ -18,18 +20,29 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [comfyUrl, setComfyUrl] = useState('');
+  const [ollamaUrl, setOllamaUrl] = useState('');
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [comfyStatus, setComfyStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
-  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [showComfyUrlInput, setShowComfyUrlInput] = useState(false);
+  const [showOllamaUrlInput, setShowOllamaUrlInput] = useState(false);
 
   useEffect(() => {
     const loadConfig = async () => {
       const config = await db.getAPIConfig();
+      
       if (config?.comfyui_base_url) {
         setComfyUrl(config.comfyui_base_url);
         checkComfyConnection(config.comfyui_base_url);
       } else {
         setComfyStatus('disconnected');
+      }
+      
+      if (config?.ollama_base_url) {
+        setOllamaUrl(config.ollama_base_url);
+        checkOllamaConnection(config.ollama_base_url);
+      } else {
+        setOllamaStatus('disconnected');
       }
     };
     loadConfig();
@@ -37,8 +50,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const checkComfyConnection = async (url: string) => {
     setComfyStatus('checking');
-
-    console.log('Checking ComfyUI connection...', url);
 
     let urls = url;
     if (urls.includes('http://') || urls.includes('https://')) {
@@ -58,15 +69,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
+  const checkOllamaConnection = async (url: string) => {
+    setOllamaStatus('checking');
+    
+    try {
+      const response = await axios.get(`${url}/api/tags`, { timeout: 5000 });
+      if (response.status === 200) {
+        setOllamaStatus('connected');
+      } else {
+        setOllamaStatus('disconnected');
+      }
+    } catch (error) {
+      console.error('Ollama connection error:', error);
+      setOllamaStatus('disconnected');
+    }
+  };
+
   const handleSaveComfyUrl = async () => {
     setIsConfiguring(true);
     try {
       await db.updateAPIConfig({
         comfyui_base_url: comfyUrl,
-        ollama_base_url: (await db.getAPIConfig())?.ollama_base_url || ''
+        ollama_base_url: ollamaUrl || (await db.getAPIConfig())?.ollama_base_url || ''
       });
       await checkComfyConnection(comfyUrl);
-      setShowUrlInput(false);
+      setShowComfyUrlInput(false);
     } catch (error) {
       console.error('Error saving ComfyUI URL:', error);
     } finally {
@@ -74,8 +101,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
-  const renderStatusIcon = () => {
-    switch (comfyStatus) {
+  const handleSaveOllamaUrl = async () => {
+    setIsConfiguring(true);
+    try {
+      await db.updateAPIConfig({
+        comfyui_base_url: comfyUrl || (await db.getAPIConfig())?.comfyui_base_url || '',
+        ollama_base_url: ollamaUrl
+      });
+      await checkOllamaConnection(ollamaUrl);
+      setShowOllamaUrlInput(false);
+    } catch (error) {
+      console.error('Error saving Ollama URL:', error);
+    } finally {
+      setIsConfiguring(false);
+    }
+  };
+
+  const renderStatusIcon = (status: 'checking' | 'connected' | 'disconnected') => {
+    switch (status) {
       case 'checking':
         return <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />;
       case 'connected':
@@ -84,6 +127,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         return <XCircle className="w-6 h-6 text-red-500" />;
     }
   };
+
+  const showServiceStatus = ollamaStatus === 'disconnected' || comfyStatus === 'disconnected';
 
   return (
     <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto">
@@ -109,129 +154,206 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             {/* Chat Action */}
             <button 
               onClick={() => onPageChange?.('assistant')}
-              className="group p-6 rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
+              className="group flex flex-col rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between p-6 pb-2">
                 <Bot className="w-6 h-6 text-sakura-500" />
                 <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-sakura-500 transform group-hover:translate-x-1 transition-all" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Start Chatting
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Chat with Clara using various AI models through Ollama
-              </p>
+              <div className="px-6 pb-6 flex-grow">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  Start Chatting
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Chat with Clara using various AI models through Ollama
+                </p>
+              </div>
             </button>
 
             {/* Image Generation Action */}
             <button 
               onClick={() => onPageChange?.('image-gen')}
-              className="group p-6 rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
+              className="group flex flex-col rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between p-6 pb-2">
                 <ImageIcon className="w-6 h-6 text-sakura-500" />
                 <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-sakura-500 transform group-hover:translate-x-1 transition-all" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Generate Images
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Create stunning images using Stable Diffusion
-              </p>
+              <div className="px-6 pb-6 flex-grow">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  Generate Images
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Create stunning images using Stable Diffusion
+                </p>
+              </div>
             </button>
 
             {/* Settings Action */}
             <button 
               onClick={() => onPageChange?.('settings')}
-              className="group p-6 rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
+              className="group flex flex-col rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between p-6 pb-2">
                 <Settings className="w-6 h-6 text-sakura-500" />
                 <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-sakura-500 transform group-hover:translate-x-1 transition-all" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Configure Settings
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Customize Clara to match your preferences
-              </p>
+              <div className="px-6 pb-6 flex-grow">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  Configure Settings
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Customize Clara to match your preferences
+                </p>
+              </div>
             </button>
           </div>
         </div>
 
-        {/* ComfyUI Status Section */}
-        <div className="glassmorphic rounded-2xl p-8 animate-fadeIn animation-delay-200">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="p-4 bg-purple-100 dark:bg-purple-100/10 rounded-xl">
-                <Wand2 className="w-8 h-8 text-purple-500" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
-                  ComfyUI Integration
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Advanced image generation workflows
-                </p>
-              </div>
-            </div>
-            {renderStatusIcon()}
-          </div>
+        {/* Service Status Section - Only show if there's an issue */}
+        {showServiceStatus && (
+          <div className="glassmorphic rounded-2xl p-8 animate-fadeIn animation-delay-200">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+              Service Status
+            </h2>
+            
+            <div className="space-y-8">
+              {/* Ollama Status */}
+              {ollamaStatus === 'disconnected' && (
+                <div className="p-6 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-red-100 dark:bg-red-800/30 rounded-lg">
+                        <MessageSquare className="w-6 h-6 text-red-500 dark:text-red-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                          Ollama Not Connected
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Chat functionality will be unavailable
+                        </p>
+                      </div>
+                    </div>
+                    {renderStatusIcon(ollamaStatus)}
+                  </div>
 
-          {showUrlInput ? (
-            <div className="animate-fadeIn">
-              <div className="flex gap-4 mb-4">
-                <input
-                  type="url"
-                  value={comfyUrl}
-                  onChange={(e) => setComfyUrl(e.target.value)}
-                  placeholder="http://localhost:8188"
-                  className="flex-1 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-sakura-300"
-                />
-                <button
-                  onClick={handleSaveComfyUrl}
-                  disabled={isConfiguring}
-                  className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isConfiguring ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Saving...
-                    </>
+                  {showOllamaUrlInput ? (
+                    <div className="animate-fadeIn">
+                      <div className="flex gap-4 mb-4">
+                        <input
+                          type="url"
+                          value={ollamaUrl}
+                          onChange={(e) => setOllamaUrl(e.target.value)}
+                          placeholder="http://localhost:11434"
+                          className="flex-1 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-sakura-300"
+                        />
+                        <button
+                          onClick={handleSaveOllamaUrl}
+                          disabled={isConfiguring}
+                          className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isConfiguring ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save'
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Enter the URL where your Ollama instance is running
+                      </p>
+                    </div>
                   ) : (
-                    'Save'
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setShowOllamaUrlInput(true)}
+                        className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/30"
+                      >
+                        Configure Ollama URL
+                      </button>
+                      {ollamaUrl && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Current URL: {ollamaUrl}
+                        </p>
+                      )}
+                    </div>
                   )}
-                </button>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Enter the URL where your ComfyUI instance is running
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex items-center gap-4">
-                <div className={`px-4 py-2 rounded-full text-sm ${
-                  comfyStatus === 'connected'
-                    ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                    : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300'
-                }`}>
-                  {comfyStatus === 'connected' ? 'Connected' : 'Not Connected'}
                 </div>
-                <button
-                  onClick={() => setShowUrlInput(true)}
-                  className="text-sakura-500 hover:text-sakura-600 text-sm font-medium"
-                >
-                  {comfyStatus === 'connected' ? 'Change URL' : 'Configure Now'}
-                </button>
-              </div>
-              {comfyUrl && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Current URL: {comfyUrl}
-                </p>
+              )}
+
+              {/* ComfyUI Status */}
+              {comfyStatus === 'disconnected' && (
+                <div className="p-6 rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-purple-100 dark:bg-purple-800/30 rounded-lg">
+                        <Wand2 className="w-6 h-6 text-purple-500 dark:text-purple-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                          ComfyUI Not Connected
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Image generation will be unavailable
+                        </p>
+                      </div>
+                    </div>
+                    {renderStatusIcon(comfyStatus)}
+                  </div>
+
+                  {showComfyUrlInput ? (
+                    <div className="animate-fadeIn">
+                      <div className="flex gap-4 mb-4">
+                        <input
+                          type="url"
+                          value={comfyUrl}
+                          onChange={(e) => setComfyUrl(e.target.value)}
+                          placeholder="http://localhost:8188"
+                          className="flex-1 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-sakura-300"
+                        />
+                        <button
+                          onClick={handleSaveComfyUrl}
+                          disabled={isConfiguring}
+                          className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isConfiguring ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save'
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Enter the URL where your ComfyUI instance is running
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setShowComfyUrlInput(true)}
+                        className="px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-800/30"
+                      >
+                        Configure ComfyUI URL
+                      </button>
+                      {comfyUrl && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Current URL: {comfyUrl}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

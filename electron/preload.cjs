@@ -1,26 +1,49 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Define valid channels for security
+const validSendChannels = [
+  'message-from-renderer',
+  'app-ready', 
+  'request-app-info'
+];
+
+const validReceiveChannels = [
+  'message-from-main', 
+  'app-update-available',
+  'app-error'
+];
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
   'electron', 
   {
     send: (channel, data) => {
-      // whitelist channels
-      let validChannels = ['message-from-renderer'];
-      if (validChannels.includes(channel)) {
+      // Whitelist channels
+      if (validSendChannels.includes(channel)) {
         ipcRenderer.send(channel, data);
       }
     },
     receive: (channel, func) => {
-      let validChannels = ['message-from-main'];
-      if (validChannels.includes(channel)) {
+      if (validReceiveChannels.includes(channel)) {
         // Deliberately strip event as it includes `sender` 
         ipcRenderer.on(channel, (event, ...args) => func(...args));
       }
     },
-    // You can add more API methods here as needed
-    getAppVersion: () => process.env.npm_package_version,
-    getPlatform: () => process.platform
+    // Additional API methods
+    getAppVersion: () => process.env.npm_package_version || app.getVersion(),
+    getPlatform: () => process.platform,
+    getAppPath: () => process.env.APPDATA || process.env.HOME,
+    // Remove event listener for cleanup
+    removeListener: (channel, func) => {
+      if (validReceiveChannels.includes(channel)) {
+        ipcRenderer.removeListener(channel, func);
+      }
+    }
   }
-); 
+);
+
+// Notify main process when preload script has loaded
+window.addEventListener('DOMContentLoaded', () => {
+  ipcRenderer.send('app-ready', 'Preload script has loaded');
+});
