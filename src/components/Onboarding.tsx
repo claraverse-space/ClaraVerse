@@ -36,6 +36,22 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     onComplete();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (step < 3) {
+        if ((step === 1 && formData.name) || 
+            (step === 2 && formData.email) ||
+            (step === 3 && formData.timezone)) {
+          setStep(step + 1);
+        }
+      } else {
+        if (formData.timezone) {
+          handleSubmit();
+        }
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="glassmorphic rounded-2xl p-8 max-w-md w-full mx-4 space-y-6">
@@ -63,6 +79,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                onKeyDown={handleKeyDown}
                 className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                 placeholder="Your name"
                 autoFocus
@@ -84,6 +101,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                onKeyDown={handleKeyDown}
                 className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                 placeholder="your.email@example.com"
                 autoFocus
@@ -124,6 +142,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   <select
                     value={formData.timezone}
                     onChange={(e) => setFormData(prev => ({ ...prev, timezone: e.target.value }))}
+                onKeyDown={handleKeyDown}
                     className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                   >
                     {Intl.supportedValuesOf('timeZone').map(tz => (

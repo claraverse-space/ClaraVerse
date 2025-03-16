@@ -8,11 +8,12 @@
 ### 🚀 Live Demo, 
 Link to the Clara App: [Clara](https://clara-ollama.netlify.app/)
 
-[![Clara](https://img.shields.io/badge/Clara-0.1.0-FFD700.svg)](https://clara-ollama.netlify.app/)
+[![Clara](https://img.shields.io/badge/Clara-0.1.2-FFD700.svg)](https://clara-ollama.netlify.app/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.1-38B2AC.svg)](https://tailwindcss.com/)
+[![Electron](https://img.shields.io/badge/Electron-35.0.1-47848F.svg)](https://www.electronjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Your local AI assistant that respects your privacy**
@@ -48,6 +49,14 @@ Clara is a completely client-side AI assistant that works with Ollama running on
 - 🔄 Reusable app templates
 - 💻 Run apps with user inputs
 
+### Desktop Application
+- 🖥️ Native desktop experience with Electron
+- 🔄 Same features as the web version
+- 🚀 Better performance for resource-intensive tasks
+- 💻 Cross-platform support (Windows, macOS, Linux)
+- 🔌 Enhanced system integration
+- 🔒 Local-first approach for maximum privacy
+
 ### System
 - 🌓 Beautiful light/dark mode
 - 🔍 Model management and selection
@@ -80,9 +89,25 @@ cd clara-ai
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (web version)
 npm run dev
+
+# Start development server (desktop version)
+npm run electron:dev
 ```
+
+### Building the Desktop App
+```bash
+# Build for production (web)
+npm run build
+
+# Build desktop application
+npm run electron:build
+```
+
+The desktop application will be created in the `release` directory, with installers for your current platform.
+
+> **Note:** The `release` directory and other Electron build artifacts are ignored in the repository via `.gitignore`. This includes installer files (`.dmg`, `.exe`, `.deb`, `.AppImage`), update files (`.blockmap`, `latest-*.yml`), and temporary build directories.
 
 ## 🐳 Installing Ollama
 
@@ -162,13 +187,18 @@ clara/
 │   ├── hooks/          # Custom hooks
 │   ├── utils/          # Helper functions
 │   ├── db/             # Local storage (IndexedDB)
+│   ├── types/          # TypeScript type definitions
 │   └── App.tsx         # Application entry
+├── electron/           # Electron-specific code
+│   ├── main.cjs        # Main process
+│   └── preload.cjs     # Preload script
 ├── public/             # Static assets
 └── package.json        # Dependencies
 ```
 
 ## 🚢 Deployment
-Deploy the `dist` directory to any static host (e.g., Netlify, GitHub Pages).
+- **Web Version**: Deploy the `dist` directory to any static host (e.g., Netlify, GitHub Pages).
+- **Desktop Version**: Use `npm run electron:build` to create installers for Windows, macOS, and Linux.
 
 ## 🤝 Contribute
 1. Fork repository

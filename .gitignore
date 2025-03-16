@@ -24,3 +24,18 @@ dist-ssr
 *.sw?
 .env
 /tools/.env
+
+# Electron specific
+release
+.electron-builder
+electron-builder.yml
+*.dmg
+*.exe
+*.deb
+*.AppImage
+*.snap
+*.blockmap
+*.zip
+latest-mac.yml
+latest-linux.yml
+latest-win.yml

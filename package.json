@@ -1,8 +1,9 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "clara-ai",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.2",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,7 +13,10 @@
     "test:watch": "npx vitest",
     "test:ui": "npx vitest --ui",
     "test:coverage": "npx vitest run --coverage",
-    "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json"
+    "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json",
+    "electron:dev": "concurrently \"cross-env ELECTRON_START_URL=http://localhost:5173 npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:preview": "npm run build && electron ."
   },
   "dependencies": {
     "@saintno/comfyui-sdk": "^0.2.45",
@@ -45,6 +49,10 @@
     "@vitest/coverage-v8": "^1.6.1",
     "@vitest/ui": "^1.6.1",
     "autoprefixer": "^10.4.18",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^35.0.1",
+    "electron-builder": "^25.1.8",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
@@ -55,6 +63,35 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
     "vite": "^5.4.2",
-    "vitest": "^1.6.1"
+    "vitest": "^1.6.1",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.clara-ai.app",
+    "icon": "public/logo.png",
+    "productName": "Clara",
+    "files": [  
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "buildResources": "public",
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Development"
+    }
   }
 }
