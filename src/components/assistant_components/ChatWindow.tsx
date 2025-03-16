@@ -61,7 +61,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             />
           ))}
           {isStreaming && (
-            <div className="flex items-center gap-2 text-sakura-500 animate-pulse">
+            <div className="flex items-center gap-2 text-sakura-500">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Clara is thinking...</span>
             </div>
