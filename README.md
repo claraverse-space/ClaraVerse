@@ -7,7 +7,7 @@
   [![Clara](https://img.shields.io/badge/Clara-0.1.2-FFD700.svg)](https://clara-ollama.netlify.app/)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-  <a href="https://clara-ollama.netlify.app/" target="_blank">Try Clara Online</a> | <a href="#download-desktop-app">Download Desktop App</a>
+  <a href="https://clara.badboysm890.in/" target="_blank">Try Clara Online</a> | <a href="https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0">Download Desktop App</a>
 </div>
 
 ## 🔒 Privacy First
@@ -46,9 +46,9 @@ Browse, search and manage your generated images in the integrated gallery.
 
 Clara is available as a native desktop application for enhanced performance:
 
-- [Windows Installer (.exe)](https://github.com/Clara-AI/clara-ollama/releases/latest)
-- [macOS Installer (.dmg)](https://github.com/Clara-AI/clara-ollama/releases/latest)
-- [Linux AppImage (.AppImage)](https://github.com/Clara-AI/clara-ollama/releases/latest)
+- [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
 
 ## 👩‍💻 Dev Zone
 
@@ -93,12 +93,5 @@ npm run electron:build
 
 ## 🤝 Support & Contact
 
-- Website: [claraai.com](https://claraai.com)
-- Email: support@claraai.com
-- Twitter: [@ClaraAIAssist](https://twitter.com/ClaraAIAssist)
-
+- Email: praveensm890@gmail.com
 ---
-
-<div align="center">
-  <p>© 2023 Clara AI Technologies, Inc. - <a href="https://claraai.com/privacy">Privacy Policy</a></p>
-</div>
