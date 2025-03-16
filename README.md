@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="/public/logo.png" alt="Clara Logo" width="180" height="180" />
+  <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
   <p><strong>Privacy-First AI Assistant & Agent Builder</strong></p>
   <p>Chat with AI, create intelligent agents, and turn them into fully functional apps—powered entirely by open-source models running on your own device.</p>
