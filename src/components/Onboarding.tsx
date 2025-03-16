@@ -1,6 +1,7 @@
-import  { useState } from 'react';
-import { User, Mail, Globe } from 'lucide-react';
+import { useState } from 'react';
+import { User, Mail, Globe, Check, AlertCircle, Loader } from 'lucide-react';
 import { db } from '../db';
+import { OllamaClient } from '../utils/OllamaClient';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -14,8 +15,30 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     theme_preference: 'system' as const,
     avatar_url: '',
-    ollama_url: 'http://localhost:11434'
+    ollama_url: 'http://localhost:11434',
+    comfyui_url: 'http://localhost:8188'
   });
+  const [loading, setLoading] = useState(false);
+  const [pingStatus, setPingStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const pingOllamaServer = async (url: string) => {
+    setLoading(true);
+    setPingStatus('idle');
+    try {
+      const client = new OllamaClient(url);
+      const isAvailable = await client.ping();
+      if (isAvailable) {
+        setPingStatus('success');
+      } else {
+        setPingStatus('error');
+      }
+    } catch (error) {
+      console.error('Error pinging Ollama server:', error);
+      setPingStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     // Save personal info to database
@@ -27,10 +50,10 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
       avatar_url: formData.avatar_url
     });
     
-    // Initialize API config with Ollama URL
+    // Initialize API config with Ollama URL and ComfyUI URL
     await db.updateAPIConfig({
       ollama_base_url: formData.ollama_url,
-      comfyui_base_url: ''
+      comfyui_base_url: formData.comfyui_url
     });
 
     onComplete();
@@ -116,7 +139,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   <Globe className="w-6 h-6 text-sakura-500" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  Ollama Configuration
+                  API Configuration
                 </h3>
               </div>
               <div className="space-y-4">
@@ -124,15 +147,64 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Ollama API URL
                   </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={formData.ollama_url}
+                      onChange={(e) => {
+                        setFormData(prev => ({ ...prev, ollama_url: e.target.value }));
+                        setPingStatus('idle');
+                      }}
+                      className="flex-1 px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      placeholder="http://localhost:11434"
+                    />
+                    <button 
+                      onClick={() => pingOllamaServer(formData.ollama_url)}
+                      disabled={loading}
+                      className="px-3 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                    >
+                      {loading ? <Loader className="w-4 h-4 animate-spin" /> : 'Test'}
+                    </button>
+                  </div>
+                  <div className="mt-1">
+                    {pingStatus === 'success' && (
+                      <div className="flex items-center gap-1 text-green-600 text-xs">
+                        <Check className="w-4 h-4" /> Connection successful! Ollama server is reachable.
+                      </div>
+                    )}
+                    {pingStatus === 'error' && (
+                      <div className="text-xs">
+                        <div className="flex items-center gap-1 text-red-600">
+                          <AlertCircle className="w-4 h-4" /> Unable to connect to Ollama server
+                        </div>
+                        <a 
+                          href="https://ollama.com/download" 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-sakura-500 hover:underline mt-1 inline-block"
+                        >
+                          Download Ollama
+                        </a>
+                        <p className="text-gray-500 dark:text-gray-400 mt-1">
+                          You can continue setup and configure Ollama later
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    ComfyUI URL (Optional)
+                  </label>
                   <input
                     type="url"
-                    value={formData.ollama_url}
-                    onChange={(e) => setFormData(prev => ({ ...prev, ollama_url: e.target.value }))}
+                    value={formData.comfyui_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, comfyui_url: e.target.value }))}
                     className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                    placeholder="http://localhost:11434"
+                    placeholder="http://localhost:8188"
                   />
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    The URL where your Ollama instance is running
+                    The URL where your ComfyUI instance is running
                   </p>
                 </div>
                 <div>
@@ -142,7 +214,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   <select
                     value={formData.timezone}
                     onChange={(e) => setFormData(prev => ({ ...prev, timezone: e.target.value }))}
-                onKeyDown={handleKeyDown}
+                    onKeyDown={handleKeyDown}
                     className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                   >
                     {Intl.supportedValuesOf('timeZone').map(tz => (
@@ -174,8 +246,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
             }}
             disabled={
               (step === 1 && !formData.name) ||
-              (step === 2 && !formData.email) ||
-              (step === 3 && !formData.ollama_url)
+              (step === 2 && !formData.email)
             }
             className="ml-auto px-6 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
