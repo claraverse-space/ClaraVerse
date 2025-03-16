@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Home, Bot, Settings, HelpCircle, ChevronRight, Bug, Grid, ImageIcon } from 'lucide-react';
+import logo from '/logo.png';
 
 interface SidebarProps {
   activePage: string;
@@ -30,7 +31,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
       <div className={`flex items-center py-4 ${
         isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
       }`}>
-        <Bot className="w-8 h-8 text-sakura-500 flex-shrink-0" />
+        <img src={logo} alt="Clara Logo" className="w-8 h-8" />
         <h1 
           className={`text-2xl font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-300 ${
             isExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0'
