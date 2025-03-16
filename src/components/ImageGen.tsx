@@ -58,7 +58,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     loras: 'pending' | 'loading' | 'success' | 'error';
     vaes: 'pending' | 'loading' | 'success' | 'error';
     systemStats: 'pending' | 'loading' | 'success' | 'error';
-    connection: 'connecting' | 'connected' | 'error';
+    connection: 'connecting' | 'connected' | 'error' | 'timeout';
   };
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({
     sdModels: 'pending',
@@ -125,6 +125,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("WebSocket connection timeout - failed to connect after 15 seconds"));
+        setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
       }, 15000);
       
       if (client.socket && client.socket.readyState === WebSocket.OPEN) {
@@ -185,6 +186,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         } else {
           console.warn('Debug: No WebSocket instance on client.');
           setConnectionError('Failed to initialize WebSocket connection');
+        }
+
+        // Try to wait for connection to establish with timeout
+        try {
+          await waitForClientConnection(client);
+        } catch (connErr) {
+          console.error("Connection timeout:", connErr);
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+          // Continue with the setup process even after timeout to handle remaining setup tasks
         }
 
         // Attach event listeners for progress and execution events
@@ -263,7 +274,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         setIsInitialSetupComplete(true);
       } catch (error) {
         console.error('Error connecting to ComfyUI client:', error);
-        setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+        if ((error as Error)?.message?.includes('timeout')) {
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+        } else {
+          setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+        }
         setIsInitialSetupComplete(true);
       }
     };
@@ -422,7 +438,11 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         console.log('Client connection is now open.');
       } catch (connErr) {
         console.error("Connection error:", connErr);
-        setGenerationError(`Failed to establish WebSocket connection: ${(connErr as Error)?.message}`);
+        if ((connErr as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding after 15 seconds. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to establish WebSocket connection: ${(connErr as Error)?.message}`);
+        }
         setIsGenerating(false);
         return;
       }
@@ -491,7 +511,11 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     } catch (err) {
       console.error('Error generating image:', err);
       if (!generationError) {
-        setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+        if ((err as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+        }
       }
     } finally {
       setProgress(null);
