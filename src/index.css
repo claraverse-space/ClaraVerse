@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-
 @layer base {
   :root {
     --sakura-50: #fef6f9;
@@ -136,6 +135,19 @@
 
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Animation delay utilities */
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
 }
 
 /* App runner animations */

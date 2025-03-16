@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Archive, Star, Trash2, Settings, ChevronRight, Bot } from 'lucide-react';
+import { MessageSquare, Archive, Star, Trash2, Settings, ChevronRight, Bot, Plus } from 'lucide-react';
 import type { Chat } from '../db';
 import { db } from '../db';
 
@@ -26,10 +26,8 @@ const AssistantSidebar = ({
     starred: 0,
     deleted: 0
   });
-  // Add local state to track modified chats
   const [localChats, setLocalChats] = useState<Chat[]>([]);
 
-  // Initialize local chats from props
   useEffect(() => {
     setLocalChats(chats || []);
   }, [chats]);
@@ -81,15 +79,11 @@ const AssistantSidebar = ({
         onChatSelect(null);
       }
 
-      // Update local chats state
       setLocalChats(prevChats => 
         prevChats.map(c => 
           c.id === chatId ? {...c, ...updates} : c
         )
       );
-
-      // Remove automatic section switching
-      // We want to stay in the current view
     } catch (error) {
       console.error('Error updating chat:', error);
     } finally {
@@ -99,7 +93,12 @@ const AssistantSidebar = ({
     }
   };
 
-  // Use localChats for filtering instead of chats from props
+  const handleNewChat = async () => {
+    const chatId = await db.createChat('New Chat');
+    onChatSelect(chatId);
+    setLocalChats(await db.getRecentChats());
+  };
+
   const filteredChats = localChats.filter(chat => {
     if (showArchived) return chat.is_archived && !chat.is_deleted;
     if (showStarred) return chat.is_starred && !chat.is_deleted && !chat.is_archived;
@@ -179,6 +178,19 @@ const AssistantSidebar = ({
         >
           Clara
         </h1>
+      </div>
+
+      {/* New Chat Button */}
+      <div className="px-2">
+        <button
+          onClick={handleNewChat}
+          className={`w-full flex items-center rounded-lg transition-colors bg-sakura-500 hover:bg-sakura-600 text-white ${
+            isExpanded ? 'px-4 py-2 justify-start gap-2' : 'h-10 justify-center'
+          }`}
+        >
+          <Plus className="w-5 h-5" />
+          {isExpanded && <span>New Chat</span>}
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">

@@ -1,33 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  ImageIcon,
-  Wand2,
-  Download,
-  RefreshCw,
-  Trash2,
-  Settings,
-  X,
-  Plus,
-  ChevronDown,
-  ChevronUp
-} from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Client, BasePipe, EfficientPipe } from '@stable-canvas/comfyui-client';
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
 
-// Import ComfyUI client & pipes from the library
-import { Client, BasePipe, EfficientPipe } from '@stable-canvas/comfyui-client';
+import PromptArea from './imagegen_components/PromptArea';
+import GeneratedGallery from './imagegen_components/GeneratedGallery';
+import SettingsDrawer, { Resolution } from './imagegen_components/SettingsDrawer';
+import LoadingOverlay from './imagegen_components/LoadingOverlay';
+import InitialLoadingOverlay from './imagegen_components/InitialLoadingOverlay';
 
-interface ImageGenProps {
-  onPageChange?: (page: string) => void;
-}
-
-interface Resolution {
-  label: string;
-  width: number;
-  height: number;
-}
-
+// Resolutions constant
 const RESOLUTIONS: Resolution[] = [
   { label: 'Square (1:1)', width: 1024, height: 1024 },
   { label: 'Portrait (2:3)', width: 832, height: 1216 },
@@ -39,7 +22,7 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Custom', width: 0, height: 0 },
 ];
 
-// Utility function to convert an ArrayBuffer to a base64 string
+// Utility function: Convert ArrayBuffer to Base64 string
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -49,22 +32,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return window.btoa(binary);
 }
 
-// Basic full-screen loading overlay with a playful "dino"
-function LoadingOverlay() {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 text-white text-center">
-      <div>
-        <pre className="mb-4">
-          {`
-         /\\_./\\
-        ( o.o  )
-         > ^ < 
-          `}
-        </pre>
-        <p className="text-lg">Generating Image... Please wait!</p>
-      </div>
-    </div>
-  );
+interface ImageGenProps {
+  onPageChange?: (page: string) => void;
 }
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
@@ -74,6 +43,30 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [mustSelectModel, setMustSelectModel] = useState(false);
+  const [progress, setProgress] = useState<{ value: number; max: number } | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [currentPipeline, setCurrentPipeline] = useState<BasePipe | EfficientPipe | null>(null);
+
+  // localStorage key for storing selected model
+  const LAST_USED_MODEL_KEY = 'clara-ollama-last-used-model';
+
+  // Initial loading states
+  const [isInitialSetupComplete, setIsInitialSetupComplete] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  type LoadingStatus = {
+    sdModels: 'pending' | 'loading' | 'success' | 'error';
+    loras: 'pending' | 'loading' | 'success' | 'error';
+    vaes: 'pending' | 'loading' | 'success' | 'error';
+    systemStats: 'pending' | 'loading' | 'success' | 'error';
+    connection: 'connecting' | 'connected' | 'error';
+  };
+  const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>({
+    sdModels: 'pending',
+    loras: 'pending',
+    vaes: 'pending',
+    systemStats: 'pending',
+    connection: 'connecting',
+  });
 
   // Data from ComfyUI (models, LoRAs, VAEs, system stats)
   const [systemStats, setSystemStats] = useState<any>(null);
@@ -81,11 +74,28 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [loras, setLoras] = useState<string[]>([]);
   const [vaes, setVAEs] = useState<string[]>([]);
 
-  // Debug state: to track WebSocket connection status
+  // Debug state: WebSocket connection status
   const [wsStatus, setWsStatus] = useState<string>('Not Connected');
 
   // Reference to the ComfyUI client instance
   const clientRef = useRef<Client | null>(null);
+
+  // Disconnect any lingering client created in a different page on mount
+  useEffect(() => {
+    if (clientRef.current) {
+      try {
+        clientRef.current.close();
+        console.log("Disconnected previous client connection on mount");
+      } catch (error) {
+        console.error("Error disconnecting previous client connection on mount", error);
+      }
+      clientRef.current = null;
+    }
+  }, []);
+
+  // Remove reconnection interval dependency from generation;
+  // Instead, handle connection issues in the initial connection effect.
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Settings state variables
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -94,31 +104,51 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedVae, setSelectedVae] = useState<string>('');
   const [negativeTags, setNegativeTags] = useState<string[]>([]);
   const [negativeInput, setNegativeInput] = useState('');
-
   const [steps, setSteps] = useState(50);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
   const [customWidth, setCustomWidth] = useState<number>(1024);
   const [customHeight, setCustomHeight] = useState<number>(1024);
-
   const [expandedSections, setExpandedSections] = useState({
     model: true,
     lora: false,
     vae: false,
     negative: false,
-    resolution: true
+    resolution: true,
   });
 
   const edgeRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // (1) Connect to ComfyUI, fetch models, and set up WebSocket and event listeners
+  // Wait for the client's WebSocket connection to open before proceeding - with timeout
+  const waitForClientConnection = async (client: Client): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("WebSocket connection timeout - failed to connect after 15 seconds"));
+      }, 15000);
+      
+      if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+        clearTimeout(timeout);
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+            clearInterval(checkInterval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        }, 100);
+      }
+    });
+  };
+
+  // (1) Connect to ComfyUI and set up client event listeners
+  // IMPORTANT: This effect now runs only once on mount to avoid reinitialization
   useEffect(() => {
     const fetchAndConnectClient = async () => {
       try {
         const config = await db.getAPIConfig();
         console.log('API Config:', config);
-
         let comfyuiBaseUrl = config?.comfyui_base_url;
         if (!comfyuiBaseUrl) {
           console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
@@ -127,17 +157,15 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
         const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
         clientRef.current = client;
-
-        // Connect to the server (which sets up the socket)
         client.connect();
         console.log('ComfyUI client connected');
 
-        // Debug: Check for WebSocket instance using the correct property (socket)
         if (client.socket) {
           console.log('Debug: WebSocket instance:', client.socket);
           client.socket.addEventListener('open', (e) => {
             console.log('Debug: WebSocket open:', e);
             setWsStatus('Connected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
           });
           client.socket.addEventListener('message', (e) => {
             console.log('Debug: WebSocket message:', e);
@@ -145,67 +173,102 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           client.socket.addEventListener('close', (e) => {
             console.log('Debug: WebSocket close:', e);
             setWsStatus('Disconnected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('WebSocket connection closed unexpectedly');
           });
           client.socket.addEventListener('error', (e) => {
             console.log('Debug: WebSocket error:', e);
             setWsStatus('Error');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('Error establishing WebSocket connection');
           });
         } else {
           console.warn('Debug: No WebSocket instance on client.');
+          setConnectionError('Failed to initialize WebSocket connection');
         }
 
-        // Listen to client events via the EventEmitter
+        // Attach event listeners for progress and execution events
         client.events.on('status', (data) => console.log('Debug: status event:', data));
-        client.events.on('progress', (data) => console.log('Debug: progress event:', data));
-        client.events.on('executing', (data) => console.log('Debug: executing event:', data));
-        client.events.on('executed', (data) => console.log('Debug: executed event:', data));
-        client.events.on('execution_interrupted', (data) => console.log('Debug: execution_interrupted event:', data));
-        client.events.on('execution_start', (data) => console.log('Debug: execution_start event:', data));
-        client.events.on('execution_error', (data) => console.log('Debug: execution_error event:', data));
-        client.events.on('execution_cached', (data) => console.log('Debug: execution_cached event:', data));
-        client.events.on('execution_success', (data) => console.log('Debug: execution_success event:', data));
+        client.events.on('progress', (data) => {
+          console.log('Debug: progress event:', data);
+          setProgress({ value: data.value, max: data.max });
+        });
+        client.events.on('execution_error', (data) => {
+          console.log('Debug: execution_error event:', data);
+          setGenerationError(`Execution error: ${data?.message || 'Unknown error'}`);
+        });
+        client.events.on('execution_success', (data) => {
+          console.log('Debug: execution_success event:', data);
+          setProgress(null);
+        });
         client.events.on('reconnected', () => console.log('Debug: reconnected event'));
         client.events.on('reconnecting', () => console.log('Debug: reconnecting event'));
         client.events.on('image_data', (data) => console.log('Debug: image_data event:', data));
         client.events.on('message', (data) => console.log('Debug: client message event:', data));
         client.events.on('close', (data) => console.log('Debug: client close event:', data));
-        client.events.on('connection_error', (data) => console.log('Debug: connection_error event:', data));
+        client.events.on('connection_error', (data) => {
+          console.log('Debug: connection_error event:', data);
+          setConnectionError(`Connection error: ${data?.message || 'Unknown error'}`);
+        });
         client.events.on('unhandled', (data) => console.log('Debug: unhandled event:', data));
 
-        // Fetch models, LoRAs, VAEs, and system stats
+        // Fetch SD Models, LoRAs, VAEs, and system stats
         try {
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
           const sdModelsResp = await client.getSDModels();
           setSDModels(sdModelsResp);
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'success' }));
           console.log('SD Models:', sdModelsResp);
+          const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
+          if (lastUsedModel && sdModelsResp.includes(lastUsedModel)) {
+            console.log('Found previously used model:', lastUsedModel);
+            setSelectedModel(lastUsedModel);
+          }
         } catch (err) {
           console.error('Error fetching SD Models:', err);
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'error' }));
         }
         try {
+          setLoadingStatus(prev => ({ ...prev, loras: 'loading' }));
           const lorasResp = await client.getLoRAs();
           setLoras(lorasResp);
+          setLoadingStatus(prev => ({ ...prev, loras: 'success' }));
           console.log('LoRAs:', lorasResp);
         } catch (err) {
           console.error('Error fetching LoRAs:', err);
+          setLoadingStatus(prev => ({ ...prev, loras: 'error' }));
         }
         try {
+          setLoadingStatus(prev => ({ ...prev, vaes: 'loading' }));
           const vaesResp = await client.getVAEs();
           setVAEs(vaesResp);
+          setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
           console.log('VAEs:', vaesResp);
         } catch (err) {
           console.error('Error fetching VAEs:', err);
+          setLoadingStatus(prev => ({ ...prev, vaes: 'error' }));
         }
         try {
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'loading' }));
           const sysStats = await client.getSystemStats();
           setSystemStats(sysStats);
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'success' }));
           console.log('System Stats:', sysStats);
         } catch (err) {
           console.error('Error fetching system stats:', err);
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
         }
+
+        // Mark initial setup as complete, even if some parts failed
+        setIsInitialSetupComplete(true);
       } catch (error) {
         console.error('Error connecting to ComfyUI client:', error);
+        setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+        setIsInitialSetupComplete(true);
       }
     };
 
+    // Run only once on mount
     fetchAndConnectClient();
 
     // Cleanup: close client on unmount
@@ -215,7 +278,26 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         clientRef.current = null;
       }
     };
-  }, []);
+  }, []); // Empty dependency array to avoid reinitializing the client
+
+  // Save the selected model to localStorage when it changes
+  useEffect(() => {
+    if (selectedModel) {
+      localStorage.setItem(LAST_USED_MODEL_KEY, selectedModel);
+      console.log('Saved model to localStorage:', selectedModel);
+    }
+  }, [selectedModel]);
+
+  // Timeout to detect stalled generations (e.g. generation taking too long)
+  useEffect(() => {
+    if (!isGenerating) return;
+    const timeout = setTimeout(() => {
+      if (isGenerating && !generationError) {
+        console.warn('Generation taking too long - may have stalled');
+      }
+    }, 60000);
+    return () => clearTimeout(timeout);
+  }, [isGenerating, generationError]);
 
   // (2) Auto show/hide the settings drawer based on mouse position
   useEffect(() => {
@@ -250,22 +332,99 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setShowSettings(!showSettings);
   };
 
-  // (3) Generation logic: build and execute the image-generation pipeline
-  const handleGenerate = async () => {
-    if (!selectedModel) {
-      setMustSelectModel(true);
-      setShowSettings(true);
-      return;
+  // Function to cancel the current generation with cleanup
+  const handleCancelGeneration = useCallback(() => {
+    console.log("Cancelling generation...");
+    if (currentPipeline && clientRef.current) {
+      try {
+        // Attempt to interrupt the pipeline (if supported)
+        clientRef.current.interrupt();
+      } catch (e) {
+        console.error('Failed to interrupt pipeline:', e);
+      }
     }
-    setMustSelectModel(false);
-    setIsGenerating(true);
+    setIsGenerating(false);
+    setProgress(null);
+    setGenerationError(null);
+    setCurrentPipeline(null);
+    if (generationTimeoutRef.current) {
+      clearTimeout(generationTimeoutRef.current);
+      generationTimeoutRef.current = null;
+    }
+  }, [currentPipeline]);
+
+  // Function to retry generation
+  const handleRetryGeneration = useCallback(() => {
+    console.log("Retrying generation...");
+    setGenerationError(null);
+    setProgress(null);
+    if (clientRef.current?.socket?.readyState !== WebSocket.OPEN) {
+      console.log("WebSocket not open, attempting to reconnect...");
+      if (clientRef.current) {
+        try {
+          clientRef.current.close();
+        } catch (e) {
+          console.error("Error closing existing client:", e);
+        }
+        clientRef.current = null;
+      }
+    }
+    setTimeout(() => {
+      handleGenerate();
+    }, 300);
+  }, []);
+
+  // (3) Generation logic: Build and execute the pipeline with improved error handling
+  const handleGenerate = async () => {
+    setGenerationError(null);
     try {
+      if (!selectedModel) {
+        // If no model is selected, attempt to use a stored or first available model
+        const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
+        if (lastUsedModel && sdModels.includes(lastUsedModel)) {
+          console.log('Using last used model:', lastUsedModel);
+          setSelectedModel(lastUsedModel);
+        } else if (sdModels.length > 0) {
+          console.log('Using first available model:', sdModels[0]);
+          setSelectedModel(sdModels[0]);
+        } else {
+          setMustSelectModel(true);
+          setShowSettings(true);
+          return;
+        }
+      }
+      setMustSelectModel(false);
+      setIsGenerating(true);
+      
+      // Use existing client; do not reinitialize if already connected
       let client = clientRef.current;
-      if (!client) {
+      console.log('handleGenerate - client before check:', client);
+      
+      if (!client || client.socket?.readyState !== WebSocket.OPEN) {
+        console.log('Client not available or not connected, creating new client...');
+        if (client) {
+          try {
+            client.close();
+          } catch (e) {
+            console.error("Error closing existing client:", e);
+          }
+        }
         const config = await db.getAPIConfig();
         const url = config?.comfyui_base_url || '127.0.0.1:8188';
         client = new Client({ api_host: url, ssl: true });
         client.connect();
+        clientRef.current = client;
+        console.log('handleGenerate - new client created:', client);
+      }
+      
+      try {
+        await waitForClientConnection(client);
+        console.log('Client connection is now open.');
+      } catch (connErr) {
+        console.error("Connection error:", connErr);
+        setGenerationError(`Failed to establish WebSocket connection: ${(connErr as Error)?.message}`);
+        setIsGenerating(false);
+        return;
       }
 
       let width = selectedResolution.width;
@@ -275,6 +434,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         height = customHeight;
       }
 
+      // Build the pipeline
       const pipeline = selectedLora
         ? new EfficientPipe()
             .with(client)
@@ -293,38 +453,54 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             .size(width, height)
             .steps(steps)
             .cfg(guidanceScale);
+      
+      setCurrentPipeline(pipeline);
+      console.log('handleGenerate - pipeline built:', pipeline);
 
-      // Optionally, add VAE configuration if a VAE is selected
+      // Execute pipeline with a 5-minute timeout
+      const pipelinePromise = pipeline.save().wait();
+      const result = await Promise.race([
+        pipelinePromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Generation timed out")), 5 * 60 * 1000)
+        )
+      ]) as { images: any[] };
 
-      await pipeline.save().wait().then(({ images }) => {
-        console.log('Generated images:', images[0].data);
-        const base64Images = images.map((img) => {
-          const base64 = arrayBufferToBase64(img.data);
-          return `data:${img.mime};base64,${base64}`;
-        });
-
-        // Save each image to local storage
-        base64Images.forEach((dataUrl) => {
-          try {
-            db.addStorageItem({
-              title: 'Generated Image',
-              description: `Prompt: ${prompt}`,
-              size: dataUrl.length,
-              type: 'image',
-              mime_type: 'image/png',
-              data: dataUrl
-            });
-          } catch (err) {
-            console.error('Error saving image to DB:', err);
-          }
-        });
-
-        setGeneratedImages(prev => [...prev, ...base64Images]);
+      console.log('Generated images:', result.images[0].data);
+      const base64Images = result.images.map((img) => {
+        const base64 = arrayBufferToBase64(img.data);
+        return `data:${img.mime};base64,${base64}`;
       });
+      
+      base64Images.forEach((dataUrl) => {
+        try {
+          db.addStorageItem({
+            title: 'Generated Image',
+            description: `Prompt: ${prompt}`,
+            size: dataUrl.length,
+            type: 'image',
+            mime_type: 'image/png',
+            data: dataUrl,
+          });
+        } catch (err) {
+          console.error('Error saving image to DB:', err);
+        }
+      });
+
+      setGeneratedImages((prev) => [...prev, ...base64Images]);
     } catch (err) {
       console.error('Error generating image:', err);
+      if (!generationError) {
+        setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+      }
     } finally {
+      setProgress(null);
       setIsGenerating(false);
+      setCurrentPipeline(null);
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
     }
   };
 
@@ -336,7 +512,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
   };
   const handleNegativeTagRemove = (tagToRemove: string) => {
-    setNegativeTags(negativeTags.filter(tag => tag !== tagToRemove));
+    setNegativeTags(negativeTags.filter((tag) => tag !== tagToRemove));
   };
   const handleNegativeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -347,7 +523,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Helpers to delete or download generated images
   const handleDelete = (index: number) => {
-    setGeneratedImages(prev => prev.filter((_, i) => i !== index));
+    setGeneratedImages((prev) => prev.filter((_, i) => i !== index));
   };
   const handleDownload = (imageDataUrl: string, index: number) => {
     const a = document.createElement('a');
@@ -357,11 +533,17 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   };
 
   const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   return (
     <div className="flex h-screen">
+      {!isInitialSetupComplete && (
+        <InitialLoadingOverlay 
+          loadingStatus={loadingStatus} 
+          connectionError={connectionError} 
+        />
+      )}
       <Sidebar
         activePage="image-gen"
         onPageChange={onPageChange || (() => {})}
@@ -372,306 +554,71 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       />
       <div className="flex-1 flex flex-col">
         <ImageGenHeader userName="User" onPageChange={onPageChange} systemStats={systemStats} />
-
-        {/* Debug UI: Display current WebSocket status */}
-        {/* <div className="p-2 text-center bg-gray-200 dark:bg-gray-700">
-          <p className="text-sm">WebSocket Status: {wsStatus}</p>
-        </div> */}
-
-        {isGenerating && <LoadingOverlay />}
-
+        {isGenerating && (
+          <LoadingOverlay 
+            progress={progress} 
+            images={generatedImages}
+            error={generationError}
+            onCancel={handleCancelGeneration}
+            onRetry={handleRetryGeneration}
+          />
+        )}
         <div className="flex-1 overflow-hidden flex">
           <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
             <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
-              {/* Prompt Area */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="space-y-4">
-                  {mustSelectModel && (
-                    <div className="bg-red-100 text-red-800 p-2 rounded">
-                      <strong>Please select a model from the side panel first.</strong>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Describe your image
-                    </label>
-                    <textarea
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder="A serene landscape with mountains and a lake at sunset..."
-                      className="w-full px-4 py-3 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100 min-h-[100px]"
-                    />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <button onClick={handleSettingsClick} className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 cursor-pointer transition-colors">
-                      <Settings
-                        className={`w-6 h-6 text-gray-600 dark:text-gray-400 transition-transform duration-300 ${showSettings ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                    <button
-                      onClick={handleGenerate}
-                      disabled={isGenerating || !prompt.trim()}
-                      className="flex items-center gap-2 px-6 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <RefreshCw className="w-5 h-5 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="w-5 h-5" />
-                          Generate
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Generated Images Gallery */}
-              {generatedImages.length > 0 && (
-                <div className="space-y-4">
-                  <h2 className="text-lg font-medium text-gray-900 dark:text-white">Generated Images</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {generatedImages.map((image, index) => (
-                      <div key={index} className="glassmorphic rounded-xl overflow-hidden group relative">
-                        <img src={image} alt={`Generated ${index + 1}`} className="w-full h-64 object-cover" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                          <button onClick={() => handleDownload(image, index)} className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors" title="Download">
-                            <Download className="w-5 h-5" />
-                          </button>
-                          <button onClick={() => handleDelete(index)} className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors" title="Delete">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Placeholder UI when no images are generated */}
-              {generatedImages.length === 0 && !isGenerating && (
-                <div className="text-center py-16 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
-                  <div className="inline-flex items-center justify-center p-6 bg-gray-100 dark:bg-gray-800 rounded-full mb-4">
-                    <ImageIcon className="w-8 h-8 text-sakura-500" />
-                  </div>
-                  <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No images generated yet</h3>
-                  <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-                    Enter a description above and click Generate to create your first AI-powered image.
-                  </p>
-                </div>
-              )}
+              <PromptArea
+                prompt={prompt}
+                setPrompt={setPrompt}
+                mustSelectModel={mustSelectModel}
+                isGenerating={isGenerating}
+                handleSettingsClick={handleSettingsClick}
+                handleGenerate={handleGenerate}
+                showSettings={showSettings}
+              />
+              <GeneratedGallery
+                generatedImages={generatedImages}
+                isGenerating={isGenerating}
+                handleDownload={handleDownload}
+                handleDelete={handleDelete}
+              />
             </div>
           </div>
         </div>
       </div>
-      {/* Right-side Settings Drawer */}
-      <div
-        ref={edgeRef}
-        className={`w-80 glassmorphic border-l border-gray-200 dark:border-gray-700 fixed right-0 top-16 bottom-0 transform transition-transform duration-300 ${
-          showSettings ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        <div className="p-6 space-y-6 h-full overflow-y-auto">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white">Generation Settings</h3>
-          {/* Model Selection */}
-          <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
-            <button onClick={() => toggleSection('model')} className="flex items-center justify-between w-full">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</span>
-              {expandedSections.model ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedSections.model && (
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-              >
-                <option value="">-- Select a Model --</option>
-                {sdModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          {/* LoRA Selection */}
-          <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
-            <button onClick={() => toggleSection('lora')} className="flex items-center justify-between w-full">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">LoRA</span>
-              {expandedSections.lora ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedSections.lora && (
-              <div className="space-y-3">
-                <select
-                  value={selectedLora}
-                  onChange={(e) => setSelectedLora(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                >
-                  <option value="">-- No LoRA --</option>
-                  {loras.map((loraName) => (
-                    <option key={loraName} value={loraName}>
-                      {loraName}
-                    </option>
-                  ))}
-                </select>
-                {selectedLora && (
-                  <div className="space-y-2">
-                    <label className="block text-sm text-gray-700 dark:text-gray-300">
-                      Strength: {loraStrength.toFixed(2)}
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={loraStrength}
-                      onChange={(e) => setLoraStrength(parseFloat(e.target.value))}
-                      className="w-full"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          {/* VAE Selection */}
-          <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
-            <button onClick={() => toggleSection('vae')} className="flex items-center justify-between w-full">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">VAE Model</span>
-              {expandedSections.vae ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedSections.vae && (
-              <select
-                value={selectedVae}
-                onChange={(e) => setSelectedVae(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-              >
-                <option value="">-- No VAE --</option>
-                {vaes.map((vaeName) => (
-                  <option key={vaeName} value={vaeName}>
-                    {vaeName}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          {/* Negative Prompts */}
-          <div className="space-y-4 border-b border-gray-200 dark:border-gray-700 pb-4">
-            <button onClick={() => toggleSection('negative')} className="flex items-center justify-between w-full">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Negative Prompts</span>
-              {expandedSections.negative ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedSections.negative && (
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={negativeInput}
-                    onChange={(e) => setNegativeInput(e.target.value)}
-                    onKeyDown={handleNegativeInputKeyDown}
-                    placeholder="Add negative prompt..."
-                    className="flex-1 px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  />
-                  <button onClick={handleNegativeTagAdd} className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600">
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {negativeTags.map((tag, index) => (
-                    <div key={index} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{tag}</span>
-                      <button onClick={() => handleNegativeTagRemove(tag)} className="p-0.5 hover:text-red-500">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          {/* Steps and Guidance Scale */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Steps: {steps}</label>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={steps}
-              onChange={(e) => setSteps(parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Guidance Scale: {guidanceScale.toFixed(1)}
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="10"
-              step="0.1"
-              value={guidanceScale}
-              onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
-              className="w-full"
-            />
-          </div>
-          {/* Resolution Settings */}
-          <div className="space-y-4">
-            <button onClick={() => toggleSection('resolution')} className="flex items-center justify-between w-full">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution</span>
-              {expandedSections.resolution ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {expandedSections.resolution && (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  {RESOLUTIONS.map((res) => (
-                    <button
-                      key={res.label}
-                      onClick={() => setSelectedResolution(res)}
-                      className={`p-2 rounded-lg text-sm text-center transition-colors ${
-                        selectedResolution.label === res.label
-                          ? 'bg-sakura-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      <div>{res.label}</div>
-                      {res.label !== 'Custom' && (
-                        <div className="text-xs opacity-75">
-                          {res.width}×{res.height}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                {selectedResolution.label === 'Custom' && (
-                  <div className="mt-4 space-y-2">
-                    <div>
-                      <label className="block text-sm text-gray-700 dark:text-gray-300">Custom Width</label>
-                      <input
-                        type="number"
-                        value={customWidth}
-                        onChange={(e) => setCustomWidth(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 dark:text-gray-300">Custom Height</label>
-                      <input
-                        type="number"
-                        value={customHeight}
-                        onChange={(e) => setCustomHeight(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                      />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <SettingsDrawer
+        drawerRef={edgeRef}
+        showSettings={showSettings}
+        expandedSections={expandedSections}
+        toggleSection={toggleSection}
+        sdModels={sdModels}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        loras={loras}
+        selectedLora={selectedLora}
+        setSelectedLora={setSelectedLora}
+        loraStrength={loraStrength}
+        setLoraStrength={setLoraStrength}
+        vaes={vaes}
+        selectedVae={selectedVae}
+        setSelectedVae={setSelectedVae}
+        negativeTags={negativeTags}
+        negativeInput={negativeInput}
+        setNegativeInput={setNegativeInput}
+        handleNegativeTagAdd={handleNegativeTagAdd}
+        handleNegativeTagRemove={handleNegativeTagRemove}
+        handleNegativeInputKeyDown={handleNegativeInputKeyDown}
+        steps={steps}
+        setSteps={setSteps}
+        guidanceScale={guidanceScale}
+        setGuidanceScale={setGuidanceScale}
+        resolutions={RESOLUTIONS}
+        selectedResolution={selectedResolution}
+        setSelectedResolution={setSelectedResolution}
+        customWidth={customWidth}
+        setCustomWidth={setCustomWidth}
+        customHeight={customHeight}
+        setCustomHeight={setCustomHeight}
+      />
     </div>
   );
 };

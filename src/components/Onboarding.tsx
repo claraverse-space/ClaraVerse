@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import  { useState } from 'react';
 import { User, Mail, Globe } from 'lucide-react';
 import { db } from '../db';
 
@@ -13,11 +13,12 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     email: '',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     theme_preference: 'system' as const,
-    avatar_url: ''
+    avatar_url: '',
+    ollama_url: 'http://localhost:11434'
   });
 
   const handleSubmit = async () => {
-    // Save to database
+    // Save personal info to database
     await db.updatePersonalInfo({
       name: formData.name,
       email: formData.email,
@@ -26,11 +27,10 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
       avatar_url: formData.avatar_url
     });
     
-    // Initialize API config
+    // Initialize API config with Ollama URL
     await db.updateAPIConfig({
-      ollama_base_url: '',
-      openai_key: '',
-      openrouter_key: ''
+      ollama_base_url: formData.ollama_url,
+      comfyui_base_url: ''
     });
 
     onComplete();
@@ -98,18 +98,40 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   <Globe className="w-6 h-6 text-sakura-500" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  What's your timezone?
+                  Ollama Configuration
                 </h3>
               </div>
-              <select
-                value={formData.timezone}
-                onChange={(e) => setFormData(prev => ({ ...prev, timezone: e.target.value }))}
-                className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-              >
-                {Intl.supportedValuesOf('timeZone').map(tz => (
-                  <option key={tz} value={tz}>{tz}</option>
-                ))}
-              </select>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Ollama API URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.ollama_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, ollama_url: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    placeholder="http://localhost:11434"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    The URL where your Ollama instance is running
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Timezone
+                  </label>
+                  <select
+                    value={formData.timezone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, timezone: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                  >
+                    {Intl.supportedValuesOf('timeZone').map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -134,7 +156,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
             disabled={
               (step === 1 && !formData.name) ||
               (step === 2 && !formData.email) ||
-              (step === 3 && !formData.timezone)
+              (step === 3 && !formData.ollama_url)
             }
             className="ml-auto px-6 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
