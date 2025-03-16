@@ -156,10 +156,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           comfyuiBaseUrl = '127.0.0.1:8188';
         }
 
+        // some times user provides with protocol and some times not make sure everytime url without protocol is passed
+        let url = comfyuiBaseUrl;
+        if (comfyuiBaseUrl.includes('http://') || comfyuiBaseUrl.includes('https://')) {
+          url = comfyuiBaseUrl.split('//')[1];
+        }
+        console.log('ComfyUI base URL:', url);
         // based on the baseURL decide ssl true or false
-        let ssl_type =  comfyuiBaseUrl.includes('https') ? true : false;
+        const ssl_type =  comfyuiBaseUrl.includes('https') ? true : false;
         console.log('SSL Type:', ssl_type);
-        const client = new Client({ api_host: comfyuiBaseUrl, ssl: ssl_type });
+        const client = new Client({ api_host: url, ssl: ssl_type });
         clientRef.current = client;
         client.connect();
         console.log('ComfyUI client connected');
@@ -620,6 +626,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       ]) as { images: any[] };
 
       console.log('Generated images:', result.images[0].data);
+      client.free(
+        {
+          free_memory: true,
+          unload_models: true
+        }
+      );
       const base64Images = result.images.map((img) => {
         const base64 = arrayBufferToBase64(img.data);
         return `data:${img.mime};base64,${base64}`;

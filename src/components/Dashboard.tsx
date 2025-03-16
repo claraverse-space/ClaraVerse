@@ -37,9 +37,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const checkComfyConnection = async (url: string) => {
     setComfyStatus('checking');
+
+    console.log('Checking ComfyUI connection...', url);
+
+    let urls = url;
+    if (urls.includes('http://') || urls.includes('https://')) {
+      urls = urls.split('//')[1];
+    }
     try {
       const client = new Client({
-        api_host: url,
+        api_host: urls,
         ssl: url.startsWith('https')
       });
       await client.connect();
