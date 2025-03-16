@@ -1,215 +1,104 @@
-# Clara
-## Privacy-First AI Assistant & App Builder that has no Docker or Backend requirement.
-
 <div align="center">
+  <img src="/public/logo-clara.png" alt="Clara Logo" width="180" height="180" />
+  <h1>Clara</h1>
+  <p><strong>Privacy-First AI Assistant & App Builder</strong></p>
+  <p>Create, chat, and build with AI - all running locally on your device</p>
 
-<!-- link to clara access and we promise no data is sent anywhere other than your pc  https://clara-ollama.netlify.app/ just the link to the app-->
+  [![Clara](https://img.shields.io/badge/Clara-0.1.2-FFD700.svg)](https://clara-ollama.netlify.app/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### 🚀 Live Demo, 
-Link to the Clara App: [Clara](https://clara-ollama.netlify.app/)
-
-[![Clara](https://img.shields.io/badge/Clara-0.1.2-FFD700.svg)](https://clara-ollama.netlify.app/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.1-38B2AC.svg)](https://tailwindcss.com/)
-[![Electron](https://img.shields.io/badge/Electron-35.0.1-47848F.svg)](https://www.electronjs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-**Your local AI assistant that respects your privacy**
-
+  <a href="https://clara-ollama.netlify.app/" target="_blank">Try Clara Online</a> | <a href="#download-desktop-app">Download Desktop App</a>
 </div>
 
-## 🔒 Privacy First, No Exceptions
+## 🔒 Privacy First
 
-Clara is a completely client-side AI assistant that works with Ollama running on your machine or network. Unlike cloud-based solutions:
+Clara connects directly to your Ollama instance with **no data ever leaving your device**. Zero tracking, zero telemetry, all data stored locally.
 
-- **No data leaves your device** without your explicit permission
-- **Zero tracking or telemetry**
-- **All data stored locally** in your browser's IndexedDB
-- **Direct connection** to your Ollama instance
+## ✨ Key Features
 
-## ✨ Features
+### Intelligent Assistant
+Chat with any Ollama model including multimodal models that understand images.
 
-### Chat Interface
-- 💬 Real-time chat with streaming responses
-- 🤖 Support for all Ollama models (Llama, Mistral, Phi, etc.)
-- 🖼️ Image understanding with multimodal models
-- 💾 Persistent conversation history stored locally
-- 📝 Rich markdown support with code highlighting
+<img src="/public/screenshots/assistant-screenshot.png" alt="Clara Assistant" width="800" />
 
-### App Builder
-- 🧩 Visual node-based flow builder
-- 📊 Text input/output nodes
-- 🖼️ Image input nodes
-- 🤖 LLM integration nodes
-- ⚡ Conditional logic nodes
-- 🌐 API call nodes
-- ✍️ Text combiner nodes
-- 🔄 Reusable app templates
-- 💻 Run apps with user inputs
+### Image Generation
+Create stunning images with text prompts using Stable Diffusion models through ComfyUI.
 
-### Desktop Application
-- 🖥️ Native desktop experience with Electron
-- 🔄 Same features as the web version
-- 🚀 Better performance for resource-intensive tasks
-- 💻 Cross-platform support (Windows, macOS, Linux)
-- 🔌 Enhanced system integration
-- 🔒 Local-first approach for maximum privacy
+<img src="/public/screenshots/image-gen-screenshot.png" alt="Clara Image Generation" width="800" />
 
-### System
-- 🌓 Beautiful light/dark mode
-- 🔍 Model management and selection
-- 📱 Responsive design
-- 🛠️ Custom API configurations
+### Custom App Builder
+Build your own AI apps visually with our intuitive node-based editor.
 
-## 🔮 Coming Soon
-- 🎨 Image generation with Stable Diffusion
-- 🔊 Voice input and output
-- 👥 Character personalities for chat
-- 📚 Knowledge base integration 
-- 📊 Data visualization nodes
-- 📄 PDF document processing
-- 🔌 Plugin system for extensibility
-- 📱 PWA for mobile installation
-- 🚀 Local RAG with vector databases
+<img src="/public/screenshots/app-builder-screenshot.png" alt="Clara App Builder" width="800" />
+
+### Image Gallery
+Browse, search and manage your generated images in the integrated gallery.
+
+<img src="/public/screenshots/gallery-screenshot.png" alt="Clara Gallery" width="800" />
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- **Node.js** (v18+ recommended)
-- **Ollama** installed locally ([install instructions below](#installing-ollama))
+1. **Install Ollama** - [Download here](https://ollama.ai/download)
+2. **Run Clara** - [Launch the web app](https://clara-ollama.netlify.app/) or download the desktop version
+3. **Connect** - Enter your Ollama URL (default: http://localhost:11434)
 
-### Installation
+## 📱 Download Desktop App
+
+Clara is available as a native desktop application for enhanced performance:
+
+- [Windows Installer (.exe)](https://github.com/Clara-AI/clara-ollama/releases/latest)
+- [macOS Installer (.dmg)](https://github.com/Clara-AI/clara-ollama/releases/latest)
+- [Linux AppImage (.AppImage)](https://github.com/Clara-AI/clara-ollama/releases/latest)
+
+## 👩‍💻 Dev Zone
+
+### Development Setup
+
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/clara-ai.git
-cd clara-ai
+# Clone repository
+git clone https://github.com/Clara-AI/clara-ollama.git
+cd clara-ollama
 
 # Install dependencies
 npm install
 
-# Start development server (web version)
+# Start development server (web)
 npm run dev
 
-# Start development server (desktop version)
+# Start development server (desktop)
 npm run electron:dev
 ```
 
-### Building the Desktop App
+### Remote Ollama Connection
+
+To connect to Ollama running on another machine:
+
+1. Configure CORS in Ollama (`~/.ollama/config.json`):
+   ```json
+   {
+     "origins": ["*"]
+   }
+   ```
+2. Enter the remote URL in Clara settings: `http://{IP_ADDRESS}:11434`
+
+### Building for Production
+
 ```bash
-# Build for production (web)
+# Build web version
 npm run build
 
-# Build desktop application
+# Build desktop app
 npm run electron:build
 ```
 
-The desktop application will be created in the `release` directory, with installers for your current platform.
+## 🤝 Support & Contact
 
-> **Note:** The `release` directory and other Electron build artifacts are ignored in the repository via `.gitignore`. This includes installer files (`.dmg`, `.exe`, `.deb`, `.AppImage`), update files (`.blockmap`, `latest-*.yml`), and temporary build directories.
-
-## 🐳 Installing Ollama
-
-### Windows
-1. Download the installer from the [official site](https://ollama.ai/download/windows)
-2. Run the installer and follow the prompts
-3. After installation, Ollama will be available at `http://localhost:11434`
-4. Enable CORS by creating a file named `config.json` in `%USERPROFILE%\.ollama` with:
-   ```json
-   {
-     "origins": ["*"]
-   }
-   ```
-
-### macOS
-1. Download Ollama from the [official site](https://ollama.ai/download/mac)
-2. Install the application
-3. Run Ollama from Applications folder
-4. Ollama will be available at `http://localhost:11434`
-5. Enable CORS by creating or editing `~/.ollama/config.json`:
-   ```json
-   {
-     "origins": ["*"]
-   }
-   ```
-
-### Linux
-1. Install Ollama using the command:
-   ```bash
-   curl -fsSL https://ollama.ai/install.sh | sh
-   ```
-2. Start Ollama:
-   ```bash
-   ollama serve
-   ```
-3. Enable CORS by creating or editing `~/.ollama/config.json`:
-   ```json
-   {
-     "origins": ["*"]
-   }
-   ```
-
-### Pulling Models
-Once Ollama is running, you can pull models:
-```bash
-# Pull a basic model
-ollama pull llama3
-
-# Pull multimodal (image understanding) model
-ollama pull llava
-```
-
-## 🌐 Remote Access Options
-
-### Using Ollama on Another Computer
-If you're running Ollama on another computer on your network, just enter the IP address in Clara's settings: `http://{IP_ADDRESS}:11434`
-
-### Using ngrok for Remote Access
-To access Ollama from anywhere:
-
-```bash
-# Install ngrok
-npm install -g ngrok
-
-# Expose Ollama API
-ngrok http 11434
-```
-
-Then use the provided ngrok URL in Clara's settings.
-
-## 🏗️ Project Architecture
-Clara is built with a modular architecture:
-```
-clara/
-├── src/
-│   ├── components/     # UI components
-│   ├── hooks/          # Custom hooks
-│   ├── utils/          # Helper functions
-│   ├── db/             # Local storage (IndexedDB)
-│   ├── types/          # TypeScript type definitions
-│   └── App.tsx         # Application entry
-├── electron/           # Electron-specific code
-│   ├── main.cjs        # Main process
-│   └── preload.cjs     # Preload script
-├── public/             # Static assets
-└── package.json        # Dependencies
-```
-
-## 🚢 Deployment
-- **Web Version**: Deploy the `dist` directory to any static host (e.g., Netlify, GitHub Pages).
-- **Desktop Version**: Use `npm run electron:build` to create installers for Windows, macOS, and Linux.
-
-## 🤝 Contribute
-1. Fork repository
-2. Create feature branch (`git checkout -b feature/YourFeature`)
-3. Commit changes (`git commit -m 'Add YourFeature'`)
-4. Push branch (`git push origin feature/YourFeature`)
-5. Submit Pull Request
-
-## 📄 License
-MIT License – [LICENSE](LICENSE)
+- Website: [claraai.com](https://claraai.com)
+- Email: support@claraai.com
+- Twitter: [@ClaraAIAssist](https://twitter.com/ClaraAIAssist)
 
 ---
 
-🌟 **Built with privacy and security at its core.** 🌟
+<div align="center">
+  <p>© 2023 Clara AI Technologies, Inc. - <a href="https://claraai.com/privacy">Privacy Policy</a></p>
+</div>
