@@ -96,6 +96,11 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     // Ensure we're not running from a quarantined location
     app.setAsDefaultProtocolClient('clara');
+    
+    // For development only - bypass Gatekeeper
+    if (isDevelopment) {
+      app.commandLine.appendSwitch('no-sandbox');
+    }
   }
 
   createWindow();

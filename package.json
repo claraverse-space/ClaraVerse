@@ -22,7 +22,9 @@
     "electron:dev": "concurrently \"cross-env ELECTRON_START_URL=http://localhost:5173 npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build-all": "npm run build && electron-builder --mac --win --linux",
     "electron:build": "npm run build && electron-builder",
-    "electron:preview": "npm run build && electron ."
+    "electron:preview": "npm run build && electron .",
+    "electron:build-mac": "npm run build && electron-builder --mac --universal",
+    "electron:build-mac-dev": "npm run build && electron-builder --mac --universal"
   },
   "dependencies": {
     "@saintno/comfyui-sdk": "^0.2.45",
@@ -90,8 +92,19 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "target": ["dmg", "zip"],
-      "notarize": true
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
+      ],
+      "notarize": false,
+      "darkModeSupport": true,
+      "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "win": {
       "target": [
@@ -121,6 +134,7 @@
     "publish": {
       "provider": "github",
       "releaseType": "release"
-    }
+    },
+    "afterSign": null
   }
 }

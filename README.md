@@ -59,6 +59,30 @@ For faster performance and offline convenience, download the native desktop vers
 - [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
 - [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
 
+## Mac Distribution Note
+
+### For Mac Users Installing This App
+
+If you see a message that the app is damaged or can't be opened:
+
+1. Right-click (or Control+click) on the app in Finder
+2. Select "Open" from the context menu
+3. Click "Open" on the security dialog
+4. If still blocked, go to System Preferences > Security & Privacy > General and click "Open Anyway"
+
+This happens because the app is not notarized with Apple. This is perfectly safe, but macOS requires this extra step for unsigned applications.
+
+### For Developers
+
+Building for macOS:
+
+- **Development build** (no notarization): `npm run electron:build-mac-dev`
+- **Production build** (with notarization, requires Apple Developer Program): 
+  1. Set environment variables `APPLE_ID`, `APPLE_ID_PASSWORD` (app-specific password), and `APPLE_TEAM_ID` 
+  2. Run `npm run electron:build-mac`
+
+To get an Apple Team ID, join the [Apple Developer Program](https://developer.apple.com/programs/).
+
 ## 👩‍💻 Dev Zone
 
 ### Development Setup
@@ -102,4 +126,4 @@ npm run electron:build
 
 ## 🤝 Support & Contact
 
-Have questions or need help? Reach out via **praveensm890@gmail.com**.  
+Have questions or need help? Reach out via **praveensm890@gmail.com**.
