@@ -89,7 +89,7 @@ To get an Apple Team ID, join the [Apple Developer Program](https://developer.ap
 
 ```bash
 # Clone the repository
-git clone https://github.com/Clara-AI/clara-ollama.git
+git clone https://github.com/badboysm890/ClaraVerse.git
 cd clara-ollama
 
 # Install dependencies
