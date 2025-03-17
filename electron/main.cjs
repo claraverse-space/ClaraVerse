@@ -36,7 +36,7 @@ function createWindow() {
     show: false, // Don't show until ready-to-show
     backgroundColor: '#ffffff',
     autoHideMenuBar: !isDevelopment, // Hide menu bar in production
-    icon: path.join(process.resourcesPath, 'assets/icons/png/256x256.png')
+    icon: process.resourcesPath ? path.join(process.resourcesPath, 'assets/icons/png/256x256.png') : path.join(__dirname, '../assets/icons/png/256x256.png')
   });
 
   // Create application menu
@@ -92,6 +92,12 @@ function createWindow() {
 
 // Create window when Electron has finished initialization
 app.whenReady().then(() => {
+  // Handle macOS security checks
+  if (process.platform === 'darwin') {
+    // Ensure we're not running from a quarantined location
+    app.setAsDefaultProtocolClient('clara');
+  }
+
   createWindow();
   
   // Set app user model id for windows
@@ -199,6 +205,14 @@ ipcMain.on('message-from-renderer', (event, arg) => {
   console.log('Message from renderer:', arg);
   // You can send a response back
   event.reply('message-from-main', 'Hello from the main process!');
+});
+
+// Handle protocol associations (deep linking)
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (mainWindow) {
+    mainWindow.webContents.send('deep-link', url);
+  }
 });
 
 // Limit resource usage

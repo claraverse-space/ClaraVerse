@@ -10,8 +10,26 @@ const validSendChannels = [
 const validReceiveChannels = [
   'message-from-main', 
   'app-update-available',
-  'app-error'
+  'app-error',
+  'deep-link'
 ];
+
+// Get app version safely
+function getAppVersion() {
+  try {
+    // First try to get version from electron app
+    const { app } = require('@electron/remote');
+    if (app) {
+      return app.getVersion();
+    }
+  } catch (e) {
+    // If remote is not available, use env var
+    if (process.env.npm_package_version) {
+      return process.env.npm_package_version;
+    }
+  }
+  return '1.0.0'; // Fallback version
+}
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -31,7 +49,7 @@ contextBridge.exposeInMainWorld(
       }
     },
     // Additional API methods
-    getAppVersion: () => process.env.npm_package_version || app.getVersion(),
+    getAppVersion: getAppVersion,
     getPlatform: () => process.platform,
     getAppPath: () => process.env.APPDATA || process.env.HOME,
     // Remove event listener for cleanup

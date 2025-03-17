@@ -87,7 +87,11 @@
       "category": "public.app-category.developer-tools",
       "icon": "assets/icons/mac/icon.icns",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": ["dmg", "zip"],
+      "notarize": true
     },
     "win": {
       "target": [

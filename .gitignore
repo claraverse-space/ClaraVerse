@@ -39,3 +39,4 @@ electron-builder.yml
 latest-mac.yml
 latest-linux.yml
 latest-win.yml
+.bolt
