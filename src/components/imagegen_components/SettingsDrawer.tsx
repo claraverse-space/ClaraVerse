@@ -329,7 +329,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
               </label>
               <input
                 type="range"
-                min="1"
+                min="0"
                 max="100"
                 value={steps}
                 onChange={(e) => setSteps(parseInt(e.target.value))}
@@ -342,7 +342,7 @@ const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
               </label>
               <input
                 type="range"
-                min="1"
+                min="0"
                 max="10"
                 step="0.1"
                 value={guidanceScale}

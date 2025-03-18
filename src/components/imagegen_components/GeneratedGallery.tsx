@@ -1,5 +1,6 @@
-import React from 'react';
-import { ImageIcon, Download, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ImageIcon, Download, Trash2, Eye } from 'lucide-react';
+import ImageViewModal from './ImageViewModal';
 
 interface GeneratedGalleryProps {
   generatedImages: string[];
@@ -14,6 +15,8 @@ const GeneratedGallery: React.FC<GeneratedGalleryProps> = ({
   handleDownload,
   handleDelete
 }) => {
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+
   if (generatedImages.length === 0 && !isGenerating) {
     return (
       <div className="text-center py-16 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
@@ -39,6 +42,13 @@ const GeneratedGallery: React.FC<GeneratedGalleryProps> = ({
             <img src={image} alt={`Generated ${index + 1}`} className="w-full h-64 object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
               <button
+                onClick={() => setViewingImage(image)}
+                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                title="View"
+              >
+                <Eye className="w-5 h-5" />
+              </button>
+              <button
                 onClick={() => handleDownload(image, index)}
                 className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
                 title="Download"
@@ -56,6 +66,11 @@ const GeneratedGallery: React.FC<GeneratedGalleryProps> = ({
           </div>
         ))}
       </div>
+      
+      <ImageViewModal
+        imageUrl={viewingImage}
+        onClose={() => setViewingImage(null)}
+      />
     </div>
   );
 };

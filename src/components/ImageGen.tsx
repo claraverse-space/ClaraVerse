@@ -9,6 +9,7 @@ import GeneratedGallery from './imagegen_components/GeneratedGallery';
 import SettingsDrawer, { Resolution } from './imagegen_components/SettingsDrawer';
 import LoadingOverlay from './imagegen_components/LoadingOverlay';
 import InitialLoadingOverlay from './imagegen_components/InitialLoadingOverlay';
+import { Buffer } from 'buffer';
 
 // Resolutions constant
 const RESOLUTIONS: Resolution[] = [
@@ -29,6 +30,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return window.btoa(binary);
+}
+
+function arrayBufferToUint8Array(buffer: ArrayBuffer): Uint8Array {
+  return new Uint8Array(buffer);
 }
 
 interface ImageGenProps {
@@ -129,6 +134,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [denoise, setDenoise] = useState<number>(0.7);
   const [sampler, setSampler] = useState<string>("euler");
   const [scheduler, setScheduler] = useState<string>("normal");
+
+  // Add state for storing the uploaded image buffer
+  const [imageBuffer, setImageBuffer] = useState<ArrayBuffer | null>(null);
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -639,28 +647,66 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         height = customHeight;
       }
 
-      // Build the pipeline
-      const pipeline = selectedLora
-        ? new EfficientPipe()
-            .with(client)
-            .model(selectedModel)
-            .prompt(prompt)
-            .negative(negativeTags.join(', '))
-            .size(width, height)
-            .steps(steps)
-            .cfg(guidanceScale)
-            .lora(selectedLora)
-        : new BasePipe()
-            .with(client)
-            .model(selectedModel)
-            .prompt(prompt)
-            .negative(negativeTags.join(', '))
-            .size(width, height)
-            .steps(steps)
-            .cfg(guidanceScale);
+      // Determine which pipeline to use and set it up
+      let pipeline: BasePipe | EfficientPipe;
       
+      // Use EfficientPipe if we have ControlNet, LoRA, or uploaded image
+      // since these features are only supported in EfficientPipe
+      const shouldUseEfficientPipe = imageBuffer || selectedLora || selectedControlNet;
+
+      if (shouldUseEfficientPipe) {
+        const pipe = new EfficientPipe();
+        pipeline = pipe
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
+
+        
+
+        // Add ControlNet if both image and controlnet model are selected
+        if (selectedControlNet && imageBuffer) {
+          console.log('Adding ControlNet to pipeline:', selectedControlNet, imageBuffer);
+          
+          const imageData = Buffer.from(arrayBufferToUint8Array(imageBuffer));
+          pipeline = pipe.cnet(selectedControlNet, imageData);
+        }
+
+        // Add input image if provided
+        if (imageBuffer) {
+          const imageData = arrayBufferToUint8Array(imageBuffer);
+          pipeline = pipe.image(Buffer.from(imageData));
+        }
+
+        // Add LoRA if selected
+        if (selectedLora) {
+          pipeline = pipe.lora(selectedLora, { strength: loraStrength });
+        }
+      } else {
+        // Use BasePipe for simple text-to-image generation
+        pipeline = new BasePipe()
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
+      }
+
       setCurrentPipeline(pipeline);
-      console.log('handleGenerate - pipeline built:', pipeline);
+      console.log('Pipeline built:', pipeline);
 
       // Execute pipeline with a 5-minute timeout
       const pipelinePromise = pipeline.save().wait();
@@ -699,6 +745,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       });
 
       setGeneratedImages((prev) => [...prev, ...base64Images]);
+      
+      // Clear the image buffer after successful generation
+      setImageBuffer(null);
     } catch (err) {
       console.error('Error generating image:', err);
       if (!generationError) {
@@ -753,7 +802,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   const handleImageUpload = (buffer: ArrayBuffer) => {
     console.log('Received image buffer in ImageGen:', buffer);
-    // Store the buffer for use in pipeline if needed
+    setImageBuffer(buffer);
   };
 
   return (
