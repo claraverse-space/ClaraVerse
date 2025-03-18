@@ -40,3 +40,7 @@ latest-mac.yml
 latest-linux.yml
 latest-win.yml
 .bolt
+
+# Code signing files
+package-mac-signed.sh
+certificate.p12

@@ -9,7 +9,7 @@ import './ImageTextLlmExecutor';
 import './GetClipboardTextExecutor';
 import './ConcatTextExecutor';
 import './WebcamInputExecutor';
-import './LlmPromptExecutor';
+import './BaseLlmExecutor';
 import './ImageInputExecutor';
 import './structuredLlmExecutor';
 

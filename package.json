@@ -24,7 +24,9 @@
     "electron:build": "npm run build && electron-builder",
     "electron:preview": "npm run build && electron .",
     "electron:build-mac": "npm run build && electron-builder --mac --universal",
-    "electron:build-mac-dev": "npm run build && electron-builder --mac --universal"
+    "electron:build-mac-dev": "npm run build && electron-builder --mac --universal",
+    "package": "npm run build && electron-builder build --publish never",
+    "package:mac-unsigned": "npm run build && electron-builder build -c.mac.identity=null --publish never"
   },
   "dependencies": {
     "@saintno/comfyui-sdk": "^0.2.45",
@@ -46,6 +48,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.0.0",
     "@eslint/js": "^9.9.1",
     "@tailwindcss/typography": "^0.5.10",
     "@testing-library/jest-dom": "^6.6.3",
@@ -77,7 +80,7 @@
   "build": {
     "appId": "com.clara-ai.app",
     "productName": "Clara",
-    "files": [  
+    "files": [
       "dist/**/*",
       "electron/**/*"
     ],
@@ -90,21 +93,20 @@
       "icon": "assets/icons/mac/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
       "target": [
         {
-          "target": "dmg",
-          "arch": ["universal"]
-        },
-        {
-          "target": "zip",
-          "arch": ["universal"]
+          "target": "default",
+          "arch": [
+            "arm64"
+          ]
         }
       ],
-      "notarize": false,
+      "notarize": true,
       "darkModeSupport": true,
-      "artifactName": "${productName}-${version}-universal.${ext}"
+      "artifactName": "${productName}-${version}-universal.${ext}",
+      "type": "distribution"
     },
     "win": {
       "target": [

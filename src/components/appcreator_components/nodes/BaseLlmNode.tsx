@@ -5,7 +5,7 @@ import { useOllama } from '../../../context/OllamaContext';
 import { Settings, RefreshCw, Activity } from 'lucide-react';
 import { db } from '../../../db';
 
-const LLMPromptNode = ({ data, isConnectable }: any) => {
+const BaseLlmNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
   const { baseUrl } = useOllama();
 
@@ -253,7 +253,7 @@ const LLMPromptNode = ({ data, isConnectable }: any) => {
 
 // Export metadata as a named export for NodeRegistry
 export const metadata = {
-  id: 'llm_prompt',
+  id: 'base_llm',
   name: 'LLM Prompt',
   description: 'Process text with an LLM',
   icon: Activity,
@@ -266,4 +266,4 @@ export const metadata = {
   outputs: ['text'],
 };
 
-export default LLMPromptNode;
+export default BaseLlmNode;
