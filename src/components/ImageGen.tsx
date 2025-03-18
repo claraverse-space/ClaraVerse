@@ -22,7 +22,6 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Custom', width: 0, height: 0 },
 ];
 
-// Utility function: Convert ArrayBuffer to Base64 string
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -115,10 +114,21 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     vae: false,
     negative: false,
     resolution: true,
+    controlnet: false,
+    upscaler: false,
   });
+
+  const [controlNetModels, setControlNetModels] = useState<string[]>([]);
+  const [selectedControlNet, setSelectedControlNet] = useState<string>('');
+  const [upscaleModels, setUpscaleModels] = useState<string[]>([]);
+  const [selectedUpscaler, setSelectedUpscaler] = useState<string>('');
 
   const edgeRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const [denoise, setDenoise] = useState<number>(0.7);
+  const [sampler, setSampler] = useState<string>("euler");
+  const [scheduler, setScheduler] = useState<string>("normal");
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -225,7 +235,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         client.events.on('reconnecting', () => console.log('Debug: reconnecting event'));
         client.events.on('image_data', (data) => console.log('Debug: image_data event:', data));
         client.events.on('message', (data) => console.log('Debug: client message event:', data));
-        client.events.on('close', (data) => console.log('Debug: client close event:', data));
+        // client.events.on('close', (data) => console.log('Debug: client close event:', data));
         client.events.on('connection_error', (data) => {
           console.log('Debug: connection_error event:', data);
           setConnectionError(`Connection error: ${data?.message || 'Unknown error'}`);
@@ -277,6 +287,24 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         } catch (err) {
           console.error('Error fetching system stats:', err);
           setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
+        }
+
+        // Load Control Net Models
+        try {
+          const controlNetResp = await client.getCNetModels();
+          setControlNetModels(controlNetResp);
+          console.log('Control Net Models:', controlNetResp);
+        } catch (err) {
+          console.error('Error fetching Control Net Models:', err);
+        }
+
+        // Load Upscale Models
+        try {
+          const upscaleResp = await client.getUpscaleModels();
+          setUpscaleModels(upscaleResp);
+          console.log('Upscale Models:', upscaleResp);
+        } catch (err) {
+          console.error('Error fetching Upscale Models:', err);
         }
 
         // Mark initial setup as complete, even if some parts failed
@@ -518,6 +546,24 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
     }
 
+    // Load Control Net Models
+    try {
+      const controlNetResp = await client.getCNetModels();
+      setControlNetModels(controlNetResp);
+      console.log('Control Net Models:', controlNetResp);
+    } catch (err) {
+      console.error('Error fetching Control Net Models:', err);
+    }
+
+    // Load Upscale Models
+    try {
+      const upscaleResp = await client.getUpscaleModels();
+      setUpscaleModels(upscaleResp);
+      console.log('Upscale Models:', upscaleResp);
+    } catch (err) {
+      console.error('Error fetching Upscale Models:', err);
+    }
+
     setIsInitialSetupComplete(true);
   };
 
@@ -705,6 +751,11 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const handleImageUpload = (buffer: ArrayBuffer) => {
+    console.log('Received image buffer in ImageGen:', buffer);
+    // Store the buffer for use in pipeline if needed
+  };
+
   return (
     <div className="flex h-screen">
       {!isInitialSetupComplete && (
@@ -746,6 +797,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 handleSettingsClick={handleSettingsClick}
                 handleGenerate={handleGenerate}
                 showSettings={showSettings}
+                handleImageUpload={handleImageUpload}
               />
               <GeneratedGallery
                 generatedImages={generatedImages}
@@ -790,6 +842,18 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         setCustomWidth={setCustomWidth}
         customHeight={customHeight}
         setCustomHeight={setCustomHeight}
+        controlNetModels={controlNetModels}
+        selectedControlNet={selectedControlNet}
+        setSelectedControlNet={setSelectedControlNet}
+        upscaleModels={upscaleModels}
+        selectedUpscaler={selectedUpscaler}
+        setSelectedUpscaler={setSelectedUpscaler}
+        denoise={denoise}
+        setDenoise={setDenoise}
+        sampler={sampler}
+        setSampler={setSampler}
+        scheduler={scheduler}
+        setScheduler={setScheduler}
       />
     </div>
   );

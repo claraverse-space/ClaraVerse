@@ -1,5 +1,5 @@
 {
-  "name": "clara-ai",
+  "name": "clara-ollama",
   "private": true,
   "version": "1.0.0",
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for Ollama. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
@@ -31,6 +31,7 @@
   "dependencies": {
     "@saintno/comfyui-sdk": "^0.2.45",
     "@stable-canvas/comfyui-client": "^1.4.1",
+    "@stable-canvas/comfyui-client-cli": "latest",
     "dotenv": "^16.4.7",
     "inquirer": "^12.4.3",
     "lucide-react": "^0.344.0",
