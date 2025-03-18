@@ -30,7 +30,7 @@ export interface ExecutionContext {
 
 /**
  * Generates an execution plan from the given nodes and edges.
- * If any node of type 'llmPromptNode' has a configured Ollama URL,
+ * If any node of type 'baseLlmNode' has a configured Ollama URL,
  * that URL is used in the plan configuration.
  */
 export function generateExecutionPlan(nodes: Node[], edges: Edge[]): ExecutionPlan {
@@ -39,7 +39,7 @@ export function generateExecutionPlan(nodes: Node[], edges: Edge[]): ExecutionPl
   };
 
   // Look for LLM nodes to extract the Ollama base URL
-  const llmNodes = nodes.filter((node) => node.type === 'llmPromptNode');
+  const llmNodes = nodes.filter((node) => node.type === 'baseLlmNode');
   if (llmNodes.length > 0 && llmNodes[0].data.config?.ollamaUrl) {
     config.ollama.baseUrl = llmNodes[0].data.config.ollamaUrl;
   }

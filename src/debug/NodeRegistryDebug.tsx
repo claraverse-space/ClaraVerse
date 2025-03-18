@@ -12,7 +12,7 @@ const NodeRegistryDebug = () => {
     const nodeTypeIds = [
       'textInputNode',
       'imageInputNode',
-      'llmPromptNode',
+      'baseLlmNode',
       'textOutputNode',
       'conditionalNode',
       'apiCallNode',

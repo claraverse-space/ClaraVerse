@@ -202,7 +202,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     try {
       const processedNodes = nodes.map((node) => {
         const processedNode = { ...node };
-        if (node.type === 'llmPromptNode') {
+        if (node.type === 'baseLlmNode') {
           console.log('Saving LLM node configuration:', node.data.config);
           processedNode.data = {
             ...node.data,

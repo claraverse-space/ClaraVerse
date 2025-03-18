@@ -111,19 +111,7 @@ export const executeFlow = async (
       }
       
       // Debug: Log current registered executor keys (hardcoded known types)
-      console.log("Known executor types: ", [
-        "textInputNode",
-        "imageInputNode",
-        "llmPromptNode",
-        "imageLlmPromptNode",
-        "textOutputNode",
-        "conditionalNode",
-        "apiCallNode",
-        "textCombinerNode",
-        "markdownOutputNode",
-        "staticTextNode", // Ensure this is included
-        "imageTextLlmNode" 
-      ]);
+    
       
       // Normalize node type: if not found, try lowercasing the first letter.
       let nodeType = node.type;

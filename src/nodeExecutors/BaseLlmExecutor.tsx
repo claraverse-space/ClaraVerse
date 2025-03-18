@@ -44,6 +44,6 @@ const executeLlmPrompt = async (context: NodeExecutionContext) => {
   }
 };
 
-registerNodeExecutor('BaseLlmNode', {
+registerNodeExecutor('baseLlmNode', {
   execute: executeLlmPrompt
 });
