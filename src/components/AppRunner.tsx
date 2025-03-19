@@ -492,7 +492,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                     </button>
                   </div>
                 ) : isUserMessage ? (
-                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  <div className="whitespace-pre-wrap">
+                    {message.content ? message.content : "Input Received"}
+                  </div>
                 ) : (
                   <div className="prose dark:prose-invert prose-md max-w-none">
                     <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
@@ -570,7 +572,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 ${
                   isRunning || simpleInputValue.trim() === ''
                     ? 'bg-gray-400 cursor-not-allowed'
-                    : 'text-white hover:opacity-90'
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:opacity-90'
                 }
               `}
               style={{
@@ -764,23 +766,18 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             })}
           </div>
 
-          <div className="flex justify-end mt-4">
+          <div className={`${!hasTextInput ? 'flex justify-center' : 'flex justify-end'} mt-4`}>
             <button
               type="submit"
               disabled={isRunning || !isFormComplete}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm shadow-sm transition-colors
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white text-sm shadow-sm transition-colors
+                ${!hasTextInput ? 'w-full max-w-[200px]' : ''}
                 ${
                   isRunning || !isFormComplete
                     ? 'bg-gray-400 cursor-not-allowed'
-                    : 'hover:opacity-90'
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:opacity-90'
                 }
               `}
-              style={{
-                backgroundColor:
-                  isRunning || !isFormComplete
-                    ? undefined
-                    : appData?.color || '#3B82F6',
-              }}
             >
               {isRunning ? (
                 <>
@@ -790,7 +787,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>Send</span>
+                  <span>{!hasTextInput ? 'Generate' : 'Send'}</span>
                 </>
               )}
             </button>
