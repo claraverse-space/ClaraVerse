@@ -2,8 +2,8 @@ import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegist
 
 const executeImageInput = async (context: NodeExecutionContext) => {
   const { node } = context;
-  const config = node.data.config || {};
-  return config.image || null;
+  // Check both data.runtimeImage and config storage
+  return node.data.runtimeImage || node.data.config?.runtimeImage || node.data.config?.image || null;
 };
 
 registerNodeExecutor('imageInputNode', {

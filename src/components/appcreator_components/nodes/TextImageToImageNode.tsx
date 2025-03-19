@@ -351,29 +351,6 @@ const TextImageToImageNode = ({ data, isConnectable }: any) => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Width</label>
-                  <input
-                    type="number"
-                    value={width}
-                    onChange={(e) => setWidth(Number(e.target.value))}
-                    className="w-full p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    step="8"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Height</label>
-                  <input
-                    type="number"
-                    value={height}
-                    onChange={(e) => setHeight(Number(e.target.value))}
-                    className="w-full p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    step="8"
-                  />
-                </div>
-              </div>
-
               {/* Sampler and Scheduler */}
               <div>
                 <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Sampler</label>

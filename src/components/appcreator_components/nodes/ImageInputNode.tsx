@@ -20,16 +20,25 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
         if (event.target?.result) {
           const imageData = event.target.result;
           setImage(imageData);
-          if (isRunnerMode) {
-            data.runtimeImage = imageData;
-          } else {
-            if (!data.config) data.config = {};
-            data.config.image = imageData;
-          }
+          // Update both data.runtimeImage and config storage
+          data.runtimeImage = imageData;
+          if (!data.config) data.config = {};
+          data.config.runtimeImage = imageData;
+          data.config.image = imageData;
         }
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleClearImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImage(null);
+    // Clear both data.runtimeImage and config storage
+    data.runtimeImage = null;
+    if (!data.config) data.config = {};
+    data.config.runtimeImage = null;
+    data.config.image = null;
   };
   
   return (
@@ -59,15 +68,7 @@ const ImageInputNode = ({ data, isConnectable, isRunnerMode = false }: any) => {
             />
             <button 
               className="absolute top-1 right-1 bg-red-500 p-1 rounded-full text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                setImage(null);
-                if (isRunnerMode) {
-                  data.runtimeImage = null;
-                } else {
-                  data.config.image = null;
-                }
-              }}
+              onClick={handleClearImage}
             >
               ×
             </button>

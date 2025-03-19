@@ -15,6 +15,7 @@ import './structuredLlmExecutor';
 import './TextToImageExecutor';
 import './ImageOutputExecutor';
 import './TextImageToImageExecutor';
+import './ImageResizeExecutor';
 
 // This file is imported by main.tsx to ensure all executors are registered
 // before the application starts running

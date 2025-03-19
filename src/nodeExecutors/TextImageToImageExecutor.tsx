@@ -75,26 +75,45 @@ const executeTextImageToImage = async (context: NodeExecutionContext) => {
       }, 100);
     });
 
+    // Add helper function to get image dimensions
+    const getImageDimensions = async (imageData: string | Buffer): Promise<{width: number, height: number}> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          console.log('Input image dimensions:', { width: img.width, height: img.height });
+          resolve({ width: img.width, height: img.height });
+        };
+        if (imageData instanceof Buffer) {
+          img.src = `data:image/png;base64,${imageData.toString('base64')}`;
+        } else {
+          img.src = imageData;
+        }
+      });
+    };
+
     // Convert input image to buffer if it's base64
     let imageBuffer: Buffer;
     
     if (typeof imageInput === 'string' && imageInput.startsWith('data:image')) {
-      // Convert base64 to buffer
       const base64Data = imageInput.split(',')[1];
       imageBuffer = Buffer.from(base64Data, 'base64');
     } else if (imageInput instanceof ArrayBuffer || imageInput instanceof Uint8Array) {
-      // Direct buffer input
       imageBuffer = Buffer.from(imageInput);
+    } else if (typeof imageInput === 'string') {
+      imageBuffer = Buffer.from(imageInput, 'base64');
     } else {
-      throw new Error('Invalid image format. Expected buffer or base64 image.');
+      throw new Error('Invalid image format. Expected buffer, base64 string, or data URL');
     }
 
-    // Create efficient pipeline
+    // Get dimensions from input image
+    const dimensions = await getImageDimensions(imageBuffer);
+
+    // Create efficient pipeline with calculated dimensions
     const pipe = new EfficientPipe()
       .with(client)
       .model(model)
       .prompt(textInput)
-      .size(width, height)
+      .size(dimensions.width, dimensions.height)  // Use calculated dimensions
       .steps(steps)
       .cfg(guidance)
       .denoise(denoise)
