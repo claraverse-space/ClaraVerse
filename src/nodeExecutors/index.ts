@@ -12,7 +12,8 @@ import './WebcamInputExecutor';
 import './BaseLlmExecutor';
 import './ImageInputExecutor';
 import './structuredLlmExecutor';
-
+import './TextToImageExecutor';
+import './ImageOutputExecutor';
 
 // This file is imported by main.tsx to ensure all executors are registered
 // before the application starts running
