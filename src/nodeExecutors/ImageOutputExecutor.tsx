@@ -7,9 +7,6 @@ const executeImageOutput = async (context: NodeExecutionContext) => {
     const imageInput = inputs['image-in'] || inputs.default || '';
     
     // Update node's visual output
-    if (!node.data.config) node.data.config = {};
-    node.data.config.outputImage = imageInput;
-    
     if (updateNodeOutput) {
       updateNodeOutput(node.id, imageInput);
     }
@@ -17,11 +14,7 @@ const executeImageOutput = async (context: NodeExecutionContext) => {
     return imageInput;
   } catch (error) {
     console.error('Error in image output:', error);
-    const errorMsg = `Error: ${error instanceof Error ? error.message : String(error)}`;
-    if (updateNodeOutput) {
-      updateNodeOutput(node.id, errorMsg);
-    }
-    return errorMsg;
+    return `Error: ${error instanceof Error ? error.message : String(error)}`;
   }
 };
 

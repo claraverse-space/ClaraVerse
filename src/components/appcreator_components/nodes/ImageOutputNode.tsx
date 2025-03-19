@@ -9,6 +9,13 @@ const ImageOutputNode = ({ data, isConnectable }: any) => {
   const Icon = tool.icon;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
 
+  // Update the node's visual state when receiving an image
+  React.useEffect(() => {
+    if (data.config?.outputImage) {
+      console.log('ImageOutputNode received image:', data.config.outputImage.substring(0, 50) + '...');
+    }
+  }, [data.config?.outputImage]);
+
   const handleDownload = () => {
     if (data.config?.outputImage) {
       const link = document.createElement('a');

@@ -34,6 +34,7 @@ interface FlowCanvasProps {
   isValidConnection?: (connection: Connection) => boolean;
   minimapStyle?: React.CSSProperties;
   minimapNodeColor?: (node: Node) => string;
+  nodeStatuses: Record<string, 'running' | 'completed' | 'error'>;
 }
 
 const FlowCanvas: React.FC<FlowCanvasProps> = ({
@@ -54,8 +55,35 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
   isDragging,
   isValidConnection,
   minimapStyle,
-  minimapNodeColor
+  minimapNodeColor,
+  ...props
 }) => {
+  // Modify node status styling to use glow instead of animation
+  const nodesWithStatus = nodes.map(node => ({
+    ...node,
+    className: `${node.className || ''} transition-all duration-300`,
+    style: {
+      ...node.style,
+      boxShadow: props.nodeStatuses[node.id] === 'running'
+        ? '0 0 12px 4px rgba(234, 179, 8, 0.3)' // Yellow glow for running
+        : props.nodeStatuses[node.id] === 'completed'
+        ? '0 0 12px 4px rgba(34, 197, 94, 0.3)' // Green glow for completed
+        : props.nodeStatuses[node.id] === 'error'
+        ? '0 0 12px 4px rgba(239, 68, 68, 0.3)' // Red glow for error
+        : 'none',
+      border: props.nodeStatuses[node.id]
+        ? `2px solid ${
+            props.nodeStatuses[node.id] === 'running'
+              ? '#EAB308'
+              : props.nodeStatuses[node.id] === 'completed'
+              ? '#22C55E'
+              : '#EF4444'
+          }`
+        : undefined,
+      zIndex: props.nodeStatuses[node.id] ? 1000 : undefined
+    }
+  }));
+
   return (
     <div 
       ref={reactFlowWrapper}
@@ -64,7 +92,7 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
       onDragOver={onDragOver}
     >
       <ReactFlow
-        nodes={nodes}
+        nodes={nodesWithStatus}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

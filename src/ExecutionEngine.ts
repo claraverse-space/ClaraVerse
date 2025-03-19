@@ -15,17 +15,19 @@ export interface ExecutionPlan {
 
 export interface NodeOutput {
   nodeId: string;
-  outputs: {
-    [handleId: string]: any;
-  };
+  output: any;
   type?: 'text' | 'image' | 'json';
-  mimeType?: string;
+  isImage?: boolean;
+  status?: 'running' | 'completed' | 'error';
 }
 
 export interface ExecutionContext {
   nodeOutputs: { [nodeId: string]: any };
   ollamaClient: OllamaClient;
   setNodeOutput?: (nodeId: string, output: any) => void;
+  onMessage?: (output: NodeOutput) => void;  // Add this line
+  updateUi?: (type: string, nodeId: string, data: any) => void;
+  updateNodeStatus?: (nodeId: string, status: 'running' | 'completed' | 'error') => void;
 }
 
 /**
@@ -74,55 +76,70 @@ async function executeNode(
   context: ExecutionContext,
   outputHandledNodes: Set<string>
 ): Promise<any> {
-  const { nodeOutputs, ollamaClient, setNodeOutput } = context;
+  const { nodeOutputs, ollamaClient, setNodeOutput, updateUi, updateNodeStatus } = context;
 
-  // First check if there's a registered executor for this node type
-  const executor = getNodeExecutor(node.type);
-  if (executor) {
-    // Create a tracking function to know if the executor handled the output
-    const trackingUpdateNodeOutput = setNodeOutput
-      ? (nodeId: string, output: any) => {
-          outputHandledNodes.add(nodeId); // Track that this node's output was handled
-          setNodeOutput(nodeId, output);
-        }
-      : undefined;
+  // Update node status to running
+  if (updateNodeStatus) {
+    updateNodeStatus(node.id, 'running');
+  }
 
-    // Create NodeExecutionContext for the executor
-    const executionContext = {
-      node,
-      inputs: nodeOutputs,
-      ollamaClient,
-      updateNodeOutput: trackingUpdateNodeOutput
-    };
-    
-    try {
-      return await executor.execute(executionContext);
-    } catch (error) {
-      console.error(`Error in node executor for ${node.type}:`, error);
-      return `Error: ${error instanceof Error ? error.message : String(error)}`;
+  try {
+    const executor = getNodeExecutor(node.type);
+    if (executor) {
+      const trackingUpdateNodeOutput = setNodeOutput
+        ? (nodeId: string, output: any) => {
+            outputHandledNodes.add(nodeId);
+            setNodeOutput(nodeId, output);
+            
+            if (updateUi) {
+              const isImage = typeof output === 'string' && output.startsWith('data:image');
+              updateUi(isImage ? 'image' : 'text', nodeId, output);
+            }
+          }
+        : undefined;
+
+      const result = await executor.execute({
+        node,
+        inputs: nodeOutputs,
+        ollamaClient,
+        updateNodeOutput: trackingUpdateNodeOutput
+      });
+
+      // Update node status to completed
+      if (updateNodeStatus) {
+        updateNodeStatus(node.id, 'completed');
+      }
+
+      return result;
     }
-  }
 
-  // Fall back to basic handling for node types without registered executors
-  // This is a temporary fallback - ideally all node types should have registered executors
-  console.warn(`No registered executor found for node type: ${node.type}`);
-  
-  // Simple fallback implementation for basic node types
-  if (node.type === 'textInputNode') {
-    return node.data.config?.text || '';
-  } 
-  else if (node.type === 'staticTextNode') {
-    return node.data.config?.staticText || '';
+    // Fall back to basic handling for node types without registered executors
+    // This is a temporary fallback - ideally all node types should have registered executors
+    console.warn(`No registered executor found for node type: ${node.type}`);
+    
+    // Simple fallback implementation for basic node types
+    if (node.type === 'textInputNode') {
+      return node.data.config?.text || '';
+    } 
+    else if (node.type === 'staticTextNode') {
+      return node.data.config?.staticText || '';
+    }
+    else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+      const inputValue = Object.values(nodeOutputs)[0];
+      return inputValue !== undefined 
+        ? (typeof inputValue === 'string' ? inputValue : JSON.stringify(inputValue)) 
+        : 'No input received';
+    }
+    
+    // Log unhandled node types and return a message
+    return `Unhandled node type: ${node.type} - Please implement a proper executor for this node type`;
+  } catch (error) {
+    // Update node status to error
+    if (updateNodeStatus) {
+      updateNodeStatus(node.id, 'error');
+    }
+    throw error;
   }
-  else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
-    const inputValue = Object.values(nodeOutputs)[0];
-    return inputValue !== undefined 
-      ? (typeof inputValue === 'string' ? inputValue : JSON.stringify(inputValue)) 
-      : 'No input received';
-  }
-  
-  // Log unhandled node types and return a message
-  return `Unhandled node type: ${node.type} - Please implement a proper executor for this node type`;
 }
 
 
@@ -132,7 +149,9 @@ async function executeNode(
  */
 export async function executeFlow(
   plan: ExecutionPlan,
-  setNodeOutput?: (nodeId: string, output: any) => void
+  setNodeOutput?: (nodeId: string, output: any) => void,
+  updateUi?: (type: string, nodeId: string, data: any) => void,
+  updateNodeStatus?: (nodeId: string, status: 'running' | 'completed' | 'error') => void
 ): Promise<Map<string, any>> {
   // Initialize the Ollama client using the baseUrl from the execution plan.
   const ollamaClient = new OllamaClient(plan.config.ollama.baseUrl);
@@ -182,7 +201,9 @@ export async function executeFlow(
   const context: ExecutionContext = {
     nodeOutputs,
     ollamaClient,
-    setNodeOutput
+    setNodeOutput,
+    updateUi,
+    updateNodeStatus
   };
 
   // Process nodes until none remain.

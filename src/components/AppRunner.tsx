@@ -3,7 +3,7 @@ import {
   ArrowLeft, Play, Loader, Check, ImageIcon, Send,
   Activity, FileText, Code, MessageSquare, Database, Globe,
   Sparkles, Zap, User, Settings, BarChart2 as Chart, Search, Bot, Brain,
-  Command, Book, Layout, Compass
+  Command, Book, Layout, Compass, Download
 } from 'lucide-react';
 import { Node } from 'reactflow';
 import ReactMarkdown from 'react-markdown';
@@ -15,6 +15,7 @@ import { OllamaProvider } from '../context/OllamaContext';
 
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import { Buffer } from 'buffer';
 
 // Create an icon mapping for dynamic access
 const iconMap: Record<string, React.ElementType> = {
@@ -37,6 +38,13 @@ const iconMap: Record<string, React.ElementType> = {
   Book,
   Layout,
   Compass,
+};
+
+// Add this helper function at the top level
+const arrayBufferToDataUrl = (buffer: ArrayBuffer): string => {
+  const uint8Array = new Uint8Array(buffer);
+  const base64 = Buffer.from(uint8Array).toString('base64');
+  return `data:image/png;base64,${base64}`;
 };
 
 interface AppRunnerProps {
@@ -140,7 +148,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
     const outputs = appData.nodes.filter(
       (node: Node) =>
-        node.type === 'textOutputNode' || node.type === 'markdownOutputNode'
+        node.type === 'textOutputNode' || 
+        node.type === 'markdownOutputNode' ||
+        node.type === 'imageOutputNode'  // Add this line
     );
     const processing = appData.nodes.filter(
       (node: Node) => !inputs.includes(node) && !outputs.includes(node)
@@ -162,7 +172,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     );
   }, [inputNodes, outputNodes]);
 
-  // Check if all required form inputs are complete
+  // Update isFormComplete check to handle ArrayBuffer inputs
   const isFormComplete = useMemo(() => {
     if (!inputNodes.length) return true;
     return Object.entries(inputState).every(([nodeId, value]) => {
@@ -172,7 +182,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         return typeof value === 'string' && value.trim() !== '';
       }
       if (node.type === 'imageInputNode') {
-        return value instanceof File;
+        return value instanceof ArrayBuffer || 
+               value instanceof File || 
+               (typeof value === 'string' && value.startsWith('data:image'));
       }
       return true;
     });
@@ -209,30 +221,37 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        const imageData = event.target.result;
+        const arrayBuffer = event.target.result as ArrayBuffer;
+        setInputState(prev => ({
+          ...prev,
+          [nodeId]: arrayBuffer
+        }));
 
-        // Update the node's runtime image
-        setAppData((prevAppData: any) => {
-          const updatedNodes = prevAppData.nodes.map((node: Node) => {
+        // Convert ArrayBuffer to DataURL for preview
+        const previewUrl = arrayBufferToDataUrl(arrayBuffer);
+
+        setAppData((prevAppData: any) => ({
+          ...prevAppData,
+          nodes: prevAppData.nodes.map((node: Node) => {
             if (node.id === nodeId) {
               return {
                 ...node,
                 data: {
                   ...node.data,
-                  runtimeImage: imageData,
-                },
+                  runtimeImage: previewUrl,  // Use converted DataURL for preview
+                  config: {
+                    ...node.data.config,
+                    imageBuffer: arrayBuffer
+                  }
+                }
               };
             }
             return node;
-          });
-
-          return { ...prevAppData, nodes: updatedNodes };
-        });
-
-        setInputState((prev) => ({ ...prev, [nodeId]: file }));
+          })
+        }));
       }
     };
-    reader.readAsDataURL(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // For simple chat-like apps
@@ -318,12 +337,17 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               },
             };
           } else if (node.type === 'imageInputNode') {
+            // For image nodes, use the stored buffer from the node's config
+            const originalNode = appData.nodes.find(n => n.id === node.id);
             return {
               ...node,
               data: {
                 ...node.data,
-                runtimeImage: node.data.runtimeImage || node.data.config?.image,
-              },
+                config: {
+                  ...node.data.config,
+                  imageBuffer: originalNode?.data?.config?.imageBuffer
+                }
+              }
             };
           }
         }
@@ -340,18 +364,25 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       const updateNodeOutput = (nodeId: string, output: any) => {
         setOutputState((prev) => ({ ...prev, [nodeId]: output }));
 
-        // Only push output from "output" nodes into the chat
-        const node = outputNodes.find((n) => n.id === nodeId);
+        // Find the node to determine its type
+        const node = appData.nodes.find((n) => n.id === nodeId);
         if (node) {
-          setMessageHistory((prev) => [
-            ...prev,
-            {
-              id: `ai-${Date.now()}-${nodeId}`,
-              content: output,
-              type: 'ai',
-              timestamp: Date.now(),
-            },
-          ]);
+          // Only add to message history if it's an output node
+          if (node.type === 'imageOutputNode' || node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+            const isImage = node.type === 'imageOutputNode' || 
+                          (typeof output === 'string' && output.startsWith('data:image'));
+            console.log(`Adding output to message history for ${node.type}:`, { nodeId, output });
+            setMessageHistory((prev) => [
+              ...prev,
+              {
+                id: `ai-${Date.now()}-${nodeId}`,
+                content: output,
+                type: 'ai',
+                timestamp: Date.now(),
+                isImage
+              },
+            ]);
+          }
         }
       };
 
@@ -393,13 +424,11 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     }
   };
 
-  // Render the chat-like message output
+  // Modified renderOutputs function
   const renderOutputs = () => {
-    // If no messages yet, show a friendly empty state (icon removed)
     if (messageHistory.length === 0 && !isRunning) {
       return (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          {/* Removed the icon wrapper here */}
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
             Send a message to start
           </h3>
@@ -415,6 +444,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       <div className="space-y-6 flex flex-col">
         {messageHistory.map((message) => {
           const isUserMessage = message.type === 'user';
+          const isImageContent = typeof message.content === 'string' && 
+            (message.content.startsWith('data:image') || message.isImage);
+          
           return (
             <div
               key={message.id}
@@ -436,15 +468,36 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                   }
                 `}
               >
-                {isUserMessage ? (
-                  // If the user message is an image, you can custom-handle that here
+                {isImageContent ? (
+                  <div>
+                    <img 
+                      src={message.content} 
+                      alt="Generated" 
+                      className="max-w-full rounded"
+                      style={{ maxHeight: '512px' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = message.content;
+                        link.download = `generated-${Date.now()}.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="mt-2 px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center gap-1"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download
+                    </button>
+                  </div>
+                ) : isUserMessage ? (
                   <div className="whitespace-pre-wrap">{message.content}</div>
                 ) : (
-                  <div className="prose dark:prose-invert prose-md max-w-none dark-mode-prose">
+                  <div className="prose dark:prose-invert prose-md max-w-none">
                     <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
                   </div>
                 )}
-                {/* Timestamp */}
                 <div
                   className={`text-xs mt-2 text-right ${
                     isUserMessage

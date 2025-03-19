@@ -8,9 +8,14 @@ const executeImageTextLlm = async (context: NodeExecutionContext): Promise<strin
     let imageInput: string | null = null;
     let textInput: string = '';
 
-    // Process all outputs that have been passed to this node
+    // Process inputs and convert image buffer to base64 if needed
     Object.entries(inputs).forEach(([sourceId, output]) => {
-      if (typeof output === 'string') {
+      if (output instanceof ArrayBuffer || output instanceof Uint8Array) {
+        // Convert buffer to base64
+        const buffer = output instanceof ArrayBuffer ? new Uint8Array(output) : output;
+        const base64 = Buffer.from(buffer).toString('base64');
+        imageInput = `data:image/png;base64,${base64}`;
+      } else if (typeof output === 'string') {
         if (output.startsWith('data:image')) {
           // Handle base64 image strings
           imageInput = output;

@@ -70,15 +70,12 @@ const executeTextToImage = async (context: NodeExecutionContext) => {
     const base64 = Buffer.from(imageBuffer).toString('base64');
     const imageDataUrl = `data:image/png;base64,${base64}`;
 
-    // Update node visual output
+    // Just update the node's visual state, don't send to chat
     if (updateNodeOutput) {
       updateNodeOutput(node.id, imageDataUrl);
     }
 
-    // Clean up
-    client.free({ free_memory: true, unload_models: true });
-    client.close();
-
+    // Pass the image data to connected nodes
     return imageDataUrl;
 
   } catch (error) {

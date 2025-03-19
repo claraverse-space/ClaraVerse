@@ -272,16 +272,6 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
         </div>
       )}
 
-      {data.config?.outputImage && (
-        <div className="mb-2">
-          <img 
-            src={data.config.outputImage} 
-            alt="Generated" 
-            className="w-full rounded border"
-          />
-        </div>
-      )}
-
       <Handle
         type="target"
         position={Position.Top}

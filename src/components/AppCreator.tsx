@@ -50,6 +50,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     message: '',
     visible: false,
   });
+  const [messageHistory, setMessageHistory] = useState<any[]>([]);
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
 
   // Sidebar resizing state
   const [sidebarWidth, setSidebarWidth] = useState(300);
@@ -299,13 +301,25 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
 
   const handleTestApp = async () => {
     setIsExecuting(true);
+    setNodeStatuses({});  // Reset node statuses
     try {
       const plan = generateExecutionPlan(nodes, edges);
       const updateNodeOutput = (nodeId: string, output: any) => {
         setNodes((nds) =>
           nds.map((node) => {
             if (node.id === nodeId) {
-              if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
+              if (node.type === 'imageOutputNode' || node.type === 'textToImageNode') {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    config: {
+                      ...node.data.config,
+                      outputImage: output
+                    }
+                  }
+                };
+              } else if (node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
                 return {
                   ...node,
                   data: {
@@ -316,39 +330,37 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
                     },
                   },
                 };
-              } else if (node.type === 'textCombinerNode') {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      tempInputText: typeof output === 'string' ? output : JSON.stringify(output),
-                    },
-                  },
-                };
-              } else if (node.type === 'conditionalNode') {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      inputText: typeof output === 'string' ? output : JSON.stringify(output),
-                    },
-                  },
-                };
               }
             }
             return node;
           })
         );
       };
-      await executeFlow(plan, updateNodeOutput);
-      console.log('App execution completed successfully');
+
+      const handleUiUpdate = (type: string, nodeId: string, data: any) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          const isOutputNode = ['textOutputNode', 'markdownOutputNode', 'imageOutputNode'].includes(node.type);
+          if (isOutputNode) {
+            setMessageHistory(prev => [...prev, {
+              id: `ai-${Date.now()}-${nodeId}`,
+              content: data,
+              type: 'ai',
+              timestamp: Date.now(),
+              isImage: type === 'image'
+            }]);
+          }
+        }
+      };
+
+      const updateNodeStatus = (nodeId: string, status: 'running' | 'completed' | 'error') => {
+        setNodeStatuses(prev => ({ ...prev, [nodeId]: status }));
+      };
+
+      await executeFlow(plan, updateNodeOutput, handleUiUpdate, updateNodeStatus);
+      setIsSuccess(true);
     } catch (error) {
-      console.error('Error executing app:', error);
-      alert(`Error executing app: ${error instanceof Error ? error.message : String(error)}`);
+      // ...existing error handling...
     } finally {
       setIsExecuting(false);
     }
@@ -486,6 +498,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             isValidConnection={isValidConnection}
             minimapStyle={minimapStyle}
             minimapNodeColor={minimapNodeColor}
+            nodeStatuses={nodeStatuses}
           />
         </div>
         {notification.visible && (
