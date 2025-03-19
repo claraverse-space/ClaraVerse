@@ -537,6 +537,16 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                           >
                             Download Ollama →
                           </a>
+                          <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
+                            <p className="font-medium mb-1">After installing Ollama:</p>
+                            <p className="mb-2">Try running this command to download a small but powerful model:</p>
+                            <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded font-mono mb-2">
+                              ollama run deepseek-r1
+                            </div>
+                            <p className="text-amber-700 dark:text-amber-300 text-xs">
+                              deepseek-r1 is a compact model that demonstrates Ollama's capabilities while being smaller to download.
+                            </p>
+                          </div>
                         </div>
                       </div>
                     )}
