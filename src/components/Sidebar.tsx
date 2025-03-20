@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Home, Bot, Settings, HelpCircle, ChevronRight, Bug, Grid, ImageIcon } from 'lucide-react';
-import logo from '/logo.png';
+import logo from '../assets/logo.png';
 
 interface SidebarProps {
   activePage: string;

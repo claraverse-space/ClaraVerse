@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Mail, Globe, Check, AlertCircle, Loader, Sparkles, Shield, Brain, Terminal, Zap, Image, Code, Bot, Database, Sunrise, Sun, Moon, Palette } from 'lucide-react';
 import { db } from '../db';
 import { OllamaClient } from '../utils/OllamaClient';
+import logo from '../assets/logo.png';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -173,53 +174,44 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
   if (section === 'welcome') {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center z-50">
-        <div className={`max-w-3xl w-full mx-auto p-8 space-y-8 ${animationClass}`}>
-          <div className="text-center space-y-3">
-            <div className="flex justify-center mb-6">
-              <div className="relative">
-                <div className="absolute inset-0 bg-sakura-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
-                <div className="relative bg-white dark:bg-gray-800 rounded-full p-4 shadow-xl">
-                  {/* Replace icon with Clara's logo */}
-                  <img 
-                    src="/logo.png" 
-                    alt="Clara Logo" 
-                    className="w-16 h-16 object-contain"
-                  />
-                </div>
-              </div>
+        <div className={`w-full min-h-screen md:min-h-0 flex items-center justify-center py-8 px-4`}>
+          <div className={`max-w-3xl w-full mx-auto space-y-8 ${animationClass}`}>
+            <div className="text-center space-y-6">
+              
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white px-4">
+                Welcome to <span className="text-sakura-500">Clara</span>
+              </h1>
+              
+              <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto px-4">
+                Your privacy-first AI assistant that keeps your data local and your conversations private.
+              </p>
             </div>
-            
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white animate-fadeIn">
-              Welcome to <span className="text-sakura-500">Clara</span>
-            </h1>
-            
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto animate-fadeInUp delay-200">
-              Your privacy-first AI assistant that keeps your data local and your conversations private.
-            </p>
-          </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mt-12 animate-fadeInUp delay-300">
-            {features.map((feature, idx) => (
-              <div 
-                key={idx} 
-                className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-850 backdrop-blur-md rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-sakura-200 dark:hover:border-sakura-900 group"
-              >
-                <div className="p-3 bg-sakura-100 dark:bg-sakura-900/20 rounded-lg w-fit mb-4 group-hover:scale-110 transition-transform">
-                  {feature.icon}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-4">
+              {features.map((feature, idx) => (
+                <div 
+                  key={idx} 
+                  className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-md rounded-xl p-6 shadow-lg border border-gray-100 dark:border-gray-700 hover:border-sakura-200 dark:hover:border-sakura-900 transition-all duration-300 group"
+                >
+                  <div className="p-3 bg-sakura-100 dark:bg-sakura-900/20 rounded-lg w-fit mb-4 transform transition-transform duration-300 group-hover:scale-110">
+                    {feature.icon}
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{feature.title}</h3>
+                  <p className="text-gray-600 dark:text-gray-400">{feature.description}</p>
                 </div>
-                <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{feature.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400">{feature.description}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          <div className="flex justify-center pt-8 animate-fadeInUp delay-500">
-            <button
-              onClick={() => handleNextSection('features')}
-              className="px-8 py-3 bg-gradient-to-r from-sakura-400 to-sakura-500 hover:from-sakura-500 hover:to-sakura-600 text-white rounded-full text-lg font-medium shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:gap-3"
-            >
-              Discover Clara <Zap className="w-5 h-5" />
-            </button>
+            <div className="flex justify-center pt-6 sm:pt-8">
+              <button
+                onClick={() => handleNextSection('features')}
+                className="w-full sm:w-auto px-6 py-3 bg-sakura-500 text-white rounded-full text-lg font-medium 
+                shadow-lg transition-all duration-300 flex items-center justify-center gap-2
+                hover:shadow-[0_0_20px_rgba(244,163,187,0.5)] hover:bg-sakura-400"
+              >
+                Discover Clara <Zap className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -229,41 +221,41 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
   // Features and use cases section
   if (section === 'features') {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center z-50">
-        <div className={`max-w-4xl w-full mx-auto p-8 space-y-12 ${animationClass}`}>
+      <div className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center z-50 overflow-y-auto">
+        <div className={`max-w-4xl w-full mx-auto p-4 sm:p-8 py-12 space-y-8 sm:space-y-12 ${animationClass}`}>
           <div className="text-center">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
               What can you do with Clara?
             </h2>
-            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
               Clara is designed to be your AI companion for a variety of tasks, all while keeping your data private and secure.
             </p>
           </div>
 
-          <div className="relative min-h-[400px]">
+          <div className="relative min-h-[300px] sm:min-h-[400px] overflow-hidden">
             {useCases.map((useCase, idx) => (
               <div 
                 key={idx} 
-                className={`absolute inset-0 transition-all duration-700 flex md:flex-row flex-col items-center ${
+                className={`absolute inset-0 transition-all duration-700 ease-in-out flex flex-col md:flex-row items-center ${
                   idx === activeFeatureIndex 
                     ? 'opacity-100 translate-x-0' 
                     : idx < activeFeatureIndex 
-                      ? 'opacity-0 -translate-x-full' 
-                      : 'opacity-0 translate-x-full'
+                      ? 'opacity-0 -translate-x-full pointer-events-none' 
+                      : 'opacity-0 translate-x-full pointer-events-none'
                 }`}
               >
-                <div className="md:w-1/3 w-full flex justify-center p-6">
+                <div className="md:w-1/3 w-full flex justify-center p-4 sm:p-6">
                   <div className="relative">
-                    <div className="absolute inset-0 bg-sakura-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
+                    <div className="absolute inset-0 bg-sakura-500 rounded-full blur-xl opacity-20"></div>
                     <div className="bg-white dark:bg-gray-800 rounded-full p-6 shadow-xl relative">
                       {useCase.icon}
                     </div>
                   </div>
                 </div>
                 
-                <div className="md:w-2/3 w-full space-y-4 md:p-6">
-                  <h3 className="text-2xl font-semibold text-gray-900 dark:text-white">{useCase.title}</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-lg">{useCase.description}</p>
+                <div className="md:w-2/3 w-full space-y-4 p-4 md:p-6">
+                  <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">{useCase.title}</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">{useCase.description}</p>
                   
                   <div className="space-y-2 pt-4">
                     <p className="text-sm uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">Examples:</p>
@@ -297,13 +289,16 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
           <div className="flex justify-center gap-4 pt-6">
             <button
               onClick={() => handleNextSection('welcome')}
-              className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+              className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 
+              rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
             >
               Back
             </button>
             <button
               onClick={() => handleNextSection('setup')}
-              className="px-8 py-2.5 bg-gradient-to-r from-sakura-400 to-sakura-500 hover:from-sakura-500 hover:to-sakura-600 text-white rounded-full font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+              className="px-8 py-2.5 bg-sakura-500 text-white rounded-full font-medium 
+              shadow-md transition-all flex items-center gap-2
+              hover:shadow-[0_0_20px_rgba(244,163,187,0.5)] hover:bg-sakura-400"
             >
               Get Started <Zap className="w-5 h-5" />
             </button>
@@ -315,8 +310,8 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
 
   // Setup section - Enhanced version of the original form
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center z-50">
-      <div className={`glassmorphic rounded-2xl p-8 max-w-md w-full mx-4 space-y-6 shadow-2xl ${animationClass}`}>
+    <div className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center z-50 overflow-y-auto py-6">
+      <div className={`glassmorphic rounded-2xl p-6 sm:p-8 max-w-md w-full mx-4 space-y-4 sm:space-y-6 shadow-2xl ${animationClass}`}>
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
             Let's Set Up Clara
@@ -623,7 +618,9 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
                   (step === 1 && !formData.name) ||
                   (step === 2 && !formData.email)
                 }
-                className="ml-auto px-6 py-2 rounded-lg bg-gradient-to-r from-sakura-400 to-sakura-500 hover:from-sakura-500 hover:to-sakura-600 text-white hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                className="ml-auto px-6 py-2 rounded-lg bg-sakura-500 text-white 
+                transition-all disabled:bg-gray-400 disabled:cursor-not-allowed
+                hover:shadow-[0_0_20px_rgba(244,163,187,0.5)] hover:bg-sakura-400"
               >
                 {step === 4 ? 'Launch Clara' : 'Continue'}
               </button>

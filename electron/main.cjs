@@ -43,18 +43,19 @@ function createWindow() {
   createApplicationMenu();
 
   // Determine the URL to load
-  const startUrl = process.env.ELECTRON_START_URL || url.format({
-    pathname: path.join(__dirname, '../dist/index.html'),
-    protocol: 'file:',
-    slashes: true
-  });
+  if (app.isPackaged) {
+    // In production, use path relative to the executable
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    console.log('Loading file:', path.join(__dirname, '../dist/index.html'));
+  } else {
+    // In development, use the development server URL
+    const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+    mainWindow.loadURL(devUrl);
+    console.log('Loading URL:', devUrl);
+  }
   
-  console.log('Loading URL:', startUrl);
   console.log('Environment:', process.env.NODE_ENV);
   
-  // Load the app
-  mainWindow.loadURL(startUrl);
-
   // Open DevTools in development mode
   if (isDevelopment) {
     mainWindow.webContents.openDevTools();
