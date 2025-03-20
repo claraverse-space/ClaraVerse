@@ -1,3 +1,9 @@
+<!-- add a header image -->
+<div align="center">
+  <img src="/public/header.png" alt="Clara Logo" width="90" height="90" />
+</div>
+
+
 <div align="center">
   <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
@@ -42,14 +48,43 @@ Browse, search, and manage all generated images in one convenient gallery:
 
 <img src="/public/screenshots/gallery-screenshot.png" alt="Clara Gallery" width="800" />
 
-## 🚀 Getting Started
+## 🚀 Installation Options
 
-1. **Install Ollama**  
-   Download and install [Ollama](https://ollama.ai/download) for local model execution.  
-2. **Run Clara**  
-   Launch the [web app](https://clara-ollama.netlify.app/) or the native desktop version.  
-3. **Connect**  
-   By default, Clara expects Ollama at `http://localhost:11434`.
+### 1. Docker (Recommended for Windows & Linux)
+```bash
+# Pull the image
+docker pull claraverse/clara-ollama:latest
+
+# Run with auto-restart
+docker run -d --restart always -p 8069:8069 claraverse/clara-ollama:latest
+```
+Then visit http://localhost:8069 in your browser.
+
+### 2. Native Desktop Apps
+
+#### macOS (Signed)
+- [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- Universal binary (works on both Intel and Apple Silicon)
+- Fully signed and notarized for enhanced security
+
+#### Linux (Signed)
+- [Download .AppImage](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- Runs on most Linux distributions
+- No installation required
+
+#### Windows
+- We recommend using the Docker version for best performance and security
+- If you need the native app: [Download .exe installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+
+### 3. Web Version
+- [Try Clara Online](https://clara-ollama.netlify.app/)
+- Requires local Ollama installation
+
+### Prerequisites
+1. **Install Ollama** (Required for all versions except Docker)
+   Download from [Ollama's website](https://ollama.ai/download)
+2. **Connect**
+   Default Ollama endpoint: `http://localhost:11434`
 
 ## 📱 Download Desktop App
 
