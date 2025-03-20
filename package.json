@@ -30,13 +30,16 @@
     "cleanup:win": "node scripts/cleanup-win.cjs",
     "electron:clean-build-win": "npm run cleanup:win && npm run electron:build-win",
     "package": "npm run build && electron-builder build --publish never",
-    "package:mac-unsigned": "npm run build && electron-builder build -c.mac.identity=null --publish never"
+    "package:mac-unsigned": "npm run build && electron-builder build -c.mac.identity=null --publish never",
+    "electron:build-mac-publish": "npm run build && electron-builder --mac --universal --publish always"
   },
   "dependencies": {
     "@saintno/comfyui-sdk": "^0.2.45",
     "@stable-canvas/comfyui-client": "^1.4.1",
     "@stable-canvas/comfyui-client-cli": "latest",
     "dotenv": "^16.4.7",
+    "electron-log": "^5.3.2",
+    "electron-updater": "^6.3.9",
     "inquirer": "^12.4.3",
     "lucide-react": "^0.344.0",
     "openai": "^4.87.3",
@@ -94,6 +97,13 @@
       "buildResources": "assets",
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "badboysm890",
+      "repo": "ClaraVerse",
+      "releaseType": "release",
+      "private": false
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "assets/icons/mac/icon.icns",
@@ -138,10 +148,6 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
-    },
-    "publish": {
-      "provider": "github",
-      "releaseType": "release"
     },
     "afterSign": null
   }

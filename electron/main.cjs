@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron')
 const path = require('path');
 const url = require('url');
 const fs = require('fs');
+const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
 
 // Load environment variables from .env file if it exists
 try {
@@ -41,6 +42,11 @@ function createWindow() {
 
   // Create application menu
   createApplicationMenu();
+
+  // Set up auto-updater
+  if (!isDevelopment) {
+    setupAutoUpdater(mainWindow);
+  }
 
   // Determine the URL to load
   if (app.isPackaged) {
@@ -172,6 +178,17 @@ function createApplicationMenu() {
     {
       label: 'Help',
       submenu: [
+        {
+          label: 'Check for Updates',
+          click: async () => {
+            try {
+              await checkForUpdates();
+            } catch (error) {
+              dialog.showErrorBox('Update Check Failed', 'Failed to check for updates. Please try again later.');
+            }
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Learn More',
           click: async () => {
