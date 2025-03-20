@@ -1,12 +1,10 @@
-<!-- add a header image -->
-<div align="center">
-  <img src="/public/header.png" alt="Clara Logo" width="90" height="90" />
-</div>
-
 
 <div align="center">
   <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
+  <img src="/public/header.png" alt="Clara Logo" />
+  <br>
+   <br>
   <p><strong>Privacy-First AI Assistant & Agent Builder</strong></p>
   <p>Chat with AI, create intelligent agents, and turn them into fully functional apps—powered entirely by open-source models running on your own device.</p>
 
@@ -26,27 +24,54 @@
 - **No Third-Party Clouds**: Your data never leaves your machine. Zero telemetry, zero tracking.  
 - **Open-Source Technology**: Built to leverage community-driven innovations, giving you full control over your AI stack.
 
-## ✨ Key Features
+# ✨ Key Features
+<h3 align="center">
+AI Assistant
+</h3>
+<p align="center">
+  Chat with any Ollama-compatible model, including multimodal models that understand images:
+</p>
 
-### AI Assistant
-Chat with any Ollama-compatible model, including multimodal models that understand images:
+<p align="center">
+  <img src="/public/screenshots/assistant-screenshot.png" alt="Clara Assistant" width="800"/>
+</p>
 
-<img src="/public/screenshots/assistant-screenshot.png" alt="Clara Assistant" width="800" />
 
-### Image Generation
-Create amazing images from text prompts using Stable Diffusion models with ComfyUI integration:
+<h3 align="center">
+🎨 Image Generation
+</h3>
+<p align="center">
+  Create amazing images from text prompts using Stable Diffusion models with ComfyUI integration:
+</p>
 
-<img src="/public/screenshots/image-gen-screenshot.png" alt="Clara Image Generation" width="800" />
+<p align="center">
+  <img src="/public/screenshots/image-gen-screenshot.png" alt="Clara Image Generation" width="800"/>
+</p>
 
-### Intelligent Agent Builder
-Design custom AI agents with a node-based editor, then convert them into standalone apps without leaving Clara:
 
-<img src="/public/screenshots/app-builder-screenshot.png" alt="Clara Agent Builder" width="800" />
+<h3 align="center">
+  🏗️ Intelligent Agent Builder
+</h3>
+<p align="center">
+  Design custom AI agents with a node-based editor, then convert them into standalone apps without leaving Clara:
+</p>
 
-### Image Gallery
-Browse, search, and manage all generated images in one convenient gallery:
+<p align="center">
+  <img src="/public/screenshots/app-builder-screenshot.png" alt="Clara Agent Builder" width="800"/>
+</p>
 
-<img src="/public/screenshots/gallery-screenshot.png" alt="Clara Gallery" width="800" />
+
+<h3 align="center">
+🖼️ Image Gallery
+</h3>
+<p align="center">
+  Browse, search, and manage all generated images in one convenient gallery:
+</p>
+
+<p align="center">
+  <img src="/public/screenshots/gallery-screenshot.png" alt="Clara Gallery" width="800"/>
+</p>
+
 
 ## 🚀 Installation Options
 
@@ -63,7 +88,7 @@ Then visit http://localhost:8069 in your browser.
 ### 2. Native Desktop Apps
 
 #### macOS (Signed)
-- [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
 - Universal binary (works on both Intel and Apple Silicon)
 - Fully signed and notarized for enhanced security
 
@@ -74,7 +99,8 @@ Then visit http://localhost:8069 in your browser.
 
 #### Windows
 - We recommend using the Docker version for best performance and security
-- If you need the native app: [Download .exe installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- If you need the native app: [Download .exe installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
+- **I dont have money for signing it 😢**
 
 ### 3. Web Version
 - [Try Clara Online](https://clara-ollama.netlify.app/)
@@ -90,8 +116,8 @@ Then visit http://localhost:8069 in your browser.
 
 For faster performance and offline convenience, download the native desktop version:
 
-- [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
-- [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
+- [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
 - [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
 
 ## Mac Distribution Note
