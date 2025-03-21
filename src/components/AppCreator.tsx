@@ -451,6 +451,101 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     return isDark ? '#FFFFFFFF' : '#fff';
   }, [isDark]);
 
+  const handleExportApp = () => {
+    const exportData = {
+      name: appName,
+      description: appDescription,
+      icon: appIcon,
+      color: appColor,
+      nodes: nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          // Remove runtime-specific data
+          runtimeImage: undefined,
+          runtimeInputs: undefined,
+          runtimeOutputs: undefined
+        }
+      })),
+      edges: edges
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${appName.replace(/\s+/g, '-').toLowerCase()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    showNotification('success', 'App exported successfully!');
+  };
+
+  const handleImportApp = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const importData = JSON.parse(text);
+        
+        // Basic validation
+        if (!importData.nodes || !importData.edges || !importData.name) {
+          throw new Error('Invalid app data format');
+        }
+
+        // Restore tool icons from registry
+        const restoredNodes = importData.nodes.map((node: Node) => {
+          if (node.data && node.data.tool) {
+            const toolDefinition = toolItems.find(t => t.id === node.data.tool.id);
+            if (toolDefinition) {
+              node.data.tool.icon = toolDefinition.icon;
+            }
+          }
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              config: node.data.config || {}
+            }
+          };
+        });
+
+        // Save as new app
+        const newAppId = await appStore.createApp(importData.name, importData.description || '');
+        await appStore.updateApp(newAppId, {
+          name: importData.name,
+          description: importData.description || '',
+          icon: importData.icon || 'Activity',
+          color: importData.color || '#3B82F6',
+          nodes: restoredNodes,
+          edges: importData.edges
+        });
+
+        // Update UI state
+        setNodes(restoredNodes);
+        setEdges(importData.edges);
+        setAppName(importData.name);
+        setAppDescription(importData.description || '');
+        setAppIcon(importData.icon || 'Activity');
+        setAppColor(importData.color || '#3B82F6');
+        setCurrentAppId(newAppId);
+        
+        showNotification('success', 'App imported successfully!');
+      } catch (error) {
+        console.error('Error importing app:', error);
+        showNotification('error', 'Failed to import app. Invalid format or corrupted file.');
+      }
+    };
+    input.click();
+  };
+
   return (
     <OllamaProvider>
       <div className="flex flex-col h-screen">
@@ -463,6 +558,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           setAppName={setAppName}
           isExecuting={isExecuting}
           appId={currentAppId}
+          onExportApp={handleExportApp}
+          onImportApp={handleImportApp}
         />
         <div className="flex flex-1 overflow-hidden">
           <div
