@@ -4,6 +4,7 @@ import { AssistantHeader, ChatInput, ChatWindow } from './assistant_components';
 import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
 import ModelWarning from './assistant_components/ModelWarning';
+import ModelPullModal from './assistant_components/ModelPullModal';
 import { db } from '../db';
 import { OllamaClient } from '../utils';
 import type { Message, Chat } from '../db';
@@ -46,6 +47,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showPullModal, setShowPullModal] = useState(false);
 
   const checkModelImageSupport = (modelName: string): boolean => {
     const configs = localStorage.getItem('model_image_support');
@@ -232,6 +234,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         try {
           const modelList = await newClient.listModels();
           setModels(modelList);
+          
+          if (modelList.length === 0) {
+            setShowPullModal(true);
+          }
           
           // Initialize model configs if they don't exist
           const existingConfigs = localStorage.getItem('model_image_support');
@@ -482,6 +488,28 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     localStorage.setItem('selected_model', modelName);
   };
 
+  const handlePullModel = async function* (modelName: string): AsyncGenerator<any, void, unknown> {
+    if (!client) throw new Error('Client not initialized');
+    
+    try {
+      // Forward all progress events from the client's pullModel
+      for await (const progress of client.pullModel(modelName)) {
+        yield progress;
+      }
+      
+      // Refresh model list after successful pull
+      const modelList = await client.listModels();
+      setModels(modelList);
+      
+      // Set as selected model
+      setSelectedModel(modelName);
+      localStorage.setItem('selected_model', modelName);
+    } catch (error) {
+      console.error('Error pulling model:', error);
+      throw error; // Re-throw to be handled by the modal
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
       <AssistantSidebar 
@@ -559,6 +587,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
             }}
           />
         )}
+
+        <ModelPullModal
+          isOpen={showPullModal}
+          onClose={() => setShowPullModal(false)}
+          onPullModel={handlePullModel}
+        />
       </div>
     </div>
   );

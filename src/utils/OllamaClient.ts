@@ -297,15 +297,76 @@ export class OllamaClient {
 
   /**
    * Pull a model from the Ollama library.
-   * Optionally, pass insecure or stream parameters.
+   * Returns a generator that yields progress updates.
    */
-  public async pullModel(
+  public async *pullModel(
     model: string,
-    insecure: boolean = false,
-    stream: boolean = true
-  ): Promise<any> {
-    const payload = { model, insecure, stream };
-    return this.request("/api/pull", "POST", payload);
+    insecure: boolean = false
+  ): AsyncGenerator<{
+    status: string;
+    digest?: string;
+    total?: number;
+    completed?: number;
+  }> {
+    const payload = { model, insecure, stream: true };
+    const response = await fetch(`${this.baseUrl}/api/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      mode: 'cors',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to pull model: ${response.status} ${response.statusText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentDigest = "";
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              if (data.digest && data.digest !== currentDigest) {
+                currentDigest = data.digest;
+                console.log(`\nStarting new layer: ${currentDigest.slice(0, 12)}...`);
+              }
+              yield data;
+            } catch (error) {
+              console.warn('Failed to parse pull response line:', error);
+            }
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer);
+          yield data;
+        } catch (error) {
+          console.warn('Failed to parse final pull response buffer:', error);
+        }
+      }
+    } finally {
+      reader.cancel();
+    }
   }
 
   /**

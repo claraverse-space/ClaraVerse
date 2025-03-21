@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings as SettingsIcon, Bot, Search, Image as ImageIcon, Info, Loader2, RefreshCw } from 'lucide-react';
+import { X, Settings as SettingsIcon, Bot, Search, Image as ImageIcon, Loader2, RefreshCw, Download } from 'lucide-react';
 import { db } from '../../db';
 import { OllamaClient } from '../../utils';
+import ModelPullModal from './ModelPullModal';
 
 interface ModelConfig {
   name: string;
@@ -26,6 +27,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPullModal, setShowPullModal] = useState(false);
 
   const loadModels = async () => {
     setIsLoading(true);
@@ -80,6 +82,26 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
     localStorage.setItem('model_image_support', JSON.stringify(updatedConfigs));
   };
 
+  const handlePullModel = async function* (modelName: string): AsyncGenerator<any, void, unknown> {
+    try {
+      const config = await db.getAPIConfig();
+      if (!config?.ollama_base_url) {
+        throw new Error('Ollama URL not configured');
+      }
+
+      const client = new OllamaClient(config.ollama_base_url);
+      for await (const progress of client.pullModel(modelName)) {
+        yield progress;
+      }
+      
+      // Refresh model list after successful pull
+      await loadModels();
+    } catch (error) {
+      console.error('Error pulling model:', error);
+      throw error;
+    }
+  };
+
   const filteredModels = modelConfigs.filter(config =>
     config.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -106,9 +128,18 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
 
         <div className="space-y-6">
           <div>
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-              Response Settings
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                Response Settings
+              </h3>
+              <button
+                onClick={() => setShowPullModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download Models
+              </button>
+            </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -216,6 +247,12 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
             )}
           </div>
         </div>
+
+        <ModelPullModal
+          isOpen={showPullModal}
+          onClose={() => setShowPullModal(false)}
+          onPullModel={handlePullModel}
+        />
       </div>
     </div>
   );
