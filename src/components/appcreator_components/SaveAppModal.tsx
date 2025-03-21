@@ -308,17 +308,17 @@ const SaveAppModal: React.FC<SaveAppModalProps> = ({
         </div>
         
         {/* Footer buttons */}
-        <div className="glassmorphic dark:bg-gray-900/50 bg-gray-50/80 px-6 py-4 flex justify-end gap-3 border-t border-white/10 dark:border-gray-700/50 backdrop-blur-sm">
+        <div className="glassmorphic dark:bg-gray-900/50 bg-white px-6 py-4 flex justify-end gap-3 border-t border-gray-200 dark:border-gray-700/50 backdrop-blur-sm">
           <button 
             onClick={onCancel} 
             className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 
-              text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/80 transition-colors"
+              text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
           >
             Cancel
           </button>
           <button 
             onClick={() => onSave(name, description, selectedIcon, selectedColor, customIconUrl)} 
-            className="px-4 py-2 rounded-md bg-sakura-500/90 hover:bg-sakura-600 text-white transition-colors flex items-center gap-2"
+            className="px-4 py-2 rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors flex items-center gap-2 shadow-sm"
           >
             <Save className="w-4 h-4" />
             Save App
