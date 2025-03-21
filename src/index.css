@@ -10,6 +10,7 @@
     --sakura-300: #ff9dc1;
     --sakura-400: #ff669d;
     --sakura-500: #ff1a75;
+    --sakura-600: #e6006b;
   }
 
   .dark {
@@ -19,6 +20,37 @@
     --sakura-300: #4f2639;
     --sakura-400: #662d46;
     --sakura-500: #ff1a75;
+    --sakura-600: #ff3385;
+  }
+}
+
+@layer components {
+  .prose-sakura {
+    @apply prose dark:prose-invert;
+  }
+
+  .prose-sakura a {
+    @apply text-sakura-500 transition-colors;
+  }
+
+  .prose-sakura a:hover {
+    color: var(--sakura-600);
+  }
+
+  .dark .prose-sakura a {
+    @apply text-sakura-400;
+  }
+
+  .dark .prose-sakura a:hover {
+    @apply text-sakura-500;
+  }
+
+  .glassmorphic {
+    @apply bg-white/70 backdrop-blur-lg border border-white/20 dark:bg-gray-900/70 dark:border-gray-800/20;
+  }
+
+  .glassmorphic-card {
+    @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border border-white/30 dark:border-gray-700/30 shadow-xl;
   }
 }
 
@@ -84,10 +116,6 @@
   background: transparent !important;
   text-shadow: none !important;
   font-family: monospace !important;
-}
-
-.glassmorphic {
-  @apply bg-white/70 backdrop-blur-lg border border-white/20 dark:bg-gray-900/70 dark:border-gray-800/20;
 }
 
 /* Smooth width transitions */
@@ -185,12 +213,6 @@ textarea {
   transition: height 0.2s ease;
 }
 
-/* Enhanced glassmorphism */
-.glassmorphic-card {
-  @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border border-white/30 dark:border-gray-700/30 shadow-xl;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-}
-
 /* Dark mode specific styles for app runner */
 .dark .app-runner-container {
   color-scheme: dark;
@@ -261,4 +283,24 @@ textarea {
 
 .dark .prose tbody tr {
   border-bottom-color: #374151;
+}
+
+.prose h2 {
+  @apply text-2xl font-bold mb-4 text-gray-900 dark:text-white mt-8;
+}
+
+.prose h3 {
+  @apply text-xl font-semibold mb-3 text-gray-800 dark:text-gray-100 mt-6;
+}
+
+.prose ol {
+  @apply list-decimal list-inside mb-4 space-y-2;
+}
+
+.prose ul {
+  @apply list-disc list-inside mb-4 space-y-2;
+}
+
+.prose p {
+  @apply mb-4 text-gray-700 dark:text-gray-300;
 }

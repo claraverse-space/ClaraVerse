@@ -12,6 +12,7 @@ export default {
           300: 'var(--sakura-300)',
           400: 'var(--sakura-400)',
           500: 'var(--sakura-500)',
+          600: 'var(--sakura-600)',
         },
       },
       typography: {

@@ -11,6 +11,7 @@ import AppCreator from './components/AppCreator';
 import AppRunner from './components/AppRunner';
 import ImageGen from './components/ImageGen';
 import Gallery from './components/Gallery';
+import Help from './components/Help';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
@@ -102,6 +103,8 @@ function App() {
                   return <Debug />;
                 case 'apps':
                   return <Apps onPageChange={setActivePage} />;
+                case 'help':
+                  return <Help />;
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;
