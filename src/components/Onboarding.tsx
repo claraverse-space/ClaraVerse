@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Globe, Check, AlertCircle, Loader, Sparkles, Shield, Brain, Terminal, Zap, Image, Code, Bot, Database, Sunrise, Sun, Moon, Palette } from 'lucide-react';
+import { User, Mail, Globe, Check, AlertCircle, Loader, Sparkles, Shield, Brain, Terminal, Zap, Image, Code, Bot, Database, Sunrise, Sun, Moon, Palette, Server, Key, Lock } from 'lucide-react';
 import { db } from '../db';
 import { OllamaClient } from '../utils/OllamaClient';
 import logo from '../assets/logo.png';
@@ -18,11 +18,15 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     theme_preference: 'light' as 'light' | 'dark' | 'system', // Default to light mode
     avatar_url: '',
     ollama_url: 'http://localhost:11434',
-    comfyui_url: 'http://localhost:8188'
+    comfyui_url: 'http://localhost:8188',
+    openai_api_key: '',
+    openai_base_url: 'https://api.openai.com/v1',
+    preferred_server: 'ollama' as 'ollama' | 'openai'
   });
   const [loading, setLoading] = useState(false);
   const [pingStatus, setPingStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [animationClass, setAnimationClass] = useState('animate-fadeIn');
+  const [showApiKey, setShowApiKey] = useState(false);
   
   // For feature showcase animation
   const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
@@ -77,10 +81,13 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
       avatar_url: formData.avatar_url
     });
     
-    // Initialize API config with Ollama URL and ComfyUI URL
+    // Initialize API config with Ollama URL, ComfyUI URL, and OpenAI settings
     await db.updateAPIConfig({
       ollama_base_url: formData.ollama_url,
-      comfyui_base_url: formData.comfyui_url
+      comfyui_base_url: formData.comfyui_url,
+      openai_api_key: formData.openai_api_key,
+      openai_base_url: formData.openai_base_url,
+      preferred_server: formData.preferred_server
     });
 
     onComplete();

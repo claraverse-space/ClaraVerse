@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, User, Globe } from 'lucide-react';
+import { Save, User, Globe, Server, Key, Lock } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig } from '../db';
 // import { useTheme } from '../hooks/useTheme';
 
@@ -22,6 +22,7 @@ const Settings = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -33,7 +34,11 @@ const Settings = () => {
       }
       
       if (savedApiConfig) {
-        setApiConfig(savedApiConfig);
+        setApiConfig({
+          ...savedApiConfig,
+          openai_base_url: savedApiConfig.openai_base_url || 'https://api.openai.com/v1',
+          preferred_server: savedApiConfig.preferred_server || 'ollama'
+        });
       }
     };
 
@@ -59,6 +64,7 @@ const Settings = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {/* Personal Information Section */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <User className="w-6 h-6 text-sakura-500" />
@@ -109,6 +115,7 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* API Configuration Section with Server Selection */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <Globe className="w-6 h-6 text-sakura-500" />
@@ -211,6 +218,7 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* Preferences Section */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <Globe className="w-6 h-6 text-sakura-500" />
@@ -255,6 +263,7 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* Save Button */}
       <div className="flex justify-end gap-4">
         <button
           onClick={handleSave}
