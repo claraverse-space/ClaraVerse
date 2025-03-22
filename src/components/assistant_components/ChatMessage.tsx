@@ -179,7 +179,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, showTokens }) => {
         {hasThinkingBlock && <ThinkingBlock content={message.content} />}
 
         {/* Message Content */}
-        <div className="prose dark:prose-invert max-w-none prose-base">
+        <div className=" dark:prose-invert max-w-none prose-base">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{

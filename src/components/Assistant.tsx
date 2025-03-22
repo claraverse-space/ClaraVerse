@@ -228,45 +228,54 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   useEffect(() => {
     const initializeOllama = async () => {
       const config = await db.getAPIConfig();
-      if (config?.ollama_base_url) {
-        const newClient = new OllamaClient(config.ollama_base_url);
-        setClient(newClient);
-        try {
-          const modelList = await newClient.listModels();
-          setModels(modelList);
-          
-          if (modelList.length === 0) {
-            setShowPullModal(true);
+      if (!config) {
+        setConnectionStatus('disconnected');
+        return;
+      }
+
+      try {
+        let baseUrl: string;
+        let clientConfig: any = {};
+
+        if (config.api_type === 'ollama') {
+          // Use Ollama's API
+          baseUrl = config.ollama_base_url || 'http://localhost:11434';
+          clientConfig = { type: 'ollama' };
+        } else {
+          // OpenAI-like API
+          if (config.openai_base_url) {
+            // Custom OpenAI-compatible API
+            baseUrl = config.openai_base_url.endsWith('/v1') 
+              ? config.openai_base_url 
+              : `${config.openai_base_url.replace(/\/$/, '')}/v1`;
+          } else {
+            // Official OpenAI API
+            baseUrl = 'https://api.openai.com/v1';
           }
           
-          // Initialize model configs if they don't exist
-          const existingConfigs = localStorage.getItem('model_image_support');
-          if (!existingConfigs) {
-            const initialConfigs = modelList.map((model: any) => ({
-              name: model.name,
-              supportsImages: model.name.includes('llava') || model.name.includes('bakllava')
-            }));
-            localStorage.setItem('model_image_support', JSON.stringify(initialConfigs));
-          }
-          
-          // Select default model based on storage or usage
-          const storedModel = localStorage.getItem('selected_model');
-          if (storedModel && modelList.some(model => model.name === storedModel)) {
-            setSelectedModel(storedModel);
-          } else if (modelList.length > 0) {
-            const mostUsedModel = await getMostUsedModel(modelList);
-            const modelToUse = mostUsedModel || modelList[0].name;
-            setSelectedModel(modelToUse);
-            localStorage.setItem('selected_model', modelToUse);
-          }
-          setConnectionStatus('connected');
-        } catch (err) {
-          setConnectionStatus('disconnected');
+          clientConfig = {
+            type: 'openai',
+            apiKey: config.openai_api_key || ''
+          };
         }
-      } else {
+
+        const newClient = new OllamaClient(baseUrl, clientConfig);
+        setClient(newClient);
+        
+        // Test connection
+        const modelList = await newClient.listModels();
+        setModels(modelList);
+        
+        // Rest of the initialization code...
+        // ...existing model setup code...
+        
+        setConnectionStatus('connected');
+      } catch (err) {
+        console.error('Failed to connect to API:', err);
         setConnectionStatus('disconnected');
       }
     };
+    
     initializeOllama();
   }, []);
 

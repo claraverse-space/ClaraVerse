@@ -7,7 +7,8 @@ import ModelPullModal from './ModelPullModal';
 interface ModelConfig {
   name: string;
   supportsImages: boolean;
-  digest: string;
+  digest?: string;
+  apiType?: 'ollama' | 'openai' | 'openrouter';
 }
 
 interface AssistantSettingsProps {
@@ -28,6 +29,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPullModal, setShowPullModal] = useState(false);
+  const [apiType, setApiType] = useState<'ollama' | 'openai'>('ollama');
 
   const loadModels = async () => {
     setIsLoading(true);
@@ -35,13 +37,44 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
 
     try {
       const config = await db.getAPIConfig();
-      if (!config?.ollama_base_url) {
-        setError('Ollama URL not configured. Please configure it in settings.');
+      if (!config) {
+        setError('API not configured. Please configure it in settings.');
         return;
       }
 
-      const client = new OllamaClient(config.ollama_base_url);
-      const modelList = await client.listModels();
+      // Store the API type for UI decisions
+      setApiType(config.api_type as 'ollama' | 'openai');
+
+      const client = new OllamaClient(
+        config.api_type === 'ollama' ? config.ollama_base_url : (config.openai_base_url || 'https://api.openai.com/v1'), 
+        { 
+          type: config.api_type,
+          apiKey: config.api_type === 'openai' ? config.openai_api_key : ''
+        }
+      );
+
+      let modelList;
+      try {
+        // For OpenAI, we'll create a fallback model list if the real listing fails
+        if (config.api_type === 'openai') {
+          try {
+            modelList = await client.listModels();
+          } catch (err) {
+            console.warn('Could not load OpenAI models, using fallback list', err);
+            modelList = [
+              { name: 'gpt-3.5-turbo' },
+              { name: 'gpt-4' },
+              { name: 'gpt-4-vision-preview', supportsImages: true },
+              { name: 'gpt-4o', supportsImages: true },
+              { name: 'gpt-4o-mini' }
+            ];
+          }
+        } else {
+          modelList = await client.listModels();
+        }
+      } catch (err) {
+        throw err;
+      }
 
       // Get existing configs
       const existingConfigs = localStorage.getItem('model_image_support');
@@ -49,20 +82,27 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
 
       // Merge existing configs with new models
       const updatedConfigs = modelList.map((model: any) => {
-        const existing = existingModelConfigs.find((c: ModelConfig) => c.name === model.name);
+        const existing = existingModelConfigs.find((c: ModelConfig) => 
+          c.name === (model.name || model.id)
+        );
+        
+        const modelName = model.name || model.id;
         return {
-          name: model.name,
-          digest: model.digest,
+          name: modelName,
+          digest: model.digest || '',
           supportsImages: existing ? existing.supportsImages : 
-            model.name.toLowerCase().includes('llava') || 
-            model.name.toLowerCase().includes('bakllava')
+            modelName.toLowerCase().includes('vision') || 
+            modelName.toLowerCase().includes('llava') ||
+            modelName.toLowerCase().includes('bakllava') ||
+            modelName.toLowerCase().includes('gpt-4o')
         };
       });
 
       setModelConfigs(updatedConfigs);
       localStorage.setItem('model_image_support', JSON.stringify(updatedConfigs));
     } catch (err) {
-      setError('Failed to load models. Is Ollama running?');
+      console.error('Failed to load models:', err);
+      setError(`Failed to load models: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -132,13 +172,29 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">
                 Response Settings
               </h3>
-              <button
-                onClick={() => setShowPullModal(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                Download Models
-              </button>
+              
+              {apiType === 'ollama' ? (
+                <button
+                  onClick={() => setShowPullModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Models
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">
+                    Model downloads available with Ollama
+                  </span>
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-gray-300 text-gray-500 cursor-not-allowed"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Models
+                  </button>
+                </div>
+              )}
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -184,6 +240,11 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
             {error ? (
               <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
                 {error}
+                {apiType === 'openai' && (
+                  <div className="mt-2 font-medium">
+                    Using OpenAI models. Switch to Ollama in Settings for local models.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -220,7 +281,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                               {config.name}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {config.digest.slice(0, 8)}
+                              {config.digest ? config.digest.slice(0, 8) : 'OpenAI Model'}
                             </div>
                           </div>
                         </div>

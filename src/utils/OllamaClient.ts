@@ -1,5 +1,3 @@
-import type { ReadableStreamDefaultReader } from 'stream/web';
-
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
 export interface ChatMessage {
@@ -13,149 +11,118 @@ export interface RequestOptions {
   [key: string]: any;
 }
 
+export interface OpenAIConfig {
+  apiKey: string;
+  baseUrl: string;
+  type: 'ollama' | 'openai';
+}
+
 export class OllamaClient {
   private abortController: AbortController | null = null;
+  private config: OpenAIConfig;
 
-  constructor(private baseUrl: string) {}
+  constructor(baseUrl: string, config?: Partial<OpenAIConfig>) {
+    this.config = {
+      apiKey: config?.apiKey || '',
+      baseUrl: baseUrl,
+      type: config?.type || 'ollama'
+    };
+  }
 
   /**
-   * Helper for making non-streaming API requests.
+   * Get the current configuration
+   */
+  public getConfig(): OpenAIConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Helper for making API requests.
    */
   private async request<T>(
     endpoint: string,
     method: "GET" | "POST" | "DELETE" = "POST",
     body?: any
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const isOllamaEndpoint = endpoint.startsWith('/api/');
+    const url = `${this.config.baseUrl}${endpoint}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (this.config.apiKey && !isOllamaEndpoint) {
+      headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+    }
+
     try {
       const response = await fetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         mode: 'cors',
         body: body ? JSON.stringify(body) : undefined,
       });
-
-      if (response.status === 403) {
-        throw new Error(`CORS error: Please ensure OLLAMA_ORIGINS environment variable is set correctly on the Ollama server. 
-          Add OLLAMA_ORIGINS=* or OLLAMA_ORIGINS=chrome-extension://* to your Ollama configuration.`);
-      }
 
       if (!response.ok) {
         throw new Error(`Request failed: ${response.status} ${response.statusText}`);
       }
 
-      return response.json();
+      return await response.json();
     } catch (error) {
       if (error instanceof Error) {
-        // Check if it's a CORS error
-        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-          throw new Error(`CORS error: Unable to connect to Ollama server at ${this.baseUrl}. 
-            Please check if:
-            1. The Ollama server is running
-            2. The URL is correct
-            3. OLLAMA_ORIGINS environment variable is set on the server
-            4. No firewall is blocking the connection`);
+        if (error.message.includes('Failed to fetch')) {
+          throw new Error(`Connection error: Unable to connect to ${this.config.baseUrl}. 
+            Please check if the server is running and the URL is correct.`);
         }
         throw error;
       }
-      throw new Error('An unknown error occurred while connecting to Ollama server');
+      throw new Error('An unknown error occurred while connecting to the API server');
     }
   }
 
   /**
-   * Ping the server by retrieving the version.
-   */
-  public async ping(): Promise<boolean> {
-    try {
-      await this.getVersion();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get the Ollama server version.
-   */
-  public async getVersion(): Promise<string> {
-    try {
-      const url = `${this.baseUrl}/api/version`;
-      const response = await fetch(url, {
-        mode: 'cors'
-      });
-
-      if (response.status === 403) {
-        throw new Error('CORS error: Please configure OLLAMA_ORIGINS on the server');
-      }
-
-      if (!response.ok) {
-        throw new Error(`Failed to get version: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return data.version;
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-          throw new Error(`CORS error: Unable to connect to Ollama server. Please check server configuration.`);
-        }
-        throw error;
-      }
-      throw new Error('Failed to get Ollama version');
-    }
-  }
-
-  /**
-   * List local models.
+   * Lists available models
    */
   public async listModels(): Promise<any[]> {
     try {
-      const url = `${this.baseUrl}/api/tags`;
-      const response = await fetch(url, {
+      // Use consistent OpenAI-style endpoint for Ollama too
+      const endpoint = this.config.type === 'ollama' ? '/api/tags' : '/models';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (this.config.type === 'openai' && this.config.apiKey) {
+        headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+      }
+      
+      const url = `${this.config.baseUrl}${endpoint}`;
+      const response = await fetch(url, { 
+        headers,
+        method: 'GET',
         mode: 'cors'
       });
-
-      if (response.status === 403) {
-        throw new Error('CORS error: Please configure OLLAMA_ORIGINS on the server');
-      }
-
+      
       if (!response.ok) {
         throw new Error(`Failed to list models: ${response.status} ${response.statusText}`);
       }
-
+      
       const data = await response.json();
-      return data.models;
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-          throw new Error(`CORS error: Unable to list models. Please check server configuration.`);
-        }
-        throw error;
+      
+      if (this.config.type === 'ollama') {
+        return data.models;
+      } else {
+        // OpenAI format
+        return data.data.map((model: any) => ({
+          name: model.id,
+          id: model.id,
+          digest: model.created?.toString() || '',
+          size: 0,
+          modified_at: model.created?.toString() || ''
+        }));
       }
-      throw new Error('Failed to list models');
+    } catch (error) {
+      console.error('Error listing models:', error);
+      throw error;
     }
-  }
-
-  /**
-   * Show detailed model information.
-   */
-  public async showModel(model: string, verbose: boolean = false): Promise<any> {
-    return this.request("/api/show", "POST", { model, verbose });
-  }
-
-  /**
-   * Generate a completion for a given prompt (non-streaming).
-   * Options can include additional parameters like "suffix", "options", "stream" (false), etc.
-   */
-  public async generateCompletion(
-    model: string,
-    prompt: string,
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, prompt, ...options, stream: false };
-    return this.request("/api/generate", "POST", payload);
   }
 
   /**
@@ -169,45 +136,6 @@ export class OllamaClient {
   }
 
   /**
-   * Stream a completion for a given prompt.
-   * Returns an async generator that yields JSON objects as they arrive.
-   */
-  public async *streamCompletion(
-    model: string,
-    prompt: string,
-    options: RequestOptions = {}
-  ): AsyncGenerator<any> {
-    // Create a new AbortController for this stream
-    this.abortController = new AbortController();
-    const signal = this.abortController.signal;
-    
-    const payload = { model, prompt, ...options, stream: true };
-    const response = await fetch(`${this.baseUrl}/api/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      mode: 'cors',
-      body: JSON.stringify(payload),
-      signal,
-    });
-
-    if (!response.body) throw new Error("No response body for streaming completion");
-    
-    try {
-      yield* this.parseStream(response.body.getReader(), signal);
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Stream aborted");
-      } else {
-        throw error;
-      }
-    } finally {
-      this.abortController = null;
-    }
-  }
-
-  /**
    * Send a chat message (non-streaming).
    */
   public async sendChat(
@@ -215,89 +143,159 @@ export class OllamaClient {
     messages: ChatMessage[],
     options: RequestOptions = {}
   ): Promise<any> {
-    const payload = { model, messages, ...options, stream: false };
-    return this.request("/api/chat", "POST", payload);
+    const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
+    
+    const payload = this.config.type === 'ollama' 
+      ? { model, messages, ...options, stream: false }
+      : { model, messages, stream: false, ...options };
+
+    const response = await this.request(endpoint, "POST", payload);
+
+    // Transform response to a consistent format
+    if (this.config.type !== 'ollama') {
+      return {
+        message: {
+          content: response.choices[0].message.content,
+          role: response.choices[0].message.role
+        },
+        eval_count: response.usage?.total_tokens || 0
+      };
+    }
+    
+    return response;
   }
 
   /**
    * Stream a chat response.
-   * Returns an async generator that yields JSON objects as they arrive.
    */
   public async *streamChat(
     model: string,
     messages: ChatMessage[],
     options: RequestOptions = {}
   ): AsyncGenerator<any> {
-    // Create a new AbortController for this stream
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
     
-    const payload = { model, messages, ...options, stream: true };
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      mode: 'cors',
-      body: JSON.stringify(payload),
-      signal,
-    });
-
-    if (!response.body) throw new Error("No response body for streaming chat");
+    const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
+    const payload = { 
+      model, 
+      messages: this.prepareMessages(messages), 
+      stream: true,
+      ...options 
+    };
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (this.config.apiKey && this.config.type !== 'ollama') {
+      headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+    }
+
     try {
-      yield* this.parseStream(response.body.getReader(), signal);
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log("Stream aborted");
-      } else {
-        throw error;
+      const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Stream request failed: ${response.status} ${response.statusText}`);
+      }
+
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.trim() || line === 'data: [DONE]') continue;
+          
+          try {
+            let data;
+            if (this.config.type === 'ollama') {
+              data = JSON.parse(line);
+            } else {
+              // Parse OpenAI SSE format
+              data = JSON.parse(line.replace('data: ', ''));
+              data = {
+                message: {
+                  content: data.choices[0]?.delta?.content || ''
+                },
+                eval_count: 1
+              };
+            }
+            yield data;
+          } catch (e) {
+            console.warn('Failed to parse streaming response:', e);
+          }
+        }
       }
     } finally {
-      this.abortController = null;
+      if (this.abortController) {
+        this.abortController = null;
+      }
+      if (signal.aborted) {
+        console.log("Stream aborted");
+      }
     }
   }
 
   /**
-   * Generate a completion that includes images.
-   * Pass an array of base64-encoded image strings.
+   * Generate a completion that includes images
    */
   public async generateWithImages(
     model: string,
     prompt: string,
     images: string[],
-    options: RequestOptions = {},
-    customBaseUrl?: string
+    options: RequestOptions = {}
   ): Promise<any> {
-    const baseUrl = customBaseUrl || this.baseUrl;
-    
-    console.log(`Generating with images using URL: ${baseUrl}`);
-    
-    const response = await fetch(`${baseUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    if (this.config.type === 'ollama') {
+      // Use Ollama's image API
+      return this.request("/api/generate", "POST", {
         model,
         prompt,
         images,
         stream: false,
         ...options
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Ollama API error: ${errorText}`);
+      });
     }
 
-    return await response.json();
+    // Use OpenAI vision API format
+    const messages = [{
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        ...images.map(img => ({
+          type: "image_url",
+          image_url: { url: `data:image/jpeg;base64,${img}` }
+        }))
+      ]
+    }];
+
+    const response = await this.request("/chat/completions", "POST", {
+      model,
+      messages,
+      max_tokens: options.max_tokens || 300,
+      ...options
+    });
+
+    return {
+      response: response.choices[0].message.content,
+      eval_count: response.usage.total_tokens
+    };
   }
 
   /**
-   * Pull a model from the Ollama library.
-   * Returns a generator that yields progress updates.
+   * Pull a model from Ollama (Ollama-specific functionality)
    */
   public async *pullModel(
     model: string,
@@ -308,12 +306,14 @@ export class OllamaClient {
     total?: number;
     completed?: number;
   }> {
+    if (this.config.type !== 'ollama') {
+      throw new Error('Model pulling is only supported with Ollama');
+    }
+
     const payload = { model, insecure, stream: true };
-    const response = await fetch(`${this.baseUrl}/api/pull`, {
+    const response = await fetch(`${this.config.baseUrl}/api/pull`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       mode: 'cors',
     });
@@ -370,218 +370,156 @@ export class OllamaClient {
   }
 
   /**
-   * Utility method: Parses a streaming response.
-   * It yields each parsed JSON object as it is received.
+   * Helper to prepare messages for OpenAI format if needed
    */
-  private async *parseStream(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    signal?: AbortSignal
-  ): AsyncGenerator<any> {
-    const decoder = new TextDecoder();
-    let buffer = "";
-    
-    while (true) {
-      if (signal?.aborted) {
-        throw new DOMException('Stream aborted by user', 'AbortError');
-      }
-      
-      const { value, done } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            yield JSON.parse(line);
-          } catch (error) {
-            console.warn('Failed to parse streaming response line:', error);
-          }
+  private prepareMessages(messages: ChatMessage[]): any[] {
+    // Handle image content if present
+    if (this.config.type !== 'ollama') {
+      return messages.map(msg => {
+        if (msg.images && msg.images.length > 0) {
+          return {
+            role: msg.role,
+            content: [
+              { type: "text", text: msg.content },
+              ...msg.images.map(img => ({
+                type: "image_url",
+                image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}` }
+              }))
+            ]
+          };
         }
-      }
+        return msg;
+      });
     }
-    
-    if (buffer.trim()) {
-      try {
-        yield JSON.parse(buffer);
-      } catch (error) {
-        console.warn('Failed to parse final streaming response buffer:', error);
-      }
-    }
-  }
-
-  /* ===================== New Functionalities ===================== */
-
-  /**
-   * Generate a completion for a given prompt with structured outputs.
-   * The `format` parameter can be a JSON schema or "json" to enable JSON mode.
-   */
-  public async generateStructuredCompletion(
-    model: string,
-    prompt: string,
-    format: any,
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, prompt, format, ...options, stream: false };
-    return this.request("/api/generate", "POST", payload);
-  }
-
-  /**
-   * Send a chat message with structured outputs.
-   * The `format` parameter can be a JSON schema or "json" to enable JSON mode.
-   */
-  public async sendStructuredChat(
-    model: string,
-    messages: ChatMessage[],
-    format: any,
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, messages, format, ...options, stream: false };
-    return this.request("/api/chat", "POST", payload);
-  }
-
-  /**
-   * Send a chat message with function calling (tools).
-   * Pass an array of tool definitions in the `tools` parameter.
-   */
-  public async sendChatWithTools(
-    model: string,
-    messages: ChatMessage[],
-    tools: any[],
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, messages, tools, ...options, stream: false };
-    return this.request("/api/chat", "POST", payload);
-  }
-
-  /**
-   * Generate a completion in raw mode (bypassing templating).
-   */
-  public async generateRaw(
-    model: string,
-    prompt: string,
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, prompt, raw: true, ...options, stream: false };
-    return this.request("/api/generate", "POST", payload);
-  }
-
-  /**
-   * Send a chat message in raw mode (bypassing templating).
-   */
-  public async sendRawChat(
-    model: string,
-    messages: ChatMessage[],
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const payload = { model, messages, raw: true, ...options, stream: false };
-    return this.request("/api/chat", "POST", payload);
-  }
-
-  /**
-   * Create a new model.
-   * Options can include: from, files, adapters, template, license, system, parameters, messages, quantize.
-   */
-  public async createModel(
-    model: string,
-    options: {
-      from?: string;
-      files?: { [key: string]: string };
-      adapters?: { [key: string]: string };
-      template?: string;
-      license?: string | string[];
-      system?: string;
-      parameters?: { [key: string]: any };
-      messages?: ChatMessage[];
-      quantize?: string;
-    } = {}
-  ): Promise<any> {
-    const payload = { model, ...options };
-    return this.request("/api/create", "POST", payload);
-  }
-
-  /**
-   * Copy an existing model to a new model.
-   */
-  public async copyModel(source: string, destination: string): Promise<any> {
-    const payload = { source, destination };
-    return this.request("/api/copy", "POST", payload);
-  }
-
-  /**
-   * Delete a model.
-   */
-  public async deleteModel(model: string): Promise<any> {
-    const payload = { model };
-    return this.request("/api/delete", "DELETE", payload);
-  }
-
-  /**
-   * Push a model to the Ollama library.
-   */
-  public async pushModel(
-    model: string,
-    insecure: boolean = false,
-    stream: boolean = true
-  ): Promise<any> {
-    const payload = { model, insecure, stream };
-    return this.request("/api/push", "POST", payload);
+    return messages;
   }
 
   /**
    * Generate embeddings from a model.
-   * The input can be a single string or an array of strings.
    */
   public async generateEmbeddings(
     model: string,
     input: string | string[],
     options: RequestOptions = {}
   ): Promise<any> {
-    const payload = { model, input, ...options };
-    return this.request("/api/embed", "POST", payload);
+    const endpoint = this.config.type === 'ollama' ? '/api/embed' : '/embeddings';
+    const payload = this.config.type === 'ollama'
+      ? { model, input, ...options }
+      : { model, input: Array.isArray(input) ? input : [input], ...options };
+    
+    return this.request(endpoint, "POST", payload);
   }
 
   /**
-   * List models that are currently loaded into memory.
+   * Send a chat message with structured output format.
+   * This is useful for getting responses in a specific JSON schema.
    */
-  public async listRunningModels(): Promise<any[]> {
-    const url = `${this.baseUrl}/api/ps`;
-    try {
-      const response = await fetch(url, {
-        mode: 'cors'
-      });
-      if (response.status === 403) {
-        throw new Error('CORS error: Please configure OLLAMA_ORIGINS on the server');
-      }
-      if (!response.ok) {
-        throw new Error(`Failed to list running models: ${response.status} ${response.statusText}`);
-      }
-      const data = await response.json();
-      return data.models;
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-          throw new Error(`CORS error: Unable to list running models. Please check server configuration.`);
-        }
-        throw error;
-      }
-      throw new Error('Failed to list running models');
-    }
-  }
-
-  /**
-   * Unload a model from memory.
-   * For chat models, set isChat to true; otherwise, it will use the generate endpoint.
-   */
-  public async unloadModel(model: string, isChat: boolean = false): Promise<any> {
-    if (isChat) {
-      const payload = { model, messages: [], keep_alive: 0 };
-      return this.request("/api/chat", "POST", payload);
+  public async sendStructuredChat(
+    model: string,
+    messages: ChatMessage[],
+    format: object,
+    options: RequestOptions = {}
+  ): Promise<any> {
+    const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
+    
+    let payload;
+    if (this.config.type === 'ollama') {
+      // Ollama uses format parameter
+      payload = { 
+        model, 
+        messages, 
+        format: format, 
+        ...options, 
+        stream: false 
+      };
     } else {
-      const payload = { model, keep_alive: 0 };
-      return this.request("/api/generate", "POST", payload);
+      // OpenAI only supports simple JSON response format (no schema validation)
+      payload = { 
+        model, 
+        messages,
+        response_format: { type: "json_object" },
+        stream: false, 
+        ...options 
+      };
+      
+      // For OpenAI, we need to add schema information in the system prompt
+      const schemaDescription = this.formatSchemaForPrompt(format);
+      
+      // Find if there's already a system message to append to
+      const systemMessageIndex = messages.findIndex(m => m.role === 'system');
+      
+      if (systemMessageIndex >= 0) {
+        // Append to existing system message
+        payload.messages = [...messages];
+        payload.messages[systemMessageIndex] = {
+          ...payload.messages[systemMessageIndex],
+          content: `${payload.messages[systemMessageIndex].content}\n\n${schemaDescription}`
+        };
+      } else {
+        // Add new system message at the beginning
+        payload.messages = [
+          { role: 'system', content: schemaDescription },
+          ...messages
+        ];
+      }
+    }
+
+    const response = await this.request(endpoint, "POST", payload);
+
+    // Transform response to a consistent format
+    if (this.config.type !== 'ollama') {
+      return {
+        message: {
+          content: response.choices[0].message.content,
+          role: response.choices[0].message.role
+        },
+        eval_count: response.usage?.total_tokens || 0
+      };
+    }
+    
+    return response;
+  }
+  
+  /**
+   * Format schema description for inclusion in prompts
+   * This converts a JSON schema to a text description for OpenAI
+   */
+  private formatSchemaForPrompt(schema: any): string {
+    try {
+      // If this is a full JSON schema with properties
+      if (schema.type === 'object' && schema.properties) {
+        const fields = Object.entries(schema.properties).map(([key, prop]: [string, any]) => {
+          return `- "${key}": ${prop.description || 'No description'} (${prop.type || 'string'})`;
+        });
+        
+        return `You must respond with a valid JSON object that matches this schema:
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\`
+
+The JSON object should include these fields:
+${fields.join('\n')}
+
+Your response MUST be a valid JSON object, properly formatted and parsable.`;
+      } 
+      
+      // If it's just a simple object with field descriptions
+      else if (typeof schema === 'object') {
+        const fields = Object.entries(schema).map(([key, description]) => {
+          return `- "${key}": ${description}`;
+        });
+        
+        return `You must respond with a valid JSON object that includes these fields:
+${fields.join('\n')}
+
+Your response MUST be a valid JSON object, properly formatted and parsable.`;
+      }
+      
+      // Default case
+      return 'You must respond with a valid JSON object.';
+    } catch (error) {
+      console.warn('Error formatting schema for prompt:', error);
+      return 'You must respond with a valid JSON object.';
     }
   }
 }

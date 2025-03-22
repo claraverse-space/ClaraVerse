@@ -6,7 +6,11 @@ export interface NodeExecutionContext {
   node: Node;
   inputs: { [key: string]: any };
   ollamaClient: OllamaClient;
-  updateNodeOutput?: (nodeId: string, output: any) => void;
+  apiConfig: {
+    type: 'ollama' | 'openai';
+    baseUrl: string;
+    apiKey?: string;
+  };
 }
 
 // Define the interface for node executors

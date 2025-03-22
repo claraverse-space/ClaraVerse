@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { useOllama } from '../../../context/OllamaContext';
-import { ImagePlus, Settings, RefreshCw, MessageSquare, Eye } from 'lucide-react';
+import { ImagePlus, Settings, RefreshCw, MessageSquare, Eye, Database } from 'lucide-react';
 import { db } from '../../../db';
+import { OllamaClient } from '../../../utils/OllamaClient';
 
 const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   const { isDark } = useTheme();
@@ -13,13 +14,24 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   const Icon = tool.icon || ImagePlus;
   const nodeColor = isDark ? tool.darkColor : tool.lightColor;
 
+  // Basic configuration
   const [model, setModel] = useState(data.config?.model || '');
   const [systemPrompt, setSystemPrompt] = useState(data.config?.systemPrompt || '');
   const [showSettings, setShowSettings] = useState(false);
   const [customUrl, setCustomUrl] = useState(data.config?.ollamaUrl || '');
 
+  // API selection and models
+  const [apiType, setApiType] = useState<'ollama' | 'openai'>(data.config?.apiType || 'ollama');
+  const [openaiApiKey, setOpenaiApiKey] = useState(data.config?.apiKey || '');
+  const [openaiUrl, setOpenaiUrl] = useState(data.config?.openaiUrl || 'https://api.openai.com/v1');
+
   // Node-specific states for models
-  const [nodeModels, setNodeModels] = useState<any[]>([]);
+  const [ollamaModels, setOllamaModels] = useState<any[]>([]);
+  const [openaiModels, setOpenaiModels] = useState<string[]>([
+    'gpt-4-vision-preview',
+    'gpt-4-turbo', 
+    'gpt-4'
+  ]);
   const [allModels, setAllModels] = useState<any[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeError, setNodeError] = useState<string | null>(null);
@@ -35,6 +47,14 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     const loadOllamaConfig = async () => {
       try {
         const config = await db.getAPIConfig();
+        
+        // Set API type from global config if available
+        if (config?.api_type && !data.config.apiType) {
+          setApiType(config.api_type as 'ollama' | 'openai');
+          data.config.apiType = config.api_type;
+        }
+        
+        // Set Ollama URL
         const configuredUrl = config?.ollama_base_url || baseUrl || 'http://localhost:11434';
         if (!data.config) {
           data.config = {};
@@ -43,7 +63,17 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           data.config.ollamaUrl = configuredUrl;
           data.ollamaUrl = configuredUrl;
           setCustomUrl(configuredUrl);
-          console.log("Initialized URL in node config:", configuredUrl);
+        }
+        
+        // Set OpenAI settings if available
+        if (config?.openai_api_key && !data.config.apiKey) {
+          setOpenaiApiKey(config.openai_api_key);
+          data.config.apiKey = config.openai_api_key;
+        }
+        
+        if (config?.openai_base_url && !data.config.openaiUrl) {
+          setOpenaiUrl(config.openai_base_url);
+          data.config.openaiUrl = config.openai_base_url;
         }
       } catch (error) {
         console.error("Failed to load Ollama configuration:", error);
@@ -70,26 +100,55 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     return visionModelPatterns.some(pattern => lowerName.includes(pattern));
   };
 
-  // Fetch models using the node's custom URL
-  const fetchModels = async (url: string) => {
+  // Fetch models based on selected API type
+  const fetchModels = async () => {
     setNodeLoading(true);
     setNodeError(null);
+    
     try {
-      const response = await fetch(`${url}/api/tags`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch models: ${response.statusText}`);
-      }
-      const json = await response.json();
-      const models = json.models || [];
-      setAllModels(models);
-      const multimodalModels = models.filter(m => isLikelyMultimodalModel(m.name));
-      setNodeModels(multimodalModels.length > 0 ? multimodalModels : models);
-      if (models.length > 0 && !model) {
-        const targetModels = multimodalModels.length > 0 ? multimodalModels : models;
-        const firstModel = targetModels[0]?.name;
-        if (firstModel) {
-          setModel(firstModel);
-          data.config.model = firstModel;
+      if (apiType === 'ollama') {
+        const url = customUrl || 'http://localhost:11434';
+        const response = await fetch(`${url}/api/tags`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch models: ${response.statusText}`);
+        }
+        
+        const json = await response.json();
+        const models = json.models || [];
+        setAllModels(models);
+        
+        const multimodalModels = models.filter(m => isLikelyMultimodalModel(m.name));
+        setOllamaModels(multimodalModels.length > 0 ? multimodalModels : models);
+        
+        // Set default model if needed
+        if (models.length > 0 && (!model || !models.some(m => m.name === model))) {
+          const targetModels = multimodalModels.length > 0 ? multimodalModels : models;
+          const firstModel = targetModels[0]?.name;
+          if (firstModel) {
+            setModel(firstModel);
+            data.config.model = firstModel;
+          }
+        }
+      } else {
+        // OpenAI model fetching
+        if (openaiApiKey) {
+          try {
+            const client = new OllamaClient(openaiUrl, {
+              apiKey: openaiApiKey,
+              type: 'openai'
+            });
+            const models = await client.listModels();
+            setOpenaiModels(models.map((m: any) => m.name || m.id));
+          } catch (error) {
+            console.warn("Using default OpenAI models list:", error);
+          }
+        }
+        
+        // Set default OpenAI model if needed
+        if (!model || !openaiModels.includes(model)) {
+          const defaultModel = openaiModels[0] || 'gpt-4-vision-preview';
+          setModel(defaultModel);
+          data.config.model = defaultModel;
         }
       }
     } catch (error) {
@@ -100,12 +159,15 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     }
   };
 
-  // Fetch models when the URL changes
+  // Fetch models when API type or URL changes
   useEffect(() => {
-    if (customUrl) {
-      fetchModels(customUrl);
-    }
-  }, [customUrl]);
+    fetchModels();
+  }, [apiType, customUrl, openaiUrl, openaiApiKey]);
+
+  // Update config when apiType changes
+  useEffect(() => {
+    data.config.apiType = apiType;
+  }, [apiType, data.config]);
 
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
@@ -114,7 +176,6 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     if (!data.config) data.config = {};
     data.config.model = selectedModel;
     data.model = selectedModel;
-    console.log("Updated model in node config:", selectedModel);
   };
 
   const handleSystemPromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -133,8 +194,24 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     if (!data.config) data.config = {};
     data.config.ollamaUrl = url;
     data.ollamaUrl = url;
-    console.log("Updated URL in node config:", url);
-    console.log("Current node config:", data.config);
+  };
+
+  const handleApiTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation();
+    setApiType(e.target.value as 'ollama' | 'openai');
+    data.config.apiType = e.target.value;
+  };
+  
+  const handleOpenAIKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    setOpenaiApiKey(e.target.value);
+    data.config.apiKey = e.target.value;
+  };
+  
+  const handleOpenAIUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    setOpenaiUrl(e.target.value);
+    data.config.openaiUrl = e.target.value;
   };
 
   const handleSettingsClick = (e: React.MouseEvent) => {
@@ -144,7 +221,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
 
   const handleRefreshClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    fetchModels(customUrl);
+    fetchModels();
   };
 
   const handleToggleAllModels = (e: React.MouseEvent) => {
@@ -157,7 +234,10 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     e.nativeEvent.stopImmediatePropagation();
   };
 
-  const displayedModels = showAllModels ? allModels : nodeModels;
+  // Determine which models to display
+  const displayedModels = apiType === 'ollama' 
+    ? (showAllModels ? allModels : ollamaModels)
+    : openaiModels;
 
   return (
     <div 
@@ -183,51 +263,116 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
         </button>
       </div>
       
+      {/* API Type Selection */}
+      <div className="mb-2" onClick={stopPropagation} onMouseDown={stopPropagation}>
+        <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+          API Type
+        </label>
+        <select
+          value={apiType}
+          onChange={handleApiTypeChange}
+          onClick={stopPropagation}
+          onMouseDown={stopPropagation}
+          className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm`}
+        >
+          <option value="ollama">Ollama</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </div>
+      
       {showSettings && (
         <div className="mb-3 p-2 border border-dashed rounded" onClick={stopPropagation} onMouseDown={stopPropagation}>
-          <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Ollama API URL
-          </label>
-          <div className="flex gap-2">
-            <input 
-              type="text"
-              value={customUrl}
-              onChange={handleUrlChange}
-              onClick={stopPropagation}
-              onMouseDown={stopPropagation}
-              onKeyDown={stopPropagation}
-              onFocus={stopPropagation}
-              placeholder="http://localhost:11434"
-              className={`w-full p-2 rounded border ${
-                isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-              } text-xs`}
-            />
-            <button 
-              onClick={handleRefreshClick}
-              onMouseDown={stopPropagation}
-              className="p-1 bg-blue-500 hover:bg-blue-600 text-white rounded"
-              disabled={nodeLoading}
-            >
-              <RefreshCw size={16} className={nodeLoading ? 'animate-spin' : ''} />
-            </button>
-          </div>
+          {apiType === 'ollama' ? (
+            <>
+              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                Ollama API URL
+              </label>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  value={customUrl}
+                  onChange={handleUrlChange}
+                  onClick={stopPropagation}
+                  onMouseDown={stopPropagation}
+                  onKeyDown={stopPropagation}
+                  onFocus={stopPropagation}
+                  placeholder="http://localhost:11434"
+                  className={`w-full p-2 rounded border ${
+                    isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  } text-xs`}
+                />
+                <button 
+                  onClick={handleRefreshClick}
+                  onMouseDown={stopPropagation}
+                  className="p-1 bg-blue-500 hover:bg-blue-600 text-white rounded"
+                  disabled={nodeLoading}
+                >
+                  <RefreshCw size={16} className={nodeLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                OpenAI API Key
+              </label>
+              <input 
+                type="password"
+                value={openaiApiKey}
+                onChange={handleOpenAIKeyChange}
+                onClick={stopPropagation}
+                onMouseDown={stopPropagation}
+                onKeyDown={stopPropagation}
+                onFocus={stopPropagation}
+                placeholder="sk-..."
+                className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-xs mb-2`}
+              />
+              
+              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                OpenAI API URL
+              </label>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  value={openaiUrl}
+                  onChange={handleOpenAIUrlChange}
+                  onClick={stopPropagation}
+                  onMouseDown={stopPropagation}
+                  onKeyDown={stopPropagation}
+                  onFocus={stopPropagation}
+                  placeholder="https://api.openai.com/v1"
+                  className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-xs`}
+                />
+                <button 
+                  onClick={handleRefreshClick}
+                  onMouseDown={stopPropagation}
+                  className="p-1 bg-blue-500 hover:bg-blue-600 text-white rounded"
+                  disabled={nodeLoading}
+                >
+                  <RefreshCw size={16} className={nodeLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
       
       <div className="mb-2" onClick={stopPropagation} onMouseDown={stopPropagation}>
         <div className="flex items-center justify-between">
           <label className={`block text-xs mb-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            Select Vision-capable Model
+            {apiType === 'ollama' ? 'Select Vision-capable Model' : 'Select OpenAI Model'}
           </label>
-          <button
-            onClick={handleToggleAllModels}
-            className={`p-1 text-xs flex items-center gap-1 rounded ${
-              isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
-            }`}
-          >
-            <Eye size={12} />
-            <span>{showAllModels ? 'Show Vision' : 'Show All'}</span>
-          </button>
+          {apiType === 'ollama' && (
+            <button
+              onClick={handleToggleAllModels}
+              className={`p-1 text-xs flex items-center gap-1 rounded ${
+                isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-200 text-gray-600'
+              }`}
+            >
+              <Eye size={12} />
+              <span>{showAllModels ? 'Show Vision' : 'Show All'}</span>
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select 
@@ -249,18 +394,26 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
             ) : displayedModels.length === 0 ? (
               <option>No models found</option>
             ) : (
-              displayedModels.map(model => {
-                const isMultimodal = isLikelyMultimodalModel(model.name);
-                return (
-                  <option 
-                    key={model.name} 
-                    value={model.name}
-                  >
-                    {model.name} ({Math.round(model.size / 1024 / 1024 / 1024)}GB)
-                    {isMultimodal ? " 🖼️" : ""}
+              apiType === 'ollama' ? (
+                displayedModels.map(model => {
+                  const isMultimodal = isLikelyMultimodalModel(model.name);
+                  return (
+                    <option 
+                      key={model.name} 
+                      value={model.name}
+                    >
+                      {model.name} ({Math.round(model.size / 1024 / 1024 / 1024)}GB)
+                      {isMultimodal ? " 🖼️" : ""}
+                    </option>
+                  );
+                })
+              ) : (
+                displayedModels.map(name => (
+                  <option key={name} value={name}>
+                    {name}
                   </option>
-                );
-              })
+                ))
+              )
             )}
           </select>
           <button 
@@ -277,14 +430,16 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
             {nodeError}
           </p>
         )}
-        {!showAllModels && nodeModels.length === 0 && allModels.length > 0 && (
+        {apiType === 'ollama' && !showAllModels && ollamaModels.length === 0 && allModels.length > 0 && (
           <p className="text-xs text-amber-500 mt-1">
             No vision models detected. Try "Show All" to see all available models.
           </p>
         )}
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Models with 🖼️ are likely to support images
-        </p>
+        {apiType === 'ollama' && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Models with 🖼️ are likely to support images
+          </p>
+        )}
       </div>
       
       <div className="mb-2" onClick={stopPropagation} onMouseDown={stopPropagation}>
@@ -304,6 +459,12 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           } text-sm`}
           rows={2}
         />
+      </div>
+      
+      {/* API provider info */}
+      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <Database size={12} />
+        <span>Using {apiType === 'ollama' ? 'Ollama' : 'OpenAI'} API</span>
       </div>
       
       <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/30 rounded">

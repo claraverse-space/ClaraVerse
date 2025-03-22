@@ -1,7 +1,8 @@
 import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
+import { OllamaClient } from '../utils/OllamaClient';
 
 const executeImageTextLlm = async (context: NodeExecutionContext): Promise<string> => {
-  const { node, inputs, ollamaClient } = context;
+  const { node, inputs, ollamaClient, apiConfig } = context;
 
   try {
     // Get the image input and text input from the node inputs
@@ -57,9 +58,6 @@ const executeImageTextLlm = async (context: NodeExecutionContext): Promise<strin
       processedImageData = processedImageData.trim();
     }
 
-    // Log the first few characters for debugging
-    console.log(`Processed image data (first 20 chars): ${processedImageData.substring(0, 20)}...`);
-
     // Extract configuration values from the node
     const config = node.data.config || {};
     const model = config.model || node.data?.model;
@@ -69,8 +67,12 @@ const executeImageTextLlm = async (context: NodeExecutionContext): Promise<strin
     
     const systemPrompt = config.systemPrompt || node.data?.systemPrompt || '';
     const ollamaUrl = config.ollamaUrl || node.data?.ollamaUrl;
-    if (!ollamaUrl) {
-      return "Error: No Ollama URL configured. Please set the URL in the node settings.";
+    
+    // Determine which API to use (from node config or from global context)
+    const useOpenAI = apiConfig?.type === 'openai' || config.apiType === 'openai';
+    
+    if (!ollamaUrl && !ollamaClient && !useOpenAI) {
+      return "Error: No API URL configured. Please set the URL in the node settings.";
     }
 
     // Combine system prompt and user text if both exist
@@ -78,23 +80,40 @@ const executeImageTextLlm = async (context: NodeExecutionContext): Promise<strin
       ? `${systemPrompt}\n\n${textInput || 'Describe this image:'}`
       : (textInput || 'Describe this image:');
 
-    // Ensure the base URL has no trailing slash
-    const baseUrl = ollamaUrl.endsWith('/') ? ollamaUrl.slice(0, -1) : ollamaUrl;
+    // Use the provided ollamaClient or create a new one with the right configuration
+    let client = ollamaClient;
     
-    // Use generate API for image inputs
+    // If no client provided or we need to override the API type
+    if (!client || (useOpenAI && client.getConfig().type !== 'openai')) {
+      if (useOpenAI) {
+        // Use OpenAI configuration
+        client = new OllamaClient(
+          apiConfig?.baseUrl || config.openaiUrl || 'https://api.openai.com/v1', 
+          {
+            apiKey: apiConfig?.apiKey || config.apiKey || '',
+            type: 'openai'
+          }
+        );
+        console.log('Using OpenAI for vision tasks with', model);
+      } else {
+        // Use Ollama configuration
+        client = new OllamaClient(ollamaUrl, { type: 'ollama' });
+        console.log('Using Ollama for vision tasks with', model);
+      }
+    }
+    
+    // Use generate API for image inputs with the appropriate client
     console.log('Using multimodal generation with image and text');
-    console.log(`URL: ${baseUrl}/api/generate`);
     
-    const response = await ollamaClient.generateWithImages(
+    const response = await client.generateWithImages(
       model,
       finalPrompt,
       [processedImageData],
-      { stream: false },
-      baseUrl  // Pass the base URL to the client
+      { stream: false }
     );
     
     // Extract and return the response content
-    return response?.response || 'No response from Ollama';
+    return response?.response || 'No response from model';
   } catch (error) {
     console.error('Error in Image-Text LLM node execution:', error);
     return `Error: ${error instanceof Error ? error.message : String(error)}`;

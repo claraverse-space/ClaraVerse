@@ -14,6 +14,13 @@ interface AssistantHeaderProps {
   onNavigateHome: () => void;
 }
 
+interface Model {
+  name: string;
+  id?: string;
+  digest?: string;
+  details?: any;
+}
+
 const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   connectionStatus,
   selectedModel,
@@ -104,10 +111,63 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
       setFilteredModels(models);
     } else {
       const filtered = models.filter(model => 
-        model.name.toLowerCase().includes(term)
+        model.name.toLowerCase().includes(term) || model.id?.toLowerCase().includes(term)
       );
       setFilteredModels(filtered);
     }
+  };
+
+  const renderModelDetails = (model: Model) => {
+    const modelId = model.name || model.id;
+    const isOllamaModel = typeof model.digest === 'string';
+
+    return (
+      <button
+        key={modelId}
+        onClick={() => {
+          setSelectedModel(modelId);
+          setShowModelSelect(false);
+          setSearchTerm('');
+        }}
+        className={`w-full flex items-center justify-between p-3 text-left hover:bg-sakura-50 dark:hover:bg-sakura-100/5 ${
+          selectedModel === modelId ? 'bg-sakura-50 dark:bg-sakura-100/10' : ''
+        } ${modelId === mostUsedModel ? 'border-l-4 border-yellow-400' : ''}`}
+      >
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-gray-500" />
+          <div>
+            <div className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {modelId}
+              {modelId === mostUsedModel && (
+                <div className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                  <Star className="w-3 h-3 text-yellow-500" />
+                  <span className="text-xs text-yellow-700 dark:text-yellow-400">Most Used</span>
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              {isOllamaModel ? (
+                <span>{model.digest?.slice(0, 8)}</span>
+              ) : (
+                <span>OpenAI Model</span>
+              )}
+              {modelUsage[modelId] && (
+                <div className="flex items-center gap-1 ml-1">
+                  <BarChart3 className="w-3 h-3 text-blue-500" />
+                  <span>Used: {modelUsage[modelId]} times</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        {modelConfigs[modelId] && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-sakura-100/50 dark:bg-sakura-100/10">
+            <ImageIcon className="w-3 h-3 text-sakura-500" />
+            <span className="text-xs text-sakura-500">Images</span>
+          </div>
+        )}
+      </button>
+    );
   };
 
   const mostUsedModel = getMostUsedModel();
@@ -132,9 +192,9 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
             <AlertCircle className="w-5 h-5 text-red-500" />
           )}
           <span className="text-sm text-gray-600 dark:text-gray-400">
-            {connectionStatus === 'checking' ? 'Checking Ollama...' :
-             connectionStatus === 'connected' ? 'Ollama Connected' :
-             'Ollama Disconnected'}
+            {connectionStatus === 'checking' ? 'Checking Connection...' :
+             connectionStatus === 'connected' ? 'Connected' :
+             'Disconnected'}
           </span>
         </div>
 
@@ -170,49 +230,7 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
               </div>
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredModels.length > 0 ? (
-                  filteredModels.map((model) => (
-                    <button
-                      key={model.name}
-                      onClick={() => {
-                        setSelectedModel(model.name);
-                        setShowModelSelect(false);
-                        setSearchTerm('');
-                      }}
-                      className={`w-full flex items-center justify-between p-3 text-left hover:bg-sakura-50 dark:hover:bg-sakura-100/5 ${
-                        selectedModel === model.name ? 'bg-sakura-50 dark:bg-sakura-100/10' : ''
-                      } ${model.name === mostUsedModel ? 'border-l-4 border-yellow-400' : ''}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Bot className="w-4 h-4 text-gray-500" />
-                        <div>
-                          <div className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {model.name}
-                            {model.name === mostUsedModel && (
-                              <div className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-                                <Star className="w-3 h-3 text-yellow-500" />
-                                <span className="text-xs text-yellow-700 dark:text-yellow-400">Most Used</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 flex items-center gap-1">
-                            <span>{model.digest.slice(0, 8)}</span>
-                            {modelUsage[model.name] && (
-                              <div className="flex items-center gap-1 ml-1">
-                                <BarChart3 className="w-3 h-3 text-blue-500" />
-                                <span>Used: {modelUsage[model.name]} times</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      {modelConfigs[model.name] && (
-                        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-sakura-100/50 dark:bg-sakura-100/10">
-                          <ImageIcon className="w-3 h-3 text-sakura-500" />
-                          <span className="text-xs text-sakura-500">Images</span>
-                        </div>
-                      )}
-                    </button>
-                  ))
+                  filteredModels.map(model => renderModelDetails(model))
                 ) : (
                   <div className="p-4 text-center text-gray-500 dark:text-gray-400">
                     No models match your search
