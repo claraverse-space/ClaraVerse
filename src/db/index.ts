@@ -323,6 +323,71 @@ class LocalStorageDB {
     }
   }
 
+  async updateMessage(messageId: string, update: Partial<Message>): Promise<void> {
+    if (this.useIndexedDB) {
+      try {
+        // Simpler approach: First try direct get, then delete and add new
+        const allMessages = await indexedDBService.getAll<Message>('messages');
+        const existingMessage = allMessages.find(msg => msg.id === messageId);
+        
+        if (!existingMessage) {
+          console.error('Message not found in database:', messageId);
+          throw new Error(`Message not found: ${messageId}`);
+        }
+
+        const updatedMessage = {
+          ...existingMessage,
+          ...update,
+          timestamp: new Date().toISOString()
+        };
+
+        // Delete and re-add as a reliable update strategy
+        try {
+          await indexedDBService.delete('messages', messageId);
+        } catch (e) {
+          console.warn('Delete operation failed, attempting put anyway:', e);
+        }
+        
+        await indexedDBService.put('messages', updatedMessage);
+        console.log('Message updated successfully:', messageId);
+
+      } catch (error) {
+        console.error('Error updating message in IndexedDB:', error);
+        throw error;
+      }
+    } else {
+      const messages = await this.getItem<Message[]>('messages') || [];
+      const index = messages.findIndex(msg => msg.id === messageId);
+      
+      if (index === -1) {
+        throw new Error('Message not found');
+      }
+      
+      messages[index] = {
+        ...messages[index],
+        ...update,
+        timestamp: new Date().toISOString()
+      };
+      
+      await this.setItem('messages', messages);
+    }
+  }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    if (this.useIndexedDB) {
+      try {
+        await indexedDBService.delete('messages', messageId);
+      } catch (error) {
+        console.error('Error deleting message:', error);
+        throw error;
+      }
+    } else {
+      const messages = await this.getItem<Message[]>('messages') || [];
+      const filteredMessages = messages.filter(msg => msg.id !== messageId);
+      await this.setItem('messages', filteredMessages);
+    }
+  }
+
   // Storage methods
   async addStorageItem(item: Omit<StorageItem, 'id' | 'timestamp'>): Promise<string> {
     const newItem: StorageItem = {

@@ -12,6 +12,9 @@ interface ChatWindowProps {
   onNewChat: () => void;
   isStreaming: boolean;
   showTokens: boolean;
+  onRetryMessage: (messageId: string) => void;
+  onEditMessage: (messageId: string, content: string) => void;
+  onSendEdit: (messageId: string, content: string) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -22,7 +25,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   chatContainerRef,
   onNewChat,
   isStreaming,
-  showTokens
+  showTokens,
+  onRetryMessage,
+  onEditMessage,
+  onSendEdit
 }) => {
   const renderEmptyState = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -53,11 +59,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       {messages.length === 0 ? renderEmptyState() : (
         // Removed max-width and centering classes so the container fills available space
         <div className="space-y-6">
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <ChatMessage 
               key={message.id} 
               message={message} 
               showTokens={showTokens}
+              onRetry={onRetryMessage}
+              onEdit={onEditMessage}
+              onSendEdit={onSendEdit}  // Add this line
+              canEdit={index === messages.length - 2 && message.role === 'user'} // Allow editing last user message
+              canRetry={index === messages.length - 1 && message.role === 'assistant'} // Allow retrying last assistant message
             />
           ))}
           {isStreaming && (

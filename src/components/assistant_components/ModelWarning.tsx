@@ -17,13 +17,13 @@ const ModelWarning: React.FC<ModelWarningProps> = ({ onClose, onConfirm, onCance
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              Image Support Warning
+              Image Support Not Confirmed
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              The currently selected model may not support image processing. Would you like to:
+              The current model hasn't been confirmed to support images. Would you like to:
               <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Switch to an image-capable model automatically</li>
-                <li>Continue with the current model (may not work)</li>
+                <li>Switch to a known image-capable model</li>
+                <li>Try with current model (will update support status based on response)</li>
               </ul>
             </p>
             <div className="flex items-center justify-end gap-3 mt-6">

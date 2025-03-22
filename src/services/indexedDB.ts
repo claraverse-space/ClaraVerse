@@ -35,7 +35,19 @@ export class IndexedDBService {
           db.createObjectStore('chats', { keyPath: 'id' });
         }
         if (!db.objectStoreNames.contains('messages')) {
-          db.createObjectStore('messages', { keyPath: 'id' });
+          const messageStore = db.createObjectStore('messages', { keyPath: 'id' });
+          // Create indices for better lookups
+          messageStore.createIndex('id_index', 'id', { unique: true });
+          messageStore.createIndex('chat_id_index', 'chat_id', { unique: false });
+        } else {
+          // Ensure indices exist on existing store
+          const messageStore = event.target?.transaction?.objectStore('messages');
+          if (messageStore && !messageStore.indexNames.contains('id_index')) {
+            messageStore.createIndex('id_index', 'id', { unique: true });
+          }
+          if (messageStore && !messageStore.indexNames.contains('chat_id_index')) {
+            messageStore.createIndex('chat_id_index', 'chat_id', { unique: false });
+          }
         }
         if (!db.objectStoreNames.contains('storage')) {
           db.createObjectStore('storage', { keyPath: 'id' });
@@ -93,6 +105,24 @@ export class IndexedDBService {
     }
   }
 
+  async getByIndex<T>(storeName: string, indexName: string, value: string): Promise<T | undefined> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const index = store.index(indexName);
+        const request = index.get(value);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error(`Error in getByIndex(${storeName}, ${indexName}):`, error);
+      return undefined;
+    }
+  }
+
   async put<T>(storeName: string, value: T): Promise<T> {
     try {
       const db = await this.initDB();
@@ -141,6 +171,48 @@ export class IndexedDBService {
     } catch (error) {
       console.error(`Error in clear(${storeName}):`, error);
       throw error;
+    }
+  }
+
+  async findMessage<T>(messageId: string): Promise<T | undefined> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction('messages', 'readonly');
+        const store = transaction.objectStore('messages');
+        
+        // Try using the index first
+        if (store.indexNames.contains('id_index')) {
+          const index = store.index('id_index');
+          const request = index.get(messageId);
+          
+          request.onsuccess = () => {
+            if (request.result) {
+              resolve(request.result);
+            } else {
+              // Fallback to full scan if index lookup fails
+              const getAllRequest = store.getAll();
+              getAllRequest.onsuccess = () => {
+                const message = getAllRequest.result.find(msg => msg.id === messageId);
+                resolve(message);
+              };
+              getAllRequest.onerror = () => reject(getAllRequest.error);
+            }
+          };
+          request.onerror = () => reject(request.error);
+        } else {
+          // If index doesn't exist, do a full scan
+          const request = store.getAll();
+          request.onsuccess = () => {
+            const message = request.result.find(msg => msg.id === messageId);
+            resolve(message);
+          };
+          request.onerror = () => reject(request.error);
+        }
+      });
+    } catch (error) {
+      console.error('Error finding message:', error);
+      return undefined;
     }
   }
 }

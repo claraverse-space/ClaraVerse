@@ -322,10 +322,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const handleSend = async () => {
     if (!input.trim() || !client || !selectedModel || isProcessing) return;
 
-    // Check if we're using images with a non-image model
+    // Show warning but don't block if using images with unconfirmed model
     if (images.length > 0 && !checkModelImageSupport(selectedModel)) {
       setShowModelWarning(true);
-      return;
     }
 
     let currentChatId = activeChat;
@@ -336,6 +335,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       setChats(updatedChats);
     }
 
+    // Create user message
     const userMessage: Message = {
       id: crypto.randomUUID(),
       chat_id: currentChatId,
@@ -346,6 +346,15 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       images: images.length > 0 ? images.map(img => img.preview) : undefined
     };
 
+    // Save user message first
+    await db.addMessage(
+      currentChatId,
+      userMessage.content,
+      userMessage.role,
+      0,
+      userMessage.images
+    );
+
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setImages([]);
@@ -353,8 +362,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     try {
       setIsProcessing(true);
       const startTime = performance.now();
-      
-      // Create a placeholder for the response
+
+      // Create initial placeholder message
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         chat_id: currentChatId,
@@ -363,57 +372,83 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         timestamp: new Date().toISOString(),
         tokens: 0
       };
+
+      // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
 
-      let fullResponse = '';
-      let totalTokens = 0;
-
-      // Get context messages
+      // Get context for the model
       const contextMessages = getContextMessages([...messages, userMessage]);
       const formattedMessages = formatMessagesForModel(contextMessages);
 
       if (images.length > 0) {
-        // Use image generation endpoint
-        const response = await client.generateWithImages(
-          selectedModel,
-          input,
-          images.map(img => img.base64)
-        );
-        fullResponse = response.response || '';
-        totalTokens = response.eval_count || 0;
-        
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessage.id
-            ? { ...msg, content: fullResponse, tokens: totalTokens }
-            : msg
-        ));
+        // Handle image generation
+        try {
+          const response = await client.generateWithImages(
+            selectedModel,
+            input,
+            images.map(img => img.base64),
+            { max_tokens: 1000 }
+          );
+
+          const content = response.response || '';
+          const tokens = response.eval_count || 0;
+
+          // Update message with response
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? { ...msg, content, tokens }
+              : msg
+          ));
+
+          // Save to database
+          await db.addMessage(currentChatId, content, 'assistant', tokens);
+        } catch (error: any) {
+          throw error;
+        }
       } else if (isStreaming) {
-        // Streaming response with context
-        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
-          if (chunk.message?.content) {
-            fullResponse += chunk.message.content;
-            totalTokens = chunk.eval_count || 0;
-            
-            setMessages(prev => prev.map(msg => 
-              msg.id === assistantMessage.id
-                ? { ...msg, content: fullResponse, tokens: totalTokens }
-                : msg
-            ));
-            
-            scrollToBottom();
+        let streamedContent = '';
+        let tokens = 0;
+
+        // Stream the response
+        try {
+          for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+            if (chunk.message?.content) {
+              streamedContent += chunk.message.content;
+              tokens = chunk.eval_count || tokens;
+
+              // Update message content as it streams
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: streamedContent, tokens }
+                  : msg
+              ));
+
+              // Scroll during streaming
+              scrollToBottom();
+            }
           }
+
+          // Save final message to database
+          await db.addMessage(currentChatId, streamedContent, 'assistant', tokens);
+        } catch (error: any) {
+          console.error('Streaming error:', error);
+          throw error; // Let the outer catch handle it
         }
       } else {
-        // Non-streaming response with context
+        // Non-streaming response
         const response = await client.sendChat(selectedModel, formattedMessages);
-        fullResponse = response.message?.content || '';
-        totalTokens = response.eval_count || 0;
-        
-        setMessages(prev => prev.map(msg => 
+        const content = response.message?.content || '';
+        const tokens = response.eval_count || 0;
+
+        // Update message with response
+        setMessages(prev => prev.map(msg =>
           msg.id === assistantMessage.id
-            ? { ...msg, content: fullResponse, tokens: totalTokens }
+            ? { ...msg, content, tokens }
             : msg
         ));
+
+        // Save to database
+        await db.addMessage(currentChatId, content, 'assistant', tokens);
       }
 
       const endTime = performance.now();
@@ -423,36 +458,28 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       await db.updateModelUsage(selectedModel, duration);
       await db.updateUsage('response_time', duration);
 
-      // Save the messages to the database
-      const inputTokens = totalTokens; // This is approximate
-      userMessage.tokens = inputTokens;
-      await db.addMessage(
-        currentChatId, 
-        userMessage.content, 
-        userMessage.role, 
-        inputTokens,
-        userMessage.images
-      );
-      await db.addMessage(currentChatId, fullResponse, 'assistant', totalTokens);
+      // No need to save user message again as it's already saved
+      scrollToBottom();
 
-      // Update chat title if it's the first message
-      if (messages.length <= 1) {
-        const title = input.slice(0, 30) + (input.length > 30 ? '...' : '');
-        await db.updateChat(currentChatId, { title });
-        const updatedChats = await db.getRecentChats();
-        setChats(updatedChats);
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating response:', error);
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        chat_id: currentChatId,
-        content: "I apologize, but I encountered an error while processing your request. Please try again.",
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        tokens: 0
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      
+      const errorContent = error.message || 'An unexpected error occurred';
+      
+      // Update the placeholder message with error
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMessage.id
+          ? { ...msg, content: `Error: ${errorContent}` }
+          : msg
+      ));
+
+      // Save error message to database
+      await db.addMessage(
+        currentChatId,
+        `Error: ${errorContent}`,
+        'assistant',
+        0
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -519,6 +546,315 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
+  const handleRetryMessage = async (messageId: string) => {
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex < 1 || !client || !selectedModel) return;
+
+    try {
+      setIsProcessing(true);
+
+      // Create new assistant message with the same ID
+      const assistantMessage: Message = {
+        id: messageId,
+        chat_id: activeChat!,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        tokens: 0
+      };
+
+      // Update UI first
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId ? assistantMessage : msg
+      ));
+
+      // Get context messages
+      const contextMessages = getContextMessages([...messages.slice(0, messageIndex)]);
+      const formattedMessages = formatMessagesForModel(contextMessages);
+
+      let responseContent = '';
+      let responseTokens = 0;
+
+      if (isStreaming) {
+        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+          if (chunk.message?.content) {
+            responseContent += chunk.message.content;
+            responseTokens = chunk.eval_count || responseTokens;
+
+            setMessages(prev => prev.map(msg =>
+              msg.id === messageId
+                ? { ...msg, content: responseContent, tokens: responseTokens }
+                : msg
+            ));
+
+            scrollToBottom();
+          }
+        }
+      } else {
+        const response = await client.sendChat(selectedModel, formattedMessages);
+        responseContent = response.message?.content || '';
+        responseTokens = response.eval_count || 0;
+
+        setMessages(prev => prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, content: responseContent, tokens: responseTokens }
+            : msg
+        ));
+      }
+
+      // Save changes to database
+      try {
+        await db.updateMessage(messageId, {
+          content: responseContent,
+          tokens: responseTokens,
+          timestamp: new Date().toISOString()
+        });
+      } catch (dbError) {
+        console.warn('Failed to update message in database:', dbError);
+        // Continue execution - UI is already updated
+      }
+
+    } catch (error: any) {
+      console.error('Error retrying message:', error);
+      const errorContent = error.message || 'An unexpected error occurred';
+      
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, content: `Error: ${errorContent}` }
+          : msg
+      ));
+
+      try {
+        await db.updateMessage(messageId, {
+          content: `Error: ${errorContent}`,
+          tokens: 0,
+          timestamp: new Date().toISOString()
+        });
+      } catch (dbError) {
+        console.warn('Failed to save error message to database:', dbError);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex < 0 || !client || !selectedModel) return;
+
+    // Create updated user message
+    const updatedMessage = {
+      ...messages[messageIndex],
+      content: newContent
+    };
+
+    // Update the edited message in UI and database
+    setMessages(prev => [...prev.slice(0, messageIndex), updatedMessage]);
+    await db.updateMessage(messageId, {
+      content: newContent
+    });
+
+    try {
+      setIsProcessing(true);
+      
+      // Get context messages including the edited message
+      const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
+      const formattedMessages = formatMessagesForModel(contextMessages);
+
+      // Create new assistant message
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        chat_id: activeChat!,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        tokens: 0
+      };
+
+      // Add placeholder message
+      setMessages(prev => [...prev.slice(0, messageIndex + 1), assistantMessage]);
+
+      let responseContent = '';
+      let responseTokens = 0;
+
+      if (isStreaming) {
+        // Handle streaming response
+        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+          if (chunk.message?.content) {
+            responseContent += chunk.message.content;
+            responseTokens = chunk.eval_count || responseTokens;
+
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: responseContent, tokens: responseTokens }
+                : msg
+            ));
+
+            scrollToBottom();
+          }
+        }
+      } else {
+        // Handle non-streaming response
+        const response = await client.sendChat(selectedModel, formattedMessages);
+        responseContent = response.message?.content || '';
+        responseTokens = response.eval_count || 0;
+
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessage.id
+            ? { ...msg, content: responseContent, tokens: responseTokens }
+            : msg
+        ));
+      }
+
+      // Save assistant response to database
+      await db.addMessage(
+        activeChat!,
+        responseContent,
+        'assistant',
+        responseTokens
+      );
+
+    } catch (error: any) {
+      console.error('Error generating edited response:', error);
+      const errorContent = error.message || 'An unexpected error occurred';
+      
+      setMessages(prev => prev.map(msg =>
+        msg.role === 'assistant'
+          ? { ...msg, content: `Error: ${errorContent}` }
+          : msg
+      ));
+
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSendEdit = async (messageId: string, newContent: string) => {
+    console.log('Handling edit submission:', messageId, newContent);
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex < 0 || !client || !selectedModel || !activeChat) return;
+
+    // Prevent processing if content is the same
+    if (messages[messageIndex].content === newContent) {
+      console.log('No changes made to message');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      
+      // Create updated user message for UI
+      const updatedMessage = {
+        ...messages[messageIndex],
+        content: newContent,
+        timestamp: new Date().toISOString()
+      };
+
+      // Update UI state first - only show up to the edited message
+      setMessages(prev => [...prev.slice(0, messageIndex), updatedMessage]);
+
+      // Try database update but don't block progress if it fails
+      try {
+        // Skip database update for now and just use a new message
+        // This bypasses the problematic update operation
+        await db.deleteMessage(messageId).catch(e => console.warn('Delete failed:', e));
+        await db.addMessage(
+          activeChat,
+          newContent,
+          'user',
+          updatedMessage.tokens || 0,
+          updatedMessage.images
+        );
+        console.log('Successfully replaced message in database');
+      } catch (dbError) {
+        console.warn('Database update failed, continuing anyway:', dbError);
+        // Continue with UI update regardless of DB success
+      }
+
+      // Create assistant placeholder message
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        chat_id: activeChat,
+        content: '',
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        tokens: 0
+      };
+
+      // Add placeholder to UI
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Get context messages from UI state for processing
+      const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
+      const formattedMessages = formatMessagesForModel(contextMessages);
+
+      // Process response
+      let responseContent = '';
+      let responseTokens = 0;
+
+      if (isStreaming) {
+        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+          if (chunk.message?.content) {
+            responseContent += chunk.message.content;
+            responseTokens = chunk.eval_count || responseTokens;
+
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: responseContent, tokens: responseTokens }
+                : msg
+            ));
+
+            scrollToBottom();
+          }
+        }
+      } else {
+        const response = await client.sendChat(selectedModel, formattedMessages);
+        responseContent = response.message?.content || '';
+        responseTokens = response.eval_count || 0;
+
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessage.id
+            ? { ...msg, content: responseContent, tokens: responseTokens }
+            : msg
+        ));
+      }
+
+      // Save final assistant response to database
+      await db.addMessage(
+        activeChat,
+        responseContent,
+        'assistant',
+        responseTokens
+      );
+
+    } catch (error: any) {
+      console.error('Error processing edited message:', error);
+      const errorContent = error.message || 'An unexpected error occurred';
+      
+      // Add error message
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        chat_id: activeChat,
+        content: `Error: ${errorContent}`,
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        tokens: 0
+      };
+      
+      setMessages(prev => [...prev.slice(0, messageIndex + 1), errorMessage]);
+      
+      // Save error to database
+      await db.addMessage(
+        activeChat,
+        `Error: ${errorContent}`,
+        'assistant',
+        0
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
       <AssistantSidebar 
@@ -549,6 +885,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onNewChat={() => handleNewChat()}
           isStreaming={isProcessing}
           showTokens={!isStreaming}
+          onRetryMessage={handleRetryMessage}
+          onEditMessage={handleEditMessage}
+          onSendEdit={handleSendEdit}  // Add this line
         />
 
         {showImageWarning && images.length > 0 && (

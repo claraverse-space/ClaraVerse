@@ -259,39 +259,66 @@ export class OllamaClient {
     options: RequestOptions = {}
   ): Promise<any> {
     if (this.config.type === 'ollama') {
-      // Use Ollama's image API
+      // Use Ollama's generate API
       return this.request("/api/generate", "POST", {
         model,
         prompt,
         images,
         stream: false,
+        max_tokens: options.max_tokens || 1000,
         ...options
       });
     }
 
-    // Use OpenAI vision API format
-    const messages = [{
-      role: "user",
-      content: [
-        { type: "text", text: prompt },
-        ...images.map(img => ({
-          type: "image_url",
-          image_url: { url: `data:image/jpeg;base64,${img}` }
-        }))
-      ]
-    }];
+    // Structure messages for OpenAI vision API
+    const formattedContent = [
+      {
+        type: "text",
+        text: prompt
+      },
+      ...images.map(img => ({
+        type: "image_url",
+        image_url: {
+          url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`
+        }
+      }))
+    ];
 
-    const response = await this.request("/chat/completions", "POST", {
+    const messages = [
+      {
+        role: "user",
+        content: formattedContent
+      }
+    ];
+
+    console.log('OpenAI Vision Request:', {
       model,
       messages,
-      max_tokens: options.max_tokens || 300,
-      ...options
+      max_tokens: options.max_tokens || 1000
     });
 
-    return {
-      response: response.choices[0].message.content,
-      eval_count: response.usage.total_tokens
-    };
+    try {
+      const response = await this.request("/chat/completions", "POST", {
+        model,
+        messages,
+        max_tokens: options.max_tokens || 1000,
+        ...options
+      });
+
+      console.log('OpenAI Vision Response:', response);
+
+      if (!response.choices?.[0]?.message) {
+        throw new Error('Invalid response format from image generation');
+      }
+
+      return {
+        response: response.choices[0].message.content,
+        eval_count: response.usage?.total_tokens || 0
+      };
+    } catch (error) {
+      console.error('Vision API Error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -373,20 +400,20 @@ export class OllamaClient {
    * Helper to prepare messages for OpenAI format if needed
    */
   private prepareMessages(messages: ChatMessage[]): any[] {
-    // Handle image content if present
     if (this.config.type !== 'ollama') {
       return messages.map(msg => {
-        if (msg.images && msg.images.length > 0) {
-          return {
-            role: msg.role,
-            content: [
-              { type: "text", text: msg.content },
-              ...msg.images.map(img => ({
-                type: "image_url",
-                image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}` }
-              }))
-            ]
-          };
+        if (msg.images?.length) {
+          // Format message with images for OpenAI
+          const content = [
+            { type: "text", text: msg.content },
+            ...msg.images.map(img => ({
+              type: "image_url",
+              image_url: {
+                url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`
+              }
+            }))
+          ];
+          return { role: msg.role, content };
         }
         return msg;
       });
