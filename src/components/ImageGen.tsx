@@ -66,12 +66,12 @@ const getOptimalConfig = (modelName: string): ModelConfig => {
     };
   }
   return {
-    denoise: 0.7,
-    steps: 50,
+    denoise: 1,
+    steps: 15,
     guidanceScale: 7.5,
     sampler: 'euler',
     scheduler: 'normal',
-    negativeTags: [],
+    negativeTags: baseNegative,
   };
 };
 
@@ -102,6 +102,18 @@ function arrayBufferToUint8Array(buffer: ArrayBuffer): Uint8Array {
 interface ImageGenProps {
   onPageChange?: (page: string) => void;
 }
+
+const LAST_USED_LLM_KEY = 'clara-ollama-last-used-llm';
+
+interface EnhancePromptSettings {
+  selectedModel: string;
+  systemPrompt: string;
+}
+
+const defaultSystemPrompt = `You are a creative writing assistant specializing in enhancing image generation prompts.
+Your task is to expand and improve the given prompt while maintaining its core concept.
+Focus on adding descriptive details, artistic style, lighting, and atmosphere.
+Keep the enhanced prompt concise and effective.`;
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // UI state variables
@@ -203,6 +215,14 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
+
+  // Add new state variables
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhanceSettings, setEnhanceSettings] = useState<EnhancePromptSettings>({
+    selectedModel: localStorage.getItem(LAST_USED_LLM_KEY) || '',
+    systemPrompt: defaultSystemPrompt,
+  });
+  const [isLLMConnected, setIsLLMConnected] = useState(false);
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -912,6 +932,130 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setImageBuffer(buffer);
   };
 
+  // Add this effect to check LLM connection
+  useEffect(() => {
+    const checkLLMConnection = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        
+        // Fix URL construction - don't add http:// if already present
+        const baseUrl = config?.ollama_base_url || 'localhost:11434';
+        const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
+        
+        // Use the correct API endpoint based on the preferred server and api_type
+        if (config?.api_type === 'ollama') {
+          const response = await fetch(`${url}/api/tags`);
+          if (response.ok) {
+            setIsLLMConnected(true);
+          }
+        } else if (config?.api_type === 'openai') {
+          // For OpenAI, we can't easily test connection without making a charged API call
+          // So we'll just check if we have an API key
+          setIsLLMConnected(!!config?.openai_api_key);
+        }
+      } catch (error) {
+        console.error('LLM connection check failed:', error);
+        setIsLLMConnected(false);
+      }
+    };
+    
+    checkLLMConnection();
+  }, []);
+
+  // Add enhance prompt handler
+  const handleEnhancePrompt = async (currentPrompt: string) => {
+    if (!isLLMConnected || !currentPrompt) return;
+    
+    setIsEnhancing(true);
+    try {
+      const config = await db.getAPIConfig();
+      
+      // Fix URL construction - don't add http:// if already present
+      const baseUrl = config?.ollama_base_url || 'localhost:11434';
+      const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
+      
+      console.log(`Enhancing prompt with ${enhanceSettings.selectedModel}...`);
+      
+      const response = await fetch(`${url}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: enhanceSettings.selectedModel,
+          prompt: `${enhanceSettings.systemPrompt}\n\nOriginal prompt: ${currentPrompt}\n\nEnhanced prompt:`,
+          stream: false
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to enhance prompt');
+      
+      const data = await response.json();
+      const enhancedPrompt = data.response.trim();
+      
+      // If enhanced prompt is the same as original, show appropriate message
+      if (enhancedPrompt === currentPrompt) {
+        setNotificationMessage('No changes needed to your prompt');
+      } else {
+        setPrompt(enhancedPrompt);
+        setNotificationMessage(`Prompt enhanced with ${enhanceSettings.selectedModel}`);
+      }
+      
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 3000);
+      return enhancedPrompt;
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+      setNotificationMessage(`Failed to enhance prompt: ${error.message}`);
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 3000);
+      throw error;
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  // Add function to fetch available LLM models
+  const fetchLLMModels = async () => {
+    try {
+      const config = await db.getAPIConfig();
+      
+      // Fix URL construction - don't add http:// if already present
+      const baseUrl = config?.ollama_base_url || 'localhost:11434';
+      const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
+      
+      // Use the correct API type
+      if (config?.api_type === 'ollama') {
+        const response = await fetch(`${url}/api/tags`);
+        if (response.ok) {
+          const data = await response.json();
+          return data.models.map((model: any) => model.name || model) || [];
+        }
+      } else if (config?.api_type === 'openai' && config.openai_api_key) {
+        // For OpenAI, return some standard models that support image enhancement
+        return ['gpt-4o-mini'];
+      }
+      return [];
+    } catch (error) {
+      console.error('Failed to fetch LLM models:', error);
+      return [];
+    }
+  };
+
+  // Add state for available models
+  const [availableLLMModels, setAvailableLLMModels] = useState<string[]>([]);
+
+  // Add effect to fetch models when LLM is connected
+  useEffect(() => {
+    if (isLLMConnected) {
+      fetchLLMModels().then(setAvailableLLMModels);
+    }
+  }, [isLLMConnected]);
+
+  // Add handler for model selection
+  const handleLLMModelSelect = (model: string) => {
+    localStorage.setItem(LAST_USED_LLM_KEY, model);
+    setEnhanceSettings(prev => ({ ...prev, selectedModel: model }));
+  };
+
   return (
     <div className="flex h-screen">
       {!isInitialSetupComplete && (
@@ -954,6 +1098,11 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 handleGenerate={handleGenerate}
                 showSettings={showSettings}
                 handleImageUpload={handleImageUpload}
+                onEnhancePrompt={handleEnhancePrompt}
+                isEnhancing={isEnhancing}
+                isLLMConnected={isLLMConnected}
+                availableModels={availableLLMModels}
+                onModelSelect={handleLLMModelSelect}
               />
               <GeneratedGallery
                 generatedImages={generatedImages}
