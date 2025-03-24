@@ -62,20 +62,40 @@ export class OllamaClient {
         body: body ? JSON.stringify(body) : undefined,
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+        // Format error message including the API response
+        const errorMessage = {
+          status: response.status,
+          statusText: response.statusText,
+          apiError: data.error || data,
+        };
+        throw new Error(JSON.stringify(errorMessage, null, 2));
       }
 
-      return await response.json();
+      return data;
     } catch (error) {
       if (error instanceof Error) {
+        // If it's already a formatted error, re-throw it
+        if (error.message.includes('"status":')) {
+          throw error;
+        }
+        // Format connection errors
         if (error.message.includes('Failed to fetch')) {
-          throw new Error(`Connection error: Unable to connect to ${this.config.baseUrl}. 
-            Please check if the server is running and the URL is correct.`);
+          throw new Error(JSON.stringify({
+            status: 503,
+            statusText: 'Connection Error',
+            message: `Unable to connect to ${this.config.baseUrl}. Please check if the server is running and the URL is correct.`
+          }, null, 2));
         }
         throw error;
       }
-      throw new Error('An unknown error occurred while connecting to the API server');
+      throw new Error(JSON.stringify({
+        status: 500,
+        statusText: 'Unknown Error',
+        message: 'An unknown error occurred while connecting to the API server'
+      }, null, 2));
     }
   }
 
@@ -258,66 +278,83 @@ export class OllamaClient {
     images: string[],
     options: RequestOptions = {}
   ): Promise<any> {
-    if (this.config.type === 'ollama') {
-      // Use Ollama's generate API
-      return this.request("/api/generate", "POST", {
-        model,
-        prompt,
-        images,
-        stream: false,
-        max_tokens: options.max_tokens || 1000,
-        ...options
-      });
-    }
-
-    // Structure messages for OpenAI vision API
-    const formattedContent = [
-      {
-        type: "text",
-        text: prompt
-      },
-      ...images.map(img => ({
-        type: "image_url",
-        image_url: {
-          url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`
-        }
-      }))
-    ];
-
-    const messages = [
-      {
-        role: "user",
-        content: formattedContent
-      }
-    ];
-
-    console.log('OpenAI Vision Request:', {
-      model,
-      messages,
-      max_tokens: options.max_tokens || 1000
-    });
-
     try {
-      const response = await this.request("/chat/completions", "POST", {
+      if (this.config.type === 'ollama') {
+        // Use Ollama's generate API
+        return this.request("/api/generate", "POST", {
+          model,
+          prompt,
+          images,
+          stream: false,
+          max_tokens: options.max_tokens || 1000,
+          ...options
+        });
+      }
+  
+      // Structure messages for OpenAI vision API
+      const formattedContent = [
+        {
+          type: "text",
+          text: prompt
+        },
+        ...images.map(img => ({
+          type: "image_url",
+          image_url: {
+            url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`
+          }
+        }))
+      ];
+  
+      const messages = [
+        {
+          role: "user",
+          content: formattedContent
+        }
+      ];
+  
+      console.log('OpenAI Vision Request:', {
         model,
         messages,
-        max_tokens: options.max_tokens || 1000,
-        ...options
+        max_tokens: options.max_tokens || 1000
       });
-
-      console.log('OpenAI Vision Response:', response);
-
-      if (!response.choices?.[0]?.message) {
-        throw new Error('Invalid response format from image generation');
+  
+      try {
+        const response = await this.request("/chat/completions", "POST", {
+          model,
+          messages,
+          max_tokens: options.max_tokens || 1000,
+          ...options
+        });
+  
+        console.log('OpenAI Vision Response:', response);
+  
+        if (!response.choices?.[0]?.message) {
+          throw new Error('Invalid response format from image generation');
+        }
+  
+        return {
+          response: response.choices[0].message.content,
+          eval_count: response.usage?.total_tokens || 0
+        };
+      } catch (error) {
+        console.error('Vision API Error:', error);
+        // Return error in a format that can be displayed in chat
+        throw new Error(JSON.stringify({
+          error: {
+            message: error instanceof Error ? error.message : 'Unknown error occurred',
+            type: 'vision_api_error'
+          }
+        }, null, 2));
       }
-
-      return {
-        response: response.choices[0].message.content,
-        eval_count: response.usage?.total_tokens || 0
-      };
     } catch (error) {
       console.error('Vision API Error:', error);
-      throw error;
+      // Return error in a format that can be displayed in chat
+      throw new Error(JSON.stringify({
+        error: {
+          message: error instanceof Error ? error.message : 'Unknown error occurred',
+          type: 'vision_api_error'
+        }
+      }, null, 2));
     }
   }
 

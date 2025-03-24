@@ -11,11 +11,10 @@ const ImageWarning: React.FC<ImageWarningProps> = ({ onClose }) => {
       <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
       <div className="flex-1">
         <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-          Image Support Notice
+          Image Support Warning
         </h4>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Make sure you're using a model that supports image input (like llava or bakllava). 
-          Other models may not be able to process images correctly.
+          The current model may not support image input. The message will still be sent, but the model might ignore the images or return an error.
         </p>
       </div>
       <button

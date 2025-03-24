@@ -115,15 +115,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
 
     setImages(prev => [...prev, ...newImages]);
-
-    // Check if current model supports images
-    if (!checkModelImageSupport(selectedModel)) {
-      const imageModel = findImageSupportedModel();
-      if (imageModel) {
-        setSelectedModel(imageModel);
-      } else {
-        setShowModelWarning(true);
-      }
+    
+    // Just show the warning if images are being used
+    if (newImages.length > 0) {
+      setShowImageWarning(true);
     }
   };
 
@@ -359,19 +354,19 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     setInput('');
     setImages([]);
 
+    // Create initial placeholder message outside try block
+    const assistantMessage: Message = {
+      id: crypto.randomUUID(),
+      chat_id: currentChatId,
+      content: '',
+      role: 'assistant',
+      timestamp: new Date().toISOString(),
+      tokens: 0
+    };
+
     try {
       setIsProcessing(true);
       const startTime = performance.now();
-
-      // Create initial placeholder message
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        chat_id: currentChatId,
-        content: '',
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        tokens: 0
-      };
 
       // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
@@ -403,6 +398,36 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           // Save to database
           await db.addMessage(currentChatId, content, 'assistant', tokens);
         } catch (error: any) {
+          // Parse error message if it's JSON
+          let errorContent = error.message;
+          try {
+            const parsedError = JSON.parse(error.message);
+            if (parsedError.apiError?.message) {
+              errorContent = `API Error: ${parsedError.apiError.message}\n\nFull Response:\n${JSON.stringify(parsedError, null, 2)}`;
+            } else if (parsedError.error?.message) {
+              errorContent = `Error: ${parsedError.error.message}\n\nFull Response:\n${JSON.stringify(parsedError, null, 2)}`;
+            }
+          } catch (e) {
+            // If not JSON, use the error message as is
+            errorContent = `Error: ${error.message}`;
+          }
+
+          // Update message with error
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? { ...msg, content: `\`\`\`json\n${errorContent}\n\`\`\`` }
+              : msg
+          ));
+
+          // Save error message to database
+          await db.addMessage(
+            currentChatId,
+            `\`\`\`json\n${errorContent}\n\`\`\``,
+            'assistant',
+            0
+          );
+
+          // Re-throw to be caught by outer catch
           throw error;
         }
       } else if (isStreaming) {
@@ -464,19 +489,27 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     } catch (error: any) {
       console.error('Error generating response:', error);
       
-      const errorContent = error.message || 'An unexpected error occurred';
+      let errorContent;
+      try {
+        // Try to parse error as JSON
+        const parsedError = JSON.parse(error.message);
+        errorContent = `Error Response:\n\`\`\`json\n${JSON.stringify(parsedError, null, 2)}\n\`\`\``;
+      } catch (e) {
+        // If not JSON, use plain text
+        errorContent = `Error: ${error.message}`;
+      }
       
       // Update the placeholder message with error
       setMessages(prev => prev.map(msg =>
         msg.id === assistantMessage.id
-          ? { ...msg, content: `Error: ${errorContent}` }
+          ? { ...msg, content: errorContent }
           : msg
       ));
 
       // Save error message to database
       await db.addMessage(
         currentChatId,
-        `Error: ${errorContent}`,
+        errorContent,
         'assistant',
         0
       );
