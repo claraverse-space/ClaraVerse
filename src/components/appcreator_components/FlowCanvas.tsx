@@ -90,7 +90,27 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
       className="flex-1 h-full" 
       onDrop={onDrop} 
       onDragOver={onDragOver}
+      style={{
+        '--tw-translate-x': '0',
+        '--tw-translate-y': '0',
+      }}
     >
+      <style>
+        {`
+          .noflow {
+            pointer-events: none;
+          }
+          .noflow * {
+            pointer-events: auto;
+          }
+          .react-flow__node.noflow {
+            pointer-events: none !important;
+          }
+          .react-flow__node.noflow .nodrag {
+            pointer-events: auto !important;
+          }
+        `}
+      </style>
       <ReactFlow
         nodes={nodesWithStatus}
         edges={edges}

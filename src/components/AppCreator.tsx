@@ -15,6 +15,7 @@ import DebugModal from './DebugModal';
 import { OllamaProvider } from '../context/OllamaContext';
 import { appStore } from '../services/AppStore';
 import SaveAppModal from './appcreator_components/SaveAppModal';
+import DraftRestoreModal from './appcreator_components/DraftRestoreModal';
 
 // Helper to convert a tool ID (e.g., "api_call") to a node type key (e.g., "apiCallNode")
 const convertToolIdToNodeType = (toolId: string): string => {
@@ -43,6 +44,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const [currentAppId, setCurrentAppId] = useState<string | undefined>(appId);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showDraftModal, setShowDraftModal] = useState(false);
   const [appIcon, setAppIcon] = useState('Activity');
   const [appColor, setAppColor] = useState('#3B82F6');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string; visible: boolean; }>({
@@ -52,6 +54,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   });
   const [messageHistory, setMessageHistory] = useState<any[]>([]);
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Sidebar resizing state
   const [sidebarWidth, setSidebarWidth] = useState(300);
@@ -70,9 +73,82 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     if (appId) {
       loadApp(appId);
     } else {
-      resetAppState();
+      const draftData = localStorage.getItem('app_draft');
+      if (draftData) {
+        try {
+          const draft = JSON.parse(draftData);
+          setShowDraftModal(true);
+        } catch (error) {
+          console.error('Error parsing draft data:', error);
+          resetAppState();
+        }
+      } else {
+        resetAppState();
+      }
     }
   }, [appId]);
+
+  // Save draft when changes are made
+  useEffect(() => {
+    // Skip initial render and only track after loaded
+    if (nodes.length > 0 || edges.length > 0) {
+      setHasUnsavedChanges(true);
+      saveDraft();
+    }
+  }, [nodes, edges, appName, appDescription, appIcon, appColor]);
+
+  const saveDraft = () => {
+    try {
+      const draftData = {
+        name: appName,
+        description: appDescription,
+        icon: appIcon,
+        color: appColor,
+        nodes,
+        edges,
+        timestamp: new Date().toISOString(),
+      };
+      localStorage.setItem('app_draft', JSON.stringify(draftData));
+    } catch (error) {
+      console.error('Error saving draft:', error);
+    }
+  };
+
+  const restoreDraft = () => {
+    try {
+      const draftData = localStorage.getItem('app_draft');
+      if (draftData) {
+        const draft = JSON.parse(draftData);
+        setAppName(draft.name);
+        setAppDescription(draft.description);
+        setAppIcon(draft.icon || 'Activity');
+        setAppColor(draft.color || '#3B82F6');
+        
+        const restoredNodes = draft.nodes.map((node: Node) => {
+          if (node.data && node.data.tool) {
+            // Restore tool icon from dynamic toolItems
+            const toolDefinition = toolItems.find(t => t.id === node.data.tool.id);
+            if (toolDefinition) {
+              node.data.tool.icon = toolDefinition.icon;
+            }
+          }
+          return node;
+        });
+        
+        setNodes(restoredNodes);
+        setEdges(draft.edges);
+        setCurrentAppId(undefined); // This is a draft, not a saved app
+        setShowDraftModal(false);
+      }
+    } catch (error) {
+      console.error('Error restoring draft:', error);
+      resetAppState();
+    }
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('app_draft');
+  };
 
   const resetAppState = () => {
     setNodes([]);
@@ -82,6 +158,12 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     setAppIcon('Activity');
     setAppColor('#3B82F6');
     setCurrentAppId(undefined);
+    setShowDraftModal(false);
+    clearDraft();
+  };
+
+  const handleStartNew = () => {
+    resetAppState();
   };
 
   const loadApp = async (id: string) => {
@@ -105,6 +187,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
         setNodes(restoredNodes);
         setEdges(app.edges);
         setCurrentAppId(id);
+        setHasUnsavedChanges(false);
+        clearDraft(); // Clear any draft when loading a saved app
       }
     } catch (error) {
       console.error('Error loading app:', error);
@@ -284,6 +368,8 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
 
       console.log(`App "${name}" saved with ${processedNodes.length} nodes and ${edges.length} edges`);
       showNotification('success', `App "${name}" saved successfully!`);
+      setHasUnsavedChanges(false);
+      clearDraft(); // Clear the draft after successful save
     } catch (error) {
       console.error('Error saving app:', error);
       showNotification('error', `Error saving app: ${error instanceof Error ? error.message : String(error)}`);
@@ -546,6 +632,23 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     input.click();
   };
 
+  // When leaving the page, warn if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        const message = 'You have unsaved changes. Are you sure you want to leave?';
+        e.returnValue = message;
+        return message;
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
   return (
     <OllamaProvider>
       <div className="flex flex-col h-screen">
@@ -560,6 +663,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           appId={currentAppId}
           onExportApp={handleExportApp}
           onImportApp={handleImportApp}
+          hasUnsavedChanges={hasUnsavedChanges}
         />
         <div className="flex flex-1 overflow-hidden">
           <div
@@ -620,6 +724,13 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
             initialColor={appColor}
             onSave={internalSaveApp}
             onCancel={handleCloseSaveModal}
+          />
+        )}
+        {showDraftModal && (
+          <DraftRestoreModal
+            onRestore={restoreDraft}
+            onStartNew={handleStartNew}
+            onCancel={() => setShowDraftModal(false)}
           />
         )}
       </div>

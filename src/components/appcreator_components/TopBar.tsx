@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Save, PlayCircle, Bug, Trash2, Import, Share2 } from 'lucide-react';
+import { ArrowLeft, Save, PlayCircle, Bug, Trash2, Import, Share2, AlertCircle } from 'lucide-react';
 import { appStore } from '../../services/AppStore';
 
 interface TopBarProps {
@@ -13,6 +13,7 @@ interface TopBarProps {
   setAppName?: (name: string) => void;
   isExecuting?: boolean;
   appId?: string;
+  hasUnsavedChanges: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({ 
@@ -25,7 +26,8 @@ const TopBar: React.FC<TopBarProps> = ({
   appName = "New App", 
   setAppName,
   isExecuting = false,
-  appId
+  appId,
+  hasUnsavedChanges
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(appName);
@@ -109,6 +111,12 @@ const TopBar: React.FC<TopBarProps> = ({
             >
               {appName}
             </h1>
+          )}
+          {hasUnsavedChanges && (
+            <div className="flex items-center text-amber-500 text-xs">
+              <AlertCircle className="w-4 h-4 mr-1" />
+              <span>Unsaved changes</span>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-3">
