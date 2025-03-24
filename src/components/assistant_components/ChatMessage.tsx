@@ -302,7 +302,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             autoFocus
           />
         ) : (
-          <div className=" dark:prose-invert max-w-none prose-base">
+          <div className=" dark:prose-invert max-w-none prose-base break-words whitespace-pre-wrap">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -313,7 +313,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     return (
                       <div className="relative my-2">
                         <pre 
-                          className="p-4 rounded-md bg-[#1E1E1E] text-[#e5e7eb]"
+                          className="p-4 rounded-md bg-[#1E1E1E] text-[#e5e7eb] overflow-x-auto whitespace-pre-wrap break-all"
                           style={{ margin: 0, fontSize: '0.9rem' }}
                         >
                           <code className="language-plaintext font-mono">{codeText}</code>
@@ -334,7 +334,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   }
                   return (
                     <code
-                      className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200"
+                      className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200 break-words whitespace-pre-wrap"
                       {...props}
                     >
                       {children}
@@ -363,7 +363,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </ol>
                 ),
                 p: ({ node, children, ...props }) => (
-                  <p className="my-1 leading-snug" {...props}>
+                  <p className="my-1 leading-snug break-words whitespace-pre-wrap" {...props}>
                     {children}
                   </p>
                 ),
@@ -397,6 +397,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   <td className="px-2 py-1 text-xs" {...props}>
                     {children}
                   </td>
+                ),
+                pre: ({ node, children, ...props }) => (
+                  <pre className="whitespace-pre-wrap break-all" {...props}>
+                    {children}
+                  </pre>
                 ),
               }}
             >

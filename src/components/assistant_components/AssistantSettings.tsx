@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Settings as SettingsIcon, Bot, Search, Image as ImageIcon, Loader2, RefreshCw, Download } from 'lucide-react';
 import { db } from '../../db';
 import { OllamaClient } from '../../utils';
+import { indexedDBService } from '../../services/indexedDB';
 import ModelPullModal from './ModelPullModal';
 
 interface ModelConfig {
@@ -30,6 +31,9 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showPullModal, setShowPullModal] = useState(false);
   const [apiType, setApiType] = useState<'ollama' | 'openai'>('ollama');
+  const [systemPrompt, setSystemPrompt] = useState<string>('');
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [isUsingDefault, setIsUsingDefault] = useState(true);
 
   const loadModels = async () => {
     setIsLoading(true);
@@ -114,6 +118,26 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const prompt = await db.getSystemPrompt();
+        setSystemPrompt(prompt);
+        
+        // Check if system prompt has been customized
+        const settings = await indexedDBService.get('settings', 'system_settings');
+        setIsUsingDefault(!settings);
+      } catch (error) {
+        console.error('Error loading system prompt:', error);
+        // Let db.getSystemPrompt() handle the default value
+        const defaultPrompt = await db.getSystemPrompt();
+        setSystemPrompt(defaultPrompt);
+        setIsUsingDefault(true);
+      }
+    };
+    loadSettings();
+  }, []);
+
   const handleModelConfigChange = (modelName: string, supportsImages: boolean) => {
     const updatedConfigs = modelConfigs.map(config =>
       config.name === modelName ? { ...config, supportsImages } : config
@@ -142,6 +166,20 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
     }
   };
 
+  const handleUpdateSystemPrompt = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newPrompt = e.target.value;
+    setSystemPrompt(newPrompt);
+    setIsSavingPrompt(true);
+    
+    try {
+      await db.updateSystemPrompt(newPrompt);
+    } catch (error) {
+      console.error('Failed to save system prompt:', error);
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  };
+
   const filteredModels = modelConfigs.filter(config =>
     config.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -167,6 +205,33 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
         </div>
 
         <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+              System Prompt
+            </h3>
+            <div className="relative">
+              <textarea
+                value={systemPrompt}
+                onChange={handleUpdateSystemPrompt}
+                placeholder="Enter a system prompt that will be included at the start of all conversations..."
+                className="w-full min-h-[100px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+              />
+              {isSavingPrompt && (
+                <div className="absolute top-2 right-2 text-xs text-gray-500 dark:text-gray-400">
+                  Saving...
+                </div>
+              )}
+              {isUsingDefault && (
+                <div className="mt-1 text-xs text-gray-500">
+                  Using default system prompt. Edit to customize.
+                </div>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              This prompt will be added as a system message at the beginning of each conversation.
+            </p>
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">

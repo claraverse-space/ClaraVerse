@@ -307,12 +307,30 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     return messages.slice(-MAX_CONTEXT_MESSAGES);
   };
 
-  const formatMessagesForModel = (messages: Message[]): { role: string; content: string }[] => {
-    return messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
-  };
+  const formatMessagesForModel = async (messages: Message[]): Promise<{ role: string; content: string }[]> => {
+    // Get system prompt
+    const systemPrompt = await db.getSystemPrompt();
+    
+    // Create messages array with system prompt first if it exists
+    const formattedMessages = [];
+    
+    if (systemPrompt) {
+      formattedMessages.push({
+        role: 'system',
+        content: systemPrompt
+      });
+    }
+
+    // Add the rest of the messages
+    formattedMessages.push(
+      ...messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    );
+
+    return formattedMessages;
+  }
 
   const handleSend = async () => {
     if (!input.trim() || !client || !selectedModel || isProcessing) return;
@@ -373,7 +391,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       // Get context for the model
       const contextMessages = getContextMessages([...messages, userMessage]);
-      const formattedMessages = formatMessagesForModel(contextMessages);
+      const formattedMessages = await formatMessagesForModel(contextMessages);
 
       if (images.length > 0) {
         // Handle image generation
@@ -603,7 +621,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       // Get context messages
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex)]);
-      const formattedMessages = formatMessagesForModel(contextMessages);
+      const formattedMessages = await formatMessagesForModel(contextMessages);
 
       let responseContent = '';
       let responseTokens = 0;
@@ -692,7 +710,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       
       // Get context messages including the edited message
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
-      const formattedMessages = formatMessagesForModel(contextMessages);
+      const formattedMessages = await formatMessagesForModel(contextMessages);
 
       // Create new assistant message
       const assistantMessage: Message = {
@@ -819,7 +837,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       // Get context messages from UI state for processing
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
-      const formattedMessages = formatMessagesForModel(contextMessages);
+      const formattedMessages = await formatMessagesForModel(contextMessages);
 
       // Process response
       let responseContent = '';

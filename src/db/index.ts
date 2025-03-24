@@ -65,7 +65,19 @@ export interface ModelUsage {
   lastUsed: string;
 }
 
+export interface SystemSettings {
+  system_prompt: string;
+}
+
 const DB_PREFIX = 'clara_db_';
+
+const DEFAULT_SYSTEM_PROMPT = `You are Clara, a helpful and friendly AI assistant. Your responses should be:
+- Clear and concise
+- Accurate and well-reasoned
+- Polite and professional
+- Focused on the user's needs
+
+If asked about your capabilities, explain that you can help with general questions, coding, analysis, and text-based tasks. If you're unsure about something, be honest and say so.`;
 
 class LocalStorageDB {
   private useIndexedDB = true; // Flag to control storage method
@@ -686,6 +698,27 @@ class LocalStorageDB {
       return record ? record.value : null;
     } else {
       return await this.getItem<APIConfig>('api_config');
+    }
+  }
+
+  async updateSystemPrompt(prompt: string): Promise<void> {
+    if (this.useIndexedDB) {
+      await indexedDBService.put('settings', { 
+        key: 'system_settings', 
+        value: { system_prompt: prompt }
+      });
+    } else {
+      await this.setItem('system_settings', { system_prompt: prompt });
+    }
+  }
+
+  async getSystemPrompt(): Promise<string> {
+    if (this.useIndexedDB) {
+      const record = await indexedDBService.get<{key: string, value: SystemSettings}>('settings', 'system_settings');
+      return record?.value?.system_prompt || DEFAULT_SYSTEM_PROMPT;
+    } else {
+      const settings = await this.getItem<SystemSettings>('system_settings');
+      return settings?.system_prompt || DEFAULT_SYSTEM_PROMPT;
     }
   }
 
