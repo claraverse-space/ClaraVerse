@@ -126,7 +126,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   showTokens,
   onRetry,
-  onEdit,
   onSendEdit,
   canEdit = false,
   canRetry = false

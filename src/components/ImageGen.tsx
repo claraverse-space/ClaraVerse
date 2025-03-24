@@ -23,6 +23,69 @@ const RESOLUTIONS: Resolution[] = [
   { label: 'Custom', width: 0, height: 0 },
 ];
 
+interface ModelConfig {
+  denoise: number;
+  steps: number;
+  guidanceScale: number;
+  sampler: string;
+  scheduler: string;
+  negativeTags: string[];
+}
+
+const MODEL_CONFIGS_KEY = 'clara-ollama-model-configs';
+
+const getOptimalConfig = (modelName: string): ModelConfig => {
+  const baseNegative = ['nsfw', '(worst quality, low quality, normal quality:2)'];
+  
+  if (modelName.toLowerCase().includes('flux')) {
+    return {
+      denoise: 1.0,
+      steps: 20,
+      guidanceScale: 1.0,
+      sampler: 'euler',
+      scheduler: 'normal',
+      negativeTags: baseNegative,
+    };
+  } else if (modelName.toLowerCase().includes('sdxl') || modelName.toLowerCase().includes('xl')) {
+    return {
+      denoise: 1.0,
+      steps: 22,
+      guidanceScale: 8.0,
+      sampler: 'euler',
+      scheduler: 'normal',
+      negativeTags: baseNegative,
+    };
+  } else if (modelName.toLowerCase().includes('1.5') || modelName.toLowerCase().includes('sd1.5')) {
+    return {
+      denoise: 1.0,
+      steps: 22,
+      guidanceScale: 5.0,
+      sampler: 'dpmpp_2m_sde_gpu',
+      scheduler: 'karras',
+      negativeTags: baseNegative,
+    };
+  }
+  return {
+    denoise: 0.7,
+    steps: 50,
+    guidanceScale: 7.5,
+    sampler: 'euler',
+    scheduler: 'normal',
+    negativeTags: [],
+  };
+};
+
+const saveModelConfig = (modelName: string, config: ModelConfig) => {
+  const storedConfigs = JSON.parse(localStorage.getItem(MODEL_CONFIGS_KEY) || '{}');
+  storedConfigs[modelName] = config;
+  localStorage.setItem(MODEL_CONFIGS_KEY, JSON.stringify(storedConfigs));
+};
+
+const loadModelConfig = (modelName: string): ModelConfig | null => {
+  const storedConfigs = JSON.parse(localStorage.getItem(MODEL_CONFIGS_KEY) || '{}');
+  return storedConfigs[modelName] || null;
+};
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -137,6 +200,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Add state for storing the uploaded image buffer
   const [imageBuffer, setImageBuffer] = useState<ArrayBuffer | null>(null);
+
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -748,6 +814,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       
       // Clear the image buffer after successful generation
       setImageBuffer(null);
+
+      const currentConfig: ModelConfig = {
+        denoise,
+        steps,
+        guidanceScale,
+        sampler,
+        scheduler,
+        negativeTags,
+      };
+      saveModelConfig(selectedModel, currentConfig);
     } catch (err) {
       console.error('Error generating image:', err);
       if (!generationError) {
@@ -766,6 +842,37 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         generationTimeoutRef.current = null;
       }
     }
+  };
+
+  const handleModelSelection = (model: string) => {
+    setSelectedModel(model);
+    
+    // Try to load saved config
+    const savedConfig = loadModelConfig(model);
+    
+    if (savedConfig) {
+      setDenoise(savedConfig.denoise);
+      setSteps(savedConfig.steps);
+      setGuidanceScale(savedConfig.guidanceScale);
+      setSampler(savedConfig.sampler);
+      setScheduler(savedConfig.scheduler);
+      setNegativeTags(savedConfig.negativeTags);
+      
+      setNotificationMessage('Loaded your saved settings for this model');
+    } else {
+      // Load optimal config
+      const optimalConfig = getOptimalConfig(model);
+      setDenoise(optimalConfig.denoise);
+      setSteps(optimalConfig.steps);
+      setGuidanceScale(optimalConfig.guidanceScale);
+      setSampler(optimalConfig.sampler);
+      setScheduler(optimalConfig.scheduler);
+      setNegativeTags(optimalConfig.negativeTags);
+      
+      setNotificationMessage('Clara loaded optimal settings for this model');
+    }
+    setShowNotification(true);
+    setTimeout(() => setShowNotification(false), 3000);
   };
 
   // Handlers for negative prompt tags
@@ -858,6 +965,11 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           </div>
         </div>
       </div>
+      {showNotification && (
+        <div className="fixed top-4 right-4 z-50 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transition-opacity duration-300">
+          {notificationMessage}
+        </div>
+      )}
       <SettingsDrawer
         drawerRef={edgeRef}
         showSettings={showSettings}
@@ -865,7 +977,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         toggleSection={toggleSection}
         sdModels={sdModels}
         selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
+        setSelectedModel={handleModelSelection}
         loras={loras}
         selectedLora={selectedLora}
         setSelectedLora={setSelectedLora}
