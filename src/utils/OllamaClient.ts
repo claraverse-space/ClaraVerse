@@ -586,4 +586,20 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
       return 'You must respond with a valid JSON object.';
     }
   }
+
+  async checkConnection(): Promise<boolean> {
+    try {
+      // Use the list models endpoint to check connection
+      const response = await fetch(`${this.config.baseUrl}/api/tags`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error checking Ollama connection:', error);
+      return false;
+    }
+  }
 }

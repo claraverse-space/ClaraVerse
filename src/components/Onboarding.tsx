@@ -57,7 +57,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     setPingStatus('idle');
     try {
       const client = new OllamaClient(url);
-      const isAvailable = await client.ping();
+      const isAvailable = await client.checkConnection();
       if (isAvailable) {
         setPingStatus('success');
       } else {
