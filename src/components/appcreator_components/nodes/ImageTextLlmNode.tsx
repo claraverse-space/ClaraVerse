@@ -25,14 +25,14 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
   const [openaiApiKey, setOpenaiApiKey] = useState(data.config?.apiKey || '');
   const [openaiUrl, setOpenaiUrl] = useState(data.config?.openaiUrl || 'https://api.openai.com/v1');
 
-  // Node-specific states for models
+  // Model lists and loading state
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
+  const [allModels, setAllModels] = useState<any[]>([]);
   const [openaiModels, setOpenaiModels] = useState<string[]>([
     'gpt-4-vision-preview',
     'gpt-4-turbo', 
     'gpt-4'
   ]);
-  const [allModels, setAllModels] = useState<any[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeError, setNodeError] = useState<string | null>(null);
   const [showAllModels, setShowAllModels] = useState(false);
@@ -56,9 +56,6 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
         
         // Set Ollama URL
         const configuredUrl = config?.ollama_base_url || baseUrl || 'http://localhost:11434';
-        if (!data.config) {
-          data.config = {};
-        }
         if (!data.config.ollamaUrl) {
           data.config.ollamaUrl = configuredUrl;
           data.ollamaUrl = configuredUrl;
@@ -76,7 +73,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           data.config.openaiUrl = config.openai_base_url;
         }
       } catch (error) {
-        console.error("Failed to load Ollama configuration:", error);
+        console.error("Failed to load API configuration:", error);
         if (!data.config.ollamaUrl) {
           const fallbackUrl = baseUrl || 'http://localhost:11434';
           data.config.ollamaUrl = fallbackUrl;
@@ -107,6 +104,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
     
     try {
       if (apiType === 'ollama') {
+        // Fetch Ollama models
         const url = customUrl || 'http://localhost:11434';
         const response = await fetch(`${url}/api/tags`);
         if (!response.ok) {
@@ -130,7 +128,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           }
         }
       } else {
-        // OpenAI model fetching
+        // For OpenAI, use the client to fetch models if API key is provided
         if (openaiApiKey) {
           try {
             const client = new OllamaClient(openaiUrl, {
@@ -138,7 +136,13 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
               type: 'openai'
             });
             const models = await client.listModels();
-            setOpenaiModels(models.map((m: any) => m.name || m.id));
+            const visionCapableModels = models
+              .map((m: any) => m.name || m.id)
+              .filter((name: string) => {
+                const lowerName = name.toLowerCase();
+                return lowerName.includes('vision') || lowerName.includes('gpt-4');
+              });
+            setOpenaiModels(visionCapableModels.length > 0 ? visionCapableModels : openaiModels);
           } catch (error) {
             console.warn("Using default OpenAI models list:", error);
           }
@@ -153,13 +157,12 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
       }
     } catch (error) {
       setNodeError(error instanceof Error ? error.message : 'Failed to fetch models');
-      console.error('Error fetching models:', error);
     } finally {
       setNodeLoading(false);
     }
   };
 
-  // Fetch models when API type or URL changes
+  // Fetch models when API type or URLs change
   useEffect(() => {
     fetchModels();
   }, [apiType, customUrl, openaiUrl, openaiApiKey]);
@@ -392,7 +395,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
             ) : nodeError ? (
               <option>Error loading models</option>
             ) : displayedModels.length === 0 ? (
-              <option>No models found</option>
+              <option>No models available</option>
             ) : (
               apiType === 'ollama' ? (
                 displayedModels.map(model => {
@@ -457,7 +460,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           className={`w-full p-2 rounded border ${
             isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
           } text-sm`}
-          rows={2}
+          rows={3}
         />
       </div>
       
