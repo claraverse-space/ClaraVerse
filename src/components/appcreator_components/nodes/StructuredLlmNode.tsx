@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { useOllama } from '../../../context/OllamaContext';
-import { Settings, RefreshCw, Activity, Database } from 'lucide-react';
+import { Settings, RefreshCw, Activity, Database, ChevronDown } from 'lucide-react';
 import { db } from '../../../db';
 import { OllamaClient } from '../../../utils/OllamaClient';
 
@@ -37,6 +37,12 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
     'gpt-4',
     'gpt-3.5-turbo'
   ]);
+  
+  // For custom model input with dropdown
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [customModelInput, setCustomModelInput] = useState('');
+  const modelInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load Ollama configuration on mount
   useEffect(() => {
@@ -139,10 +145,41 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
     data.config.apiType = apiType;
   }, [apiType, data.config]);
   
+  // Handle clicks outside the dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
     setModel(e.target.value);
     data.config.model = e.target.value;
+  };
+  
+  const handleCustomModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const value = e.target.value;
+    setCustomModelInput(value);
+    if (apiType === 'openai') {
+      setModel(value);
+      data.config.model = value;
+    }
+  };
+  
+  const handleModelSelect = (selectedModel: string) => {
+    setModel(selectedModel);
+    data.config.model = selectedModel;
+    setCustomModelInput(selectedModel);
+    setShowModelDropdown(false);
   };
   
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -173,8 +210,14 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
 
   const handleApiTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
-    setApiType(e.target.value as 'ollama' | 'openai');
-    data.config.apiType = e.target.value;
+    const newApiType = e.target.value as 'ollama' | 'openai';
+    setApiType(newApiType);
+    data.config.apiType = newApiType;
+    
+    // Reset custom model input when switching API types
+    if (newApiType === 'openai') {
+      setCustomModelInput(model);
+    }
   };
   
   const handleOpenAIKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,6 +245,11 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
   const stopPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     e.nativeEvent.stopImmediatePropagation();
+  };
+  
+  const toggleModelDropdown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowModelDropdown(!showModelDropdown);
   };
   
   const displayedModels = apiType === 'ollama' ? nodeModels : openaiModels;
@@ -327,38 +375,95 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
           Select {apiType === 'ollama' ? 'LLM' : 'OpenAI'} Model
         </label>
         <div className="flex items-center gap-2">
-          <select 
-            value={model}
-            onChange={handleModelChange}
-            onClick={stopPropagation}
-            onMouseDown={stopPropagation}
-            onKeyDown={stopPropagation}
-            onFocus={stopPropagation}
-            className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm pointer-events-auto`}
-            disabled={nodeLoading}
-          >
-            {nodeLoading ? (
-              <option>Loading models...</option>
-            ) : nodeError ? (
-              <option>Error loading models</option>
-            ) : displayedModels.length === 0 ? (
-              <option>No models available</option>
-            ) : (
-              apiType === 'ollama' ? (
+          {apiType === 'ollama' ? (
+            // Standard dropdown for Ollama
+            <select 
+              value={model}
+              onChange={handleModelChange}
+              onClick={stopPropagation}
+              onMouseDown={stopPropagation}
+              onKeyDown={stopPropagation}
+              onFocus={stopPropagation}
+              className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm pointer-events-auto`}
+              disabled={nodeLoading}
+            >
+              {nodeLoading ? (
+                <option>Loading models...</option>
+              ) : nodeError ? (
+                <option>Error loading models</option>
+              ) : displayedModels.length === 0 ? (
+                <option>No models available</option>
+              ) : (
                 displayedModels.map((m: any) => (
                   <option key={m.name} value={m.name}>
                     {m.name} ({Math.round(m.size / 1024 / 1024 / 1024)}GB)
                   </option>
                 ))
-              ) : (
-                displayedModels.map((name: string) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))
-              )
-            )}
-          </select>
+              )}
+            </select>
+          ) : (
+            // Custom dropdown with input for OpenAI
+            <div className="relative w-full" ref={dropdownRef}>
+              <div 
+                className={`flex items-center w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm cursor-pointer`}
+                onClick={toggleModelDropdown}
+              >
+                <input
+                  ref={modelInputRef}
+                  type="text"
+                  value={customModelInput || model}
+                  onChange={handleCustomModelChange}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowModelDropdown(true);
+                  }}
+                  onFocus={(e) => {
+                    e.stopPropagation();
+                    setShowModelDropdown(true);
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      setShowModelDropdown(false);
+                    }
+                  }}
+                  placeholder="Type or select a model"
+                  className={`w-full bg-transparent outline-none ${isDark ? 'text-white' : 'text-gray-800'}`}
+                  disabled={nodeLoading}
+                />
+                <ChevronDown size={16} className={`ml-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`} />
+              </div>
+              
+              {showModelDropdown && (
+                <div 
+                  className={`absolute w-full mt-1 border rounded max-h-48 overflow-y-auto z-10 ${isDark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'}`}
+                >
+                  {nodeLoading ? (
+                    <div className={`p-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Loading models...</div>
+                  ) : displayedModels.length === 0 ? (
+                    <div className={`p-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>No models available</div>
+                  ) : (
+                    displayedModels.map((name: string) => (
+                      <div 
+                        key={name}
+                        className={`p-2 text-sm cursor-pointer hover:bg-opacity-10 ${
+                          name === model 
+                            ? isDark ? 'bg-blue-500 bg-opacity-30 text-white' : 'bg-blue-100 text-blue-800' 
+                            : isDark ? 'text-gray-200 hover:bg-gray-600' : 'text-gray-800 hover:bg-gray-100'
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleModelSelect(name);
+                        }}
+                      >
+                        {name}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <button 
             onClick={handleRefreshClick}
             onMouseDown={stopPropagation}

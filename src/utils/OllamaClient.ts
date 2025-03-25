@@ -1,3 +1,5 @@
+import { stringify } from "querystring";
+
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
 export interface ChatMessage {
@@ -498,6 +500,9 @@ export class OllamaClient {
       };
     } else {
       // OpenAI only supports simple JSON response format (no schema validation)
+      let OpenAIformat: any = format;
+      OpenAIformat.type = 'json_schema';
+    
       payload = { 
         model, 
         messages,
@@ -507,8 +512,40 @@ export class OllamaClient {
       };
       
       // For OpenAI, we need to add schema information in the system prompt
-      const schemaDescription = this.formatSchemaForPrompt(format);
-      
+
+      function expandObject(obj) {
+        if (typeof obj !== 'object' || obj === null) {
+            return obj; // Return as is if not an object
+        }
+    
+        if (Array.isArray(obj)) {
+            return obj.map(expandObject); // Recursively expand arrays
+        }
+    
+        let expanded = {};
+        for (let key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                expanded[key] = expandObject(obj[key]); // Recursively expand properties
+            }
+        }
+        return expanded;
+    }
+    
+    let expandedSchema = expandObject(format);
+    let schemaString = JSON.stringify(expandedSchema, null, 2);
+    console.log('schemaString', schemaString);
+    
+
+
+      const schemaDescription = schemaString;
+      console.log('schemaDescription', schemaDescription);
+
+    //   - "type": json_schema
+    //  - "properties": [object Object]
+    //  - "required": name,age,email,salary
+
+
+
       // Find if there's already a system message to append to
       const systemMessageIndex = messages.findIndex(m => m.role === 'system');
       
@@ -555,6 +592,8 @@ export class OllamaClient {
         const fields = Object.entries(schema.properties).map(([key, prop]: [string, any]) => {
           return `- "${key}": ${prop.description || 'No description'} (${prop.type || 'string'})`;
         });
+
+       
         
         return `You must respond with a valid JSON object that matches this schema:
 \`\`\`json
