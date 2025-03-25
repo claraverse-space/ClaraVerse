@@ -32,6 +32,8 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
   const [openaiApiKey, setOpenaiApiKey] = useState(data.config.apiKey || '');
   const [openaiUrl, setOpenaiUrl] = useState(data.config.openaiUrl || 'https://api.openai.com/v1');
   const [openaiModels, setOpenaiModels] = useState<string[]>([
+    'gpt-4o',
+    'gpt-4o-mini',
     'gpt-4-turbo',
     'gpt-4-vision-preview',
     'gpt-4',
@@ -150,6 +152,11 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowModelDropdown(false);
+        // Save the current customModelInput if we're using OpenAI
+        if (apiType === 'openai' && customModelInput) {
+          setModel(customModelInput);
+          data.config.model = customModelInput;
+        }
       }
     };
     
@@ -157,7 +164,7 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [apiType, customModelInput, data.config]);
   
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.stopPropagation();
@@ -170,6 +177,16 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
     const value = e.target.value;
     setCustomModelInput(value);
     if (apiType === 'openai') {
+      setModel(value);
+      data.config.model = value;
+    }
+  };
+
+  // Ensure when input field loses focus, the model value is saved
+  const handleCustomModelBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const value = e.target.value;
+    if (value && apiType === 'openai') {
       setModel(value);
       data.config.model = value;
     }
@@ -413,6 +430,7 @@ const StructuredLLMNode: React.FC<{ data: any; isConnectable: boolean }> = ({ da
                   type="text"
                   value={customModelInput || model}
                   onChange={handleCustomModelChange}
+                  onBlur={handleCustomModelBlur}
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowModelDropdown(true);

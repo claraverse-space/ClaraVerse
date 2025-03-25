@@ -54,11 +54,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div 
       ref={chatContainerRef}
-      className="flex-1 overflow-y-auto p-6 relative scroll-smooth"
+      className="flex-1 overflow-y-auto p-4 relative scroll-smooth"
     >
       {messages.length === 0 ? renderEmptyState() : (
-        // Removed max-width and centering classes so the container fills available space
-        <div className="space-y-6">
+        <div className="space-y-2">
           {messages.map((message, index) => (
             <ChatMessage 
               key={message.id} 
@@ -66,13 +65,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               showTokens={showTokens}
               onRetry={onRetryMessage}
               onEdit={onEditMessage}
-              onSendEdit={onSendEdit}  // Add this line
-              canEdit={index === messages.length - 2 && message.role === 'user'} // Allow editing last user message
-              canRetry={index === messages.length - 1 && message.role === 'assistant'} // Allow retrying last assistant message
+              onSendEdit={onSendEdit}
+              canEdit={index === messages.length - 2 && message.role === 'user'} 
+              canRetry={index === messages.length - 1 && message.role === 'assistant'} 
             />
           ))}
           {isStreaming && (
-            <div className="flex items-center gap-2 text-sakura-500">
+            <div className="flex items-center gap-2 text-sakura-500 mt-2">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Clara is thinking...</span>
             </div>

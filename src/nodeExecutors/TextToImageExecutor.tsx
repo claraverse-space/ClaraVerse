@@ -1,40 +1,54 @@
 import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
 import { Client, BasePipe } from '@stable-canvas/comfyui-client';
 import { Buffer } from 'buffer';
+import { db } from '../db';
 
 const executeTextToImage = async (context: NodeExecutionContext) => {
   const { node, inputs, updateNodeOutput } = context;
   const config = node.data.config || {};
   
   try {
+    // Early validation of required config
+    if (!config.comfyuiUrl?.trim()) {
+      throw new Error('ComfyUI URL is required. Please configure the node settings.');
+    }
+
+    if (!config.model?.trim()) {
+      throw new Error('Model selection is required. Please configure the node settings.');
+    }
+
     const input = inputs.text || inputs['text-in'] || '';
-    if (!input) {
+    if (!input?.trim()) {
       throw new Error('No text input provided');
     }
 
-    // Required parameters
-    const model = config.model;
-    const steps = config.steps || 20;
-    const guidance = config.guidance || 7;
-    const width = config.width || 512;
-    const height = config.height || 512;
-    const negativePrompt = config.negativePrompt || '';
-    const sampler = config.sampler || 'euler';
-    const scheduler = config.scheduler || 'normal';
-
-    if (!model) {
-      throw new Error('No model selected. Please configure the node with a model.');
+    const configUrl = await db.getAPIConfig();
+    let comfyuiBaseUrl = configUrl?.comfyui_base_url;
+    if (!comfyuiBaseUrl) {
+      console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
+      comfyuiBaseUrl = '127.0.0.1:8188';
     }
+    console.log('API Config' + configUrl);
     
-    if (!config.comfyuiUrl) {
-      throw new Error('ComfyUI URL not configured. Please set the URL in node settings.');
+
+    let url = comfyuiBaseUrl;
+    if (comfyuiBaseUrl.includes('http://') || comfyuiBaseUrl.includes('https://')) {
+      url = comfyuiBaseUrl.split('//')[1];
     }
 
-    // Create ComfyUI client
-    const url = config.comfyuiUrl.endsWith('/') ? config.comfyuiUrl.slice(0, -1) : config.comfyuiUrl;
+    console.log('ComfyUI base URL:', url);
+
+    if (updateNodeOutput) {
+      updateNodeOutput(node.id, { 
+        type: 'status', 
+        message: `Connecting to ComfyUI at ${url}...` 
+      });
+    }
+
+    // Create ComfyUI client with validated config
     const client = new Client({ 
-      api_host: url.replace(/^https?:\/\//, ''),
-      ssl: url.startsWith('https')
+      api_host: url,
+      ssl: true,
     });
 
     // Connect and wait for ready state
@@ -50,17 +64,30 @@ const executeTextToImage = async (context: NodeExecutionContext) => {
       }, 100);
     });
 
+    // Update user about connection status
+    if (updateNodeOutput) {
+      updateNodeOutput(node.id, { type: 'status', message: 'Connecting to ComfyUI...' });
+    }
+
+    // Update status during generation
+    if (updateNodeOutput) {
+      updateNodeOutput(node.id, {
+        type: 'status',
+        message: 'Generating image...'
+      });
+    }
+
     // Build and execute pipeline
     const pipeline = new BasePipe()
       .with(client)
-      .model(model)
+      .model(config.model)
       .prompt(input)
-      .negative(negativePrompt)
-      .size(width, height)
-      .steps(steps)
-      .cfg(guidance)
-      .sampler(sampler)
-      .scheduler(scheduler)
+      .negative(config.negativePrompt || '')
+      .size(config.width || 512, config.height || 512)
+      .steps(config.steps || 20)
+      .cfg(config.guidance || 7)
+      .sampler(config.sampler || 'euler')
+      .scheduler(config.scheduler || 'normal')
       .seed();
 
     const result = await pipeline.save().wait();

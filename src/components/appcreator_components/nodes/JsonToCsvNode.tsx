@@ -4,18 +4,48 @@ import { useTheme } from '../../../hooks/useTheme';
 import { FileJson, Copy, Check } from 'lucide-react';
 
 const EXAMPLE_JSON = {
-  "name": ["Alice Smith", "Bob Jones", "Carol Brown"],
-  "age": [25, 30, 45],
-  "email": ["alice@email.com", "bob@email.com", "carol@email.com"],
-  "salary": ["100000", "120000"]  // Intentionally shorter array to show it handles varying lengths
+  "cars": [
+    {
+      "make": "Toyota",
+      "model": "Corolla",
+      "year": "2022",
+      "price": "20000"
+    },
+    {
+      "make": "Honda",
+      "model": "Civic",
+      "year": "2021",
+      "price": "22000"
+    },
+    {
+      "make": "Ford",
+      "model": "Mustang",
+      "year": "2023",
+      "price": "30000"
+    },
+    {
+      "make": "Chevrolet",
+      "model": "Malibu",
+      "year": "2020",
+      "price": "18000"
+    },
+    {
+      "make": "Nissan",
+      "model": "Altima",
+      "year": "2019",
+      "price": "17000"
+    }
+  ]
 };
 
 const CSV_PREVIEW = `
 # This JSON will convert to CSV like this:
-name,age,email,salary
-Alice Smith,25,alice@email.com,100000
-Bob Jones,30,bob@email.com,120000
-Carol Brown,45,carol@email.com,
+make,model,year,price
+Toyota,Corolla,2022,20000
+Honda,Civic,2021,22000
+Ford,Mustang,2023,30000
+Chevrolet,Malibu,2020,18000
+Nissan,Altima,2019,17000
 `;
 
 const JsonToCsvNode = ({ data, isConnectable }: any) => {
@@ -64,7 +94,12 @@ const JsonToCsvNode = ({ data, isConnectable }: any) => {
           {CSV_PREVIEW}
         </div>
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          <strong>Note:</strong> Each key should contain an array of values. Arrays can have different lengths.
+          <strong>Supports:</strong> 
+          <ul className="list-disc pl-4 mt-1">
+            <li>Nested JSON with a property containing an array of objects (shown above)</li>
+            <li>Direct array of objects (without wrapper property)</li>
+            <li>Column-oriented format with arrays of values</li>
+          </ul>
         </div>
       </div>
 

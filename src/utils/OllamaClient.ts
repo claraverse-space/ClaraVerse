@@ -130,16 +130,31 @@ export class OllamaClient {
       const data = await response.json();
       
       if (this.config.type === 'ollama') {
-        return data.models;
+        return data.models || [];
       } else {
         // OpenAI format
-        return data.data.map((model: any) => ({
-          name: model.id,
-          id: model.id,
-          digest: model.created?.toString() || '',
-          size: 0,
-          modified_at: model.created?.toString() || ''
-        }));
+        // Check if data.data exists (standard OpenAI and compatible APIs)
+        if (Array.isArray(data?.data)) {
+          return data.data.map((model: any) => ({
+            name: model.id,
+            id: model.id,
+            digest: model.created?.toString() || '',
+            size: 0,
+            modified_at: model.created?.toString() || ''
+          }));
+        } else if (Array.isArray(data)) {
+          // Some compatible APIs might return array directly
+          return data.map((model: any) => ({
+            name: model.id || model.name,
+            id: model.id || model.name,
+            digest: model.created?.toString() || '',
+            size: 0,
+            modified_at: model.created?.toString() || ''
+          }));
+        } else {
+          console.warn('Unexpected model list format:', data);
+          return [];
+        }
       }
     } catch (error) {
       console.error('Error listing models:', error);
@@ -531,7 +546,7 @@ export class OllamaClient {
         return expanded;
     }
     
-    let expandedSchema = expandObject(format);
+    let expandedSchema = expandObject(format.properties);
     let schemaString = JSON.stringify(expandedSchema, null, 2);
     console.log('schemaString', schemaString);
     
@@ -540,9 +555,6 @@ export class OllamaClient {
       const schemaDescription = schemaString;
       console.log('schemaDescription', schemaDescription);
 
-    //   - "type": json_schema
-    //  - "properties": [object Object]
-    //  - "required": name,age,email,salary
 
 
 

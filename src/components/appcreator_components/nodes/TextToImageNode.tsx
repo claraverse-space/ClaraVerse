@@ -36,6 +36,23 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
+  // Initialize config object if it doesn't exist
+  useEffect(() => {
+    if (!data.config) {
+      data.config = {
+        model: '',
+        steps: 20,
+        guidance: 7,
+        width: 512,
+        height: 512,
+        negativePrompt: '',
+        sampler: 'euler',
+        scheduler: 'normal',
+        comfyuiUrl: ''
+      };
+    }
+  }, [data]);
+
   // Load ComfyUI URL from database
   useEffect(() => {
     const loadConfig = async () => {
@@ -97,19 +114,41 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
     }
   }, [comfyuiUrl]);
 
-  // Update node configuration when settings change
+  // Update data.config whenever settings change
   useEffect(() => {
     if (!data.config) data.config = {};
-    data.config.model = model;
-    data.config.steps = steps;
-    data.config.guidance = guidance;
-    data.config.width = width;
-    data.config.height = height;
-    data.config.negativePrompt = negativePrompt;
-    data.config.comfyuiUrl = comfyuiUrl;
-    data.config.sampler = sampler;
-    data.config.scheduler = scheduler;
+    Object.assign(data.config, {
+      model,
+      steps,
+      guidance,
+      width,
+      height,
+      negativePrompt,
+      comfyuiUrl,
+      sampler,
+      scheduler
+    });
   }, [model, steps, guidance, width, height, negativePrompt, comfyuiUrl, sampler, scheduler]);
+
+  // Handle settings panel close
+  const handleSettingsToggle = () => {
+    if (showSettings) {
+      // Save all settings to data.config when closing
+      if (!data.config) data.config = {};
+      Object.assign(data.config, {
+        model,
+        steps,
+        guidance,
+        width,
+        height,
+        negativePrompt,
+        comfyuiUrl,
+        sampler,
+        scheduler
+      });
+    }
+    setShowSettings(!showSettings);
+  };
 
   return (
     <div className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-80`}>
@@ -121,7 +160,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
           <div className="font-medium text-sm">{data.label || 'Text to Image'}</div>
         </div>
         <button 
-          onClick={() => setShowSettings(!showSettings)}
+          onClick={handleSettingsToggle}
           className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
         >
           <Settings className="w-4 h-4" />

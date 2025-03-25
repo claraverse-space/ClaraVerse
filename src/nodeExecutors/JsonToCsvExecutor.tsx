@@ -13,6 +13,25 @@ const executeJsonToCsv = async (context: NodeExecutionContext): Promise<string> 
       throw new Error('Invalid JSON input');
     }
 
+    // Handle nested JSON structure - improved to handle more cases
+    if (!Array.isArray(jsonData) && typeof jsonData === 'object') {
+      // Case 1: Direct object with a single array property (e.g., {"cars": [...]}})
+      const keys = Object.keys(jsonData);
+      if (keys.length === 1 && Array.isArray(jsonData[keys[0]])) {
+        console.log(`Extracting array from property: ${keys[0]}`);
+        jsonData = jsonData[keys[0]];
+      }
+      // Case 2: Direct array of objects - keep as is
+      else if (Array.isArray(jsonData)) {
+        // Already an array, no change needed
+      }
+      // Case 3: Single object - wrap in array
+      else if (typeof jsonData === 'object' && !Array.isArray(jsonData)) {
+        // If it's a single object (not an array), wrap it in an array
+        jsonData = [jsonData];
+      }
+    }
+
     // Check if the data is in column format (each key has an array of values)
     const isColumnFormat = Object.values(jsonData).some(value => Array.isArray(value));
     
@@ -47,6 +66,9 @@ const executeJsonToCsv = async (context: NodeExecutionContext): Promise<string> 
       // Store CSV in node config for download access
       if (!node.data.config) node.data.config = {};
       node.data.config.csvOutput = csv;
+      
+      // Log the CSV output for debugging
+      console.log("Generated CSV:", csv);
 
       // Trigger download
       downloadCsv(csv);
@@ -59,6 +81,7 @@ const executeJsonToCsv = async (context: NodeExecutionContext): Promise<string> 
     }
   } catch (error) {
     const errorMsg = `Error: ${error instanceof Error ? error.message : String(error)}`;
+    console.error("JSON to CSV Error:", errorMsg);
     if (updateNodeOutput) {
       updateNodeOutput(node.id, errorMsg);
     }

@@ -233,24 +233,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     ? message.content.split('</think>').pop()?.trim() || message.content
     : message.content;
 
-  // Determine max width based on window size (e.g., 80% of window width with a maximum cap)
-  const computedMaxWidth = Math.min(windowWidth * 1.8, 900); // 600px is the cap
+  // Determine max width based on window size
+  const computedMaxWidth = Math.min(window.innerWidth * 0.8, 900);
 
   return (
-    <div className={`flex ${isAssistant ? 'justify-start' : 'justify-end'}`}>
+    <div className={`flex ${isAssistant ? 'justify-start' : 'justify-end'} mb-2`}>
       <div
-        className={`rounded p-3 shadow-sm relative group ${
+        className={`rounded-lg px-4 py-2.5 shadow-sm relative group max-w-[85%] ${
           isAssistant
             ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
             : 'bg-sakura-500 text-white'
         }`}
-        style={{ maxWidth: computedMaxWidth }}
       >
         {/* Header (Icon + Name) */}
-        <div className="flex items-center justify-between gap-1 mb-1">
+        <div className="flex items-center justify-between gap-1 mb-1 text-sm">
           <div className="flex items-center gap-1">
             {isAssistant ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-            <span className="text-md font-semibold">
+            <span className="font-medium">
               {isAssistant ? 'Clara' : userName || 'You'}
             </span>
           </div>
@@ -263,15 +262,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     className="p-1 rounded bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
                     title="Cancel edit"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={handleEdit}
                     className="p-1 rounded bg-sakura-500 text-white hover:bg-sakura-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                     title="Send edited message"
                   >
-                    <span>Send</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span className="text-xs">Send</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </>
               ) : (
@@ -280,7 +279,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Edit message"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Edit2 className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -296,24 +295,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             onKeyDown={handleEditKeyDown}
-            className="w-full p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sakura-500"
+            className="w-full p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sakura-500 text-base"
             rows={3}
             autoFocus
           />
         ) : (
-          <div className=" dark:prose-invert max-w-none prose-base break-words whitespace-pre-wrap">
+          <div className=" prose-base dark:prose-invert max-w-none break-words pl-1 text-[15px]">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 code: ({ node, className, children, ...props }) => {
                   const match = /language-(\w+)/.exec(className || '');
                   const codeText = String(children).replace(/\n$/, '');
-                  if ( match) {
+                  if (match) {
                     return (
                       <div className="relative my-2">
                         <pre 
-                          className="p-4 rounded-md bg-[#1E1E1E] text-[#e5e7eb] overflow-x-auto whitespace-pre-wrap break-all"
-                          style={{ margin: 0, fontSize: '0.9rem' }}
+                          className="p-3 rounded-md bg-[#1E1E1E] text-[#e5e7eb] overflow-x-auto whitespace-pre-wrap break-all"
+                          style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.5 }}
                         >
                           <code className="language-plaintext font-mono">{codeText}</code>
                         </pre>
@@ -323,9 +322,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                           title="Copy code"
                         >
                           {copiedCode === codeText ? (
-                            <Check className="w-4 h-4" />
+                            <Check className="w-3.5 h-3.5" />
                           ) : (
-                            <Copy className="w-4 h-4" />
+                            <Copy className="w-3.5 h-3.5" />
                           )}
                         </button>
                       </div>
@@ -340,10 +339,36 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     </code>
                   );
                 },
+                p: ({ node, children, ...props }) => (
+                  <p className="my-1.5 leading-relaxed" {...props}>{children}</p>
+                ),
+                ul: ({ node, children, ...props }) => (
+                  <ul className="list-disc pl-5 my-1.5 space-y-1" {...props}>{children}</ul>
+                ),
+                ol: ({ node, children, ...props }) => (
+                  <ol className="list-decimal pl-5 my-1.5 space-y-1" {...props}>{children}</ol>
+                ),
+                li: ({ node, children, ...props }) => (
+                  <li className="my-0.5 leading-relaxed" {...props}>{children}</li>
+                ),
+                blockquote: ({ node, children, ...props }) => (
+                  <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-3 my-2 italic" {...props}>
+                    {children}
+                  </blockquote>
+                ),
+                h1: ({ node, children, ...props }) => (
+                  <h1 className="text-xl font-bold my-2" {...props}>{children}</h1>
+                ),
+                h2: ({ node, children, ...props }) => (
+                  <h2 className="text-lg font-bold my-2" {...props}>{children}</h2>
+                ),
+                h3: ({ node, children, ...props }) => (
+                  <h3 className="text-base font-semibold my-1.5" {...props}>{children}</h3>
+                ),
                 a: ({ node, children, href, ...props }) => (
                   <a
                     href={href}
-                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
                     target="_blank"
                     rel="noopener noreferrer"
                     {...props}
@@ -351,57 +376,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     {children}
                   </a>
                 ),
-                ul: ({ node, children, ...props }) => (
-                  <ul className="list-disc pl-4 my-1 space-y-1" {...props}>
-                    {children}
-                  </ul>
-                ),
-                ol: ({ node, children, ...props }) => (
-                  <ol className="list-decimal pl-4 my-1 space-y-1" {...props}>
-                    {children}
-                  </ol>
-                ),
-                p: ({ node, children, ...props }) => (
-                  <p className="my-1 leading-snug break-words whitespace-pre-wrap" {...props}>
-                    {children}
-                  </p>
-                ),
-                blockquote: ({ node, children, ...props }) => (
-                  <blockquote
-                    className="border-l-4 border-gray-300 dark:border-gray-600 pl-2 my-1 italic"
-                    {...props}
-                  >
-                    {children}
-                  </blockquote>
-                ),
-                table: ({ node, children, ...props }) => (
-                  <div className="overflow-x-auto my-1">
-                    <table
-                      className="min-w-full divide-y divide-gray-300 dark:divide-gray-600"
-                      {...props}
-                    >
-                      {children}
-                    </table>
-                  </div>
-                ),
-                th: ({ node, children, ...props }) => (
-                  <th
-                    className="px-2 py-1 text-left text-xs font-semibold bg-gray-100 dark:bg-gray-900"
-                    {...props}
-                  >
-                    {children}
-                  </th>
-                ),
-                td: ({ node, children, ...props }) => (
-                  <td className="px-2 py-1 text-xs" {...props}>
-                    {children}
-                  </td>
-                ),
-                pre: ({ node, children, ...props }) => (
-                  <pre className="whitespace-pre-wrap break-all" {...props}>
-                    {children}
-                  </pre>
-                ),
+                // ...other components...
               }}
             >
               {messageContent}
@@ -423,7 +398,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Retry response"
               >
-                <RefreshCcw className="w-4 h-4" />
+                <RefreshCcw className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -432,7 +407,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
             title="Copy message"
           >
-            {copiedMessage ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copiedMessage ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           </button>
         </div>
       </div>

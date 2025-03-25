@@ -1,0 +1,190 @@
+{
+  "name": "Email Drafting & Summarization Tool",
+  "description": "Draft emails from prompts or summarize long email threads.",
+  "icon": "Compass",
+  "color": "#EC4899",
+  "nodes": [
+    {
+      "id": "text_input_1742893103020",
+      "type": "textInputNode",
+      "position": {
+        "x": 147.8641390490493,
+        "y": 132.2552516989287
+      },
+      "data": {
+        "label": "Text Input",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "text_input",
+          "name": "Text Input",
+          "description": "Accept text input from users",
+          "color": "bg-blue-500",
+          "bgColor": "bg-blue-100",
+          "lightColor": "#3B82F6",
+          "darkColor": "#60A5FA",
+          "category": "input",
+          "inputs": [],
+          "outputs": [
+            "text"
+          ],
+          "iconName": "MousePointer",
+          "icon": {}
+        },
+        "inputs": [],
+        "outputs": [
+          "text"
+        ],
+        "config": {
+          "text": "Re: Systems Requirement for YouTube Video Production\nInbox\n\n\nVasanth Vijayabaskar\nMar 3, 2025, 3:36 PM\nto Charles, me, Solomon, Muruga, Shivakrithik, Vijay, Saravanan, GUVI\n\n+Praveen G \n\nOn Mon, Mar 3, 2025 at 3:26 PM Vasanth Vijayabaskar <vasanth@guvi.in> wrote:\nAny update on this?\n\nOn Wed, Dec 18, 2024 at 5:28 AM Charles R <charles@guvi.in> wrote:\n\nDear Solomon,\n\nPlease find the employee details below:\n\nRahul J (G966)\n\nJai Surya (G1046)\n\nSubin (C044)\n\n\nIf you need any further information, feel free to contact me.\n\nOn Tue, 17 Dec 2024, 10:03 pm Solomon Elisha Caleb D, <solomonelisha@guvi.in> wrote:\nDear Sir,\n\nAs per our conversation, you had mentioned that 3 employees will be assigned to work on these desktop computers. Requesting you to mention the employees with their employee ID, so that we can take your request forward for the next process.\n\nThanks and Regards,\nSolomon Elisha Caleb\n\nOn Tue, 17 Dec 2024 at 21:45, Charles R <charles@guvi.in> wrote:\nAs discussed with Solomon, the requirement for YouTube video production involves three high-end production systems for the office. These systems are essential for editing 4K resolution footage and fast rendering, ensuring an efficient workflow for post-production. \n\n\nSystem Specifications:\n\nProcessor: Ryzen 9 7900X\nGraphics: Nvidia 4070 Ti Super - 16GB\nMotherboard: Asus X670E Motherboard\nRAM: Corsair 16GB RAM x 2\nStorage: 1TB SSD + 2TB HDD\nMonitor and Keyboard \n  \n\nKindly provide your support; it would be very helpful  \n\n\n\n\n\n\n\nThanks and Regards,\n\nCharles R\n\nSr. Motion Graphics Lead\n\n+919597389429\n\nGUVI Geek Network Private Limited\n\n \n\n\n\n--\n\n\n\nVasanth Vijayabaskar\n\nChief Strategy Officer\n\n+91 90927 22262\n\nGUVI Geek Network Private Limited\n\n  \n\n\n\n--\n\n\n\nVasanth Vijayabaskar\n\nChief Strategy Officer\n\n+91 90927 22262\n\nGUVI Geek Network Private Limited\n\n  \n\n\nSolomon Elisha Caleb D\nMar 3, 2025, 3:58 PM\nto Charles, Vijay, me, Muruga, Saravanan, Vasanth\n\nDear team,\n\nLet us finalise the exact requirement of the desktop with the required specifications so that we can proceed further in procuring it.\n\nThanks & Regards,\nSolomon Elisha Caleb\n\n\n--\n\n\n\n\n  Solomon Elisha Caleb. D\n\n  Executive - HR and Operations\n\n  +91 99621 69460\n\n\n\nCharles R\nMar 3, 2025, 4:47 PM\nto Mani, Solomon, Vijay, me, Muruga, Saravanan, Vasanth\n\n+Mani Bharathi\n\n\nMani Bharathi <mani@guvi.in>\nMar 3, 2025, 5:05 PM\nto Charles, Solomon, Vijay, me, Muruga, Saravanan, Vasanth\n\nHi team, As I hope this email finds you well.\n\nFollowing our recent conversation with @Solomon Elisha Caleb D  regarding the equipment request \n\nPlease find below the required equipment list:\n\nComputer System:\nApple M2 Max based computer with:(x3)\n12-core CPU\n30-core GPU\n16-core Neural Engine\n32GB unified memory\n512GB SSD storage\nStorage:\n1TB SSD (x3)\nLaCie 6TB External Hard Drive (x1)\nDisplay:\nBenQ PD2705Q Monitors (x3)\nPeripherals:\nKeyboard and Mouse Sets (x3)\nPlease let me know if you have any questions or require further clarification.\n\nBest regards,\n\n\n\n\nMani Bharathi N\n\nVideo Editor -  Product\n\n+91 9043718505\n\n\nGUVI Geek |IITM Research Park| Chennai - 600113\n\nhttps://www.guvi.in/GUVI Geek Network Private Limited\n\n\n\n\nSolomon Elisha Caleb D\nMar 7, 2025, 8:42 PM\nto GUVI, Charles, Vijay, me, Muruga, Saravanan, Vasanth, Mani\n\nDear Charles Sir,\n\nAs per your request, we have mentioned the products list as per the required features. Kindly confirm whether the below mentioned products will fulfil the requested requirements,\n\nS.NO\n\nProduct Spec\n\n1\n\nMac Studio: Apple M2 Max chip with 12-core CPU, 30-core GPU, 512GB SSD,32GB\n\n2\n\nLaCie 8 TB External Hard Drive (x1)\n\n3\n\nSandisk 1TB Portable SSD, 800MB/s R, USB 3.2 Gen 2, Rugged SSD with Upto 2 Meter Drop Protection, Type-C to Type-A Cable, PC & Mac Compatible, 3 Y Warranty\n\n4\n\nDell KM3322W Wireless Keyboard and Mouse Combo\n\n5\n\nSamsung 27-Inch(68.47cm) QHD ViewFinity S6 Monitor, IPS, USB Type-C, 100 Hz, LAN Port, DP, HDR10, KVM Switch, Easy Setup, Height Adjustable Stand, Eye Care Technology\n\n\nThanks & Regards,\nSolomon Elisha Caleb\n\n\nCharles R\nSat, Mar 8, 12:03 PM\nDear Solomon, Thank you for the update. Yes, I confirm that the products listed in your email will fulfill the required specifications for our video production.\n\nSolomon Elisha Caleb D\nMar 10, 2025, 1:23 PM\nto Charles, Vijay, me, Muruga, Saravanan, Vasanth, Mani, GUVI\n\nDear Charles Sir,\n\nNoted, we will do the needful.\n\nThanks & Regards,\nSolomon Elisha Caleb\n\n\nMani Bharathi <mani@guvi.in>\nAttachments\n11:15 AM (3 hours ago)\nto Sathyanarayanan, Solomon, Charles, Vijay, me, Muruga, Saravanan, Vasanth, GUVI\n\nHi Team,\nHope you all are doing well.\nThis email confirms that all products have been received from Sathyanarayanan\n\nThe serial numbers for each item are listed below:\n\n3 Mouse - Serial Number\n\nCN-04WJ8P-LO300-3B8-M25D-AO3\n\nCN-04WJ8P-LO300-3B8-M25C-AO3\n\nCN-04WJ8P-LO300-3B8-M259-AO3\n\n\n\n3 Keyboard - Serial Number\n\nCN-04WJ8P-LO300-3B8-K259-AO3\n\nCN-04WJ8P-LO300-3B8-K25C-AO3\n\nCN-04WJ8P-LO300-3B8-K25D-AO3\n\n\n\nLaice 8 TB - Serial Number\n\nP/N: 2N59PA-500\n\n\n\n3 Mac Studio - Serial Number\n\nXC7000Y66C\n\nFVJP2LK6L5\n\nDL476W7V19\n\n\n\n3 SanDisk 1 TB SSD - Serial Number\n\nS/N 2504DN401565\n\nS/N 2504DN401689\n\nS/N 2504DN401581\n\n\n\n3 Samsung Monitor - Serial Number\n\nS/N: 0UKCHNAX400030P\n\nS/N: 0UKCHNAX400051Χ\n\nS/N: 0UKCHNAX500139L\n\nIf there is any further information you require, please do not hesitate to let me know.\n\nThank you for arranging the delivery.\n\nSincerely,\n\n"
+        }
+      },
+      "width": 280,
+      "height": 237,
+      "selected": true,
+      "positionAbsolute": {
+        "x": 147.8641390490493,
+        "y": 132.2552516989287
+      },
+      "dragging": false,
+      "style": {
+        "boxShadow": "0 0 0 2px #F472B6, 0 0 10px 2px rgba(244, 114, 182, 0.5)",
+        "zIndex": 1000
+      }
+    },
+    {
+      "id": "base_llm_1742893109124",
+      "type": "baseLlmNode",
+      "position": {
+        "x": 549.0402736534504,
+        "y": 86.06547543130978
+      },
+      "data": {
+        "label": "LLM Prompt",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "base_llm",
+          "name": "LLM Prompt",
+          "description": "Process text with an LLM",
+          "color": "bg-purple-500",
+          "bgColor": "bg-purple-100",
+          "lightColor": "#8B5CF6",
+          "darkColor": "#A78BFA",
+          "category": "process",
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "text"
+          ],
+          "iconName": "Activity",
+          "icon": {}
+        },
+        "inputs": [
+          "text"
+        ],
+        "outputs": [
+          "text"
+        ],
+        "config": {
+          "apiType": "ollama",
+          "ollamaUrl": "http://localhost:11434",
+          "openaiUrl": "https://api.openai.com/v1",
+          "model": "qwen2.5:latest",
+          "prompt": "You are an expert email assistant. When given raw email text or prompts, generate professional, clear, and concise email drafts or summaries. Maintain an appropriate tone and structure the content for clarity. Ask follow-up questions if more context is required.",
+          "apiKey": ""
+        }
+      },
+      "width": 288,
+      "height": 335,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 549.0402736534504,
+        "y": 86.06547543130978
+      },
+      "dragging": false,
+      "style": {
+        "boxShadow": "none"
+      }
+    },
+    {
+      "id": "text_output_1742893118544",
+      "type": "textOutputNode",
+      "position": {
+        "x": 927.4821633546378,
+        "y": 193.07318217440394
+      },
+      "data": {
+        "label": "Text Output",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "text_output",
+          "name": "Text Output",
+          "description": "Display text to users",
+          "color": "bg-green-500",
+          "bgColor": "bg-green-100",
+          "lightColor": "#10B981",
+          "darkColor": "#34D399",
+          "category": "output",
+          "inputs": [
+            "text"
+          ],
+          "outputs": [],
+          "iconName": "MousePointer",
+          "icon": {}
+        },
+        "inputs": [
+          "text"
+        ],
+        "outputs": [],
+        "config": {
+          "outputText": ""
+        }
+      },
+      "width": 280,
+      "height": 113,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 927.4821633546378,
+        "y": 193.07318217440394
+      },
+      "dragging": false,
+      "style": {
+        "boxShadow": "none"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "text_input_1742893103020",
+      "sourceHandle": "text-out",
+      "target": "base_llm_1742893109124",
+      "targetHandle": "text-in",
+      "animated": true,
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#F472B6",
+        "strokeWidth": 2
+      },
+      "id": "reactflow__edge-text_input_1742893103020text-out-base_llm_1742893109124text-in"
+    },
+    {
+      "source": "base_llm_1742893109124",
+      "sourceHandle": "text-out",
+      "target": "text_output_1742893118544",
+      "targetHandle": "text-in",
+      "animated": true,
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#F472B6",
+        "strokeWidth": 2
+      },
+      "id": "reactflow__edge-base_llm_1742893109124text-out-text_output_1742893118544text-in"
+    }
+  ]
+}

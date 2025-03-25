@@ -109,15 +109,26 @@ const BaseLlmNode = ({ data, isConnectable }: any) => {
               type: 'openai'
             });
             const models = await client.listModels();
+            
+            // Don't filter by name for non-OpenAI endpoints to support LM Studio and similar services
+            const isStandardOpenAI = openaiUrl.includes('api.openai.com');
             const chatModels = models
               .map((m: any) => m.name || m.id)
               .filter((name: string) => {
-                const lowerName = name.toLowerCase();
-                return lowerName.includes('gpt') && !lowerName.includes('vision');
+                // Only filter if using official OpenAI API
+                if (isStandardOpenAI) {
+                  const lowerName = name.toLowerCase();
+                  return lowerName.includes('gpt') && !lowerName.includes('vision');
+                }
+                // Include all models for other endpoints
+                return true;
               });
+              
             setOpenaiModels(chatModels.length > 0 ? chatModels : openaiModels);
+            console.log("Loaded models:", chatModels);
           } catch (error) {
             console.warn("Failed to fetch OpenAI models, using defaults:", error);
+            setNodeError(`Failed to fetch models: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
         

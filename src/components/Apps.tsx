@@ -36,6 +36,15 @@ interface AppsProps {
   onPageChange: (page: string) => void;
 }
 
+interface CommunityApp {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  nodes: any[];
+  edges: any[];
+}
+
 const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'myApps' | 'community'>('myApps'); // Add state for tabs
@@ -45,6 +54,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [communityApps, setCommunityApps] = useState<CommunityApp[]>([]);
 
   // Map icon names to components
   const iconComponents: Record<string, React.ElementType> = {
@@ -170,6 +180,99 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
       return a.name.localeCompare(b.name);
     }
   });
+
+  // Add useEffect to load community apps
+  useEffect(() => {
+    const loadCommunityApps = async () => {
+      try {
+        // Dynamic import all .json files from Community folder
+        const communityAppModules = import.meta.glob('/src/Community/*.json', { eager: true });
+        const loadedApps = Object.values(communityAppModules) as CommunityApp[];
+        setCommunityApps(loadedApps);
+      } catch (error) {
+        console.error('Error loading community apps:', error);
+      }
+    };
+
+    loadCommunityApps();
+  }, []);
+
+  // Add handler for importing community apps
+  const handleImportCommunityApp = async (communityApp: CommunityApp) => {
+    try {
+      // Create new app with community app data
+      const newAppId = await appStore.createApp(communityApp.name, communityApp.description);
+      
+      // Update the app with all community app data
+      await appStore.updateApp(newAppId, {
+        name: communityApp.name,
+        description: communityApp.description,
+        icon: communityApp.icon,
+        color: communityApp.color,
+        nodes: communityApp.nodes,
+        edges: communityApp.edges
+      });
+
+      // Show success message
+      setDeleteSuccess(`Successfully imported "${communityApp.name}"`);
+      
+      // Reload apps list
+      await loadApps();
+      
+      // Switch to My Apps tab
+      setActiveTab('myApps');
+    } catch (error) {
+      console.error('Error importing community app:', error);
+      alert('Failed to import app. Please try again.');
+    }
+  };
+
+  // Replace the community apps section with:
+  const renderCommunityContent = () => (
+    <>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+          Community Apps
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          Explore apps shared by the Clara community.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {communityApps.map((app, index) => {
+          const IconComponent = getIconComponent(app.icon || 'Activity');
+          return (
+            <div
+              key={index}
+              className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
+              onClick={() => {
+                // Import the app into user's apps
+                handleImportCommunityApp(app);
+              }}
+            >
+              <div
+                className="h-32 flex items-center justify-center"
+                style={{ backgroundColor: app.color }}
+              >
+                <IconComponent className="h-16 w-16 text-white/90" />
+              </div>
+              <div className="p-5">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                  {app.name}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                  {app.description}
+                </p>
+                <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
+                  Import App
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
 
   return (
     <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto flex flex-col">
@@ -376,48 +479,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           </div>
         </>
       ) : (
-        <>
-          {/* Community Content */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-              Community Apps
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Explore apps shared by the Clara community.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {/* Example community apps */}
-            {[
-              { id: 1, name: 'Weather Bot', description: 'Get weather updates', color: '#3B82F6' },
-              { id: 2, name: 'Recipe Finder', description: 'Find recipes by ingredients', color: '#10B981' },
-              { id: 3, name: 'Fitness Tracker', description: 'Track your workouts', color: '#F59E0B' },
-            ].map((app) => (
-              <div
-                key={app.id}
-                className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
-              >
-                <div
-                  className="h-32 flex items-center justify-center"
-                  style={{ backgroundColor: app.color }}
-                >
-                  <Bot className="h-16 w-16 text-white/90" />
-                </div>
-                <div className="p-5">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                    {app.name}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    {app.description}
-                  </p>
-                  <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
-                    View App
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+        renderCommunityContent()
       )}
     </div>
   );

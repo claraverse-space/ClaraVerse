@@ -1,0 +1,189 @@
+{
+  "name": "Basic One LLM Block Flow",
+  "description": "It has explanation of basic flow ",
+  "icon": "Search",
+  "color": "#3B82F6",
+  "nodes": [
+    {
+      "id": "base_llm_1742906618821",
+      "type": "baseLlmNode",
+      "position": {
+        "x": 128.87043920762153,
+        "y": -10.524190350218788
+      },
+      "data": {
+        "label": "LLM Prompt",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "base_llm",
+          "name": "LLM Prompt",
+          "description": "Process text with an LLM",
+          "color": "bg-purple-500",
+          "bgColor": "bg-purple-100",
+          "lightColor": "#8B5CF6",
+          "darkColor": "#A78BFA",
+          "category": "process",
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "text"
+          ],
+          "iconName": "Activity",
+          "icon": {}
+        },
+        "inputs": [
+          "text"
+        ],
+        "outputs": [
+          "text"
+        ],
+        "config": {
+          "apiType": "ollama",
+          "ollamaUrl": "http://localhost:11434",
+          "apiKey": "",
+          "model": "qwen2.5-coder:latest",
+          "openaiUrl": "http://192.168.1.8:1234/v1",
+          "prompt": ""
+        }
+      },
+      "width": 288,
+      "height": 335,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 128.87043920762153,
+        "y": -10.524190350218788
+      },
+      "style": {
+        "boxShadow": "none"
+      }
+    },
+    {
+      "id": "text_input_1742907110052",
+      "type": "textInputNode",
+      "position": {
+        "x": 122.52659716377173,
+        "y": -286.4781707699192
+      },
+      "data": {
+        "label": "Text Input",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "text_input",
+          "name": "Text Input",
+          "description": "Accept text input from users",
+          "color": "bg-blue-500",
+          "bgColor": "bg-blue-100",
+          "lightColor": "#3B82F6",
+          "darkColor": "#60A5FA",
+          "category": "input",
+          "inputs": [],
+          "outputs": [
+            "text"
+          ],
+          "iconName": "MousePointer",
+          "icon": {}
+        },
+        "inputs": [],
+        "outputs": [
+          "text"
+        ],
+        "config": {
+          "text": "hi"
+        }
+      },
+      "width": 280,
+      "height": 237,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 122.52659716377173,
+        "y": -286.4781707699192
+      },
+      "dragging": false,
+      "style": {
+        "boxShadow": "none"
+      }
+    },
+    {
+      "id": "text_output_1742907116540",
+      "type": "textOutputNode",
+      "position": {
+        "x": 140.06100915018374,
+        "y": 387.89821810091814
+      },
+      "data": {
+        "label": "Text Output",
+        "labelStyle": {
+          "color": "#000"
+        },
+        "tool": {
+          "id": "text_output",
+          "name": "Text Output",
+          "description": "Display text to users",
+          "color": "bg-green-500",
+          "bgColor": "bg-green-100",
+          "lightColor": "#10B981",
+          "darkColor": "#34D399",
+          "category": "output",
+          "inputs": [
+            "text"
+          ],
+          "outputs": [],
+          "iconName": "MousePointer",
+          "icon": {}
+        },
+        "inputs": [
+          "text"
+        ],
+        "outputs": [],
+        "config": {
+          "outputText": ""
+        }
+      },
+      "width": 280,
+      "height": 113,
+      "selected": true,
+      "positionAbsolute": {
+        "x": 140.06100915018374,
+        "y": 387.89821810091814
+      },
+      "dragging": false,
+      "style": {
+        "boxShadow": "none"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "text_input_1742907110052",
+      "sourceHandle": "text-out",
+      "target": "base_llm_1742906618821",
+      "targetHandle": "text-in",
+      "animated": true,
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#F472B6",
+        "strokeWidth": 2
+      },
+      "id": "reactflow__edge-text_input_1742907110052text-out-base_llm_1742906618821text-in"
+    },
+    {
+      "source": "base_llm_1742906618821",
+      "sourceHandle": "text-out",
+      "target": "text_output_1742907116540",
+      "targetHandle": "text-in",
+      "animated": true,
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#F472B6",
+        "strokeWidth": 2
+      },
+      "id": "reactflow__edge-base_llm_1742906618821text-out-text_output_1742907116540text-in"
+    }
+  ]
+}
