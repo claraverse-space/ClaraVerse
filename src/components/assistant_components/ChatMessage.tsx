@@ -244,6 +244,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
             : 'bg-sakura-500 text-white'
         }`}
+        style={{ maxWidth: computedMaxWidth }}
       >
         {/* Header (Icon + Name) */}
         <div className="flex items-center justify-between gap-1 mb-1 text-sm">
