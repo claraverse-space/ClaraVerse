@@ -86,9 +86,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const gradientStyle = useMemo(() => {
     const color = appData?.color || '#3B82F6';
     return {
-      background: `linear-gradient(135deg, ${color}10, ${
-        isDark ? '#1f293780' : '#f9fafb80'
-      })`,
+      // background: `linear-gradient(135deg, ${color}10, ${
+      //   isDark ? '#1f293780' : '#f9fafb80'
+      // })`,
     };
   }, [appData?.color, isDark]);
 
