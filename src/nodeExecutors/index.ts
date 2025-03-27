@@ -16,7 +16,7 @@ import './TextToImageExecutor';
 import './ImageOutputExecutor';
 import './TextImageToImageExecutor';
 import './ImageResizeExecutor';
-import './jsonToCsvExecutor';
+import './JsonToCsvExecutor';
 
 // This file is imported by main.tsx to ensure all executors are registered
 // before the application starts running
