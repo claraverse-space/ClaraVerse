@@ -139,7 +139,7 @@ const Settings = () => {
                 }`}
               >
                 <div className="text-center">
-                  <h3 className="font-medium">Ollama</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Ollama</h3>
                   <p className="text-xs text-gray-500 mt-1">Local AI models</p>
                 </div>
               </button>
@@ -152,7 +152,7 @@ const Settings = () => {
                 }`}
               >
                 <div className="text-center">
-                  <h3 className="font-medium">OpenAI-like API</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">OpenAI-like API</h3>
                   <p className="text-xs text-gray-500 mt-1">Compatible with OpenAI API format</p>
                 </div>
               </button>
