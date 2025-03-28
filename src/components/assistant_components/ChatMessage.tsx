@@ -26,6 +26,7 @@ interface ChatMessageProps {
   canEdit?: boolean;
   canRetry?: boolean;
   onSendEdit?: (messageId: string, content: string) => void;
+  isStreaming?: boolean;
 }
 
 // Custom hook to get the window width
@@ -128,7 +129,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   onRetry,
   onSendEdit,
   canEdit = false,
-  canRetry = false
+  canRetry = false,
+  isStreaming = false
 }) => {
   const [userName, setUserName] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -237,71 +239,53 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const computedMaxWidth = Math.min(window.innerWidth * 0.8, 900);
 
   return (
-    <div className={`flex ${isAssistant ? 'justify-start' : 'justify-end'} mb-2`}>
+    <div className={`${isAssistant ? 'border-b border-gray-200 dark:border-gray-700' : 'flex flex-col items-end mb-4 group'}`}>
       <div
-        className={`rounded-lg px-4 py-2.5 shadow-sm relative group max-w-[85%] ${
+        className={`${
           isAssistant
-            ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
-            : 'bg-sakura-500 text-white'
+            ? 'py-8 px-4'
+            : 'rounded-2xl px-4 py-2.5 relative max-w-[85%] bg-sakura-500 text-white hover:bg-sakura-600 transition-colors mt-4'
         }`}
-        style={{ maxWidth: computedMaxWidth }}
+        style={{ maxWidth: isAssistant ? 'none' : computedMaxWidth }}
       >
-        {/* Header (Icon + Name) */}
-        <div className="flex items-center justify-between gap-1 mb-1 text-sm">
-          <div className="flex items-center gap-1">
-            {isAssistant ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-            <span className="font-medium">
-              {isAssistant ? 'Clara' : userName || 'You'}
-            </span>
+        {/* Header (Icon + Name) - Only show for assistant */}
+        {isAssistant && (
+          <div className="flex items-center gap-1 mb-4 text-sm">
+            <Bot className="w-4 h-4 text-black dark:text-white" />
+            <span className="font-medium text-black dark:text-white">Clara</span>
           </div>
-          {!isAssistant && canEdit && (
-            <div className="flex items-center gap-1">
-              {isEditing ? (
-                <>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="p-1 rounded bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Cancel edit"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={handleEdit}
-                    className="p-1 rounded bg-sakura-500 text-white hover:bg-sakura-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-                    title="Send edited message"
-                  >
-                    <span className="text-xs">Send</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={handleEdit}
-                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Edit message"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Thinking Block */}
-        {hasThinkingBlock && <ThinkingBlock content={message.content} />}
+        )}
 
         {/* Message Content */}
         {isEditing ? (
-          <textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            onKeyDown={handleEditKeyDown}
-            className="w-full p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sakura-500 text-base"
-            rows={3}
-            autoFocus
-          />
+          <div className="relative">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/30 text-base resize-none"
+              rows={3}
+              autoFocus
+              placeholder="Edit your message..."
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={handleCancelEdit}
+                className="px-3 py-1 rounded bg-white/10 text-white hover:bg-white/20 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEdit}
+                className="px-3 py-1 rounded bg-white/20 text-white hover:bg-white/30 transition-colors text-sm flex items-center gap-1"
+              >
+                <span>Send</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className=" prose-base dark:prose-invert max-w-none break-words pl-1 text-[15px]">
+          <div className={`prose-base dark:prose-invert max-w-none break-words ${isAssistant ? 'text-gray-800 dark:text-gray-200' : 'text-white'} text-[15px]`}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -333,7 +317,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   }
                   return (
                     <code
-                      className="font-mono bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200 break-words whitespace-pre-wrap"
+                      className={`font-mono ${isAssistant ? 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200' : 'bg-white/20 text-white'} px-1 py-0.5 rounded break-words whitespace-pre-wrap`}
                       {...props}
                     >
                       {children}
@@ -377,7 +361,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     {children}
                   </a>
                 ),
-                // ...other components...
               }}
             >
               {messageContent}
@@ -388,30 +371,58 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         {/* Images */}
         {message.images && message.images.length > 0 && <ImageGallery images={message.images} />}
 
-        {/* Footer (timestamp, tokens, copy button) */}
-        <div className="flex items-center justify-between mt-1 text-xs">
-          <div className="flex items-center gap-2 opacity-70">
-            <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-            {showTokens && <span>{message.tokens} tokens</span>}
-            {isAssistant && canRetry && (
-              <button
-                onClick={handleRetry}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Retry response"
-              >
-                <RefreshCcw className="w-3 h-3" />
-              </button>
-            )}
+        {/* Footer (timestamp, tokens) - Only show for assistant */}
+        {isAssistant && (
+          <div className="flex items-center justify-between mt-4 text-xs">
+            <div className="flex items-center gap-2">
+              {/* <span className="opacity-70">{new Date(message.timestamp).toLocaleTimeString()}</span> */}
+              {showTokens && <span className="opacity-70">{message.tokens} tokens</span>}
+              {!isStreaming && (
+                <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                  <button
+                    onClick={handleCopyMessage}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    title="Copy message"
+                  >
+                    {copiedMessage ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  {canRetry && (
+                    <button
+                      onClick={handleRetry}
+                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      title="Retry response"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+        )}
+      </div>
+
+      {/* Hover actions for user messages - outside the bubble */}
+      {!isAssistant && (
+        <div className="mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={handleCopyMessage}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-1.5 rounded hover:bg-gray-700 transition-colors text-gray-400"
             title="Copy message"
           >
-            {copiedMessage ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            {copiedMessage ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
+          {canEdit && (
+            <button
+              onClick={handleEdit}
+              className="p-1.5 rounded hover:bg-gray-700 transition-colors text-gray-400"
+              title="Edit message"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 };

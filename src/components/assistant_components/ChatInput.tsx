@@ -36,22 +36,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <div className="p-6 flex justify-center">
-      {/* New Chat Button - Left Side */}
-      <div className="mr-4">
-        <button
-          onClick={onNewChat}
-          className="group p-3 rounded-xl bg-white hover:bg-sakura-50 dark:bg-sakura-500 dark:hover:bg-sakura-600 text-sakura-500 dark:text-white transition-all relative border border-sakura-200 dark:border-transparent shadow-md hover:shadow-lg"
-          title="New Chat"
-        >
-          <Plus className="w-6 h-6" />
-          <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-            New Chat
-          </span>
-        </button>
-      </div>
-
-      {/* Main Input Container */}
-      <div className="flex-1 max-w-3xl">
+      <div className="max-w-3xl w-full">
+        {/* Main Input Container */}
         <div className="glassmorphic rounded-xl p-4">
           {/* Images Preview */}
           {images.length > 0 && (
@@ -103,6 +89,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
           <div className="flex justify-between items-center">
             {/* Left Side Actions */}
             <div className="flex items-center gap-2">
+              <button
+                onClick={onNewChat}
+                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                title="New Chat"
+              >
+                <Plus className="w-5 h-5" />
+                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  New Chat
+                </span>
+              </button>
               <button 
                 className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
                 onClick={handleImageClick}
@@ -121,24 +117,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 onChange={onImageUpload}
                 className="hidden"
               />
-              <button 
-                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={isProcessing}
-              >
-                <Paperclip className="w-5 h-5" />
-                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                  Attach File
-                </span>
-              </button>
-              <button 
-                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={isProcessing}
-              >
-                <Mic className="w-5 h-5" />
-                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                  Voice Input
-                </span>
-              </button>
             </div>
 
             {/* Right Side Send Button */}
