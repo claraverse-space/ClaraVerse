@@ -1,242 +1,155 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const url = require('url');
-const fs = require('fs');
-const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
+const { spawn } = require('child_process');
+const PythonSetup = require('./pythonSetup.cjs');
+const { setupAutoUpdater } = require('./updateService.cjs');
 
-// Load environment variables from .env file if it exists
-try {
-  const dotenvPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(dotenvPath)) {
-    require('dotenv').config({ path: dotenvPath });
-  }
-} catch (error) {
-  console.error('Error loading .env file:', error);
+let pythonProcess;
+let mainWindow;
+const pythonSetup = new PythonSetup();
+
+async function startPythonBackend() {
+  const isDev = process.env.NODE_ENV === 'development';
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+  
+  // Ensure venv is ready
+  await pythonSetup.createVirtualEnv();
+
+  const backendPath = isDev 
+    ? path.join(__dirname, '..', 'py_backend')
+    : isWin
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'py_backend')
+      : isMac 
+        ? path.join(process.resourcesPath, 'py_backend')
+        : path.join(process.resourcesPath, 'app.asar.unpacked', 'py_backend');
+
+  console.log('Starting Python backend from:', backendPath);
+  console.log('Using Python command:', pythonSetup.pythonCommand);
+
+  // Get virtual environment site-packages
+  const sitePackages = process.platform === 'win32'
+    ? path.join(pythonSetup.venvPath, 'Lib', 'site-packages')
+    : path.join(pythonSetup.venvPath, 'lib', `python${process.versions.python}`, 'site-packages');
+
+  const env = {
+    ...process.env,
+    PYTHONPATH: [backendPath, sitePackages].join(path.delimiter),
+    VIRTUAL_ENV: pythonSetup.venvPath,
+    PATH: [path.dirname(pythonSetup.venvPython), process.env.PATH].join(path.delimiter),
+    PYTHONUNBUFFERED: '1'
+  };
+
+  return new Promise((resolve, reject) => {
+    const pythonCmd = isDev 
+      ? pythonSetup.pythonCommand 
+      : `"${pythonSetup.pythonCommand}"`;
+    const scriptPath = path.join(backendPath, 'main.py');
+    
+    console.log('Executing:', isDev 
+      ? `${pythonCmd} ${scriptPath}`
+      : `${pythonCmd} "${scriptPath}"`
+    );
+    
+    pythonProcess = spawn(pythonCmd, [scriptPath], {
+      cwd: backendPath,
+      shell: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...env,
+        PYTHONIOENCODING: 'utf-8',
+        PYTHONUNBUFFERED: '1',
+        NODE_ENV: process.env.NODE_ENV
+      }
+    });
+
+    let startupOutput = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      startupOutput += data.toString();
+      console.log('Python stdout:', data.toString());
+      
+      // Check if FastAPI server has started - match the actual log format
+      if (data.toString().includes('Application startup complete')) {
+        // Give a small delay to ensure the server is ready
+        setTimeout(() => resolve(), 100);
+      }
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      startupOutput += data.toString();
+      console.error('Python stderr:', data.toString());
+    });
+
+    pythonProcess.on('error', (err) => {
+      console.error('Failed to start Python backend:', err);
+      reject(err);
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Python process exited with code ${code}\n${startupOutput}`));
+      }
+    });
+
+    // Timeout if server doesn't start in 10 seconds
+    setTimeout(() => {
+      if (pythonProcess) {
+        reject(new Error('Python server failed to start in time\n' + startupOutput));
+      }
+    }, 10000);
+  });
 }
 
-// Keep a global reference of the window object to prevent garbage collection
-let mainWindow;
-const isDevelopment = process.env.NODE_ENV === 'development';
+async function initialize() {
+  try {
+    mainWindow?.webContents.send('initialization-status', { status: 'checking-python' });
+    
+    // Always ensure Python is available first
+    await pythonSetup.ensureSystemPython();
+    
+    if (!pythonSetup.isInitialized()) {
+      mainWindow?.webContents.send('initialization-status', { status: 'installing-dependencies' });
+      await pythonSetup.installDependencies();
+    }
+    
+    mainWindow?.webContents.send('initialization-status', { status: 'starting-backend' });
+    await startPythonBackend();
+    mainWindow?.webContents.send('initialization-status', { status: 'ready' });
+  } catch (error) {
+    console.error('Initialization error:', error);
+    mainWindow?.webContents.send('initialization-status', { 
+      status: 'error',
+      error: error.message 
+    });
+  }
+}
 
 function createWindow() {
-  // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 800,
+    height: 600,
     webPreferences: {
-      nodeIntegration: false, // For security reasons
-      contextIsolation: true, // Protect against prototype pollution
-      preload: path.join(__dirname, 'preload.cjs'), // Use a preload script
-      devTools: isDevelopment,
-      spellcheck: true,
-      // Security enhancements
-      sandbox: true,
-      webSecurity: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
-    // Production enhancements
-    show: false, // Don't show until ready-to-show
-    backgroundColor: '#ffffff',
-    autoHideMenuBar: !isDevelopment, // Hide menu bar in production
-    icon: process.resourcesPath ? path.join(process.resourcesPath, 'assets/icons/png/256x256.png') : path.join(__dirname, '../assets/icons/png/256x256.png')
   });
 
-  // Create application menu
-  createApplicationMenu();
-
-  // Set up auto-updater
-  if (!isDevelopment) {
-    setupAutoUpdater(mainWindow);
-  }
-
-  // Determine the URL to load
-  if (app.isPackaged) {
-    // In production, use path relative to the executable
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    console.log('Loading file:', path.join(__dirname, '../dist/index.html'));
-  } else {
-    // In development, use the development server URL
-    const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-    mainWindow.loadURL(devUrl);
-    console.log('Loading URL:', devUrl);
-  }
+  mainWindow.loadURL(process.env.ELECTRON_START_URL || 'http://localhost:5173');
   
-  console.log('Environment:', process.env.NODE_ENV);
-  
-  // Open DevTools in development mode
-  if (isDevelopment) {
-    mainWindow.webContents.openDevTools();
-  }
-
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
-
-  // Handle external links
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
-  // Handle uncaught exceptions
-  process.on('uncaughtException', (error) => {
-    console.error('Uncaught exception:', error);
-    const options = {
-      type: 'error',
-      title: 'Application Error',
-      message: 'An error occurred',
-      detail: error.toString(),
-    };
-    dialog.showMessageBox(options);
-  });
-
-  // Emitted when the window is closed
-  mainWindow.on('closed', () => {
-    // Dereference the window object
-    mainWindow = null;
-  });
+  setupAutoUpdater(mainWindow);
+  initialize();
 }
 
-// Create window when Electron has finished initialization
 app.whenReady().then(() => {
-  // Handle macOS security checks
-  if (process.platform === 'darwin') {
-    // Ensure we're not running from a quarantined location
-    app.setAsDefaultProtocolClient('clara');
-    
-    // For development only - bypass Gatekeeper
-    if (isDevelopment) {
-      app.commandLine.appendSwitch('no-sandbox');
-    }
-  }
-
   createWindow();
-  
-  // Set app user model id for windows
-  if (process.platform === 'win32') {
-    app.setAppUserModelId(app.name);
+
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('before-quit', () => {
+  if (pythonProcess) {
+    pythonProcess.kill();
   }
 });
-
-// Define application menu
-function createApplicationMenu() {
-  const isMac = process.platform === 'darwin';
-  const template = [
-    ...(isMac ? [{
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    }] : []),
-    {
-      label: 'File',
-      submenu: [
-        isMac ? { role: 'close' } : { role: 'quit' }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        ...(isMac ? [
-          { role: 'delete' },
-          { role: 'selectAll' },
-        ] : [
-          { role: 'delete' },
-          { type: 'separator' },
-          { role: 'selectAll' }
-        ])
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        ...(isDevelopment ? [{ role: 'toggleDevTools' }] : []),
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Check for Updates',
-          click: async () => {
-            try {
-              await checkForUpdates();
-            } catch (error) {
-              dialog.showErrorBox('Update Check Failed', 'Failed to check for updates. Please try again later.');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Learn More',
-          click: async () => {
-            await shell.openExternal('https://github.com/badboysm890/clara-ollama');
-          }
-        },
-        {
-          label: 'Report Issue',
-          click: async () => {
-            await shell.openExternal('https://github.com/badboysm890/clara-ollama/issues');
-          }
-        }
-      ]
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-}
-
-// Quit when all windows are closed, except on macOS
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  // On macOS, recreate the window when the dock icon is clicked and no other windows are open
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
-
-// Handle any IPC messages from the renderer process here
-ipcMain.on('message-from-renderer', (event, arg) => {
-  console.log('Message from renderer:', arg);
-  // You can send a response back
-  event.reply('message-from-main', 'Hello from the main process!');
-});
-
-// Handle protocol associations (deep linking)
-app.on('open-url', (event, url) => {
-  event.preventDefault();
-  if (mainWindow) {
-    mainWindow.webContents.send('deep-link', url);
-  }
-});
-
-// Limit resource usage
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
