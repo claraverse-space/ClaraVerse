@@ -1,6 +1,7 @@
 import React from 'react';
-import { Bell, User, Sun, Moon } from 'lucide-react';
+import { Bell, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import UserProfileButton from './common/UserProfileButton';
 
 interface TopbarProps {
   userName?: string;
@@ -31,12 +32,10 @@ const Topbar = ({ userName, onPageChange }: TopbarProps) => {
         <button className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors">
           <Bell className="w-5 h-5 text-gray-600 dark:text-gray-300" />
         </button>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10">
-          <User className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            {userName || 'Profile'}
-          </span>
-        </div>
+        <UserProfileButton
+          userName={userName || 'Profile'}
+          onPageChange={onPageChange || (() => {})}
+        />
       </div>
     </div>
   );
