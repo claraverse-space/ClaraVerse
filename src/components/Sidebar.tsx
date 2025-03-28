@@ -31,14 +31,19 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
       <div className={`flex items-center py-4 ${
         isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
       }`}>
-        <img src={logo} alt="Clara Logo" className="w-8 h-8" />
-        <h1 
-          className={`text-2xl font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-300 ${
-            isExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0'
-          }`}
+        <button
+          onClick={() => onPageChange('dashboard')}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
         >
-          Clara
-        </h1>
+          <img src={logo} alt="Clara Logo" className="w-8 h-8 flex-shrink-0" />
+          <h1 
+            className={`text-2xl font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-300 ${
+              isExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0'
+            }`}
+          >
+            Clara
+          </h1>
+        </button>
       </div>
       
       <nav className="flex-1">

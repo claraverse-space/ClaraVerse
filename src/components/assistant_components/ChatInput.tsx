@@ -35,9 +35,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className="p-6">
-      <div className="max-w-3xl mx-auto">
+    <div className="p-6 flex justify-center">
+      <div className="max-w-3xl w-full">
+        {/* Main Input Container */}
         <div className="glassmorphic rounded-xl p-4">
+          {/* Images Preview */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
               {images.map((image) => (
@@ -60,34 +62,43 @@ const ChatInput: React.FC<ChatInputProps> = ({
               ))}
             </div>
           )}
-          <div className="flex items-end gap-4">
-            <button
-              onClick={onNewChat}
-              className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-              title="New Chat"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                New Chat
-              </span>
-            </button>
-            <div className="flex-1">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask me anything..."
-                className="w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none max-h-32 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
-                rows={1}
-                style={{
-                  height: 'auto',
-                  minHeight: '24px',
-                  maxHeight: '128px'
-                }}
-                disabled={isProcessing && !input}
-              />
-            </div>
+
+          {/* Input Field */}
+          <div className="mb-4">
+            <textarea
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask me anything..."
+              className="w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+              style={{
+                height: 'auto',
+                minHeight: '24px',
+                maxHeight: '250px',
+                overflowY: 'auto'
+              }}
+              disabled={isProcessing && !input}
+            />
+          </div>
+
+          {/* Bottom Actions */}
+          <div className="flex justify-between items-center">
+            {/* Left Side Actions */}
             <div className="flex items-center gap-2">
+              <button
+                onClick={onNewChat}
+                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                title="New Chat"
+              >
+                <Plus className="w-5 h-5" />
+                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  New Chat
+                </span>
+              </button>
               <button 
                 className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
                 onClick={handleImageClick}
@@ -106,44 +117,27 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 onChange={onImageUpload}
                 className="hidden"
               />
-              <button 
-                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={isProcessing}
-              >
-                <Paperclip className="w-5 h-5" />
-                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                  Attach File
-                </span>
-              </button>
-              <button 
-                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                disabled={isProcessing}
-              >
-                <Mic className="w-5 h-5" />
-                <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                  Voice Input
-                </span>
-              </button>
-              
-              {isProcessing ? (
-                <button
-                  onClick={handleStopStreaming}
-                  className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1"
-                  title="Stop generating"
-                >
-                  <Square className="w-4 h-4" fill="white" />
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={isDisabled}
-                  className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              )}
             </div>
+
+            {/* Right Side Send Button */}
+            {isProcessing ? (
+              <button
+                onClick={handleStopStreaming}
+                className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1"
+                title="Stop generating"
+              >
+                <Square className="w-4 h-4" fill="white" />
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={isDisabled}
+                className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

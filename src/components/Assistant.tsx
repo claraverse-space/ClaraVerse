@@ -908,11 +908,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
-      <AssistantSidebar 
-        activeChat={activeChat} 
+      <AssistantSidebar
+        activeChat={activeChat}
         onChatSelect={setActiveChat}
         chats={chats}
         onOpenSettings={() => setShowSettings(true)}
+        onNavigateHome={handleNavigateHome}
       />
       
       <div className="flex-1 flex flex-col">
@@ -923,8 +924,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           showModelSelect={showModelSelect}
           setShowModelSelect={setShowModelSelect}
           setSelectedModel={handleModelSelect}
-          onOpenSettings={() => setShowSettings(true)}
+          onPageChange={onPageChange}
           onNavigateHome={handleNavigateHome}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         <ChatWindow
