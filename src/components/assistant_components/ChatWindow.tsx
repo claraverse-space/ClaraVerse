@@ -54,10 +54,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div 
       ref={chatContainerRef}
-      className="flex-1 overflow-y-auto p-4 relative scroll-smooth"
+      className="flex-1 overflow-y-auto relative scroll-smooth"
     >
       {messages.length === 0 ? renderEmptyState() : (
-        <div className="space-y-2">
+        <div className="max-w-3xl mx-auto">
           {messages.map((message, index) => (
             <ChatMessage 
               key={message.id} 
@@ -68,10 +68,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               onSendEdit={onSendEdit}
               canEdit={index === messages.length - 2 && message.role === 'user'} 
               canRetry={index === messages.length - 1 && message.role === 'assistant'} 
+              isStreaming={isStreaming && index === messages.length - 1}
             />
           ))}
           {isStreaming && (
-            <div className="flex items-center gap-2 text-sakura-500 mt-2">
+            <div className="flex items-center gap-2 text-sakura-500 mt-2 px-4">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Clara is thinking...</span>
             </div>

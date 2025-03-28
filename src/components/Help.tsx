@@ -198,7 +198,7 @@ const Help = () => {
               onClick={() => setSelectedSection(section.id)}
               className={`w-full text-left px-4 py-2 rounded-lg mb-2 transition-colors ${
                 selectedSection === section.id
-                  ? 'bg-sakura-100 text-sakura-900 dark:bg-sakura-900/20 dark:text-sakura-200'
+                  ? 'bg-sakura-100 text-sakura-900 dark:bg-sakura-500 dark:text-white'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
