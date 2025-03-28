@@ -44,3 +44,5 @@ latest-win.yml
 # Code signing files
 package-mac-signed.sh
 certificate.p12
+
+./Support
