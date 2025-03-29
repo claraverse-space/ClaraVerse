@@ -38,7 +38,8 @@
     "docker:login": "docker login",
     "docker:push": "npm run docker:check-env && docker push $DOCKER_USERNAME/clara-ollama:latest",
     "docker:all": "npm run docker:check-env && npm run docker:login && npm run docker:build && npm run docker:push",
-    "docker:publish": "chmod +x ./docker-publish.sh && ./docker-publish.sh"
+    "docker:publish": "chmod +x ./docker-publish.sh && ./docker-publish.sh",
+    "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false"
   },
   "dependencies": {
     "@langchain/core": "^0.3.42",
@@ -102,7 +103,17 @@
     "productName": "Clara",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "py_backend/**/*",
+      "!py_backend/__pycache__/**/*",
+      "!py_backend/*.pyc"
+    ],
+    "extraResources": [
+      {
+        "from": "py_backend",
+        "to": "py_backend",
+        "filter": ["**/*"]
+      }
     ],
     "directories": {
       "buildResources": "assets",
@@ -130,7 +141,21 @@
           ]
         }
       ],
-      "notarize": true,
+      "notarize": false,
+      "identity": null,
+      "binaries": [
+        {
+          "path": "/usr/bin/python3",
+          "command": "python3"
+        }
+      ],
+      "extraFiles": [
+        {
+          "from": "py_backend",
+          "to": "Resources/py_backend",
+          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+        }
+      ],
       "darkModeSupport": true,
       "artifactName": "${productName}-${version}-universal.${ext}",
       "type": "distribution"
@@ -139,7 +164,21 @@
       "target": [
         "nsis"
       ],
-      "icon": "assets/icons/win/icon.ico"
+      "icon": "assets/icons/win/icon.ico",
+      "extraResources": [
+        {
+          "from": "py_backend",
+          "to": "py_backend",
+          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+        }
+      ],
+      "extraFiles": [
+        {
+          "from": "py_backend",
+          "to": "Resources/py_backend",
+          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -158,7 +197,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "include": "installer.nsh",
+      "installerIcon": "assets/icons/win/icon.ico",
+      "uninstallerIcon": "assets/icons/win/icon.ico",
+      "installerHeaderIcon": "assets/icons/win/icon.ico",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Clara",
+      "license": "LICENSE",
+      "deleteAppDataOnUninstall": true
     },
     "afterSign": null
   }

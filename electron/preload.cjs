@@ -11,7 +11,9 @@ const validReceiveChannels = [
   'message-from-main', 
   'app-update-available',
   'app-error',
-  'deep-link'
+  'deep-link',
+  'initialization-status',
+  'python-status'
 ];
 
 // Get app version safely

@@ -15,7 +15,8 @@ import {
   Info,
   Star,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Server
 } from 'lucide-react';
 import { db } from '../db';
 import axios from 'axios';
@@ -29,6 +30,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [showOllamaUrlInput, setShowOllamaUrlInput] = useState(false);
+  const [pythonStatus, setPythonStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -40,6 +42,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       } else {
         setOllamaStatus('disconnected');
       }
+      checkPythonConnection();
     };
     loadConfig();
   }, []);
@@ -57,6 +60,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     } catch (error) {
       console.error('Ollama connection error:', error);
       setOllamaStatus('disconnected');
+    }
+  };
+
+  const checkPythonConnection = async () => {
+    try {
+      const response = await axios.get('http://localhost:8000/test', { timeout: 5000 });
+      if (response.status === 200) {
+        setPythonStatus('connected');
+      } else {
+        setPythonStatus('disconnected');
+      }
+    } catch (error) {
+      console.error('Python server connection error:', error);
+      setPythonStatus('disconnected');
     }
   };
 
@@ -99,10 +116,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             <div className="p-4 bg-sakura-100 dark:bg-sakura-100/10 rounded-xl">
               <Bot className="w-8 h-8 text-sakura-500" />
             </div>
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-1">
-                Welcome to Clara
-              </h1>
+            <div className="flex-grow">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-1">
+                  Welcome to Clara
+                </h1>
+                <div className="flex items-center gap-2">
+                  <div 
+                    className={`w-2 h-2 rounded-full ${
+                      pythonStatus === 'connected' 
+                        ? 'bg-green-500 animate-pulse' 
+                        : 'bg-red-500'
+                    }`}
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {pythonStatus === 'connected' ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+              </div>
               <p className="text-gray-600 dark:text-gray-400">
                 Your AI assistant powered by Ollama and ComfyUI
               </p>
@@ -402,4 +433,3 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 };
 
 export default Dashboard;
-
