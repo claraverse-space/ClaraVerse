@@ -1,155 +1,266 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const fs = require('fs');
+const log = require('electron-log');
 const PythonSetup = require('./pythonSetup.cjs');
+const PythonBackendService = require('./pythonBackend.cjs');
 const { setupAutoUpdater } = require('./updateService.cjs');
+const SplashScreen = require('./splash.cjs');
 
-let pythonProcess;
+// Configure the main process logger
+log.transports.file.level = 'info';
+log.info('Application starting...');
+
+// Global variables
+let pythonBackend;
 let mainWindow;
+let splash;
+
+// Initialize Python setup
 const pythonSetup = new PythonSetup();
 
-async function startPythonBackend() {
-  const isDev = process.env.NODE_ENV === 'development';
-  const isWin = process.platform === 'win32';
-  const isMac = process.platform === 'darwin';
-  
-  // Ensure venv is ready
-  await pythonSetup.createVirtualEnv();
-
-  const backendPath = isDev 
-    ? path.join(__dirname, '..', 'py_backend')
-    : isWin
-      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'py_backend')
-      : isMac 
-        ? path.join(process.resourcesPath, 'py_backend')
-        : path.join(process.resourcesPath, 'app.asar.unpacked', 'py_backend');
-
-  console.log('Starting Python backend from:', backendPath);
-  console.log('Using Python command:', pythonSetup.pythonCommand);
-
-  // Get virtual environment site-packages
-  const sitePackages = process.platform === 'win32'
-    ? path.join(pythonSetup.venvPath, 'Lib', 'site-packages')
-    : path.join(pythonSetup.venvPath, 'lib', `python${process.versions.python}`, 'site-packages');
-
-  const env = {
-    ...process.env,
-    PYTHONPATH: [backendPath, sitePackages].join(path.delimiter),
-    VIRTUAL_ENV: pythonSetup.venvPath,
-    PATH: [path.dirname(pythonSetup.venvPython), process.env.PATH].join(path.delimiter),
-    PYTHONUNBUFFERED: '1'
-  };
-
-  return new Promise((resolve, reject) => {
-    const pythonCmd = isDev 
-      ? pythonSetup.pythonCommand 
-      : `"${pythonSetup.pythonCommand}"`;
-    const scriptPath = path.join(backendPath, 'main.py');
-    
-    console.log('Executing:', isDev 
-      ? `${pythonCmd} ${scriptPath}`
-      : `${pythonCmd} "${scriptPath}"`
-    );
-    
-    pythonProcess = spawn(pythonCmd, [scriptPath], {
-      cwd: backendPath,
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...env,
-        PYTHONIOENCODING: 'utf-8',
-        PYTHONUNBUFFERED: '1',
-        NODE_ENV: process.env.NODE_ENV
-      }
-    });
-
-    let startupOutput = '';
-    
-    pythonProcess.stdout.on('data', (data) => {
-      startupOutput += data.toString();
-      console.log('Python stdout:', data.toString());
-      
-      // Check if FastAPI server has started - match the actual log format
-      if (data.toString().includes('Application startup complete')) {
-        // Give a small delay to ensure the server is ready
-        setTimeout(() => resolve(), 100);
-      }
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      startupOutput += data.toString();
-      console.error('Python stderr:', data.toString());
-    });
-
-    pythonProcess.on('error', (err) => {
-      console.error('Failed to start Python backend:', err);
-      reject(err);
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Python process exited with code ${code}\n${startupOutput}`));
-      }
-    });
-
-    // Timeout if server doesn't start in 10 seconds
-    setTimeout(() => {
-      if (pythonProcess) {
-        reject(new Error('Python server failed to start in time\n' + startupOutput));
-      }
-    }, 10000);
-  });
-}
-
-async function initialize() {
+async function initializeApp() {
   try {
-    mainWindow?.webContents.send('initialization-status', { status: 'checking-python' });
+    // Show splash screen
+    splash = new SplashScreen();
+    splash.setStatus('Starting Clara...', 'info');
     
-    // Always ensure Python is available first
+    // Ensure Python is set up
+    splash.setStatus('Checking Python environment...', 'info');
     await pythonSetup.ensureSystemPython();
     
     if (!pythonSetup.isInitialized()) {
-      mainWindow?.webContents.send('initialization-status', { status: 'installing-dependencies' });
-      await pythonSetup.installDependencies();
+      splash.setStatus('Setting up Python environment...', 'info');
+      await pythonSetup.setup((status) => {
+        splash.setStatus(status, 'info');
+      });
     }
     
-    mainWindow?.webContents.send('initialization-status', { status: 'starting-backend' });
-    await startPythonBackend();
-    mainWindow?.webContents.send('initialization-status', { status: 'ready' });
-  } catch (error) {
-    console.error('Initialization error:', error);
-    mainWindow?.webContents.send('initialization-status', { 
-      status: 'error',
-      error: error.message 
+    // Initialize Python backend service
+    pythonBackend = new PythonBackendService(pythonSetup);
+    
+    // Set up event listeners for the backend service
+    pythonBackend.on('status-change', (status) => {
+      log.info(`Backend status changed: ${JSON.stringify(status)}`);
+      
+      if (status.status === 'running') {
+        splash?.setStatus('Backend services started', 'success');
+        if (!mainWindow) {
+          createMainWindow();
+        }
+      } else if (status.status === 'failed' || status.status === 'crashed') {
+        splash?.setStatus(`Backend error: ${status.message || status.status}`, 'error');
+      }
+      
+      // Forward status to the renderer
+      mainWindow?.webContents.send('backend-status', status);
     });
+    
+    pythonBackend.on('ready', (data) => {
+      log.info(`Backend ready on port ${data.port}`);
+      if (splash && !mainWindow) {
+        splash.setStatus('Starting main application...', 'success');
+        createMainWindow();
+        setTimeout(() => {
+          splash.close();
+        }, 1000);
+      }
+    });
+    
+    pythonBackend.on('error', (error) => {
+      log.error(`Backend error: ${error.message}`);
+      splash?.setStatus(`Backend error: ${error.message}`, 'error');
+    });
+    
+    pythonBackend.on('port-detected', (port) => {
+      log.info(`Backend running on port: ${port}`);
+    });
+    
+    // Start the Python backend
+    splash.setStatus('Starting backend services...', 'info');
+    await pythonBackend.start();
+    
+    // Set a timeout in case backend doesn't report ready
+    setTimeout(() => {
+      if (splash && !mainWindow) {
+        splash.setStatus('Backend is taking longer than expected...', 'warning');
+        createMainWindow();
+        setTimeout(() => {
+          splash.close();
+        }, 2000);
+      }
+    }, 20000);
+    
+  } catch (error) {
+    log.error(`Initialization error: ${error.message}`, error);
+    splash?.setStatus(`Error: ${error.message}`, 'error');
+    
+    // Show error but continue to the main window anyway
+    setTimeout(() => {
+      if (!mainWindow) {
+        createMainWindow();
+      }
+      setTimeout(() => {
+        splash?.close();
+      }, 3000);
+    }, 5000);
   }
 }
 
-function createWindow() {
+function createMainWindow() {
+  if (mainWindow) return;
+  
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1000,
+    height: 700,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false
     },
+    show: false,
+    backgroundColor: '#f5f5f5'
   });
-
-  mainWindow.loadURL(process.env.ELECTRON_START_URL || 'http://localhost:5173');
   
+  // Load the app
+  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
+  mainWindow.loadURL(startUrl);
+  
+  // Set up auto-updater
   setupAutoUpdater(mainWindow);
-  initialize();
+  
+  // Show window when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    
+    // Send complete backend status to renderer
+    if (pythonBackend) {
+      const status = pythonBackend.getStatus();
+      log.info(`Sending initial backend status to renderer: ${JSON.stringify(status)}`);
+      mainWindow.webContents.send('backend-status', status);
+    }
+  });
+  
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+  
+  // Log window events
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    log.error(`Window failed to load: ${errorCode} - ${errorDescription}`);
+  });
+  
+  mainWindow.webContents.on('crashed', () => {
+    log.error('Window crashed');
+  });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+// IPC handlers
+ipcMain.handle('get-python-port', () => {
+  const port = pythonBackend ? pythonBackend.getPort() : null;
+  log.info(`Renderer requested Python port: ${port}`);
+  return port;
 });
 
-app.on('before-quit', () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
+// Add a new handler for health check
+ipcMain.handle('check-python-backend', async () => {
+  if (!pythonBackend) {
+    return { status: 'not_initialized' };
   }
+  
+  try {
+    const status = pythonBackend.getStatus();
+    
+    // Test connection directly using Node's http instead of fetch
+    if (status.port) {
+      try {
+        const http = require('http');
+        const result = await new Promise((resolve, reject) => {
+          const req = http.get(`http://localhost:${status.port}/`, {
+            timeout: 2000,
+            headers: { 'Accept': 'application/json' }
+          }, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+              data += chunk;
+            });
+            
+            res.on('end', () => {
+              try {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                  resolve({ success: true, data: JSON.parse(data) });
+                } else {
+                  reject(new Error(`HTTP status ${res.statusCode}`));
+                }
+              } catch (e) {
+                reject(e);
+              }
+            });
+          });
+          
+          req.on('error', reject);
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+          });
+        });
+        
+        if (result && result.success) {
+          return { 
+            status: 'running', 
+            port: status.port,
+            available: true,
+            serverInfo: result.data
+          };
+        }
+      } catch (error) {
+        log.warn(`Backend connection test failed: ${error.message}`);
+      }
+    }
+    
+    return {
+      ...status,
+      available: false
+    };
+  } catch (error) {
+    log.error(`Error checking Python backend: ${error.message}`);
+    return { status: 'error', error: error.message };
+  }
+});
+
+// App lifecycle events
+app.whenReady().then(initializeApp);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createMainWindow();
+  }
+});
+
+app.on('before-quit', async (event) => {
+  if (pythonBackend) {
+    event.preventDefault();
+    try {
+      await pythonBackend.stop();
+    } catch (error) {
+      log.error(`Error stopping Python backend: ${error.message}`);
+    }
+    app.exit(0);
+  }
+});
+
+// Error handling for the main process
+process.on('uncaughtException', (error) => {
+  log.error(`Uncaught exception: ${error.message}`, error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error(`Unhandled promise rejection: ${reason}`);
 });

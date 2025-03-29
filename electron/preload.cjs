@@ -4,7 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 const validSendChannels = [
   'message-from-renderer',
   'app-ready', 
-  'request-app-info'
+  'request-app-info',
+  'request-backend-status'
 ];
 
 const validReceiveChannels = [
@@ -13,7 +14,9 @@ const validReceiveChannels = [
   'app-error',
   'deep-link',
   'initialization-status',
-  'python-status'
+  'python-status',
+  'backend-status',
+  'health-check'
 ];
 
 // Get app version safely
@@ -54,6 +57,13 @@ contextBridge.exposeInMainWorld(
     getAppVersion: getAppVersion,
     getPlatform: () => process.platform,
     getAppPath: () => process.env.APPDATA || process.env.HOME,
+    // Add method to get Python port
+    getPythonPort: async () => {
+      return await ipcRenderer.invoke('get-python-port');
+    },
+    checkPythonBackend: async () => {
+      return await ipcRenderer.invoke('check-python-backend');
+    },
     // Remove event listener for cleanup
     removeListener: (channel, func) => {
       if (validReceiveChannels.includes(channel)) {

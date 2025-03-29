@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import axios from 'axios';
+import api from '../services/api'; // Import the API service
 
 interface DashboardProps {
   onPageChange?: (page: string) => void;
@@ -31,6 +32,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [showOllamaUrlInput, setShowOllamaUrlInput] = useState(false);
   const [pythonStatus, setPythonStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [pythonPort, setPythonPort] = useState<number | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -42,9 +46,67 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       } else {
         setOllamaStatus('disconnected');
       }
-      checkPythonConnection();
+      
+      // Get Python port from Electron
+      if (window.electron) {
+        try {
+          const port = await window.electron.getPythonPort();
+          setPythonPort(port);
+          console.log('Python port from Electron:', port);
+        } catch (error) {
+          console.error('Could not get Python port from Electron:', error);
+        }
+      }
+      
+      // Use the new checkPythonBackend method
+      if (window.electron) {
+        try {
+          const backendStatus = await window.electron.checkPythonBackend();
+          console.log('Python backend status:', backendStatus);
+          
+          if (backendStatus.port) {
+            setPythonPort(backendStatus.port);
+          }
+          
+          if (backendStatus.status === 'running' && backendStatus.available) {
+            setPythonStatus('connected');
+          } else {
+            // Try the API service as a fallback
+            checkPythonConnection();
+          }
+        } catch (error) {
+          console.error('Error checking Python backend:', error);
+          checkPythonConnection();
+        }
+      } else {
+        checkPythonConnection();
+      }
     };
+    
     loadConfig();
+    
+    // Listen for backend status updates
+    if (window.electron) {
+      const backendStatusListener = (status) => {
+        console.log('Backend status update received:', status);
+        if (status.port) {
+          setPythonPort(status.port);
+        }
+        
+        if (status.status === 'running') {
+          checkPythonConnection();
+        } else if (['crashed', 'failed', 'stopped'].includes(status.status)) {
+          setPythonStatus('disconnected');
+        }
+      };
+      
+      window.electron.receive('backend-status', backendStatusListener);
+      
+      // Cleanup
+      return () => {
+        window.electron.removeListener('backend-status', backendStatusListener);
+      };
+    }
   }, []);
 
   const checkOllamaConnection = async (url: string) => {
@@ -64,16 +126,42 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const checkPythonConnection = async () => {
+    setPythonStatus('checking');
+    setIsReconnecting(true);
+    setReconnectError(null);
+    
     try {
-      const response = await axios.get('http://localhost:8000/test', { timeout: 5000 });
-      if (response.status === 200) {
+      // First check backend health
+      const health = await api.checkHealth();
+      
+      if (health.status === 'connected') {
         setPythonStatus('connected');
+        
+        // Update port if it's different
+        if (health.port && health.port !== pythonPort) {
+          setPythonPort(health.port);
+        }
+        
+        // Now try the actual test endpoint
+        try {
+          const result = await api.getTest();
+          if (!result) {
+            console.warn('Test endpoint returned empty result');
+          }
+        } catch (testError) {
+          console.warn('Test endpoint error:', testError);
+          // Don't change status for test errors if health check passed
+        }
       } else {
         setPythonStatus('disconnected');
+        setReconnectError('Failed to connect to Python backend');
       }
     } catch (error) {
-      console.error('Python server connection error:', error);
+      console.error('Python backend check failed:', error);
       setPythonStatus('disconnected');
+      setReconnectError(error.message);
+    } finally {
+      setIsReconnecting(false);
     }
   };
 
@@ -130,7 +218,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                     }`}
                   />
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {pythonStatus === 'connected' ? 'Online' : 'Offline'}
+                    {pythonStatus === 'connected' 
+                      ? pythonPort 
+                        ? `Online (Port: ${pythonPort})` 
+                        : 'Online' 
+                      : 'Offline'}
                   </span>
                 </div>
               </div>
@@ -161,7 +253,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               </div>
             </button>
 
-            {/* Image Generation Action - Fixed JSX closing tag issue */}
+            {/* Image Generation Action */}
             <button 
               onClick={() => onPageChange?.('image-gen')}
               className="group flex flex-col rounded-xl bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-sakura-50 dark:hover:bg-sakura-100/5 transition-all duration-300 transform hover:-translate-y-1"
@@ -273,12 +365,59 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                   </div>
                 )}
               </div>
+
+              {/* Python Backend Status */}
+              <div className="mt-4 p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-indigo-100 dark:bg-indigo-800/30 rounded-lg">
+                      <Server className="w-6 h-6 text-indigo-500 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                        Python Backend
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {pythonStatus === 'connected'
+                          ? `Connected on port ${pythonPort || 'unknown'}`
+                          : 'Backend service status'}
+                      </p>
+                    </div>
+                  </div>
+                  {renderStatusIcon(pythonStatus)}
+                </div>
+                
+                {pythonStatus !== 'connected' && (
+                  <div className="mt-4">
+                    <button
+                      onClick={checkPythonConnection}
+                      disabled={isReconnecting}
+                      className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800/30 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {isReconnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          Refresh Connection
+                        </>
+                      )}
+                    </button>
+                    
+                    {reconnectError && (
+                      <p className="mt-2 text-xs text-red-500">
+                        Error: {reconnectError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
-        
-        {/* Getting Started Section */}
-
         
         {/* Capabilities Showcase */}
         <div className="glassmorphic rounded-2xl p-8 animate-fadeIn animation-delay-400">

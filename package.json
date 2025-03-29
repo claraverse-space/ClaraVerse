@@ -1,7 +1,7 @@
 {
   "name": "clara-ollama",
   "private": true,
-  "version": "1.1.2",
+  "version": "1.1.4",
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for Ollama. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
     "name": "badboysm890",
@@ -49,6 +49,7 @@
     "dotenv": "^16.4.7",
     "electron-log": "^5.3.2",
     "electron-updater": "^6.3.9",
+    "extract-zip": "^2.0.1",
     "inquirer": "^12.4.3",
     "langchain": "^0.3.19",
     "lucide-react": "^0.344.0",
@@ -64,11 +65,12 @@
     "react-syntax-highlighter": "^15.6.1",
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.0",
+    "tar": "^6.2.1",
     "ws": "^8.18.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@electron/notarize": "^3.0.0",
+    "@electron/notarize": "^2.2.0",
     "@eslint/js": "^9.9.1",
     "@tailwindcss/typography": "^0.5.10",
     "@testing-library/jest-dom": "^6.6.3",
@@ -103,16 +105,21 @@
     "productName": "Clara",
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "py_backend/**/*",
-      "!py_backend/__pycache__/**/*",
-      "!py_backend/*.pyc"
+      "electron/**/*"
     ],
     "extraResources": [
       {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
         "from": "py_backend",
         "to": "py_backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
       }
     ],
     "directories": {
@@ -141,21 +148,6 @@
           ]
         }
       ],
-      "notarize": false,
-      "identity": null,
-      "binaries": [
-        {
-          "path": "/usr/bin/python3",
-          "command": "python3"
-        }
-      ],
-      "extraFiles": [
-        {
-          "from": "py_backend",
-          "to": "Resources/py_backend",
-          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
-        }
-      ],
       "darkModeSupport": true,
       "artifactName": "${productName}-${version}-universal.${ext}",
       "type": "distribution"
@@ -169,16 +161,14 @@
         {
           "from": "py_backend",
           "to": "py_backend",
-          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+          "filter": [
+            "**/*",
+            "!**/__pycache__/**",
+            "!**/*.pyc"
+          ]
         }
       ],
-      "extraFiles": [
-        {
-          "from": "py_backend",
-          "to": "Resources/py_backend",
-          "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
-        }
-      ]
+      "extraFiles": []
     },
     "linux": {
       "target": [
@@ -207,6 +197,24 @@
       "license": "LICENSE",
       "deleteAppDataOnUninstall": true
     },
-    "afterSign": null
+    "afterSign": "notarize.js"
+  },
+  "vite": {
+    "build": {
+      "chunkSizeWarningLimit": 6000,
+      "rollupOptions": {
+        "output": {
+          "manualChunks": {
+            "vendor": [
+              "react",
+              "react-dom",
+              "langchain",
+              "@langchain/core",
+              "openai"
+            ]
+          }
+        }
+      }
+    }
   }
 }
