@@ -8,9 +8,22 @@ import sqlite3
 import traceback
 from datetime import datetime
 from contextlib import contextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Depends, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import tempfile
+import shutil
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+import json
+from pydantic import BaseModel
+
+# Import our DocumentAI class
+from ragDbClara import DocumentAI
+from langchain_core.documents import Document
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import CSVLoader
+from langchain_community.document_loaders import TextLoader  # Fixed import
 
 # Configure logging
 logging.basicConfig(
@@ -119,6 +132,29 @@ def init_db():
                 )
             """)
             
+            # Create documents table to track uploaded files
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT,
+                    file_type TEXT,
+                    collection_name TEXT,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create collections table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS collections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE,
+                    description TEXT,
+                    document_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Check if test data exists
             cursor.execute("SELECT COUNT(*) FROM test")
             count = cursor.fetchone()[0]
@@ -133,6 +169,51 @@ def init_db():
 
 # Initialize the database
 init_db()
+
+# Create a persistent directory for vector databases
+vectordb_dir = os.path.join(os.path.expanduser("~"), ".clara", "vectordb")
+os.makedirs(vectordb_dir, exist_ok=True)
+
+# Initialize DocumentAI singleton cache
+doc_ai_cache = {}
+
+def get_doc_ai(collection_name: str = "default_collection"):
+    """Create or retrieve the DocumentAI instance from cache"""
+    global doc_ai_cache
+    
+    # Return cached instance if it exists
+    if collection_name in doc_ai_cache:
+        return doc_ai_cache[collection_name]
+    
+    # Create new instance if not in cache
+    persist_dir = os.path.join(vectordb_dir, collection_name)
+    os.makedirs(persist_dir, exist_ok=True)
+    
+    # Create new instance and cache it
+    doc_ai_cache[collection_name] = DocumentAI(
+        persist_directory=persist_dir,
+        collection_name=collection_name
+    )
+    
+    return doc_ai_cache[collection_name]
+
+# Pydantic models for request/response
+class ChatRequest(BaseModel):
+    query: str
+    collection_name: str = "default_collection"
+    system_template: Optional[str] = None
+    k: int = 4
+    filter: Optional[Dict[str, Any]] = None
+
+class SearchRequest(BaseModel):
+    query: str
+    collection_name: str = "default_collection"
+    k: int = 4
+    filter: Optional[Dict[str, Any]] = None
+
+class CollectionCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
 
 @app.get("/")
 def read_root():
@@ -161,7 +242,6 @@ def read_test():
         logger.error(f"Error in /test endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Health check endpoint
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
@@ -170,6 +250,270 @@ def health_check():
         "port": port,
         "uptime": str(datetime.now() - datetime.fromisoformat(START_TIME))
     }
+
+# Document management endpoints
+@app.post("/collections")
+def create_collection(collection: CollectionCreate):
+    """Create a new document collection"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO collections (name, description) VALUES (?, ?)",
+                (collection.name, collection.description)
+            )
+            conn.commit()
+            
+            # Create directory for this collection's vector store
+            persist_dir = os.path.join(vectordb_dir, collection.name)
+            os.makedirs(persist_dir, exist_ok=True)
+            
+            return {"status": "success", "message": f"Collection '{collection.name}' created"}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail=f"Collection '{collection.name}' already exists")
+    except Exception as e:
+        logger.error(f"Error creating collection: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/collections")
+def list_collections():
+    """List all available document collections"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name, description, document_count, created_at FROM collections")
+            collections = [dict(row) for row in cursor.fetchall()]
+            return {"collections": collections}
+    except Exception as e:
+        logger.error(f"Error listing collections: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/documents/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    collection_name: str = Form("default_collection"),
+    metadata: str = Form("{}")
+):
+    """Upload a document file (PDF, CSV, or plain text) and add it to the vector store"""
+    # Check if collection exists, create if not
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM collections WHERE name = ?", (collection_name,))
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO collections (name, description) VALUES (?, ?)",
+                    (collection_name, f"Auto-created for {file.filename}")
+                )
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Error checking/creating collection: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    # Create a temporary directory to save the uploaded file
+    with tempfile.TemporaryDirectory() as temp_dir:
+        file_path = Path(temp_dir) / file.filename
+        
+        # Save uploaded file
+        try:
+            with open(file_path, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+        except Exception as e:
+            logger.error(f"Error saving file: {e}")
+            raise HTTPException(status_code=500, detail=f"Could not save file: {str(e)}")
+        
+        # Process the file based on extension
+        file_extension = file.filename.lower().split('.')[-1]
+        documents = []
+        file_type = file_extension
+        
+        try:
+            if file_extension == 'pdf':
+                loader = PyPDFLoader(str(file_path))
+                documents = loader.load()
+            elif file_extension == 'csv':
+                loader = CSVLoader(file_path=str(file_path))
+                documents = loader.load()
+            elif file_extension in ['txt', 'md', 'html']:
+                loader = TextLoader(str(file_path))
+                documents = loader.load()
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_extension}")
+            
+            # Get or create DocumentAI with specific collection - use cache
+            doc_ai = get_doc_ai(collection_name)
+            
+            # Parse metadata if provided
+            try:
+                meta_dict = json.loads(metadata)
+                
+                # Add file metadata to each document
+                for doc in documents:
+                    doc.metadata.update(meta_dict)
+                    doc.metadata["source_file"] = file.filename
+                    doc.metadata["file_type"] = file_extension
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid metadata JSON: {metadata}")
+            
+            # Add documents to vector store
+            doc_ids = doc_ai.add_documents(documents)
+            
+            # Update database
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO documents (filename, file_type, collection_name, metadata) VALUES (?, ?, ?, ?)",
+                    (file.filename, file_type, collection_name, metadata)
+                )
+                
+                # Update document count in collection
+                cursor.execute(
+                    "UPDATE collections SET document_count = document_count + ? WHERE name = ?",
+                    (len(documents), collection_name)
+                )
+                conn.commit()
+            
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "collection": collection_name,
+                "document_count": len(documents),
+                "document_ids": doc_ids[:5] + ['...'] if len(doc_ids) > 5 else doc_ids
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing document: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+# Improved helper function to validate and format filters
+def format_chroma_filter(filter_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Format a filter dictionary to be compatible with Chroma"""
+    if not filter_dict:
+        return None
+        
+    chroma_filter = {}
+    for key, value in filter_dict.items():
+        # Skip empty values
+        if value is None or (isinstance(value, dict) and not value):
+            continue
+            
+        if isinstance(value, dict):
+            # Check if it has valid operators
+            if not any(op.startswith('$') for op in value.keys()):
+                # Convert to $eq if no operators
+                chroma_filter[key] = {"$eq": value}
+            else:
+                # Already has operators
+                chroma_filter[key] = value
+        else:
+            # Simple value, convert to $eq
+            chroma_filter[key] = {"$eq": value}
+    
+    # Return None if the filter ended up empty
+    return chroma_filter if chroma_filter else None
+
+@app.post("/documents/search")
+async def search_documents(request: SearchRequest):
+    """Search documents in the vector store for ones similar to the query"""
+    try:
+        # Get DocumentAI with specific collection from cache
+        doc_ai = get_doc_ai(request.collection_name)
+        
+        # Format the filter if provided, otherwise pass None
+        formatted_filter = format_chroma_filter(request.filter)
+        
+        # Perform similarity search
+        results = doc_ai.similarity_search(
+            query=request.query,
+            k=request.k,
+            filter=formatted_filter
+        )
+        
+        # Format results
+        formatted_results = []
+        for doc in results:
+            formatted_results.append({
+                "content": doc.page_content,
+                "metadata": doc.metadata,
+                "score": doc.metadata.get("score", None)  # Some vector stores return scores
+            })
+        
+        return {
+            "query": request.query,
+            "collection": request.collection_name,
+            "results": formatted_results
+        }
+    except Exception as e:
+        logger.error(f"Error searching documents: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error searching documents: {str(e)}")
+
+@app.post("/chat")
+async def chat_with_documents(request: ChatRequest):
+    """Chat with the AI using documents as context"""
+    try:
+        # Get DocumentAI with specific collection from cache
+        doc_ai = get_doc_ai(request.collection_name)
+        
+        # Use default or custom system template
+        system_template = request.system_template
+        
+        # Format the filter if provided, otherwise pass None
+        formatted_filter = format_chroma_filter(request.filter)
+        
+        # Get response from AI
+        if system_template:
+            response = doc_ai.chat_with_context(
+                query=request.query,
+                k=request.k,
+                filter=formatted_filter,
+                system_template=system_template
+            )
+        else:
+            response = doc_ai.chat_with_context(
+                query=request.query,
+                k=request.k,
+                filter=formatted_filter
+            )
+        
+        return {
+            "query": request.query,
+            "collection": request.collection_name,
+            "response": response
+        }
+    except Exception as e:
+        logger.error(f"Error in chat: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
+
+# Direct chat without documents
+@app.post("/chat/direct")
+async def direct_chat(query: str, system_prompt: Optional[str] = None):
+    """Chat directly with the AI without document context"""
+    try:
+        # Get DocumentAI instance
+        doc_ai = get_doc_ai()
+        
+        # Use default or custom system prompt
+        system_prompt = system_prompt or "You are a helpful assistant."
+        
+        # Get response from AI
+        response = doc_ai.chat(
+            user_message=query,
+            system_prompt=system_prompt
+        )
+        
+        return {
+            "query": query,
+            "response": response
+        }
+    except Exception as e:
+        logger.error(f"Error in direct chat: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error in direct chat: {str(e)}")
 
 # Handle graceful shutdown
 def handle_exit(signum, frame):

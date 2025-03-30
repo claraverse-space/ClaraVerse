@@ -25,16 +25,11 @@ async function initializeApp() {
     splash = new SplashScreen();
     splash.setStatus('Starting Clara...', 'info');
     
-    // Ensure Python is set up
-    splash.setStatus('Checking Python environment...', 'info');
-    await pythonSetup.ensureSystemPython();
-    
-    if (!pythonSetup.isInitialized()) {
-      splash.setStatus('Setting up Python environment...', 'info');
-      await pythonSetup.setup((status) => {
-        splash.setStatus(status, 'info');
-      });
-    }
+    // Force using bundled Python: always set up Python environment
+    splash.setStatus('Setting up Python environment...', 'info');
+    await pythonSetup.setup((status) => {
+      splash.setStatus(status, 'info');
+    });
     
     // Initialize Python backend service
     pythonBackend = new PythonBackendService(pythonSetup);

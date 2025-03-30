@@ -13,10 +13,17 @@ class PythonSetup {
     this.app = electron.app;
     this.isDevMode = process.env.NODE_ENV === 'development';
     
-    // Use user's home directory for persistent storage
-    this.appDataPath = path.join(os.homedir(), '.clara');
-    this.envPath = path.join(this.appDataPath, 'python-env');
-    this.initPath = path.join(this.appDataPath, '.initialized');
+    if (this.isDevMode) {
+      // In development, use user's home directory for persistent storage
+      this.appDataPath = path.join(os.homedir(), '.clara');
+      this.envPath = path.join(this.appDataPath, 'python-env');
+      this.initPath = path.join(this.appDataPath, '.initialized');
+    } else {
+      // In production, use bundled Python runtime from resources
+      this.envPath = path.join(process.resourcesPath, 'python-env');
+      // In production mode, .initialized file is not used as the bundled runtime is prepackaged
+      this.initPath = null;
+    }
     
     // Platform-specific paths
     if (process.platform === 'win32') {
@@ -29,6 +36,9 @@ class PythonSetup {
     if (!fs.existsSync(this.appDataPath)) {
       fs.mkdirSync(this.appDataPath, { recursive: true });
     }
+
+    // Initialize a flag to force bundled Python usage
+    this.useBundled = false;
 
     // Logger setup
     this.logPath = path.join(this.appDataPath, 'python-setup.log');
@@ -61,31 +71,15 @@ class PythonSetup {
     try {
       progressCallback?.('Setting up Python environment...');
       
-      // Check if Python environment already exists
-      if (fs.existsSync(this.pythonExe)) {
-        this.log('Python executable already exists');
-        return this.pythonExe;
+      // Force a re-download of the bundled Python environment every boot
+      if (fs.existsSync(this.envPath)) {
+        this.log('Removing existing Python environment at', { envPath: this.envPath });
+        fs.rmdirSync(this.envPath, { recursive: true });
       }
-
-      // If we have a working system Python, we can skip downloading
-      const systemPython = await this.ensureSystemPython().catch(() => null);
-      if (systemPython) {
-        this.log('Using system Python instead of downloading', { path: systemPython });
-        progressCallback?.('Using system Python');
-        
-        // Still need to install dependencies
-        progressCallback?.('Installing dependencies...');
-        await this.installDependencies(progressCallback);
-        
-        this.markAsInitialized();
-        return systemPython;
-      }
-
-      // No system Python, download and extract Python for the platform
+      
       progressCallback?.('Downloading Python...');
       await this.downloadPython(progressCallback);
       
-      // Install dependencies
       progressCallback?.('Installing dependencies...');
       await this.installDependencies(progressCallback);
       
@@ -238,7 +232,14 @@ class PythonSetup {
       ? path.join(__dirname, '..', 'py_backend', 'requirements.txt')
       : path.join(process.resourcesPath, 'py_backend', 'requirements.txt');
     
-    // Install pip packages
+    // Upgrade pip first to ensure latest version is used
+    progressCallback?.('Upgrading pip...');
+    await this.runCommand(this.pythonExe, ['-m', 'pip', 'install', '--upgrade', 'pip'], {
+      progress: progressCallback
+    });
+    
+    // Install pip packages from requirements.txt
+    progressCallback?.('Installing Python dependencies...');
     await this.runCommand(this.pythonExe, ['-m', 'pip', 'install', '-r', requirementsPath], {
       progress: progressCallback
     });
@@ -337,26 +338,30 @@ class PythonSetup {
   async ensureSystemPython() {
     this.log('Checking for Python availability');
     
-    // First, check if our bundled Python exists - prefer that over system Python
+    // In production mode, force using bundled Python only.
+    if (!this.isDevMode) {
+      this.log('Production mode: using bundled Python only');
+      return null;
+    }
+    
+    // For development mode, fallback to system Python if bundled Python is not present.
     if (fs.existsSync(this.pythonExe)) {
       this.log('Using bundled Python environment', { path: this.pythonExe });
       this.pythonCommand = this.pythonExe;
       return this.pythonCommand;
     }
     
-    // No bundled Python, try system Python as fallback
     try {
       // Check common Python locations
-      const pythonPaths = process.platform === 'win32' 
-        ? ['python', 'python3', 'py -3'] 
+      const pythonPaths = process.platform === 'win32'
+        ? ['python', 'python3', 'py -3']
         : ['/usr/bin/python3', '/usr/local/bin/python3', 'python3', 'python'];
       
       for (const pythonPath of pythonPaths) {
         try {
-          // Simple version check
-          const result = await this.runCommand(pythonPath, ['--version'], { 
-            shell: true, 
-            timeout: 2000 
+          const result = await this.runCommand(pythonPath, ['--version'], {
+            shell: true,
+            timeout: 2000
           }).catch(() => null);
           
           if (result && result.includes('Python 3')) {
@@ -365,38 +370,24 @@ class PythonSetup {
             return this.pythonCommand;
           }
         } catch (e) {
-          // Ignore individual command errors, try next path
+          // Ignore errors and try next
         }
       }
       
-      // No error thrown - we'll just set up our bundled Python
       this.log('No system Python found, will use bundled Python');
-      // Prepare to use bundled Python instead
       return null;
     } catch (error) {
       this.log('Error checking for system Python', { error: error.message });
-      // Don't throw here - we'll set up bundled Python instead
       return null;
     }
   }
 
   async getPythonPath() {
-    // If bundled Python exists, always use that
-    if (fs.existsSync(this.pythonExe)) {
-      return this.pythonExe;
+    // Always use the bundled Python. If it doesn't exist, perform setup.
+    if (!fs.existsSync(this.pythonExe)) {
+      await this.setup();
     }
-    
-    // Try to find system Python - but don't require it
-    await this.ensureSystemPython();
-    
-    // If system Python was found, return it
-    if (this.pythonCommand) {
-      return this.pythonCommand;
-    }
-    
-    // Otherwise indicate we need setup
-    this.log('No Python found, setup required first');
-    throw new Error('Python environment needs to be set up. Please call setup() first.');
+    return this.pythonExe;
   }
 }
 

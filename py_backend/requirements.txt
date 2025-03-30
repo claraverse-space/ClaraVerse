@@ -3,3 +3,4 @@ uvicorn>=0.27.1
 pydantic>=2.6.1
 python-multipart>=0.0.9
 aiosqlite>=0.19.0
+langchain_ollama>=0.1.0

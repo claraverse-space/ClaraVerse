@@ -120,6 +120,10 @@
           "!**/__pycache__/**",
           "!**/*.pyc"
         ]
+      },
+      {
+        "from": "python-env",
+        "to": "python-env"
       }
     ],
     "directories": {
