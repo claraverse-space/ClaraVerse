@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import sys
 import socket
@@ -152,6 +151,16 @@ def init_db():
                     description TEXT,
                     document_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create document_chunks table to track individual chunks from a document
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS document_chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id INTEGER,
+                    chunk_id TEXT,
+                    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
                 )
             """)
             
@@ -365,11 +374,19 @@ async def upload_document(
                     "INSERT INTO documents (filename, file_type, collection_name, metadata) VALUES (?, ?, ?, ?)",
                     (file.filename, file_type, collection_name, metadata)
                 )
+                document_id = cursor.lastrowid
+                
+                # Store the relationship between document and its chunks
+                for chunk_id in doc_ids:
+                    cursor.execute(
+                        "INSERT INTO document_chunks (document_id, chunk_id) VALUES (?, ?)",
+                        (document_id, chunk_id)
+                    )
                 
                 # Update document count in collection
                 cursor.execute(
                     "UPDATE collections SET document_count = document_count + ? WHERE name = ?",
-                    (len(documents), collection_name)
+                    (1, collection_name)  # Only count the original document, not chunks
                 )
                 conn.commit()
             
@@ -387,6 +404,98 @@ async def upload_document(
             logger.error(f"Error processing document: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+@app.get("/documents")
+async def list_documents(collection_name: Optional[str] = None):
+    """List all documents, optionally filtered by collection"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT d.id, d.filename, d.file_type, d.collection_name, d.metadata, 
+                       d.created_at, COUNT(dc.id) as chunk_count 
+                FROM documents d
+                LEFT JOIN document_chunks dc ON d.id = dc.document_id
+            """
+            
+            params = []
+            if collection_name:
+                query += " WHERE d.collection_name = ?"
+                params.append(collection_name)
+                
+            query += " GROUP BY d.id"
+            
+            cursor.execute(query, params)
+            documents = [dict(row) for row in cursor.fetchall()]
+            
+            return {"documents": documents}
+    except Exception as e:
+        logger.error(f"Error listing documents: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+
+@app.delete("/documents/{document_id}")
+async def delete_document(document_id: int):
+    """Delete a document and all its chunks from the database and vector store"""
+    try:
+        # Get document details and chunk IDs
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT collection_name FROM documents WHERE id = ?", 
+                (document_id,)
+            )
+            document = cursor.fetchone()
+            
+            if not document:
+                raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+                
+            collection_name = document['collection_name']
+            
+            # Get all chunks related to this document
+            cursor.execute(
+                "SELECT chunk_id FROM document_chunks WHERE document_id = ?", 
+                (document_id,)
+            )
+            chunks = [row['chunk_id'] for row in cursor.fetchall()]
+            
+            # Get DocumentAI instance for this collection
+            doc_ai = get_doc_ai(collection_name)
+            
+            # Delete chunks from vector store
+            if chunks:
+                doc_ai.delete_documents(chunks)
+            
+            # Delete document chunks first (in case CASCADE doesn't work)
+            cursor.execute(
+                "DELETE FROM document_chunks WHERE document_id = ?", 
+                (document_id,)
+            )
+            
+            # Delete the document itself
+            cursor.execute(
+                "DELETE FROM documents WHERE id = ?", 
+                (document_id,)
+            )
+            
+            # Update document count in collection
+            cursor.execute(
+                "UPDATE collections SET document_count = document_count - 1 WHERE name = ? AND document_count > 0",
+                (collection_name,)
+            )
+            conn.commit()
+            
+        return {
+            "status": "success", 
+            "message": f"Document {document_id} and its {len(chunks)} chunks deleted"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 # Improved helper function to validate and format filters
 def format_chroma_filter(filter_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

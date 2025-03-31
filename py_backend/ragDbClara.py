@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional, Union, Tuple
 import requests
 import time
 import logging
+import traceback
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -176,6 +177,27 @@ class DocumentAI:
         document_ids = custom_ids or [str(uuid4()) for _ in documents]
         self.vector_store.add_documents(documents=documents, ids=document_ids)
         return document_ids
+    
+    def delete_documents(self, document_ids: List[str]) -> None:
+        """
+        Delete documents from the vector store by their IDs.
+        
+        Args:
+            document_ids: List of document IDs to delete
+        """
+        try:
+            if not document_ids:
+                logger.warning("No document IDs provided for deletion")
+                return
+                
+            # Delete documents from the vector store
+            logger.info(f"Deleting {len(document_ids)} document chunks from vector store")
+            self.vector_store.delete(ids=document_ids)
+            logger.info(f"Successfully deleted {len(document_ids)} document chunks")
+        except Exception as e:
+            logger.error(f"Error deleting documents from vector store: {e}")
+            logger.error(traceback.format_exc())
+            raise RuntimeError(f"Failed to delete documents: {e}")
     
     def similarity_search(
         self,

@@ -39,6 +39,10 @@ class PythonSetup {
 
     // Initialize a flag to force bundled Python usage
     this.useBundled = false;
+    
+    // Flag to control whether to force reinstall Python environment
+    // Set to false by default - will reuse existing environment if available
+    this.forceSetup = false;
 
     // Logger setup
     this.logPath = path.join(this.appDataPath, 'python-setup.log');
@@ -67,16 +71,36 @@ class PythonSetup {
     this.log('Marked as initialized');
   }
 
+  setForceSetup(force) {
+    this.forceSetup = !!force;
+    this.log('Force setup flag set', { forceSetup: this.forceSetup });
+    return this;
+  }
+
   async setup(progressCallback) {
     try {
       progressCallback?.('Setting up Python environment...');
       
-      // Force a re-download of the bundled Python environment every boot
-      if (fs.existsSync(this.envPath)) {
-        this.log('Removing existing Python environment at', { envPath: this.envPath });
+      // Only remove existing Python environment if forceSetup is true
+      if (this.forceSetup && fs.existsSync(this.envPath)) {
+        this.log('Removing existing Python environment at', { envPath: this.envPath, forceSetup: true });
         fs.rmdirSync(this.envPath, { recursive: true });
       }
       
+      // If Python environment already exists and forceSetup is false, skip download
+      if (!this.forceSetup && fs.existsSync(this.pythonExe)) {
+        this.log('Using existing Python environment', { path: this.pythonExe });
+        progressCallback?.('Using existing Python environment...');
+        
+        // Still install dependencies in case requirements have changed
+        progressCallback?.('Verifying dependencies...');
+        await this.installDependencies(progressCallback);
+        
+        this.markAsInitialized();
+        return this.pythonExe;
+      }
+      
+      // Download Python if it doesn't exist or forceSetup is true
       progressCallback?.('Downloading Python...');
       await this.downloadPython(progressCallback);
       
@@ -104,7 +128,7 @@ class PythonSetup {
 
   async downloadMacPython(progressCallback) {
     // Use miniconda as a reliable Python distribution for macOS
-    const minicondaUrl = 'https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh';
+    const minicondaUrl = 'https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-1-MacOSX-x86_64.sh';
     const installerPath = path.join(this.appDataPath, 'miniconda_installer.sh');
     
     await this.downloadFile(minicondaUrl, installerPath, progressCallback);
@@ -238,9 +262,19 @@ class PythonSetup {
       progress: progressCallback
     });
     
-    // Install pip packages from requirements.txt
+    // Install pip packages from requirements.txt with optimizations
     progressCallback?.('Installing Python dependencies...');
-    await this.runCommand(this.pythonExe, ['-m', 'pip', 'install', '-r', requirementsPath], {
+    
+    // Use optimization flags to speed up installation:
+    // --prefer-binary: Use pre-compiled wheels when available
+    // --no-cache-dir: Avoid caching packages (saves disk operations)
+    // Note: Removed -j flag as it's not supported in all pip versions
+    await this.runCommand(this.pythonExe, [
+      '-m', 'pip', 'install', 
+      '-r', requirementsPath,
+      '--prefer-binary',
+      '--no-cache-dir'
+    ], {
       progress: progressCallback
     });
   }

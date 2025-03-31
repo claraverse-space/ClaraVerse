@@ -1,6 +1,24 @@
-fastapi>=0.109.2
-uvicorn>=0.27.1
-pydantic>=2.6.1
-python-multipart>=0.0.9
-aiosqlite>=0.19.0
-langchain_ollama>=0.1.0
+# Web framework
+fastapi
+uvicorn
+python-multipart  # For file uploads
+pydantic # Using 1.x for better compatibility
+
+# LangChain and related
+langchain
+langchain-community
+langchain-core
+chromadb
+langchain-chroma
+langchain-ollama
+
+# Document processing
+pypdf
+python-docx
+pandas
+
+# Utilities
+requests
+
+# IMPORTANT: Keep numpy locked at a compatible version
+numpy
