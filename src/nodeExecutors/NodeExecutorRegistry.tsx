@@ -11,11 +11,13 @@ export interface NodeExecutionContext {
     baseUrl: string;
     apiKey?: string;
   };
+  updateNodeOutput?: (nodeId: string, output: any) => void;
 }
 
 // Define the interface for node executors
 export interface NodeExecutor {
   execute: (context: NodeExecutionContext) => Promise<any>;
+  uploadFile?: (file: File, collectionName: string) => Promise<string>;
 }
 
 // Registry to store node executors
