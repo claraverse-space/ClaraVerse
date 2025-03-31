@@ -39,7 +39,8 @@
     "docker:push": "npm run docker:check-env && docker push $DOCKER_USERNAME/clara-ollama:latest",
     "docker:all": "npm run docker:check-env && npm run docker:login && npm run docker:build && npm run docker:push",
     "docker:publish": "chmod +x ./docker-publish.sh && ./docker-publish.sh",
-    "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false"
+    "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false",
+    "electron:build-linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "@langchain/core": "^0.3.42",

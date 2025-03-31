@@ -147,6 +147,11 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
+    // Initialize auto-updater when window is ready
+    if (process.env.NODE_ENV !== 'development') {
+      setupAutoUpdater(mainWindow);
+    }
+    
     // Send complete backend status to renderer
     if (pythonBackend) {
       const status = pythonBackend.getStatus();
