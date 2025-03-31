@@ -203,7 +203,8 @@ class DocumentAI:
         self,
         query: str,
         k: int = 4,
-        filter: Optional[Dict[str, Any]] = None
+        filter: Optional[Dict[str, Any]] = None,
+        min_similarity: float = 0.8
     ) -> List[Document]:
         """
         Find documents similar to the query.

@@ -19,7 +19,7 @@
     "test:ui": "npx vitest --ui",
     "test:coverage": "npx vitest run --coverage",
     "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json",
-    "electron:dev": "concurrently \"cross-env ELECTRON_START_URL=http://localhost:5173 npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "cross-env NODE_ENV=development concurrently \"npm run dev\" \"electron .\"",
     "electron:build-all": "npm run build && electron-builder --mac --win --linux",
     "electron:build": "npm run build && electron-builder",
     "electron:preview": "npm run build && electron .",

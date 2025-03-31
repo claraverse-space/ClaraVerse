@@ -117,13 +117,32 @@ function createMainWindow() {
     backgroundColor: '#f5f5f5'
   });
   
-  // Load the app
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
-  mainWindow.loadURL(startUrl);
-  
-  // Set up auto-updater
-  setupAutoUpdater(mainWindow);
-  
+  // Development mode with hot reload
+  if (process.env.NODE_ENV === 'development') {
+    const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+    
+    log.info('Loading development server:', devServerUrl);
+    mainWindow.loadURL(devServerUrl).catch(err => {
+      log.error('Failed to load dev server:', err);
+      // Fallback to local file if dev server fails
+      mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    });
+
+    // Enable hot reload by watching the renderer process
+    mainWindow.webContents.on('did-fail-load', () => {
+      log.warn('Page failed to load, retrying...');
+      setTimeout(() => {
+        mainWindow?.webContents.reload();
+      }, 1000);
+    });
+
+    // Open DevTools automatically in development
+    mainWindow.webContents.openDevTools();
+  } else {
+    // Production mode - load built files
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -147,6 +166,28 @@ function createMainWindow() {
   
   mainWindow.webContents.on('crashed', () => {
     log.error('Window crashed');
+  });
+}
+
+// Add development mode watcher
+if (process.env.NODE_ENV === 'development') {
+  const { watch } = require('fs');
+  
+  // Watch for changes in the renderer process
+  watch(path.join(__dirname, '../dist'), (event, filename) => {
+    if (mainWindow && mainWindow.webContents) {
+      log.info('Detected renderer change:', filename);
+      mainWindow.webContents.reload();
+    }
+  });
+
+  // Watch for changes in the main process
+  watch(__dirname, (event, filename) => {
+    if (filename && !filename.includes('node_modules')) {
+      log.info('Detected main process change:', filename);
+      app.relaunch();
+      app.quit();
+    }
   });
 }
 

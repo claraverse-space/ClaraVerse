@@ -5,14 +5,23 @@ import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
 import ModelWarning from './assistant_components/ModelWarning';
 import ModelPullModal from './assistant_components/ModelPullModal';
+import { KnowledgeBaseModal } from './assistant_components';
 import { db } from '../db';
 import { OllamaClient } from '../utils';
+import { generateSystemPromptWithContext } from '../utils/ragUtils';
 import type { Message, Chat } from '../db';
 
 interface UploadedImage {
   id: string;
   base64: string;
   preview: string;
+}
+
+interface TemporaryDocument {
+  id: string;
+  name: string;
+  collection: string;
+  timestamp: number; // Add timestamp for tracking
 }
 
 interface AssistantProps {
@@ -48,11 +57,52 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showPullModal, setShowPullModal] = useState(false);
+  const [showKnowledgeBase, setShowKnowledgeBase] = useState(false);
+  const [ragEnabled, setRagEnabled] = useState(false);
+  const [pythonPort, setPythonPort] = useState<number | null>(null);
+  const [temporaryDocs, setTemporaryDocs] = useState<TemporaryDocument[]>([]);
+
+  useEffect(() => {
+    const getPythonPort = async () => {
+      if (window.electron) {
+        try {
+          const port = await window.electron.getPythonPort();
+          setPythonPort(port);
+        } catch (error) {
+          console.error('Could not get Python port:', error);
+        }
+      }
+    };
+    getPythonPort();
+  }, []);
+
+  const cleanupOldCollections = async () => {
+    if (!pythonPort) return;
+
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000; // 5 minutes threshold
+
+    // Filter out old documents
+    const oldDocs = temporaryDocs.filter(doc => doc.timestamp < fiveMinutesAgo);
+    const currentDocs = temporaryDocs.filter(doc => doc.timestamp >= fiveMinutesAgo);
+
+    // Delete old collections
+    for (const doc of oldDocs) {
+      try {
+        await fetch(`http://0.0.0.0:${pythonPort}/collections/${doc.collection}`, {
+          method: 'DELETE'
+        });
+      } catch (error) {
+        console.error('Error deleting old collection:', error);
+      }
+    }
+
+    setTemporaryDocs(currentDocs);
+  };
 
   const checkModelImageSupport = (modelName: string): boolean => {
     const configs = localStorage.getItem('model_image_support');
     if (!configs) return false;
-    
+
     const modelConfigs = JSON.parse(configs);
     const config = modelConfigs.find((c: any) => c.name === modelName);
     return config?.supportsImages || false;
@@ -61,7 +111,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const findImageSupportedModel = (): string | null => {
     const configs = localStorage.getItem('model_image_support');
     if (!configs) return null;
-    
+
     const modelConfigs = JSON.parse(configs);
     const imageModel = modelConfigs.find((c: any) => c.supportsImages);
     return imageModel ? imageModel.name : null;
@@ -73,7 +123,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
-    
+
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     setShowScrollButton(!isNearBottom);
@@ -115,7 +165,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
 
     setImages(prev => [...prev, ...newImages]);
-    
+
     // Just show the warning if images are being used
     if (newImages.length > 0) {
       setShowImageWarning(true);
@@ -125,6 +175,84 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const removeImage = (id: string) => {
     setImages(prev => prev.filter(img => img.id !== id));
   };
+
+  const handleTemporaryDocUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!pythonPort || !activeChat) return;
+
+    const files = event.target.files;
+    if (!files) return;
+
+    // Clean up old collections first
+    await cleanupOldCollections();
+
+    const timestamp = Date.now();
+    const tempCollectionName = `temp_${activeChat}_${timestamp}`;
+    const uploadedDocs: TemporaryDocument[] = [];
+
+    for (const file of files) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('collection_name', tempCollectionName);
+        formData.append('metadata', JSON.stringify({
+          source: 'temporary_upload',
+          chat_id: activeChat,
+          timestamp: timestamp
+        }));
+
+        const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
+
+        uploadedDocs.push({
+          id: crypto.randomUUID(),
+          name: file.name,
+          collection: tempCollectionName,
+          timestamp: timestamp
+        });
+      } catch (error) {
+        console.error('Upload error:', error);
+      }
+    }
+
+    if (uploadedDocs.length > 0) {
+      setTemporaryDocs(prev => [...prev, ...uploadedDocs]);
+      setRagEnabled(true); // Only enable RAG if upload was successful
+    }
+  };
+
+  const removeTemporaryDoc = async (docId: string) => {
+    const doc = temporaryDocs.find(d => d.id === docId);
+    if (!doc || !pythonPort) return;
+
+    try {
+      // Delete the temporary collection
+      await fetch(`http://0.0.0.0:${pythonPort}/collections/${doc.collection}`, {
+        method: 'DELETE'
+      });
+
+      setTemporaryDocs(prev => prev.filter(d => d.id !== docId));
+    } catch (error) {
+      console.error('Error removing temporary document:', error);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      temporaryDocs.forEach(doc => {
+        removeTemporaryDoc(doc.id).catch(console.error);
+      });
+    };
+  }, [activeChat]);
+
+  useEffect(() => {
+    if (activeChat) {
+      cleanupOldCollections();
+    }
+  }, [activeChat]);
 
   useEffect(() => {
     // Check for pending chat query from search bar
@@ -150,7 +278,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         }
       }
     };
-    
+
     if (activeChat) {
       loadChatMessages();
     }
@@ -194,25 +322,25 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     try {
       // Get model usage statistics from the database
       const modelUsage = await db.getModelUsage();
-      
+
       if (!modelUsage || Object.keys(modelUsage).length === 0) {
         return null;
       }
-      
+
       // Filter to only include currently available models
       const availableModelNames = availableModels.map(model => model.name);
       const validUsageEntries = Object.entries(modelUsage)
         .filter(([modelName]) => availableModelNames.includes(modelName));
-      
+
       if (validUsageEntries.length === 0) {
         return null;
       }
-      
+
       // Find the model with the highest usage
       const mostUsed = validUsageEntries.reduce((max, current) => {
         return (current[1] > max[1]) ? current : max;
       });
-      
+
       return mostUsed[0];
     } catch (error) {
       console.error('Error getting most used model:', error);
@@ -240,14 +368,14 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           // OpenAI-like API
           if (config.openai_base_url) {
             // Custom OpenAI-compatible API
-            baseUrl = config.openai_base_url.endsWith('/v1') 
-              ? config.openai_base_url 
+            baseUrl = config.openai_base_url.endsWith('/v1')
+              ? config.openai_base_url
               : `${config.openai_base_url.replace(/\/$/, '')}/v1`;
           } else {
             // Official OpenAI API
             baseUrl = 'https://api.openai.com/v1';
           }
-          
+
           clientConfig = {
             type: 'openai',
             apiKey: config.openai_api_key || ''
@@ -256,21 +384,21 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
         const newClient = new OllamaClient(baseUrl, clientConfig);
         setClient(newClient);
-        
+
         // Test connection
         const modelList = await newClient.listModels();
         setModels(modelList);
-        
+
         // Rest of the initialization code...
         // ...existing model setup code...
-        
+
         setConnectionStatus('connected');
       } catch (err) {
         console.error('Failed to connect to API:', err);
         setConnectionStatus('disconnected');
       }
     };
-    
+
     initializeOllama();
   }, []);
 
@@ -310,10 +438,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const formatMessagesForModel = async (messages: Message[]): Promise<{ role: string; content: string }[]> => {
     // Get system prompt
     const systemPrompt = await db.getSystemPrompt();
-    
+
     // Create messages array with system prompt first if it exists
     const formattedMessages = [];
-    
+
     if (systemPrompt) {
       formattedMessages.push({
         role: 'system',
@@ -330,7 +458,55 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     );
 
     return formattedMessages;
-  }
+  };
+
+  const searchDocuments = async (query: string) => {
+    if (!pythonPort) return null;
+
+    try {
+      // Get results from temporary collections first
+      const tempResults = await Promise.all(
+        temporaryDocs.map(doc =>
+          fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query,
+              collection_name: doc.collection,
+              k: 2,
+            }),
+          }).then(res => res.json())
+        )
+      );
+
+      // Only search default collection if no temp docs or RAG is explicitly enabled
+      let defaultResults = { results: [] };
+      if (ragEnabled || temporaryDocs.length === 0) {
+        defaultResults = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            collection_name: 'default_collection',
+            k: 2,
+          }),
+        }).then(res => res.json());
+      }
+
+      // Combine and sort results
+      const allResults = [
+        ...tempResults.flatMap(r => r.results || []),
+        ...(defaultResults?.results || [])
+      ].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+      return {
+        results: allResults.slice(0, 4) // Keep top 4 results
+      };
+    } catch (error) {
+      console.error('Error searching documents:', error);
+      return null;
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || !client || !selectedModel || isProcessing) return;
@@ -389,9 +565,29 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Get context for the model
+      // If RAG is enabled, search for relevant documents
+      let systemPrompt = await db.getSystemPrompt();
+
+      if (ragEnabled || temporaryDocs.length > 0) {
+        const searchResults = await searchDocuments(input);
+        if (searchResults?.results?.length > 0) {
+          systemPrompt = generateSystemPromptWithContext(
+            systemPrompt,
+            searchResults.results,
+            temporaryDocs.length > 0 // Pass flag for temporary docs
+          );
+        }
+      }
+
+      // Get context messages and add enhanced system prompt
       const contextMessages = getContextMessages([...messages, userMessage]);
-      const formattedMessages = await formatMessagesForModel(contextMessages);
+      const formattedMessages = [
+        { role: 'system', content: systemPrompt },
+        ...contextMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      ];
 
       if (images.length > 0) {
         // Handle image generation
@@ -506,7 +702,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     } catch (error: any) {
       console.error('Error generating response:', error);
-      
+
       let errorContent;
       try {
         // Try to parse error as JSON
@@ -516,7 +712,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         // If not JSON, use plain text
         errorContent = `Error: ${error.message}`;
       }
-      
+
       // Update the placeholder message with error
       setMessages(prev => prev.map(msg =>
         msg.id === assistantMessage.id
@@ -538,13 +734,13 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const handleStopStreaming = () => {
     if (!client || !isProcessing) return;
-    
+
     // Abort the current stream
     client.abortStream();
-    
+
     // Update the UI to show that streaming has stopped
     setIsProcessing(false);
-    
+
     // Add a note to the last message to indicate it was interrupted
     setMessages(prev => {
       const lastMessage = prev[prev.length - 1];
@@ -577,17 +773,17 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const handlePullModel = async function* (modelName: string): AsyncGenerator<any, void, unknown> {
     if (!client) throw new Error('Client not initialized');
-    
+
     try {
       // Forward all progress events from the client's pullModel
       for await (const progress of client.pullModel(modelName)) {
         yield progress;
       }
-      
+
       // Refresh model list after successful pull
       const modelList = await client.listModels();
       setModels(modelList);
-      
+
       // Set as selected model
       setSelectedModel(modelName);
       localStorage.setItem('selected_model', modelName);
@@ -615,7 +811,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       };
 
       // Update UI first
-      setMessages(prev => prev.map(msg => 
+      setMessages(prev => prev.map(msg =>
         msg.id === messageId ? assistantMessage : msg
       ));
 
@@ -668,7 +864,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     } catch (error: any) {
       console.error('Error retrying message:', error);
       const errorContent = error.message || 'An unexpected error occurred';
-      
+
       setMessages(prev => prev.map(msg =>
         msg.id === messageId
           ? { ...msg, content: `Error: ${errorContent}` }
@@ -707,7 +903,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     try {
       setIsProcessing(true);
-      
+
       // Get context messages including the edited message
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
       const formattedMessages = await formatMessagesForModel(contextMessages);
@@ -768,7 +964,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     } catch (error: any) {
       console.error('Error generating edited response:', error);
       const errorContent = error.message || 'An unexpected error occurred';
-      
+
       setMessages(prev => prev.map(msg =>
         msg.role === 'assistant'
           ? { ...msg, content: `Error: ${errorContent}` }
@@ -793,7 +989,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     try {
       setIsProcessing(true);
-      
+
       // Create updated user message for UI
       const updatedMessage = {
         ...messages[messageIndex],
@@ -881,7 +1077,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     } catch (error: any) {
       console.error('Error processing edited message:', error);
       const errorContent = error.message || 'An unexpected error occurred';
-      
+
       // Add error message
       const errorMessage: Message = {
         id: crypto.randomUUID(),
@@ -891,9 +1087,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         timestamp: new Date().toISOString(),
         tokens: 0
       };
-      
+
       setMessages(prev => [...prev.slice(0, messageIndex + 1), errorMessage]);
-      
+
       // Save error to database
       await db.addMessage(
         activeChat,
@@ -915,7 +1111,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         onOpenSettings={() => setShowSettings(true)}
         onNavigateHome={handleNavigateHome}
       />
-      
+
       <div className="flex-1 flex flex-col">
         <AssistantHeader
           connectionStatus={connectionStatus}
@@ -927,6 +1123,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onPageChange={onPageChange}
           onNavigateHome={handleNavigateHome}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
         />
 
         <ChatWindow
@@ -940,7 +1137,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           showTokens={!isStreaming}
           onRetryMessage={handleRetryMessage}
           onEditMessage={handleEditMessage}
-          onSendEdit={handleSendEdit}  // Add this line
+          onSendEdit={handleSendEdit}
         />
 
         {showImageWarning && images.length > 0 && (
@@ -963,6 +1160,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           images={images}
           onRemoveImage={removeImage}
           handleStopStreaming={handleStopStreaming}
+          ragEnabled={ragEnabled}
+          onToggleRag={setRagEnabled}
+          onTemporaryDocUpload={handleTemporaryDocUpload}
+          temporaryDocs={temporaryDocs}
+          onRemoveTemporaryDoc={removeTemporaryDoc}
         />
 
         <AssistantSettings
@@ -993,6 +1195,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           isOpen={showPullModal}
           onClose={() => setShowPullModal(false)}
           onPullModel={handlePullModel}
+        />
+
+        <KnowledgeBaseModal
+          isOpen={showKnowledgeBase}
+          onClose={() => setShowKnowledgeBase(false)}
         />
       </div>
     </div>
