@@ -22,3 +22,5 @@ requests
 
 # IMPORTANT: Keep numpy locked at a compatible version
 numpy
+
+faster-whisper

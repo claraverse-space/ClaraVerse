@@ -24,6 +24,9 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import CSVLoader
 from langchain_community.document_loaders import TextLoader  # Fixed import
 
+# Import Speech2Text
+from Speech2Text import Speech2Text
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -205,6 +208,23 @@ def get_doc_ai(collection_name: str = "default_collection"):
     )
     
     return doc_ai_cache[collection_name]
+
+# Speech2Text instance cache
+speech2text_instance = None
+
+def get_speech2text():
+    """Create or retrieve the Speech2Text instance from cache"""
+    global speech2text_instance
+    
+    if speech2text_instance is None:
+        # Use tiny model with CPU for maximum compatibility
+        speech2text_instance = Speech2Text(
+            model_size="tiny",
+            device="cpu",
+            compute_type="int8"
+        )
+    
+    return speech2text_instance
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -623,6 +643,60 @@ async def direct_chat(query: str, system_prompt: Optional[str] = None):
         logger.error(f"Error in direct chat: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error in direct chat: {str(e)}")
+
+# Audio transcription endpoint
+@app.post("/transcribe")
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    beam_size: int = Form(5),
+    initial_prompt: Optional[str] = Form(None)
+):
+    """Transcribe an audio file using faster-whisper (CPU mode)"""
+    # Validate file extension
+    supported_formats = ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'opus']
+    file_extension = file.filename.lower().split('.')[-1]
+    
+    if file_extension not in supported_formats:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported audio format: {file_extension}. Supported formats: {', '.join(supported_formats)}"
+        )
+    
+    # Read file content
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty audio file")
+    except Exception as e:
+        logger.error(f"Error reading audio file: {e}")
+        raise HTTPException(status_code=500, detail=f"Error reading audio file: {str(e)}")
+    
+    # Get Speech2Text instance
+    try:
+        s2t = get_speech2text()
+    except Exception as e:
+        logger.error(f"Error initializing Speech2Text: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to initialize Speech2Text: {str(e)}")
+    
+    # Transcribe the audio
+    try:
+        result = s2t.transcribe_bytes(
+            content,
+            language=language,
+            beam_size=beam_size,
+            initial_prompt=initial_prompt
+        )
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "transcription": result
+        }
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error transcribing audio: {str(e)}")
 
 # Handle graceful shutdown
 def handle_exit(signum, frame):
