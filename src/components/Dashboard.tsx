@@ -494,48 +494,48 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-sakura-200 dark:border-sakura-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-sakura-100 dark:bg-sakura-900/30">
-                    <Sparkles className="w-5 h-5 text-sakura-500" />
+                    <FileText className="w-5 h-5 text-sakura-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Prompt Enhancement</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Knowledge Base System</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  New AI-powered prompt enhancement feature that improves your image generation prompts using local Ollama models. Create stunning images with enhanced details, artistic style, and atmosphere.
+                  Store documents and personalize Clara to speak based on your data and facts. Upload your content and get responses that adapt to your specific information, enabling more accurate and contextually relevant interactions.
                 </p>
               </div>
               
               <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-indigo-200 dark:border-indigo-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-                    <MessageSquare className="w-5 h-5 text-indigo-500" />
+                    <Server className="w-5 h-5 text-indigo-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Customizable System Prompts</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Enhanced Python Backend</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Customize how Clara responds by editing the system prompt. Create specialized assistants for coding, creative writing, or any other task with simple configuration.
+                  Significantly improved Python backend with better stability, faster response times, and expanded capabilities. The new architecture supports more complex operations and lays the groundwork for upcoming advanced features.
                 </p>
               </div>
               
               <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-emerald-200 dark:border-emerald-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                    <Settings className="w-5 h-5 text-emerald-500" />
+                    <Sparkles className="w-5 h-5 text-emerald-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Model-Specific Presets</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">Coming Soon: MCP & Agentic Functions</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Clara now remembers optimal settings for each model. Get the best results automatically with saved configurations for different LLMs and image generation models.
+                  Get ready for Mission Control Protocol (MCP) and a new Node system with Agentic functions. These upcoming features will enable complex task automation, multi-step reasoning, and sophisticated workflows all within Clara's interface.
                 </p>
               </div>
               
               <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-amber-200 dark:border-amber-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                    <CheckCircle2 className="w-5 h-5 text-amber-500" />
+                    <Settings className="w-5 h-5 text-amber-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Bug Fixes & Improvements</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white">UI and QOL Improvements</h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Multiple bug fixes for chat functionality reported on GitHub. Better handling of message editing, retry operations, and improved reliability for long conversations.
+                  Numerous UI refinements and quality-of-life updates make Clara more reliable and user-friendly. Enjoy smoother transitions, improved responsiveness, and a more intuitive design that enhances your overall experience.
                 </p>
               </div>
             </div>

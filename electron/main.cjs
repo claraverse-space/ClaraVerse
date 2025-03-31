@@ -25,7 +25,7 @@ async function initializeApp() {
     splash = new SplashScreen();
     splash.setStatus('Starting Clara...', 'info');
     
-    // Force using bundled Python: always set up Python environment
+    // Always setup Python environment on first run
     splash.setStatus('Setting up Python environment...', 'info');
     await pythonSetup.setup((status) => {
       splash.setStatus(status, 'info');

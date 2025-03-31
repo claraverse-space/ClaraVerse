@@ -61,7 +61,7 @@ class PythonBackendService extends EventEmitter {
       this.port = options.port || await this.findAvailablePort(8090, 8199);
       this.logger.info(`Selected port ${this.port} for Python backend`);
       
-      // Get the Python executable
+      // Get the Python executable - this could fail if pythonSetup hasn't completed yet
       const pythonExe = await this.pythonSetup.getPythonPath();
       
       // Get the path to the Python backend
@@ -81,7 +81,12 @@ class PythonBackendService extends EventEmitter {
         throw new Error(`Python backend script not found: ${mainPyPath}`);
       }
       
-      this.logger.info(`Starting Python backend from: ${mainPyPath}`);
+      // Add more robust validation for Python environment
+      if (!pythonExe || typeof pythonExe !== 'string') {
+        throw new Error('Python executable path is invalid or not available. Environment setup may not be complete.');
+      }
+      
+      this.logger.info(`Starting Python backend from: ${mainPyPath} using Python: ${pythonExe}`);
       
       // Set environment variables
       const env = {
@@ -90,6 +95,11 @@ class PythonBackendService extends EventEmitter {
         PYTHONIOENCODING: 'utf-8',
         CLARA_PORT: this.port.toString()
       };
+      
+      // Check if Python executable exists before spawning
+      if (!fs.existsSync(pythonExe)) {
+        throw new Error(`Python executable not found at: ${pythonExe}`);
+      }
       
       // Start the process
       this.process = spawn(pythonExe, [mainPyPath], {

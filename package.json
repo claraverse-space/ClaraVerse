@@ -120,10 +120,6 @@
           "!**/__pycache__/**",
           "!**/*.pyc"
         ]
-      },
-      {
-        "from": "python-env",
-        "to": "python-env"
       }
     ],
     "directories": {
@@ -148,7 +144,7 @@
         {
           "target": "default",
           "arch": [
-            "universal"
+            "arm64"
           ]
         }
       ],

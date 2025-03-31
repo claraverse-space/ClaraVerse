@@ -6,8 +6,8 @@ class SplashScreen {
     const isDev = process.env.NODE_ENV === 'development';
     
     this.window = new BrowserWindow({
-      width: 400,
-      height: 300,
+      width: 500,  // Increased from 400
+      height: 400, // Increased from 300
       frame: false,
       transparent: true,
       webPreferences: {

@@ -20,9 +20,10 @@ class PythonSetup {
       this.initPath = path.join(this.appDataPath, '.initialized');
     } else {
       // In production, use bundled Python runtime from resources
+      this.appDataPath = path.join(process.resourcesPath, 'clara-data'); 
       this.envPath = path.join(process.resourcesPath, 'python-env');
       // In production mode, .initialized file is not used as the bundled runtime is prepackaged
-      this.initPath = null;
+      this.initPath = path.join(this.appDataPath, '.initialized');
     }
     
     // Platform-specific paths
