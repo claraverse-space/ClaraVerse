@@ -1,20 +1,31 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const PythonSetup = require('./pythonSetup.cjs');
 const PythonBackendService = require('./pythonBackend.cjs');
-const { setupAutoUpdater } = require('./updateService.cjs');
+const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 
 // Configure the main process logger
 log.transports.file.level = 'info';
 log.info('Application starting...');
 
+// Load environment variables from .env file if it exists
+try {
+  const dotenvPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(dotenvPath)) {
+    require('dotenv').config({ path: dotenvPath });
+  }
+} catch (error) {
+  console.error('Error loading .env file:', error);
+}
+
 // Global variables
 let pythonBackend;
 let mainWindow;
 let splash;
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 // Initialize Python setup
 const pythonSetup = new PythonSetup();
@@ -104,53 +115,57 @@ async function initializeApp() {
 
 function createMainWindow() {
   if (mainWindow) return;
-  
+
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false, // For security reasons
+      contextIsolation: true, // Protect against prototype pollution
+      preload: path.join(__dirname, 'preload.cjs'), // Use a preload script
+      devTools: isDevelopment,
+      spellcheck: true,
+      // Security enhancements
+      sandbox: true,
+      webSecurity: true,
     },
-    show: false,
-    backgroundColor: '#f5f5f5'
+    // Production enhancements
+    show: false, // Don't show until ready-to-show
+    backgroundColor: '#ffffff',
+    autoHideMenuBar: !isDevelopment, // Hide menu bar in production
+    icon: process.resourcesPath ? path.join(process.resourcesPath, 'assets/icons/png/256x256.png') : path.join(__dirname, '../assets/icons/png/256x256.png')
   });
-  
-  // Development mode with hot reload
-  if (process.env.NODE_ENV === 'development') {
-    const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-    
-    log.info('Loading development server:', devServerUrl);
-    mainWindow.loadURL(devServerUrl).catch(err => {
-      log.error('Failed to load dev server:', err);
-      // Fallback to local file if dev server fails
-      mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    });
 
-    // Enable hot reload by watching the renderer process
-    mainWindow.webContents.on('did-fail-load', () => {
-      log.warn('Page failed to load, retrying...');
-      setTimeout(() => {
-        mainWindow?.webContents.reload();
-      }, 1000);
-    });
+  // Create application menu
+  createApplicationMenu();
 
-    // Open DevTools automatically in development
-    mainWindow.webContents.openDevTools();
-  } else {
-    // Production mode - load built files
+  // Set up auto-updater
+  if (!isDevelopment) {
+    setupAutoUpdater(mainWindow);
+  }
+
+  // Determine the URL to load
+  if (app.isPackaged) {
+    // In production, use path relative to the executable
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    log.info('Loading file:', path.join(__dirname, '../dist/index.html'));
+  } else {
+    // In development, use the development server URL
+    const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+    mainWindow.loadURL(devUrl);
+    log.info('Loading URL:', devUrl);
+  }
+  
+  log.info('Environment:', process.env.NODE_ENV);
+  
+  // Open DevTools in development mode
+  if (isDevelopment) {
+    mainWindow.webContents.openDevTools();
   }
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    
-    // Initialize auto-updater when window is ready
-    if (process.env.NODE_ENV !== 'development') {
-      setupAutoUpdater(mainWindow);
-    }
     
     // Send complete backend status to renderer
     if (pythonBackend) {
@@ -159,44 +174,142 @@ function createMainWindow() {
       mainWindow.webContents.send('backend-status', status);
     }
   });
-  
+
+  // Handle external links
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Emitted when the window is closed
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-  
-  // Log window events
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    log.error(`Window failed to load: ${errorCode} - ${errorDescription}`);
-  });
-  
-  mainWindow.webContents.on('crashed', () => {
-    log.error('Window crashed');
-  });
 }
 
-// Add development mode watcher
-if (process.env.NODE_ENV === 'development') {
-  const { watch } = require('fs');
+// Create window when Electron has finished initialization
+app.whenReady().then(() => {
+  // Set app user model id for windows
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(app.name);
+  }
   
-  // Watch for changes in the renderer process
-  watch(path.join(__dirname, '../dist'), (event, filename) => {
-    if (mainWindow && mainWindow.webContents) {
-      log.info('Detected renderer change:', filename);
-      mainWindow.webContents.reload();
-    }
-  });
+  initializeApp();
+});
 
-  // Watch for changes in the main process
-  watch(__dirname, (event, filename) => {
-    if (filename && !filename.includes('node_modules')) {
-      log.info('Detected main process change:', filename);
-      app.relaunch();
-      app.quit();
+// Define application menu
+function createApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'delete' },
+          { role: 'selectAll' },
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        ...(isDevelopment ? [{ role: 'toggleDevTools' }] : []),
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Check for Updates',
+          click: async () => {
+            try {
+              await checkForUpdates();
+            } catch (error) {
+              dialog.showErrorBox('Update Check Failed', 'Failed to check for updates. Please try again later.');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Learn More',
+          click: async () => {
+            await shell.openExternal('https://github.com/badboysm890/clara-ollama');
+          }
+        },
+        {
+          label: 'Report Issue',
+          click: async () => {
+            await shell.openExternal('https://github.com/badboysm890/clara-ollama/issues');
+          }
+        }
+      ]
     }
-  });
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
-// IPC handlers
+// Quit when all windows are closed, except on macOS
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  // On macOS, recreate the window when the dock icon is clicked and no other windows are open
+  if (mainWindow === null) {
+    createMainWindow();
+  }
+});
+
+// Handle any IPC messages from the renderer process here
+ipcMain.on('message-from-renderer', (event, arg) => {
+  log.info('Message from renderer:', arg);
+  // You can send a response back
+  event.reply('message-from-main', 'Hello from the main process!');
+});
+
+// IPC handlers for Python backend
 ipcMain.handle('get-python-port', () => {
   const port = pythonBackend ? pythonBackend.getPort() : null;
   log.info(`Renderer requested Python port: ${port}`);
@@ -270,21 +383,26 @@ ipcMain.handle('check-python-backend', async () => {
   }
 });
 
-// App lifecycle events
-app.whenReady().then(initializeApp);
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+// Handle protocol associations (deep linking)
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (mainWindow) {
+    mainWindow.webContents.send('deep-link', url);
   }
 });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createMainWindow();
-  }
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught exception:', error);
+  dialog.showMessageBox({
+    type: 'error',
+    title: 'Application Error',
+    message: 'An error occurred',
+    detail: error.toString(),
+  });
 });
 
+// Clean up before quitting
 app.on('before-quit', async (event) => {
   if (pythonBackend) {
     event.preventDefault();
@@ -295,13 +413,4 @@ app.on('before-quit', async (event) => {
     }
     app.exit(0);
   }
-});
-
-// Error handling for the main process
-process.on('uncaughtException', (error) => {
-  log.error(`Uncaught exception: ${error.message}`, error);
-});
-
-process.on('unhandledRejection', (reason) => {
-  log.error(`Unhandled promise rejection: ${reason}`);
 });
