@@ -46,3 +46,5 @@ package-mac-signed.sh
 certificate.p12
 
 ./Support
+python-env
+.clara
