@@ -8,7 +8,7 @@
   <p><strong>Privacy-First AI Assistant & Agent Builder</strong></p>
   <p>Chat with AI, create intelligent agents, and turn them into fully functional apps—powered entirely by open-source models running on your own device.</p>
 
-  [![Clara](https://img.shields.io/badge/Clara-1.0.5-FFD700.svg)](https://clara-ollama.netlify.app/)
+  [![Clara](https://img.shields.io/badge/Clara-1.2.1-FFD700.svg)](https://clara-ollama.netlify.app/)
   
   <a href="https://clara.badboysm890.in/" target="_blank">Try Clara Online</a> | <a href="https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0">Download Desktop App</a>
 
@@ -90,7 +90,7 @@ Then visit http://localhost:8069 in your browser.
 ### 2. Native Desktop Apps
 
 #### macOS (Signed)
-- [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
+- [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.2.1)
 - Universal binary (works on both Intel and Apple Silicon)
 - Fully signed and notarized for enhanced security
 
