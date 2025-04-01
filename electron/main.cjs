@@ -270,38 +270,12 @@ ipcMain.handle('check-python-backend', async () => {
   }
 });
 
-// Function to check and request microphone permissions
-function checkAndRequestMicrophonePermission() {
-  if (process.platform === 'darwin') {
-    // Check and request microphone permission on macOS
-    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
-    
-    if (micStatus !== 'granted') {
-      // Request microphone access
-      systemPreferences.askForMediaAccess('microphone')
-        .then(granted => {
-          if (!granted) {
-            dialog.showMessageBox({
-              type: 'warning',
-              title: 'Microphone Access Required',
-              message: 'Clara needs microphone access for voice input features. Please enable it in System Preferences > Security & Privacy > Privacy > Microphone.',
-              buttons: ['OK']
-            });
-          }
-        })
-        .catch(err => {
-          console.error('Error requesting microphone permission:', err);
-        });
-    }
-  }
-}
-
 // App lifecycle events
 app.whenReady().then(() => {
   initializeApp();
-  checkAndRequestMicrophonePermission();
 });
 
+// App lifecycle events
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();

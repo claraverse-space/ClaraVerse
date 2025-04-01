@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SendHorizontal, PlusCircle, Image as ImageIcon, XCircle, StopCircle, Database, Send, Paperclip, Mic, Loader2, Plus, X, Square, File, AlertCircle } from 'lucide-react';
+import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle } from 'lucide-react';
 import api from '../../services/api'; // Import the API service
 
 interface ChatInputProps {
@@ -60,6 +60,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Add state for keyboard recording
   const [isKeyboardRecording, setIsKeyboardRecording] = useState(false);
 
+  // Add state for microphone permission
+  const [permissionState, setPermissionState] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+
   // Get API endpoint on component mount
   useEffect(() => {
     const getApiEndpoint = async () => {
@@ -106,8 +109,51 @@ const ChatInput: React.FC<ChatInputProps> = ({
     return `${mins}:${secs}`;
   };
 
+  // Check microphone permission
+  const checkMicrophonePermission = async () => {
+    try {
+      // Check if permission is already granted
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioDevice = devices.find(device => device.kind === 'audioinput');
+      
+      if (audioDevice) {
+        if (audioDevice.label) {
+          // If we can see the label, permission was already granted
+          setPermissionState('granted');
+          return true;
+        }
+      }
+
+      // Request permission
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          // Stop the stream immediately after getting permission
+          stream.getTracks().forEach(track => track.stop());
+          setPermissionState('granted');
+          return true;
+        });
+      
+      return true;
+    } catch (err) {
+      console.error("Microphone permission error:", err);
+      setPermissionState('denied');
+      return false;
+    }
+  };
+
   // Start recording function
   const startRecording = async () => {
+    if (permissionState === 'unknown') {
+      const hasPermission = await checkMicrophonePermission();
+      if (!hasPermission) {
+        alert("Clara needs microphone access for voice input features. Please enable it in System Preferences > Security & Privacy > Privacy > Microphone.");
+        return;
+      }
+    } else if (permissionState === 'denied') {
+      alert("Clara needs microphone access for voice input features. Please enable it in System Preferences > Security & Privacy > Privacy > Microphone.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -131,6 +177,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       
     } catch (err) {
       console.error("Error accessing microphone:", err);
+      setPermissionState('denied');
       alert("Could not access microphone. Please check permissions.");
     }
   };
