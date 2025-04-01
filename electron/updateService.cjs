@@ -46,6 +46,10 @@ function setupAutoUpdater(mainWindow) {
 
   // Error handling
   autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+    // Log more detailed error information
+    autoUpdater.logger.error('Update error details:', err);
+    
     dialog.showErrorBox('Update Error', err.message);
   });
 
@@ -76,4 +80,4 @@ function checkForUpdates() {
   });
 }
 
-module.exports = { setupAutoUpdater, checkForUpdates }; 
+module.exports = { setupAutoUpdater, checkForUpdates };

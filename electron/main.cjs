@@ -391,6 +391,18 @@ app.on('open-url', (event, url) => {
   }
 });
 
+// App lifecycle events
+app.whenReady().then(() => {
+  initializeApp();
+});
+
+// App lifecycle events
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   log.error('Uncaught exception:', error);

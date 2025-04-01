@@ -2,42 +2,32 @@ const { notarize } = require('@electron/notarize');
 const path = require('path');
 const fs = require('fs');
 
-// Export using commonjs syntax to prevent promisify errors
-exports.default = async function notarizing(context) {
-  // Only notarize on macOS
-  if (context.electronPlatformName !== 'darwin') {
+module.exports = async function (params) {
+  // Only notarize the app on Mac OS
+  if (process.platform !== 'darwin') {
+    console.log('Not a macOS build, skipping notarization');
     return;
   }
 
   console.log('Notarizing macOS application...');
   
-  // Get app information
-  const appName = context.packager.appInfo.productFilename;
-  const appPath = path.join(context.appOutDir, `${appName}.app`);
-  
-  // Validate app path
+  // The packaging's output directory
+  const appPath = path.join(params.appOutDir, `${params.packager.appInfo.productFilename}.app`);
   if (!fs.existsSync(appPath)) {
-    console.error(`App not found at: ${appPath}`);
-    return;
+    throw new Error(`Cannot find application at: ${appPath}`);
   }
 
-  // Get notarization credentials
-  const { 
-    APPLE_ID, 
-    APPLE_APP_SPECIFIC_PASSWORD, 
-    APPLE_TEAM_ID 
-  } = process.env;
-
-  // Validate credentials
+  // Check for required environment variables
+  const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID } = process.env;
+  
   if (!APPLE_ID || !APPLE_APP_SPECIFIC_PASSWORD || !APPLE_TEAM_ID) {
-    console.warn('Skipping notarization - missing required environment variables');
+    console.warn('Skipping notarization: Required environment variables missing');
     return;
   }
 
   try {
-    console.log(`Notarizing ${appName} with Apple ID: ${APPLE_ID}`);
+    console.log(`Notarizing ${path.basename(appPath)}...`);
     
-    // Start notarization using the CommonJS version of the API
     await notarize({
       tool: 'notarytool',
       appPath,
@@ -46,10 +36,9 @@ exports.default = async function notarizing(context) {
       teamId: APPLE_TEAM_ID,
     });
     
-    console.log(`Successfully notarized ${appName}`);
+    console.log(`Successfully notarized ${path.basename(appPath)}`);
   } catch (error) {
-    console.error('Notarization failed:', error);
-    // Don't throw - allows build to continue
-    console.warn('Continuing build process despite notarization failure');
+    console.error(`Notarization failed: ${error.message}`);
+    throw error;
   }
 };
