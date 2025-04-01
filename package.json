@@ -40,7 +40,8 @@
     "docker:all": "npm run docker:check-env && npm run docker:login && npm run docker:build && npm run docker:push",
     "docker:publish": "chmod +x ./docker-publish.sh && ./docker-publish.sh",
     "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false",
-    "electron:build-linux": "npm run build && electron-builder --linux"
+    "electron:build-linux": "npm run build && electron-builder --linux",
+    "electron:build-mac-permissions": "npm run build && electron-builder --mac --universal --config.mac.hardenedRuntime=true --config.mac.entitlements=build/entitlements.mac.plist --config.mac.entitlementsInherit=build/entitlements.mac.plist"
   },
   "dependencies": {
     "@langchain/core": "^0.3.42",
@@ -139,13 +140,13 @@
       "icon": "assets/icons/mac/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "entitlements": "assets/entitlements.mac.plist",
-      "entitlementsInherit": "assets/entitlements.mac.plist",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         {
           "target": "default",
           "arch": [
-            "arm64"
+            "universal"
           ]
         }
       ],
