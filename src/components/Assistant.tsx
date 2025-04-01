@@ -403,8 +403,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   }, []);
 
   const handleNewChat = async (initialMessage?: string) => {
-    const chatId = await db.createChat(initialMessage?.slice(0, 30) || 'New Chat');
+    // Create chat with a temporary name - it will be updated after first message
+    const chatId = await db.createChat(initialMessage?.slice(0, 50) || 'New Chat');
     setActiveChat(chatId);
+
     const welcomeMessage = {
       id: crypto.randomUUID(),
       chat_id: chatId,
@@ -413,17 +415,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       timestamp: new Date().toISOString(),
       tokens: 0
     };
+
     await db.addMessage(
       chatId,
       welcomeMessage.content,
       welcomeMessage.role,
       welcomeMessage.tokens
     );
+
     setMessages([welcomeMessage]);
     const updatedChats = await db.getRecentChats();
     setChats(updatedChats);
 
-    // If there's an initial message, send it immediately
     if (initialMessage) {
       setInput(initialMessage);
       setTimeout(() => handleSend(), 100);
@@ -518,10 +521,20 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     let currentChatId = activeChat;
     if (!currentChatId) {
-      currentChatId = await db.createChat(input.slice(0, 30));
+      // Use the first message as the chat name
+      const chatName = input.length > 50 ? input.slice(0, 50) + '...' : input;
+      currentChatId = await db.createChat(chatName);
       setActiveChat(currentChatId);
-      const updatedChats = await db.getRecentChats();
-      setChats(updatedChats);
+    } else {
+      // Update the chat title with first user message if it's still "New Chat"
+      const currentChats = await db.getRecentChats();
+      const thisChat = currentChats.find(c => c.id === currentChatId);
+      if (thisChat && thisChat.title === 'New Chat') {
+        const newTitle = input.length > 50 ? input.slice(0, 50) + '...' : input;
+        await db.updateChat(currentChatId, { title: newTitle });
+        const updatedChats = await db.getRecentChats();
+        setChats(updatedChats);
+      }
     }
 
     // Create user message

@@ -748,3 +748,16 @@ class LocalStorageDB {
 }
 
 export const db = new LocalStorageDB();
+
+export const updateChat = async (chatId: string, updates: { title?: string }) => {
+  const tx = db.transaction('chats', 'readwrite');
+  const store = tx.objectStore('chats');
+  const chat = await store.get(chatId);
+  
+  if (chat) {
+    const updatedChat = { ...chat, ...updates };
+    await store.put(updatedChat);
+  }
+  
+  await tx.done;
+};
