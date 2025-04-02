@@ -1,0 +1,245 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Node Creation and Execution Documentation
+
+## 1. Node Structure Overview
+
+### 1.1 Basic Node Components
+```typescript
+interface NodeExecutor {
+  execute: (context: NodeExecutionContext) => Promise<any>;
+  uploadFile?: (file: File, collectionName: string) => Promise<string>; // Optional
+}
+
+interface NodeExecutionContext {
+  node: Node;                     // The node instance
+  inputs: { [key: string]: any }; // Input values
+  ollamaClient: OllamaClient;     // AI client
+  apiConfig: {
+    type: 'ollama' | 'openai';
+    baseUrl: string;
+    apiKey?: string;
+  };
+  updateNodeOutput?: (nodeId: string, output: any) => void;
+}
+```
+
+## 2. Creating a New Node
+
+### 2.1 Basic Node Template
+```typescript
+import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegistry';
+
+// 1. Create executor function
+const executeMyCustomNode = async (context: NodeExecutionContext) => {
+  const { node, inputs, updateNodeOutput } = context;
+  
+  // 2. Process inputs
+  const inputValue = inputs.myInput || inputs['default'] || '';
+  
+  // 3. Node logic
+  const result = await processData(inputValue);
+  
+  // 4. Update UI (optional)
+  if (updateNodeOutput) {
+    updateNodeOutput(node.id, result);
+  }
+  
+  // 5. Return result
+  return result;
+};
+
+// 6. Register the node
+registerNodeExecutor('myCustomNode', {
+  execute: executeMyCustomNode
+});
+```
+
+### 2.2 Naming Conventions
+```typescript
+// File naming:
+MyCustomNodeExecutor.tsx
+
+// Node type naming:
+myCustomNode          // camelCase for registration
+MyCustomNode          // PascalCase for React components
+
+// Function naming:
+executeMyCustomNode   // prefix with 'execute'
+```
+
+## 3. Execution Flow
+
+### 3.1 Flow Generation
+```typescript
+const executionFlow = {
+  1. Plan Generation:
+     - Creates node map
+     - Creates edge map
+     - Determines execution order
+     
+  2. Node Dependencies:
+     - Tracks input/output relationships
+     - Resolves data flow between nodes
+     
+  3. Execution Order:
+     - Uses depth-first traversal
+     - Ensures dependencies execute first
+}
+```
+
+### 3.2 Execution Process
+```typescript
+1. Initialize -> generateExecutionPlan(nodes, edges)
+2. For each node:
+   - Resolve inputs from previous nodes
+   - Execute node logic
+   - Store outputs
+   - Update UI
+   - Handle errors
+```
+
+## 4. Node Types and Examples
+
+### 4.1 Input Nodes
+```typescript
+// Text Input Node
+registerNodeExecutor('textInputNode', {
+  execute: async ({ node, inputs }) => {
+    return inputs.text || '';
+  }
+});
+
+// Image Input Node
+registerNodeExecutor('imageInputNode', {
+  execute: async ({ node, inputs }) => {
+    return inputs.image || null;
+  }
+});
+```
+
+### 4.2 Processing Nodes
+```typescript
+// Text Processing Node
+registerNodeExecutor('textProcessingNode', {
+  execute: async ({ node, inputs }) => {
+    const text = inputs.text || '';
+    return processText(text);
+  }
+});
+
+// Image Processing Node
+registerNodeExecutor('imageProcessingNode', {
+  execute: async ({ node, inputs, updateNodeOutput }) => {
+    const image = inputs.image || null;
+    const result = await processImage(image);
+    updateNodeOutput(node.id, result);
+    return result;
+  }
+});
+```
+
+### 4.3 Output Nodes
+```typescript
+// Text Output Node
+registerNodeExecutor('textOutputNode', {
+  execute: async ({ node, inputs, updateNodeOutput }) => {
+    const output = inputs.text || '';
+    updateNodeOutput(node.id, output);
+    return output;
+  }
+});
+```
+
+## 5. Best Practices
+
+### 5.1 Input Handling
+```typescript
+const executeNode = async ({ inputs }) => {
+  // Always provide defaults
+  const input1 = inputs.primary || inputs['input-1'] || '';
+  const input2 = inputs.secondary || inputs['input-2'] || null;
+  
+  // Validate inputs
+  if (!input1) throw new Error('Primary input is required');
+  
+  // Process inputs
+  return processInputs(input1, input2);
+};
+```
+
+### 5.2 Error Handling
+```typescript
+const executeNode = async (context) => {
+  try {
+    // Node logic
+    const result = await process(context);
+    return result;
+  } catch (error) {
+    console.error(`Node execution error:`, error);
+    throw new Error(`Processing failed: ${error.message}`);
+  }
+};
+```
+
+### 5.3 UI Updates
+```typescript
+const executeNode = async ({ node, updateNodeOutput }) => {
+  // For long operations, update UI progressively
+  updateNodeOutput(node.id, 'Processing...');
+  
+  const result = await longOperation();
+  
+  // Final update
+  updateNodeOutput(node.id, result);
+  return result;
+};
+```
+
+## 6. Advanced Features
+
+### 6.1 File Handling
+```typescript
+registerNodeExecutor('fileProcessingNode', {
+  execute: async (context) => {
+    // Node execution logic
+  },
+  uploadFile: async (file, collectionName) => {
+    // File upload logic
+    return uploadedFileUrl;
+  }
+});
+```
+
+### 6.2 AI Integration
+```typescript
+const executeLlmNode = async ({ ollamaClient, inputs }) => {
+  const prompt = inputs.prompt || '';
+  const response = await ollamaClient.generate({
+    prompt,
+    model: 'specified-model'
+  });
+  return response;
+};
+```
+
+## 7. Testing Nodes
+
+### 7.1 Basic Test Structure
+```typescript
+describe('MyCustomNode', () => {
+  it('should process inputs correctly', async () => {
+    const context = {
+      node: { id: 'test-node' },
+      inputs: { text: 'test input' },
+      updateNodeOutput: jest.fn()
+    };
+    
+    const result = await executeMyCustomNode(context);
+    expect(result).toBe('expected output');
+  });
+});
+```

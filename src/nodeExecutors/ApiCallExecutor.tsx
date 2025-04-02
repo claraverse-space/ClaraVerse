@@ -3,11 +3,24 @@ import { registerNodeExecutor, NodeExecutionContext } from './NodeExecutorRegist
 const executeApiCall = async (context: NodeExecutionContext): Promise<string> => {
   const { node, inputs } = context;
   
-  // Declare textInput in the outer scope so it's available in the catch block
-  let textInput = '';
-
+  // Get input from various possible sources
+  let inputValue = inputs.text || inputs['text-in'] || inputs.default || '';
+  
   try {
-    textInput = inputs.text || inputs['text-in'] || inputs.default || '';
+    // Try to parse input as JSON if it's a string
+    let parsedInput: any = inputValue;
+    if (typeof inputValue === 'string') {
+      try {
+        parsedInput = JSON.parse(inputValue);
+      } catch (e) {
+        // If parsing fails, use the string as is
+        parsedInput = inputValue;
+      }
+    }
+
+    // Log the parsed input for debugging
+    console.log('Parsed input:', parsedInput);
+
     const config = node.data.config || {};
     const endpoint = config.endpoint || '';
     const method = config.method || 'GET';
@@ -17,28 +30,55 @@ const executeApiCall = async (context: NodeExecutionContext): Promise<string> =>
     
     if (!endpoint) {
       return JSON.stringify({
-        input: textInput,
+        input: parsedInput,
         output: "No API endpoint specified"
       });
     }
 
     let url = endpoint;
-    if (method === 'GET' && queryParams.length > 0) {
-      const params = new URLSearchParams();
+    if (method === 'GET') {
+      // Extract query parameters from the URL if they exist
+      const urlParams = new URLSearchParams();
+      const [baseUrl, urlQueryString] = endpoint.split('?');
+      if (urlQueryString) {
+        const existingParams = new URLSearchParams(urlQueryString);
+        existingParams.forEach((value, key) => {
+          urlParams.append(key, value);
+        });
+      }
+
+      // Add any additional query parameters from the config
       queryParams.forEach((param: any) => {
         if (param.key && param.value) {
-          let value = param.value;
-          if (value.includes('{{input}}')) {
-            value = value.replace('{{input}}', textInput);
-          }
-          params.append(param.key, value);
+          urlParams.append(param.key, param.value);
         }
       });
-      
-      const queryString = params.toString();
-      if (queryString) {
-        url = `${url}${url.includes('?') ? '&' : '?'}${queryString}`;
+
+      // Process all parameters for field replacements
+      const processedParams = new URLSearchParams();
+      urlParams.forEach((value, key) => {
+        let processedValue = value;
+        
+        // Replace {{input}} with stringified input if it's an object
+        if (value.includes('{{input}}')) {
+          processedValue = value.replace('{{input}}', typeof parsedInput === 'object' ? JSON.stringify(parsedInput) : String(parsedInput));
+        }
+        // Replace individual field placeholders like {{fieldName}}
+        else if (typeof parsedInput === 'object') {
+          processedValue = value.replace(/\{\{(\w+)\}\}/g, (match: string, field: string) => {
+            console.log('Replacing field:', field, 'with value:', parsedInput[field]);
+            return parsedInput[field] !== undefined ? String(parsedInput[field]) : match;
+          });
+        }
+        
+        processedParams.append(key, processedValue);
+      });
+
+      const finalQueryString = processedParams.toString();
+      if (finalQueryString) {
+        url = `${baseUrl}?${finalQueryString}`;
       }
+      console.log('Final URL:', url);
     }
     
     const options: RequestInit = {
@@ -54,12 +94,19 @@ const executeApiCall = async (context: NodeExecutionContext): Promise<string> =>
     if ((method === 'POST' || method === 'PUT') && requestBody) {
       try {
         let processedBody = requestBody;
+        // Replace {{input}} with stringified input if it's an object
         if (processedBody.includes('{{input}}')) {
-          processedBody = processedBody.replace(/\{\{input\}\}/g, textInput);
+          processedBody = processedBody.replace('{{input}}', typeof parsedInput === 'object' ? JSON.stringify(parsedInput) : String(parsedInput));
         }
         
-        const jsonBody = JSON.parse(processedBody);
-        options.body = JSON.stringify(jsonBody);
+        // If the processed body is a valid JSON string, parse it
+        try {
+          const jsonBody = JSON.parse(processedBody);
+          options.body = JSON.stringify(jsonBody);
+        } catch (e) {
+          // If not valid JSON, use the processed body as is
+          options.body = processedBody;
+        }
       } catch (e) {
         options.body = requestBody;
       }
@@ -74,7 +121,7 @@ const executeApiCall = async (context: NodeExecutionContext): Promise<string> =>
       const errorText = await response.clone().text();
       config.responseData = errorText;
       return JSON.stringify({
-        input: textInput,
+        input: parsedInput,
         output: `Error ${response.status}: ${errorText}`
       });
     }
@@ -87,7 +134,7 @@ const executeApiCall = async (context: NodeExecutionContext): Promise<string> =>
       try {
         const jsonResponse = await response.json();
         config.responseData = JSON.stringify(jsonResponse);
-        apiResponse = jsonResponse; // Store as object to avoid double-stringifying
+        apiResponse = jsonResponse;
       } catch {
         const textResponse = await responseClone.text();
         config.responseData = textResponse;
@@ -101,13 +148,13 @@ const executeApiCall = async (context: NodeExecutionContext): Promise<string> =>
 
     // Return both input and output as a JSON string
     return JSON.stringify({
-      input: textInput,
+      input: parsedInput,
       output: apiResponse
     });
   } catch (error) {
     console.error("Error in API Call node execution:", error);
     return JSON.stringify({
-      input: textInput || "",
+      input: inputValue,
       output: `Error: ${error instanceof Error ? error.message : String(error)}`
     });
   }

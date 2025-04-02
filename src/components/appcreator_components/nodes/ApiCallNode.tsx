@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, HelpCircle, Globe } from 'lucide-react';
 
 const ApiCallNode = ({ data, isConnectable }: any) => {
   const { isDark } = useTheme();
   const tool = data.tool || {};
-  const Icon = tool.icon || Settings;
   const nodeColor = isDark ? tool.darkColor || '#F87171' : tool.lightColor || '#EF4444';
   
   // Base state
@@ -25,6 +24,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
   // UI state for advanced toggles
   const [showQueryParams, setShowQueryParams] = useState(false);
   const [showHeaders, setShowHeaders] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   
   // Handlers for input changes
   const handleEndpointChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,188 +92,230 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
   };
 
   return (
-    <div 
-      className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-80`}
-      onClick={stopPropagation}
-      onMouseDown={stopPropagation}
-    >
-      {/* Header with Icon and Label */}
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-        <div className="font-medium text-sm text-gray-900 dark:text-white truncate">
-          {data.label || 'API Call'}
-        </div>
-      </div>
-      
-      {/* Method and Endpoint */}
-      <div className="mb-2" onClick={stopPropagation}>
-        <div className="flex gap-2">
-          <div className="w-1/4">
-            <select 
-              value={method}
-              onChange={handleMethodChange}
-              onClick={stopPropagation}
-              onMouseDown={stopPropagation}
-              className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm`}
-            >
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-            </select>
+    <div className={`p-3 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-md w-80`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
+            <Globe className="w-5 h-5 text-white" />
           </div>
-          <div className="w-3/4">
-            <input 
-              type="text"
-              value={endpoint}
-              onChange={handleEndpointChange}
-              onClick={stopPropagation}
-              onMouseDown={stopPropagation}
-              placeholder="https://api.example.com/endpoint"
-              className={`w-full p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm`}
-            />
-          </div>
+          <div className="font-medium text-sm">{data.label || 'API Call'}</div>
         </div>
-      </div>
-      
-      {/* Query Parameters (for GET) */}
-      {method === 'GET' && (
-        <div className="mb-3 border-t border-gray-200 dark:border-gray-700 pt-2">
-          <button 
-            className={`flex justify-between items-center w-full text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-1`}
-            onClick={() => setShowQueryParams(!showQueryParams)}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+            title="Show help"
           >
-            <span>Query Parameters</span>
-            {showQueryParams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            <HelpCircle className="w-4 h-4" />
           </button>
-          
+        </div>
+      </div>
+
+      {showHelp && (
+        <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
+          <h4 className="font-medium mb-2">How to use the API Call node:</h4>
+          <div className="space-y-2">
+            <p><strong>Input:</strong> The node accepts JSON input from previous nodes.</p>
+            
+            <p><strong>GET Requests:</strong></p>
+            <ul className="list-disc pl-4">
+              <li>Add query parameters using the "Query Params" section</li>
+              <li>Use <code>{'{{input}}'}</code> in parameter values to include the input</li>
+              <li>Example: <code>{"{ \"key\": \"id\", \"value\": \"{{input}}\" }"}</code></li>
+            </ul>
+
+            <p><strong>POST Requests:</strong></p>
+            <ul className="list-disc pl-4">
+              <li>Write your JSON request body in the "Request Body" section</li>
+              <li>Use <code>{'{{input}}'}</code> to include the input in the body</li>
+              <li>Example: <code>{"{ \"data\": {{input}} }"}</code></li>
+            </ul>
+
+            <p><strong>Output:</strong> The node returns a JSON string containing both input and API response.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs mb-1">Endpoint</label>
+          <input
+            type="text"
+            value={endpoint}
+            onChange={handleEndpointChange}
+            className="w-full p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+            placeholder="https://api.example.com/endpoint"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs mb-1">Method</label>
+          <select
+            value={method}
+            onChange={handleMethodChange}
+            className="w-full p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+
+        <div>
+          <button
+            onClick={() => setShowQueryParams(!showQueryParams)}
+            className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            {showQueryParams ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Query Parameters
+          </button>
           {showQueryParams && (
-            <div className="space-y-2 mt-2">
+            <div className="mt-2 space-y-2">
               {queryParams.map((param, index) => (
-                <div key={index} className="flex gap-2 items-center">
+                <div key={index} className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Parameter name"
                     value={param.key}
-                    onChange={(e) => updateQueryParam(index, 'key', e.target.value)}
-                    className={`flex-1 p-1 text-xs rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                    onChange={(e) => {
+                      const newParams = [...queryParams];
+                      newParams[index] = { ...param, key: e.target.value };
+                      setQueryParams(newParams);
+                      data.config = { ...data.config, queryParams: newParams };
+                    }}
+                    className="flex-1 p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Key"
                   />
                   <input
                     type="text"
-                    placeholder="Value"
                     value={param.value}
-                    onChange={(e) => updateQueryParam(index, 'value', e.target.value)}
-                    className={`flex-1 p-1 text-xs rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                    onChange={(e) => {
+                      const newParams = [...queryParams];
+                      newParams[index] = { ...param, value: e.target.value };
+                      setQueryParams(newParams);
+                      data.config = { ...data.config, queryParams: newParams };
+                    }}
+                    className="flex-1 p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Value"
                   />
                   <button
-                    onClick={() => removeQueryParam(index)}
-                    className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded"
+                    onClick={() => {
+                      const newParams = queryParams.filter((_, i) => i !== index);
+                      setQueryParams(newParams);
+                      data.config = { ...data.config, queryParams: newParams };
+                    }}
+                    className="p-2 text-red-500 hover:text-red-600"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
               <button
                 onClick={addQueryParam}
-                className={`flex items-center gap-1 text-xs ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
               >
-                <Plus size={14} />
-                <span>Add Parameter</span>
+                <Plus className="w-3 h-3" />
+                Add Parameter
               </button>
             </div>
           )}
         </div>
-      )}
-      
-      {/* Request Body (for POST/PUT) */}
-      {(method === 'POST' || method === 'PUT') && (
-        <div className="mb-3">
-          <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            Request Body (JSON)
-          </label>
-          <textarea
-            value={requestBody}
-            onChange={handleBodyChange}
-            onClick={stopPropagation}
-            onMouseDown={stopPropagation}
-            rows={5}
-            className={`w-full p-2 rounded border font-mono text-xs ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-          />
+
+        <div>
+          <button
+            onClick={() => setShowHeaders(!showHeaders)}
+            className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            {showHeaders ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Headers
+          </button>
+          {showHeaders && (
+            <div className="mt-2 space-y-2">
+              {headers.map((header, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={header.key}
+                    onChange={(e) => {
+                      const newHeaders = [...headers];
+                      newHeaders[index] = { ...header, key: e.target.value };
+                      setHeaders(newHeaders);
+                      data.config = { ...data.config, headers: newHeaders };
+                    }}
+                    className="flex-1 p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Key"
+                  />
+                  <input
+                    type="text"
+                    value={header.value}
+                    onChange={(e) => {
+                      const newHeaders = [...headers];
+                      newHeaders[index] = { ...header, value: e.target.value };
+                      setHeaders(newHeaders);
+                      data.config = { ...data.config, headers: newHeaders };
+                    }}
+                    className="flex-1 p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Value"
+                  />
+                  <button
+                    onClick={() => {
+                      const newHeaders = headers.filter((_, i) => i !== index);
+                      setHeaders(newHeaders);
+                      data.config = { ...data.config, headers: newHeaders };
+                    }}
+                    className="p-2 text-red-500 hover:text-red-600"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addHeader}
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+              >
+                <Plus className="w-3 h-3" />
+                Add Header
+              </button>
+            </div>
+          )}
         </div>
-      )}
-      
-      {/* Headers Section */}
-      <div className="mb-3 border-t border-gray-200 dark:border-gray-700 pt-2">
-        <button 
-          className={`flex justify-between items-center w-full text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-1`}
-          onClick={() => setShowHeaders(!showHeaders)}
-        >
-          <span>Headers</span>
-          {showHeaders ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-        
-        {showHeaders && (
-          <div className="space-y-2 mt-2">
-            {headers.map((header, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Header name"
-                  value={header.key}
-                  onChange={(e) => updateHeader(index, 'key', e.target.value)}
-                  className={`flex-1 p-1 text-xs rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-                />
-                <input
-                  type="text"
-                  placeholder="Value"
-                  value={header.value}
-                  onChange={(e) => updateHeader(index, 'value', e.target.value)}
-                  className={`flex-1 p-1 text-xs rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-                />
-                <button
-                  onClick={() => removeHeader(index)}
-                  className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900 rounded"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addHeader}
-              className={`flex items-center gap-1 text-xs ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
-            >
-              <Plus size={14} />
-              <span>Add Header</span>
-            </button>
+
+        {(method === 'POST' || method === 'PUT') && (
+          <div>
+            <label className="block text-xs mb-1">Request Body</label>
+            <textarea
+              value={requestBody}
+              onChange={handleBodyChange}
+              className="w-full p-2 text-sm rounded border bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+              rows={4}
+              placeholder="{\n  \n}"
+            />
           </div>
         )}
       </div>
       
-      {/* Note for Users */}
-      <div className="text-xs text-center p-2 bg-blue-50 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded mb-3">
-        API requests will automatically execute when you run the flow
-      </div>
-      
       {/* Input and Output Handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="text-in"
-        isConnectable={isConnectable}
-        className="!bg-blue-500 !w-3 !h-3"
-        style={{ top: -6 }}
-      />
-      
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="text-out"
-        isConnectable={isConnectable}
-        className="!bg-purple-500 !w-3 !h-3"
-        style={{ bottom: -6 }}
-      />
+      {isConnectable && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="text-in"
+            isConnectable={isConnectable}
+            className="!bg-blue-500 !w-3 !h-3"
+            style={{ top: -6 }}
+          />
+          
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="text-out"
+            isConnectable={isConnectable}
+            className="!bg-purple-500 !w-3 !h-3"
+            style={{ bottom: -6 }}
+          />
+        </>
+      )}
     </div>
   );
 };
@@ -282,7 +324,7 @@ export const metadata = {
   id: 'api_call',
   name: 'API Call',
   description: 'Make external API requests',
-  icon: Settings,
+  icon: Globe,
   color: 'bg-red-500',
   bgColor: 'bg-red-100',
   lightColor: '#EF4444',
