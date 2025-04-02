@@ -40,6 +40,8 @@ latest-mac.yml
 latest-linux.yml
 latest-win.yml
 .bolt
+__pycache__
+
 
 # Code signing files
 package-mac-signed.sh
