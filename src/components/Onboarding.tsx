@@ -19,13 +19,9 @@ import {
     Sun,
     Moon,
     Palette,
-    Server,
-    Key,
-    Lock
 } from 'lucide-react';
 import {db} from '../db';
 import {OllamaClient} from '../utils/OllamaClient';
-import logo from '../assets/logo.png';
 
 interface OnboardingProps {
     onComplete: () => void;
@@ -44,7 +40,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         comfyui_url: 'http://localhost:8188',
         openai_api_key: '',
         openai_base_url: 'https://api.openai.com/v1',
-        preferred_server: 'ollama' as 'ollama' | 'openai'
+        api_type: 'ollama' as 'ollama' | 'openai'
     });
     const [loading, setLoading] = useState(false);
     const [pingStatus, setPingStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -110,7 +106,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             comfyui_base_url: formData.comfyui_url,
             openai_api_key: formData.openai_api_key,
             openai_base_url: formData.openai_base_url,
-            preferred_server: formData.preferred_server
+            api_type: formData.api_type
         });
 
         onComplete();

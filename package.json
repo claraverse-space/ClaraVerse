@@ -1,7 +1,7 @@
 {
   "name": "clara-ollama",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for Ollama. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
     "name": "badboysm890",
