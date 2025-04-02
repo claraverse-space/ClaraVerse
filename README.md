@@ -185,6 +185,10 @@ npm run build
 npm run electron:build
 ```
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse&type=Date)](https://www.star-history.com/#badboysm890/ClaraVerse&Date)
+
 ## 🤝 Support & Contact
 
 Have questions or need help? Reach out via **praveensm890@gmail.com**.
