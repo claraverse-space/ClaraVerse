@@ -21,6 +21,8 @@
       box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
       text-align: center;
       max-width: 400px;
+      position: relative;
+      overflow: hidden;
     }
     .logo {
       width: 140px;
@@ -36,7 +38,7 @@
     .message {
       font-size: 14px;
       color: #666;
-      margin: 12px 0 20px 0;
+      margin: 12px 0;
       padding: 0 15px;
     }
     .status {
@@ -54,6 +56,20 @@
     .status.success {
       color: #2ecc71;
     }
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #f0f0f0;
+      border-radius: 2px;
+      margin-top: 15px;
+      overflow: hidden;
+    }
+    .progress-bar .fill {
+      width: 0%;
+      height: 100%;
+      background: #3498db;
+      transition: width 0.3s ease;
+    }
     .spinner {
       margin-top: 15px;
       width: 28px;
@@ -67,16 +83,25 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    .fade {
+      opacity: 1;
+      transition: opacity 0.3s ease;
+    }
+    .fade.hide {
+      opacity: 0;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container fade">
     <img src="../../assets/icons/png/256x256.png" class="logo" alt="Clara" onerror="this.style.display='none'">
     <h2>Clara</h2>
-    <div class="message">Initializing core services. This may take some time based on your internet connection and computer performance.</div>
-    <div class="message">Disablling the Mic Access might </div>
+    <div class="message">Setting up your environment. This may take a moment.</div>
     <div class="status" id="status">Initializing...</div>
     <div class="status error" id="error" style="display: none; margin-top: 8px; font-size: 13px;"></div>
+    <div class="progress-bar">
+      <div class="fill" id="progress"></div>
+    </div>
     <div class="spinner"></div>
   </div>
   <script>
@@ -86,6 +111,7 @@
       console.log(`[Splash] ${type}: ${message}`);
       const statusEl = document.getElementById('status');
       const errorEl = document.getElementById('error');
+      const progressEl = document.getElementById('progress');
       
       statusEl.textContent = message;
       statusEl.className = 'status ' + type;
@@ -94,6 +120,22 @@
         errorEl.textContent = message;
         errorEl.style.display = 'block';
       }
+
+      // Update progress bar for certain messages
+      if (message.includes('Downloading')) {
+        const match = message.match(/(\d+)%/);
+        if (match) {
+          progressEl.style.width = `${match[1]}%`;
+        }
+      }
+    }
+
+    function hide() {
+      document.querySelector('.container').classList.add('hide');
+    }
+
+    function show() {
+      document.querySelector('.container').classList.remove('hide');
     }
 
     ipcRenderer.on('status', (_, data) => {
@@ -103,6 +145,9 @@
         updateStatus(data.message, data.type);
       }
     });
+
+    ipcRenderer.on('hide', hide);
+    ipcRenderer.on('show', show);
 
     // Log any uncaught errors
     window.onerror = function(msg, url, line) {

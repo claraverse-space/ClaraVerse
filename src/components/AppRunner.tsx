@@ -53,7 +53,7 @@ interface AppRunnerProps {
 }
 
 interface InputState {
-  [nodeId: string]: string | File | null;
+  [nodeId: string]: string | File | ArrayBuffer | null;
 }
 
 interface ChatMessage {
@@ -86,9 +86,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const gradientStyle = useMemo(() => {
     const color = appData?.color || '#3B82F6';
     return {
-      // background: `linear-gradient(135deg, ${color}10, ${
-      //   isDark ? '#1f293780' : '#f9fafb80'
-      // })`,
+      background: `linear-gradient(135deg, ${color}10, ${
+        isDark ? '#1f293780' : '#f9fafb80'
+      })`,
     };
   }, [appData?.color, isDark]);
 
@@ -450,12 +450,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
           return (
             <div
               key={message.id}
-              className={`flex mb-4 ${
+              className={`flex ${
                 isUserMessage ? 'justify-end' : 'justify-start'
               }`}
             >
               <div
-                className={`max-w-[85%] p-4 rounded-xl shadow-sm relative 
+                className={`max-w-[85%] p-3 rounded-xl shadow-md relative text-sm leading-relaxed
                   ${isUserMessage ? 'rounded-tr-none ml-auto' : 'rounded-tl-none mr-auto'}
                   ${
                     isUserMessage
@@ -463,8 +463,8 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                         ? 'bg-blue-600 text-white'
                         : 'bg-blue-500 text-white'
                       : isDark
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-white text-gray-900'
+                      ? 'bg-gray-700 text-gray-100'
+                      : 'bg-white text-gray-800'
                   }
                 `}
               >
@@ -496,15 +496,15 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                     {message.content ? message.content : "Input Received"}
                   </div>
                 ) : (
-                  <div className="prose dark:prose-invert prose-md max-w-none">
+                  <div className="prose-sm dark:prose-invert max-w-none text-current">
                     <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
                   </div>
                 )}
                 <div
-                  className={`text-xs mt-2 text-right ${
+                  className={`text-xs mt-2 text-right opacity-80 ${
                     isUserMessage
                       ? 'text-blue-200 dark:text-blue-100'
-                      : 'text-gray-400 dark:text-gray-500'
+                      : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   {new Date(message.timestamp).toLocaleTimeString()}
@@ -518,12 +518,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         {isRunning && (
           <div className="flex justify-start w-full">
             <div
-              className={`max-w-[85%] p-4 rounded-xl bg-opacity-80 rounded-tl-none flex items-center gap-2 shadow-sm
-                ${isDark ? 'bg-gray-800' : 'bg-white'}
+              className={`max-w-[85%] p-3 rounded-xl rounded-tl-none flex items-center gap-2 shadow-md text-sm
+                ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-white text-gray-500'}
               `}
             >
-              <Loader className="w-5 h-5 animate-spin text-gray-500 dark:text-gray-400" />
-              <div className="text-gray-500 dark:text-gray-400">Processing...</div>
+              <Loader className="w-4 h-4 animate-spin" />
+              <div>Processing...</div>
             </div>
           </div>
         )}
@@ -531,7 +531,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         {/* Error display */}
         {error && !isRunning && (
           <div className="flex justify-start w-full">
-            <div className="max-w-[85%] p-4 rounded-xl bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-sm">
+            <div className="max-w-[85%] p-3 rounded-xl bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-md text-sm">
               {error}
             </div>
           </div>
@@ -539,8 +539,8 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
         {/* Success indicator */}
         {isSuccess && !isRunning && (
-          <div className="flex justify-center my-2">
-            <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm">
+          <div className="flex justify-center my-4">
+            <div className="px-4 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm">
               <Check className="w-4 h-4" />
               <span>Completed</span>
             </div>
@@ -911,7 +911,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             {/* Main Output Section */}
             <div
               ref={outputSectionRef}
-              className="flex-1 overflow-y-auto px-4 py-2 scroll-smooth"
+              className="flex-1 overflow-y-auto px-4 py-4 scroll-smooth"
             >
               <div className="container mx-auto max-w-4xl">
                 {renderOutputs()}
@@ -944,7 +944,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             </div>
 
             {/* Input Section */}
-            <div className="p-4">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
               <div className="container mx-auto max-w-4xl">
                 {renderInputSection()}
               </div>

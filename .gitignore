@@ -50,3 +50,10 @@ certificate.p12
 ./Support
 python-env
 .clara
+
+./py_backend/__pycache__
+./py_backend/cache
+./py_backend/python-env
+./py_backend/python-env/cache
+./py_backend/python-env/pip-cache
+./py_backend/python-env/python-env
