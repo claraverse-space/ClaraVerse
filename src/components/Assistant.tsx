@@ -518,11 +518,13 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         }).then(res => res.json());
       }
 
-      // Combine and sort results
+      // Combine results and filter out those with score of 0
       const allResults = [
         ...tempResults.flatMap(r => r.results || []),
         ...(defaultResults?.results || [])
-      ].sort((a, b) => (b.score || 0) - (a.score || 0));
+      ]
+      .filter(result => result.score > 0) // Filter out results with score of 0
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
 
       return {
         results: allResults.slice(0, 4) // Keep top 4 results
@@ -562,8 +564,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     let userContent = input;
     let systemPrompt = await db.getSystemPrompt();
 
-    // If using temporary docs, search and prepend context to user's query
-    if (temporaryDocs.length > 0) {
+    // If using temporary docs or regular RAG, search and prepend context to user's query
+    if (temporaryDocs.length > 0 || ragEnabled) {
       const searchResults = await searchDocuments(input);
       if (searchResults?.results?.length > 0) {
         const context = searchResults.results.map(result => {
@@ -579,20 +581,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         // Prepend context to user's query
         userContent = `I have the following context:\n\n${context}\n\nNote: Only Answer My Question, Do Not Answer Anything Else. My question is: ${input}`;
 
-        // Clean up all temporary collections after getting results
-        await cleanupAllTempCollections();
-        setTemporaryDocs([]); // Clear the temporary docs state
-      }
-    }
-    // For regular RAG (non-temporary docs), use system prompt enhancement
-    else if (ragEnabled) {
-      const searchResults = await searchDocuments(input);
-      if (searchResults?.results?.length > 0) {
-        systemPrompt = generateSystemPromptWithContext(
-          systemPrompt,
-          searchResults.results,
-          false // Not temporary docs
-        );
+        // Clean up temporary collections if using them
+        if (temporaryDocs.length > 0) {
+          await cleanupAllTempCollections();
+          setTemporaryDocs([]); // Clear the temporary docs state
+        }
       }
     }
 

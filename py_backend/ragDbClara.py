@@ -281,7 +281,7 @@ class DocumentAI:
             min_similarity: Minimum similarity threshold
             
         Returns:
-            List of matching documents
+            List of matching documents with scores
         """
         try:
             # Format the filter for Chroma if provided
@@ -299,11 +299,36 @@ class DocumentAI:
                 if not chroma_filter:
                     chroma_filter = None
 
-            return self.vector_store.similarity_search(
-                query,
-                k=k,
-                filter=chroma_filter,
+            # Get embeddings for the query
+            query_embedding = self.embeddings.embed_query(query)
+
+            # Use ChromaDB's native search
+            raw_results = self.vector_store._collection.query(
+                query_embeddings=[query_embedding],
+                n_results=k,
+                where=chroma_filter,
+                include=['documents', 'metadatas', 'distances']
             )
+
+            # Convert distances to similarity scores (1 - normalized_distance)
+            if raw_results['distances'] and len(raw_results['distances']) > 0:
+                max_distance = max(raw_results['distances'][0])
+                scores = [1 - (dist / max_distance) if max_distance > 0 else 1 
+                         for dist in raw_results['distances'][0]]
+            else:
+                scores = []
+
+            # Combine documents with their scores
+            documents = []
+            for i, (doc, metadata) in enumerate(zip(raw_results['documents'][0], raw_results['metadatas'][0])):
+                if i < len(scores):
+                    metadata['score'] = scores[i]
+                documents.append(Document(
+                    page_content=doc,
+                    metadata=metadata
+                ))
+
+            return documents
             
         except chromadb.errors.InvalidDimensionException as e:
             logger.warning(f"Dimension mismatch detected: {e}")
@@ -317,7 +342,7 @@ class DocumentAI:
             
             # Retry the search
             logger.info("Retrying search with recreated vector store")
-            return self.vector_store.similarity_search(
+            return self.similarity_search(
                 query,
                 k=k,
                 filter=chroma_filter,
