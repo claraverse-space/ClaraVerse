@@ -317,6 +317,55 @@ def list_collections():
         logger.error(f"Error listing collections: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/collections/{collection_name}")
+async def delete_collection(collection_name: str):
+    """Delete a collection and all its associated documents"""
+    try:
+        # Get DocumentAI instance for this collection
+        doc_ai = get_doc_ai(collection_name)
+        
+        # Get all document chunks for this collection
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get all chunk IDs for this collection
+            cursor.execute("""
+                SELECT dc.chunk_id 
+                FROM document_chunks dc
+                JOIN documents d ON dc.document_id = d.id
+                WHERE d.collection_name = ?
+            """, (collection_name,))
+            chunks = [row['chunk_id'] for row in cursor.fetchall()]
+            
+            # Delete chunks from vector store if any exist
+            if chunks:
+                doc_ai.delete_documents(chunks)
+            
+            # Delete all documents and chunks from database
+            cursor.execute("DELETE FROM documents WHERE collection_name = ?", (collection_name,))
+            
+            # Delete the collection itself
+            cursor.execute("DELETE FROM collections WHERE name = ?", (collection_name,))
+            conn.commit()
+            
+        # Remove from DocumentAI cache
+        if collection_name in doc_ai_cache:
+            del doc_ai_cache[collection_name]
+            
+        # Delete the vector store directory
+        persist_dir = os.path.join(vectordb_dir, collection_name)
+        if os.path.exists(persist_dir):
+            shutil.rmtree(persist_dir)
+            
+        return {
+            "status": "success",
+            "message": f"Collection '{collection_name}' and its {len(chunks)} chunks deleted"
+        }
+    except Exception as e:
+        logger.error(f"Error deleting collection: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error deleting collection: {str(e)}")
+
 @app.post("/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),

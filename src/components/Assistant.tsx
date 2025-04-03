@@ -30,6 +30,7 @@ interface AssistantProps {
 
 const MAX_CONTEXT_MESSAGES = 20;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_TEMP_COLLECTIONS = 5; // Maximum number of temporary collections
 
 const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [activeChat, setActiveChat] = useState<string | null>(null);
@@ -62,6 +63,58 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [pythonPort, setPythonPort] = useState<number | null>(null);
   const [temporaryDocs, setTemporaryDocs] = useState<TemporaryDocument[]>([]);
 
+  // Initialize or get temporary collection names from localStorage
+  const [tempCollectionNames] = useState(() => {
+    const stored = localStorage.getItem('temp_collection_names');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    // Create array of fixed collection names
+    const names = Array.from({ length: MAX_TEMP_COLLECTIONS }, (_, i) => `temp_collection_${i + 1}`);
+    localStorage.setItem('temp_collection_names', JSON.stringify(names));
+    return names;
+  });
+
+  // Track current collection index
+  const [currentTempCollectionIndex, setCurrentTempCollectionIndex] = useState(() => {
+    const stored = localStorage.getItem('current_temp_collection_index');
+    return stored ? parseInt(stored) : 0;
+  });
+
+  const getNextTempCollectionName = () => {
+    const nextIndex = (currentTempCollectionIndex + 1) % MAX_TEMP_COLLECTIONS;
+    setCurrentTempCollectionIndex(nextIndex);
+    localStorage.setItem('current_temp_collection_index', nextIndex.toString());
+    return tempCollectionNames[nextIndex];
+  };
+
+  const cleanupTempCollection = async (collectionName: string) => {
+    if (!pythonPort) return;
+
+    try {
+      await fetch(`http://0.0.0.0:${pythonPort}/collections/${collectionName}`, {
+        method: 'DELETE'
+      });
+    } catch (error) {
+      console.error('Error cleaning up temporary collection:', error);
+    }
+  };
+
+  const cleanupAllTempCollections = async () => {
+    if (!pythonPort) return;
+
+    for (const collectionName of tempCollectionNames) {
+      await cleanupTempCollection(collectionName);
+    }
+  };
+
+  // Add cleanup effect when component unmounts
+  useEffect(() => {
+    return () => {
+      cleanupAllTempCollections();
+    };
+  }, []);
+
   useEffect(() => {
     const getPythonPort = async () => {
       if (window.electron) {
@@ -75,29 +128,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     };
     getPythonPort();
   }, []);
-
-  const cleanupOldCollections = async () => {
-    if (!pythonPort) return;
-
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000; // 5 minutes threshold
-
-    // Filter out old documents
-    const oldDocs = temporaryDocs.filter(doc => doc.timestamp < fiveMinutesAgo);
-    const currentDocs = temporaryDocs.filter(doc => doc.timestamp >= fiveMinutesAgo);
-
-    // Delete old collections
-    for (const doc of oldDocs) {
-      try {
-        await fetch(`http://0.0.0.0:${pythonPort}/collections/${doc.collection}`, {
-          method: 'DELETE'
-        });
-      } catch (error) {
-        console.error('Error deleting old collection:', error);
-      }
-    }
-
-    setTemporaryDocs(currentDocs);
-  };
 
   const checkModelImageSupport = (modelName: string): boolean => {
     const configs = localStorage.getItem('model_image_support');
@@ -182,11 +212,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     const files = event.target.files;
     if (!files) return;
 
-    // Clean up old collections first
-    await cleanupOldCollections();
-
+    // Get next collection name
+    const tempCollectionName = getNextTempCollectionName();
     const timestamp = Date.now();
-    const tempCollectionName = `temp_${activeChat}_${timestamp}`;
     const uploadedDocs: TemporaryDocument[] = [];
 
     for (const file of files) {
@@ -220,24 +248,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     if (uploadedDocs.length > 0) {
       setTemporaryDocs(prev => [...prev, ...uploadedDocs]);
-      setRagEnabled(true); // Only enable RAG if upload was successful
+      setRagEnabled(true);
     }
   };
 
   const removeTemporaryDoc = async (docId: string) => {
-    const doc = temporaryDocs.find(d => d.id === docId);
-    if (!doc || !pythonPort) return;
-
-    try {
-      // Delete the temporary collection
-      await fetch(`http://0.0.0.0:${pythonPort}/collections/${doc.collection}`, {
-        method: 'DELETE'
-      });
-
-      setTemporaryDocs(prev => prev.filter(d => d.id !== docId));
-    } catch (error) {
-      console.error('Error removing temporary document:', error);
-    }
+    setTemporaryDocs(prev => prev.filter(d => d.id !== docId));
   };
 
   useEffect(() => {
@@ -250,7 +266,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   useEffect(() => {
     if (activeChat) {
-      cleanupOldCollections();
+      cleanupAllTempCollections();
     }
   }, [activeChat]);
 
@@ -537,11 +553,48 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       }
     }
 
+    let userContent = input;
+    let systemPrompt = await db.getSystemPrompt();
+
+    // If using temporary docs, search and prepend context to user's query
+    if (temporaryDocs.length > 0) {
+      const searchResults = await searchDocuments(input);
+      if (searchResults?.results?.length > 0) {
+        const context = searchResults.results.map(result => {
+          const source = result.metadata.source_file 
+            ? `\nSource: ${result.metadata.source_file}` 
+            : '';
+          const page = result.metadata.page 
+            ? ` (Page ${result.metadata.page})` 
+            : '';
+          return `Content${source}${page}:\n${result.content}`;
+        }).join('\n---\n');
+
+        // Prepend context to user's query
+        userContent = `I have the following context:\n\n${context}\n\nMy question is: ${input}`;
+
+        // Clean up all temporary collections after getting results
+        await cleanupAllTempCollections();
+        setTemporaryDocs([]); // Clear the temporary docs state
+      }
+    }
+    // For regular RAG (non-temporary docs), use system prompt enhancement
+    else if (ragEnabled) {
+      const searchResults = await searchDocuments(input);
+      if (searchResults?.results?.length > 0) {
+        systemPrompt = generateSystemPromptWithContext(
+          systemPrompt,
+          searchResults.results,
+          false // Not temporary docs
+        );
+      }
+    }
+
     // Create user message
     const userMessage: Message = {
       id: crypto.randomUUID(),
       chat_id: currentChatId,
-      content: input,
+      content: input, // Store original input in message history
       role: 'user',
       timestamp: new Date().toISOString(),
       tokens: 0,
@@ -578,28 +631,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
 
-      // If RAG is enabled, search for relevant documents
-      let systemPrompt = await db.getSystemPrompt();
-
-      if (ragEnabled || temporaryDocs.length > 0) {
-        const searchResults = await searchDocuments(input);
-        if (searchResults?.results?.length > 0) {
-          systemPrompt = generateSystemPromptWithContext(
-            systemPrompt,
-            searchResults.results,
-            temporaryDocs.length > 0 // Pass flag for temporary docs
-          );
-        }
-      }
-
-      // Get context messages and add enhanced system prompt
+      // Get context messages and add system prompt
       const contextMessages = getContextMessages([...messages, userMessage]);
       const formattedMessages = [
         { role: 'system', content: systemPrompt },
-        ...contextMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
+        ...contextMessages.slice(0, -1), // All messages except the last one
+        { role: 'user', content: userContent } // Use enhanced content for the actual query
       ];
 
       if (images.length > 0) {
