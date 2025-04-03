@@ -92,9 +92,15 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     if (!pythonPort) return;
 
     try {
+      // Delete the collection through the API
       await fetch(`http://0.0.0.0:${pythonPort}/collections/${collectionName}`, {
         method: 'DELETE'
       });
+
+      // Remove from cache if it exists
+      if (doc_ai_cache && doc_ai_cache[collectionName]) {
+        delete doc_ai_cache[collectionName];
+      }
     } catch (error) {
       console.error('Error cleaning up temporary collection:', error);
     }
@@ -571,7 +577,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         }).join('\n---\n');
 
         // Prepend context to user's query
-        userContent = `I have the following context:\n\n${context}\n\nMy question is: ${input}`;
+        userContent = `I have the following context:\n\n${context}\n\nNote: Only Answer My Question, Do Not Answer Anything Else. My question is: ${input}`;
 
         // Clean up all temporary collections after getting results
         await cleanupAllTempCollections();

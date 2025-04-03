@@ -13,6 +13,7 @@ import requests
 import time
 import logging
 import traceback
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,9 +24,14 @@ class DocumentAI:
     A library for document storage, retrieval, and chat interactions with LLMs.
     """
     
+    # Class-level cache for available models
+    _available_models_cache = set()
+    _last_cache_update = 0
+    _cache_ttl = 300  # Cache TTL in seconds (5 minutes)
+    
     def __init__(
         self,
-        embedding_model: str = "nomic-embed-text",
+        embedding_model: str = "mxbai-embed-large",
         llm_model: str = "gemma3:4b",
         temperature: float = 0,
         collection_name: str = "document_collection",
@@ -76,14 +82,39 @@ class DocumentAI:
             
             self.vector_store = Chroma(**params)
     
+    def _update_models_cache(self):
+        """Update the class-level cache of available models"""
+        try:
+            current_time = time.time()
+            # Only update cache if TTL has expired
+            if current_time - self._last_cache_update > self._cache_ttl:
+                response = requests.get(f"{self.ollama_base_url}/api/tags")
+                if response.status_code == 200:
+                    self.__class__._available_models_cache = set(
+                        model["name"] for model in response.json().get("models", [])
+                    )
+                    self.__class__._last_cache_update = current_time
+                    logger.debug("Updated models cache")
+        except Exception as e:
+            logger.warning(f"Failed to update models cache: {e}")
+
     def _ensure_model_available(self, model_name: str):
         """
         Check if the model is available in Ollama, if not, pull it.
+        Uses a class-level cache to avoid frequent API calls.
         
         Args:
             model_name: Name of the model to ensure is available
         """
-        # Check if model exists
+        # Update cache if needed
+        self._update_models_cache()
+        
+        # Check cache first
+        if model_name in self.__class__._available_models_cache:
+            logger.debug(f"Model {model_name} found in cache, skipping pull")
+            return
+            
+        # If not in cache, check API directly
         try:
             response = requests.get(f"{self.ollama_base_url}/api/tags")
             if response.status_code == 200:
@@ -92,16 +123,19 @@ class DocumentAI:
                 if model_name not in available_models:
                     logger.info(f"Model {model_name} not found. Downloading now...")
                     self._pull_model(model_name)
+                    # Update cache after successful pull
+                    self.__class__._available_models_cache.add(model_name)
                 else:
-                    logger.info(f"Model {model_name} is already available")
+                    logger.debug(f"Model {model_name} is available, updating cache")
+                    self.__class__._available_models_cache.add(model_name)
             else:
                 logger.warning(f"Failed to get model list. Status code: {response.status_code}")
-                # Attempt to pull anyway
+                # Only attempt to pull if we couldn't verify availability
                 self._pull_model(model_name)
                 
         except requests.RequestException as e:
             logger.error(f"Error checking for model availability: {e}")
-            # Since we couldn't check, we'll try to pull and let Ollama handle errors
+            # Only pull if we couldn't verify availability
             self._pull_model(model_name)
     
     def _pull_model(self, model_name: str):
@@ -199,6 +233,37 @@ class DocumentAI:
             logger.error(traceback.format_exc())
             raise RuntimeError(f"Failed to delete documents: {e}")
     
+    def _recreate_vector_store(self, collection_name: str, persist_directory: Optional[str] = None):
+        """
+        Recreate the vector store with the current embedding model.
+        
+        Args:
+            collection_name: Name for the vector store collection
+            persist_directory: Optional directory to persist the store
+        """
+        logger.info(f"Recreating vector store for collection: {collection_name}")
+        
+        # If persist_directory exists, try to delete it
+        if persist_directory and os.path.exists(persist_directory):
+            try:
+                import shutil
+                shutil.rmtree(persist_directory)
+                logger.info(f"Deleted existing persist directory: {persist_directory}")
+            except Exception as e:
+                logger.warning(f"Failed to delete persist directory: {e}")
+
+        # Create new vector store
+        params = {
+            "collection_name": collection_name,
+            "embedding_function": self.embeddings,
+        }
+        if persist_directory:
+            params["persist_directory"] = persist_directory
+            os.makedirs(persist_directory, exist_ok=True)
+        
+        self.vector_store = Chroma(**params)
+        logger.info("Vector store recreated successfully")
+
     def similarity_search(
         self,
         query: str,
@@ -213,45 +278,55 @@ class DocumentAI:
             query: Search query text
             k: Number of results to return
             filter: Optional metadata filter
+            min_similarity: Minimum similarity threshold
             
         Returns:
             List of matching documents
         """
-        # Don't process empty filters
-        if not filter:
-            return self.vector_store.similarity_search(
-                query,
-                k=k,
-                filter=None,  # Pass None, not empty dict
-            )
-        
-        # Format the filter for Chroma if provided
-        chroma_filter = {}
-        for key, value in filter.items():
-            # Skip None values or empty dicts
-            if value is None or (isinstance(value, dict) and not value):
-                continue
+        try:
+            # Format the filter for Chroma if provided
+            chroma_filter = None
+            if filter:
+                chroma_filter = {}
+                for key, value in filter.items():
+                    if value is None or (isinstance(value, dict) and not value):
+                        continue
+                    if isinstance(value, dict):
+                        chroma_filter[key] = value
+                    else:
+                        chroma_filter[key] = {"$eq": value}
                 
-            if isinstance(value, dict):
-                # Already in Chroma format
-                chroma_filter[key] = value
-            else:
-                # Convert to Chroma format with $eq operator
-                chroma_filter[key] = {"$eq": value}
-        
-        # If filter became empty, pass None instead of empty dict
-        if not chroma_filter:
+                if not chroma_filter:
+                    chroma_filter = None
+
             return self.vector_store.similarity_search(
                 query,
                 k=k,
-                filter=None,
+                filter=chroma_filter,
             )
-        
-        return self.vector_store.similarity_search(
-            query,
-            k=k,
-            filter=chroma_filter,
-        )
+            
+        except chromadb.errors.InvalidDimensionException as e:
+            logger.warning(f"Dimension mismatch detected: {e}")
+            
+            # Extract collection name and persist directory from vector store
+            collection_name = self.vector_store._collection.name
+            persist_directory = getattr(self.vector_store._client, '_persist_directory', None)
+            
+            # Recreate vector store
+            self._recreate_vector_store(collection_name, persist_directory)
+            
+            # Retry the search
+            logger.info("Retrying search with recreated vector store")
+            return self.vector_store.similarity_search(
+                query,
+                k=k,
+                filter=chroma_filter,
+            )
+            
+        except Exception as e:
+            logger.error(f"Error during similarity search: {e}")
+            logger.error(traceback.format_exc())
+            raise
     
     def chat_with_context(
         self,

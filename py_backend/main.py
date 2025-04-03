@@ -184,7 +184,9 @@ init_db()
 
 # Create a persistent directory for vector databases
 vectordb_dir = os.path.join(os.path.expanduser("~"), ".clara", "vectordb")
+temp_vectordb_dir = os.path.join(vectordb_dir, "temp")  # Add directory for temporary collections
 os.makedirs(vectordb_dir, exist_ok=True)
+os.makedirs(temp_vectordb_dir, exist_ok=True)  # Create temp directory
 
 # Initialize DocumentAI singleton cache
 doc_ai_cache = {}
@@ -198,7 +200,13 @@ def get_doc_ai(collection_name: str = "default_collection"):
         return doc_ai_cache[collection_name]
     
     # Create new instance if not in cache
-    persist_dir = os.path.join(vectordb_dir, collection_name)
+    if collection_name.startswith("temp_collection_"):
+        # Use temp directory for temporary collections
+        persist_dir = os.path.join(temp_vectordb_dir, collection_name)
+    else:
+        # Use regular directory for permanent collections
+        persist_dir = os.path.join(vectordb_dir, collection_name)
+    
     os.makedirs(persist_dir, exist_ok=True)
     
     # Create new instance and cache it
