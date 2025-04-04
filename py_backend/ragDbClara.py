@@ -267,9 +267,9 @@ class DocumentAI:
     def similarity_search(
         self,
         query: str,
-        k: int = 4,
+        k: int = 8,
         filter: Optional[Dict[str, Any]] = None,
-        min_similarity: float = 0.8
+        min_similarity: float = 0.5
     ) -> List[Document]:
         """
         Find documents similar to the query.

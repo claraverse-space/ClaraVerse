@@ -498,7 +498,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
             body: JSON.stringify({
               query,
               collection_name: doc.collection,
-              k: 2,
+              k: 8,  // Increased from 2 to 8
             }),
           }).then(res => res.json())
         )
@@ -513,7 +513,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           body: JSON.stringify({
             query,
             collection_name: 'default_collection',
-            k: 2,
+            k: 8,  // Increased from 2 to 8
           }),
         }).then(res => res.json());
       }
@@ -527,7 +527,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       .sort((a, b) => (b.score || 0) - (a.score || 0));
 
       return {
-        results: allResults.slice(0, 4) // Keep top 4 results
+        results: allResults.slice(0, 8) // Keep top 8 results instead of 4
       };
     } catch (error) {
       console.error('Error searching documents:', error);
