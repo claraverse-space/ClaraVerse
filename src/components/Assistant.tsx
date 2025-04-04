@@ -534,8 +534,25 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       .filter(result => result.score > 0) // Filter out results with score of 0
       .sort((a, b) => (b.score || 0) - (a.score || 0));
 
+      // New filtering logic based on scores
+      let filteredResults = [];
+      if (allResults.length > 0) {
+        // Check if we have any high scoring results (> 0.4)
+        const hasHighScores = allResults.some(r => r.score > 0.4);
+        
+        if (hasHighScores) {
+          // If we have high scores, get all results that are within 0.1 range of each other
+          const maxScore = allResults[0].score;
+          filteredResults = allResults.filter(r => maxScore - r.score <= 0.1);
+        } else {
+          // If no high scores, still group results that are within 0.1 range of the highest score
+          const maxScore = allResults[0].score;
+          filteredResults = allResults.filter(r => maxScore - r.score <= 0.1);
+        }
+      }
+
       return {
-        results: allResults.slice(0, 8) // Keep top 8 results instead of 4
+        results: filteredResults.slice(0, 8) // Still keep max 8 results
       };
     } catch (error) {
       console.error('Error searching documents:', error);
