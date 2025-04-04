@@ -227,6 +227,16 @@ class DocumentAI:
             # Delete documents from the vector store
             logger.info(f"Deleting {len(document_ids)} document chunks from vector store")
             self.vector_store.delete(ids=document_ids)
+            
+            # Ensure changes are persisted by getting the underlying ChromaDB collection
+            if hasattr(self.vector_store, '_collection'):
+                # Force a persist by resetting the collection
+                collection_name = self.vector_store._collection.name
+                persist_directory = getattr(self.vector_store._client, '_persist_directory', None)
+                if persist_directory:
+                    self._recreate_vector_store(collection_name, persist_directory)
+                    logger.info("Persisted changes to disk by recreating store")
+            
             logger.info(f"Successfully deleted {len(document_ids)} document chunks")
         except Exception as e:
             logger.error(f"Error deleting documents from vector store: {e}")
