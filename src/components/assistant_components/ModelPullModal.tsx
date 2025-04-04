@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Download, Loader2, Cpu, Code, Brain, Image as ImageIcon, Globe, Terminal } from 'lucide-react';
+import { X, Download, Loader2, Cpu, Code, Brain, Image as ImageIcon, Globe, Terminal, Search } from 'lucide-react';
 
 interface ModelPullModalProps {
   isOpen: boolean;
@@ -120,12 +120,33 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
   const [pullProgress, setPullProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<'recommended' | 'all' | 'custom'>('recommended');
+  const [customModelName, setCustomModelName] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
+
+  useEffect(() => {
+    // Fetch available models from Ollama
+    const fetchModels = async () => {
+      try {
+        const response = await fetch('http://localhost:11434/api/tags');
+        const data = await response.json();
+        if (data.models) {
+          setAvailableModels(data.models.map((model: any) => model.name));
+        }
+      } catch (error) {
+        console.error('Error fetching models:', error);
+        setAvailableModels([]);
+      }
+    };
+    fetchModels();
+  }, []);
 
   const addLog = (message: string) => {
     setLogs(prev => [...prev, message]);
@@ -205,14 +226,57 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
       )
     : [];
 
+  const filteredAvailableModels = availableModels.filter(model => 
+    model.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Add progress bar component
+  const ProgressBar = ({ progress }: { progress: number }) => (
+    <div className="mt-3">
+      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-sakura-500 transition-all duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+
+  // Add download button component
+  const DownloadButton = ({ modelName, showProgress = false }: { modelName: string, showProgress?: boolean }) => (
+    <button
+      onClick={() => handlePull(modelName)}
+      disabled={isPulling}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+        showProgress ? 'w-full justify-center' : ''
+      } ${
+        isPulling && currentModel === modelName
+          ? 'bg-sakura-100 dark:bg-sakura-100/10 text-sakura-800'
+          : 'bg-sakura-500 text-white hover:bg-sakura-600'
+      } disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
+    >
+      {isPulling && currentModel === modelName ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>{pullProgress}%</span>
+        </>
+      ) : (
+        <>
+          <Download className="w-4 h-4" />
+          <span>Download</span>
+        </>
+      )}
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="glassmorphic rounded-2xl p-8 max-w-4xl w-full mx-4 space-y-6 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="glassmorphic rounded-2xl p-6 w-full max-w-4xl space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Download className="w-6 h-6 text-sakura-500" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Select Your Model
+              Model Manager
             </h2>
           </div>
           <button
@@ -223,13 +287,47 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
           </button>
         </div>
 
-        {/* Terminal Output */}
+        {/* Tabs */}
+        <div className="flex space-x-2 border-b border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => setActiveTab('recommended')}
+            className={`px-4 py-2 rounded-t-lg ${
+              activeTab === 'recommended'
+                ? 'bg-sakura-50 dark:bg-sakura-100/5 text-sakura-600 dark:text-sakura-400 border-b-2 border-sakura-500'
+                : 'text-gray-500 dark:text-gray-400 hover:text-sakura-600 dark:hover:text-sakura-400'
+            }`}
+          >
+            Recommended Models
+          </button>
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-4 py-2 rounded-t-lg ${
+              activeTab === 'all'
+                ? 'bg-sakura-50 dark:bg-sakura-100/5 text-sakura-600 dark:text-sakura-400 border-b-2 border-sakura-500'
+                : 'text-gray-500 dark:text-gray-400 hover:text-sakura-600 dark:hover:text-sakura-400'
+            }`}
+          >
+            All Models
+          </button>
+          <button
+            onClick={() => setActiveTab('custom')}
+            className={`px-4 py-2 rounded-t-lg ${
+              activeTab === 'custom'
+                ? 'bg-sakura-50 dark:bg-sakura-100/5 text-sakura-600 dark:text-sakura-400 border-b-2 border-sakura-500'
+                : 'text-gray-500 dark:text-gray-400 hover:text-sakura-600 dark:hover:text-sakura-400'
+            }`}
+          >
+            Custom Model
+          </button>
+        </div>
+
+        {/* Terminal Output - Moved outside tab content */}
         {isPulling && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Terminal className="w-4 h-4 text-sakura-500" />
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                Download Progress
+                Download Progress - {currentModel}
               </h3>
             </div>
             <div
@@ -242,123 +340,175 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
                 </div>
               ))}
             </div>
+            <ProgressBar progress={pullProgress} />
           </div>
         )}
 
-        {/* System Tier Selection */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 ${isPulling ? 'opacity-50 pointer-events-none' : ''}`}>
-          {Object.entries(SYSTEM_TIERS).map(([tier, config]) => (
-            <button
-              key={tier}
-              onClick={() => setSelectedTier(tier as keyof typeof SYSTEM_TIERS)}
-              className={`p-4 rounded-lg border transition-all ${
-                selectedTier === tier
-                  ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-500/10'
-                  : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-              }`}
-            >
-              <h3 className="font-medium text-gray-900 dark:text-white">
-                {config.name}
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                {config.description}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        {/* Use Case Selection */}
-        <div className={`space-y-2 ${isPulling ? 'opacity-50 pointer-events-none' : ''}`}>
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-            Use Cases (Optional)
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {USE_CASES.map(useCase => {
-              const isSelected = selectedUseCases.includes(useCase.id);
-              const Icon = useCase.icon;
-              return (
-                <button
-                  key={useCase.id}
-                  onClick={() => setSelectedUseCases(prev =>
-                    isSelected
-                      ? prev.filter(id => id !== useCase.id)
-                      : [...prev, useCase.id]
-                  )}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                    isSelected
-                      ? 'bg-sakura-500 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {useCase.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Model List */}
-        {selectedTier && (
-          <div className={`space-y-4 ${isPulling ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-              Recommended Models
-            </h3>
-            <div className="grid grid-cols-1 gap-3">
-              {filteredModels.map((model) => {
-                const Icon = model.icon;
-                const isCurrentModel = currentModel === model.name;
-                return (
-                  <div
-                    key={model.name}
-                    className="p-4 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
+        {/* Content based on active tab */}
+        <div className={`space-y-4 ${isPulling ? 'opacity-50 pointer-events-none' : ''}`}>
+          {activeTab === 'recommended' && (
+            <>
+              {/* System Tier Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Object.entries(SYSTEM_TIERS).map(([tier, config]) => (
+                  <button
+                    key={tier}
+                    onClick={() => setSelectedTier(tier as keyof typeof SYSTEM_TIERS)}
+                    className={`p-4 rounded-xl border transition-all ${
+                      selectedTier === tier
+                        ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-100/5'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Icon className="w-5 h-5 text-gray-500" />
-                        <div>
-                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {model.name}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {model.description}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handlePull(model.name)}
-                        disabled={isPulling}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    <h3 className="font-medium text-gray-900 dark:text-white mb-1">
+                      {config.name}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {config.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+
+              {/* Use Case Filters */}
+              <div className="flex flex-wrap gap-2">
+                {USE_CASES.map(useCase => {
+                  const isSelected = selectedUseCases.includes(useCase.id);
+                  const Icon = useCase.icon;
+                  return (
+                    <button
+                      key={useCase.id}
+                      onClick={() => {
+                        setSelectedUseCases(prev =>
+                          isSelected
+                            ? prev.filter(id => id !== useCase.id)
+                            : [...prev, useCase.id]
+                        );
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all ${
+                        isSelected
+                          ? 'bg-sakura-100 dark:bg-sakura-100/10 text-sakura-800 dark:text-sakura-200'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {useCase.name}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Updated Model List */}
+              {selectedTier && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredModels.map(model => {
+                    const Icon = model.icon;
+                    const isCurrentModel = currentModel === model.name;
+                    return (
+                      <div
+                        key={model.name}
+                        className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-sakura-300 transition-all"
                       >
-                        {isCurrentModel ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            {pullProgress}%
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4" />
-                            Pull
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    {isCurrentModel && (
-                      <div className="mt-3">
-                        <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-sakura-500 transition-all duration-500"
-                            style={{ width: `${pullProgress}%` }}
-                          />
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-5 h-5 text-sakura-500" />
+                            <h4 className="font-medium text-gray-900 dark:text-white">
+                              {model.name}
+                            </h4>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                          {model.description}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {model.tags.map(tag => (
+                            <span
+                              key={tag}
+                              className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="mt-3">
+                          <DownloadButton modelName={model.name} showProgress={true} />
+                          {isCurrentModel && isPulling && (
+                            <ProgressBar progress={pullProgress} />
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'all' && (
+            <div className="space-y-4">
+              {/* Search input */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search models..."
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                />
+              </div>
+
+              {/* Updated Available models list */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredAvailableModels.map(model => {
+                  const isCurrentModel = currentModel === model;
+                  return (
+                    <div
+                      key={model}
+                      className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-sakura-300 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900 dark:text-white">
+                          {model}
+                        </h4>
+                      </div>
+                      <DownloadButton modelName={model} showProgress={true} />
+                      {isCurrentModel && isPulling && (
+                        <ProgressBar progress={pullProgress} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {activeTab === 'custom' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customModelName}
+                    onChange={(e) => setCustomModelName(e.target.value)}
+                    placeholder="Enter model name (e.g., llama2:latest)"
+                    className="flex-1 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                  />
+                  <DownloadButton 
+                    modelName={customModelName.trim()} 
+                    showProgress={false}
+                  />
+                </div>
+                {currentModel === customModelName.trim() && isPulling && (
+                  <ProgressBar progress={pullProgress} />
+                )}
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Enter the name of any Ollama-compatible model. You can specify tags (e.g., :latest) or use the default tag.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
