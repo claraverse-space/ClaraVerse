@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Download, Loader2, Cpu, Code, Brain, Image as ImageIcon, Globe, Terminal, Search } from 'lucide-react';
+import { X, Download, Loader2, Cpu, Code, Brain, Image as ImageIcon, Globe, Terminal, Search, RefreshCw } from 'lucide-react';
 
 interface ModelPullModalProps {
   isOpen: boolean;
@@ -117,7 +117,6 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
   const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
   const [isPulling, setIsPulling] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>('');
-  const [pullProgress, setPullProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'recommended' | 'all' | 'custom'>('recommended');
@@ -125,28 +124,30 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const fetchModels = async () => {
+    try {
+      const response = await fetch('http://localhost:11434/api/tags');
+      const data = await response.json();
+      if (data.models) {
+        setAvailableModels(data.models.map((model: any) => model.name));
+      }
+    } catch (error) {
+      console.error('Error fetching models:', error);
+      setAvailableModels([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchModels();
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
-
-  useEffect(() => {
-    // Fetch available models from Ollama
-    const fetchModels = async () => {
-      try {
-        const response = await fetch('http://localhost:11434/api/tags');
-        const data = await response.json();
-        if (data.models) {
-          setAvailableModels(data.models.map((model: any) => model.name));
-        }
-      } catch (error) {
-        console.error('Error fetching models:', error);
-        setAvailableModels([]);
-      }
-    };
-    fetchModels();
-  }, []);
 
   const addLog = (message: string) => {
     setLogs(prev => [...prev, message]);
@@ -157,65 +158,42 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
   const handlePull = async (modelName: string) => {
     setCurrentModel(modelName);
     setIsPulling(true);
-    setPullProgress(0);
-    setLogs([`Starting download of ${modelName}...`]);
-    
-    let currentDigestDone = false;
-    let currentDigest = '';
+    setLogs([
+      `Starting download of ${modelName}...`,
+      'Note: Download time may vary based on model size and internet speed.',
+      'Please wait while we download and verify the model...'
+    ]);
     
     try {
       for await (const data of onPullModel(modelName)) {
         if (data.status === 'downloading') {
-          let percent = 0;
-          if (data.completed && data.total) {
-            percent = Math.round((data.completed / data.total) * 100);
-            setPullProgress(percent);
-            
-            // Log detailed progress
-            const downloaded = (data.completed / 1024 / 1024).toFixed(1);
-            const total = (data.total / 1024 / 1024).toFixed(1);
-            
-            if (data.digest !== currentDigest) {
-              currentDigest = data.digest;
-              currentDigestDone = false;
-              addLog(`\nPulling new layer: ${currentDigest.slice(0, 12)}...`);
-            }
-            
-            const logMessage = `${data.status}: ${percent}% (${downloaded}MB / ${total}MB)`;
-            addLog(logMessage);
-            
-            if (percent === 100 && !currentDigestDone) {
-              addLog('Layer download complete');
-              currentDigestDone = true;
-            }
+          if (data.digest) {
+            addLog(`Downloading model files...`);
           }
         } else if (data.status === 'verifying') {
-          addLog(`Verifying ${modelName}...`);
-          setPullProgress(99);
+          addLog(`\nVerifying ${modelName}...`);
         } else if (data.status === 'done') {
-          addLog(`Successfully pulled ${modelName}`);
-          setPullProgress(100);
+          addLog(`\nSuccessfully installed ${modelName}`);
+          await fetchModels(); // Refresh the model list
         } else {
           addLog(`${data.status}`);
         }
       }
       
-      // Reset after completion
+      // Close modal after successful installation with a small delay
       setTimeout(() => {
         setIsPulling(false);
         setCurrentModel('');
-        setPullProgress(0);
         onClose();
-      }, 1000);
+      }, 2000); // Increased delay to 2 seconds to ensure user sees success message
     } catch (error) {
       console.error('Error pulling model:', error);
-      addLog(`Error: Failed to pull ${modelName}`);
+      addLog(`\nError: Failed to pull ${modelName}`);
       if (error instanceof Error) {
         addLog(`Error details: ${error.message}`);
       }
       setIsPulling(false);
       setCurrentModel('');
-      setPullProgress(0);
     }
   };
 
@@ -230,19 +208,7 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
     model.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Add progress bar component
-  const ProgressBar = ({ progress }: { progress: number }) => (
-    <div className="mt-3">
-      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-sakura-500 transition-all duration-500"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-    </div>
-  );
-
-  // Add download button component
+  // Modify DownloadButton component
   const DownloadButton = ({ modelName, showProgress = false }: { modelName: string, showProgress?: boolean }) => (
     <button
       onClick={() => handlePull(modelName)}
@@ -258,7 +224,7 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
       {isPulling && currentModel === modelName ? (
         <>
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span>{pullProgress}%</span>
+          <span>Installing...</span>
         </>
       ) : (
         <>
@@ -266,6 +232,17 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
           <span>Download</span>
         </>
       )}
+    </button>
+  );
+
+  // Add RefreshButton component
+  const RefreshButton = () => (
+    <button
+      onClick={fetchModels}
+      className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-500 dark:text-gray-400"
+      title="Refresh model list"
+    >
+      <RefreshCw className="w-5 h-5" />
     </button>
   );
 
@@ -279,12 +256,15 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
               Model Manager
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
-          >
-            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            <RefreshButton />
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
+            >
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -321,13 +301,13 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
           </button>
         </div>
 
-        {/* Terminal Output - Moved outside tab content */}
+        {/* Terminal Output - Modified to remove progress bar */}
         {isPulling && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Terminal className="w-4 h-4 text-sakura-500" />
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                Download Progress - {currentModel}
+                Installation Progress - {currentModel}
               </h3>
             </div>
             <div
@@ -340,7 +320,6 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
                 </div>
               ))}
             </div>
-            <ProgressBar progress={pullProgress} />
           </div>
         )}
 
@@ -432,9 +411,6 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
                         </div>
                         <div className="mt-3">
                           <DownloadButton modelName={model.name} showProgress={true} />
-                          {isCurrentModel && isPulling && (
-                            <ProgressBar progress={pullProgress} />
-                          )}
                         </div>
                       </div>
                     );
@@ -473,9 +449,6 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
                         </h4>
                       </div>
                       <DownloadButton modelName={model} showProgress={true} />
-                      {isCurrentModel && isPulling && (
-                        <ProgressBar progress={pullProgress} />
-                      )}
                     </div>
                   );
                 })}
@@ -499,9 +472,6 @@ const ModelPullModal: React.FC<ModelPullModalProps> = ({
                     showProgress={false}
                   />
                 </div>
-                {currentModel === customModelName.trim() && isPulling && (
-                  <ProgressBar progress={pullProgress} />
-                )}
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Enter the name of any Ollama-compatible model. You can specify tags (e.g., :latest) or use the default tag.
                 </p>

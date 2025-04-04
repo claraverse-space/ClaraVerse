@@ -383,18 +383,14 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         let clientConfig: any = {};
 
         if (config.api_type === 'ollama') {
-          // Use Ollama's API
           baseUrl = config.ollama_base_url || 'http://localhost:11434';
           clientConfig = { type: 'ollama' };
         } else {
-          // OpenAI-like API
           if (config.openai_base_url) {
-            // Custom OpenAI-compatible API
             baseUrl = config.openai_base_url.endsWith('/v1')
               ? config.openai_base_url
               : `${config.openai_base_url.replace(/\/$/, '')}/v1`;
           } else {
-            // Official OpenAI API
             baseUrl = 'https://api.openai.com/v1';
           }
 
@@ -407,12 +403,24 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         const newClient = new OllamaClient(baseUrl, clientConfig);
         setClient(newClient);
 
-        // Test connection
+        // Test connection and get model list
         const modelList = await newClient.listModels();
         setModels(modelList);
 
-        // Rest of the initialization code...
-        // ...existing model setup code...
+        // If no model is selected, try to select one automatically
+        if (!selectedModel) {
+          // First try to get the most used model
+          const mostUsed = await getMostUsedModel(modelList);
+          if (mostUsed) {
+            handleModelSelect(mostUsed);
+          } else {
+            // If no most used model, select the first available model
+            const defaultModel = modelList[0]?.name;
+            if (defaultModel) {
+              handleModelSelect(defaultModel);
+            }
+          }
+        }
 
         setConnectionStatus('connected');
       } catch (err) {
@@ -829,16 +837,42 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         yield progress;
       }
 
-      // Refresh model list after successful pull
+      // Refresh model list and update selected model
       const modelList = await client.listModels();
       setModels(modelList);
+      handleModelSelect(modelName);
+      
+      // Force close model selector dropdown
+      setShowModelSelect(false);
+      
+      // Show success message
+      const message: Message = {
+        id: crypto.randomUUID(),
+        chat_id: activeChat || '',
+        content: `Model "${modelName}" has been successfully installed and selected. You can now start using it for your conversations.`,
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        tokens: 0
+      };
 
-      // Set as selected model
-      setSelectedModel(modelName);
-      localStorage.setItem('selected_model', modelName);
+      // Add message to database and state
+      if (activeChat) {
+        await db.addMessage(
+          activeChat,
+          message.content,
+          message.role,
+          message.tokens
+        );
+      }
+      setMessages(prev => [...prev, message]);
+
+      // Force a re-render of the header by updating the models list again
+      setTimeout(() => {
+        setModels([...modelList]);
+      }, 100);
     } catch (error) {
       console.error('Error pulling model:', error);
-      throw error; // Re-throw to be handled by the modal
+      throw error;
     }
   };
 

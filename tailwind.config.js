@@ -6,13 +6,16 @@ export default {
     extend: {
       colors: {
         sakura: {
-          50: 'var(--sakura-50)',
-          100: 'var(--sakura-100)',
-          200: 'var(--sakura-200)',
-          300: 'var(--sakura-300)',
-          400: 'var(--sakura-400)',
-          500: 'var(--sakura-500)',
-          600: 'var(--sakura-600)',
+          50: '#fdf2f8',
+          100: '#fce7f3',
+          200: '#fbcfe8',
+          300: '#f9a8d4',
+          400: '#f472b6',
+          500: '#ec4899',
+          600: '#db2777',
+          700: '#be185d',
+          800: '#9d174d',
+          900: '#831843',
         },
       },
       typography: {
@@ -42,6 +45,16 @@ export default {
           },
         },
       },
+      keyframes: {
+        'fade-out': {
+          '0%': { opacity: '1' },
+          '75%': { opacity: '1' },
+          '100%': { opacity: '0' }
+        }
+      },
+      animation: {
+        'fade-out': 'fade-out 3s ease-out forwards'
+      }
     },
   },
   plugins: [
