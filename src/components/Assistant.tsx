@@ -8,7 +8,6 @@ import ModelPullModal from './assistant_components/ModelPullModal';
 import { KnowledgeBaseModal } from './assistant_components';
 import { db } from '../db';
 import { OllamaClient } from '../utils';
-import { generateSystemPromptWithContext } from '../utils/ragUtils';
 import type { Message, Chat } from '../db';
 
 interface UploadedImage {
@@ -96,11 +95,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       await fetch(`http://0.0.0.0:${pythonPort}/collections/${collectionName}`, {
         method: 'DELETE'
       });
-
-      // Remove from cache if it exists
-      if (doc_ai_cache && doc_ai_cache[collectionName]) {
-        delete doc_ai_cache[collectionName];
-      }
+      
+      console.log(`Successfully cleaned up collection: ${collectionName}`);
     } catch (error) {
       console.error('Error cleaning up temporary collection:', error);
     }
@@ -117,7 +113,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   // Add cleanup effect when component unmounts
   useEffect(() => {
     return () => {
-      cleanupAllTempCollections();
+      if (temporaryDocs.length > 0) {
+        cleanupAllTempCollections();
+      }
     };
   }, []);
 
@@ -272,7 +270,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   useEffect(() => {
     if (activeChat) {
-      cleanupAllTempCollections();
+      // No need to cleanup here, temp docs should persist across chat changes
     }
   }, [activeChat]);
 
@@ -506,22 +504,22 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
             body: JSON.stringify({
               query,
               collection_name: doc.collection,
-              k: 8,  // Increased from 2 to 8
+              k: 8,
             }),
           }).then(res => res.json())
         )
       );
 
-      // Only search default collection if no temp docs or RAG is explicitly enabled
+      // Only search default collection if no temp docs exist and RAG is enabled
       let defaultResults = { results: [] };
-      if (ragEnabled || temporaryDocs.length === 0) {
+      if (temporaryDocs.length === 0 && ragEnabled) {
         defaultResults = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query,
             collection_name: 'default_collection',
-            k: 8,  // Increased from 2 to 8
+            k: 8,
           }),
         }).then(res => res.json());
       }
@@ -531,7 +529,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         ...tempResults.flatMap(r => r.results || []),
         ...(defaultResults?.results || [])
       ]
-      .filter(result => result.score > 0) // Filter out results with score of 0
+      .filter(result => result.score > 0)
       .sort((a, b) => (b.score || 0) - (a.score || 0));
 
       // New filtering logic based on scores
@@ -606,7 +604,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         // Prepend context to user's query
         userContent = `I have the following context:\n\n${context}\n\nNote: Only Answer My Question, Do Not Answer Anything Else. My question is: ${input}`;
 
-        // Clean up temporary collections if using them
+        // Only cleanup after successfully using the temporary docs
         if (temporaryDocs.length > 0) {
           await cleanupAllTempCollections();
           setTemporaryDocs([]); // Clear the temporary docs state

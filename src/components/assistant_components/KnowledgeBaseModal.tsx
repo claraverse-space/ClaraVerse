@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Trash2, Database, File, Loader2, AlertCircle } from 'lucide-react';
+import { X, Upload, Trash2, Database, File, Loader2, AlertCircle, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 
 interface KnowledgeBaseModalProps {
   isOpen: boolean;
@@ -21,6 +21,9 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pythonPort, setPythonPort] = useState<number | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get Python port on mount
@@ -126,6 +129,46 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
     }
   };
 
+  const handlePurgeDatabase = async () => {
+    if (!pythonPort) {
+      setError('Backend service not available');
+      return;
+    }
+
+    try {
+      setIsPurging(true);
+      setError(null);
+
+      // Call the recreate collection endpoint
+      const recreateResponse = await fetch(`http://0.0.0.0:${pythonPort}/collections/recreate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          collection_name: 'default_collection'
+        })
+      });
+
+      if (!recreateResponse.ok) {
+        throw new Error('Failed to recreate database');
+      }
+
+      // Reload documents to verify everything is cleared
+      await loadDocuments(pythonPort);
+      setShowPurgeConfirm(false);
+      
+      // Show success message
+      setError('Successfully purged and recreated the knowledge base');
+      setTimeout(() => setError(null), 3000); // Clear message after 3 seconds
+    } catch (error) {
+      console.error('Error purging database:', error);
+      setError('Failed to purge database');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -224,6 +267,69 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>No documents uploaded yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* Advanced Settings Section */}
+          <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <span className="font-medium">Advanced Settings</span>
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                  <h3 className="text-lg font-medium text-red-700 dark:text-red-400">Danger Zone</h3>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-red-700 dark:text-red-400">Purge Knowledge Base</p>
+                      <p className="text-sm text-red-600 dark:text-red-500">
+                        This will delete all documents and recreate the database. This action cannot be undone.
+                      </p>
+                    </div>
+                    {!showPurgeConfirm ? (
+                      <button
+                        onClick={() => setShowPurgeConfirm(true)}
+                        className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/40 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800 rounded-lg transition-colors"
+                      >
+                        Purge Database
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowPurgeConfirm(false)}
+                          className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg transition-colors"
+                          disabled={isPurging}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handlePurgeDatabase}
+                          disabled={isPurging}
+                          className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
+                        >
+                          {isPurging ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Purging...</span>
+                            </>
+                          ) : (
+                            <span>Confirm Purge</span>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
