@@ -231,21 +231,6 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
           <Home className="w-5 h-5" />
           <span>Back to Home</span>
         </button>
-
-        <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50">
-          {connectionStatus === 'checking' ? (
-            <Bot className="w-5 h-5 text-yellow-500 animate-spin" />
-          ) : connectionStatus === 'connected' ? (
-            <CheckCircle2 className="w-5 h-5 text-green-500" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-500" />
-          )}
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            {connectionStatus === 'checking' ? 'Checking Connection...' :
-             connectionStatus === 'connected' ? 'Connected' :
-             'Disconnected'}
-          </span>
-        </div>
       </div>
 
       {/* Center section with model selector */}
@@ -311,39 +296,61 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
         </button>
       </div>
 
-      {/* Right section with fixed width */}
-      <div className="flex items-center gap-4 w-[500px] justify-end">
+      {/* Right section with actions */}
+      <div className="flex items-center gap-2">
+        {/* Connection Status */}
+        <div className="flex items-center gap-2">
+          {connectionStatus === 'checking' ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-100/50 dark:bg-yellow-900/30">
+              <Bot className="w-4 h-4 text-yellow-500 animate-spin" />
+              <span className="text-sm text-yellow-700 dark:text-yellow-400">Checking...</span>
+            </div>
+          ) : connectionStatus === 'connected' ? (
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Connected" />
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-100/50 dark:bg-red-900/30">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+              <span className="text-sm text-red-700 dark:text-red-400">Disconnected</span>
+            </div>
+          )}
+        </div>
+
+        {/* Knowledge Base Button */}
         <button
           onClick={onOpenKnowledgeBase}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors whitespace-nowrap"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
           title="Knowledge Base"
         >
-          <Database className="w-5 h-5" />
-          <span className="text-sm font-medium">Knowledge Base</span>
+          <Database className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+          <span className="text-sm text-gray-700 dark:text-gray-300 hidden sm:inline">Knowledge Base</span>
         </button>
 
+        {/* Tools Button */}
         <button
           onClick={onOpenTools}
-          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          title="Tool Management"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
+          title="Tools"
         >
-          <Wrench className="w-5 h-5" />
+          <Wrench className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+          <span className="text-sm text-gray-700 dark:text-gray-300 hidden sm:inline">Tools</span>
         </button>
 
-        <button 
+        {/* Theme Toggle */}
+        <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
-          aria-label="Toggle theme"
+          className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         >
           {isDark ? (
-            <Sun className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            <Sun className="w-4 h-4 text-gray-700 dark:text-gray-300" />
           ) : (
-            <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            <Moon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
           )}
         </button>
 
-        <UserProfileButton
-          userName={userName || 'Profile'}
+        {/* User Profile */}
+        <UserProfileButton 
+          userName={userName} 
           onPageChange={onPageChange}
         />
       </div>

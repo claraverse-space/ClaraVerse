@@ -5,6 +5,7 @@ import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
 import ModelWarning from './assistant_components/ModelWarning';
 import ModelPullModal from './assistant_components/ModelPullModal';
+import WhatsNewWidget from './assistant_components/WhatsNewWidget';
 import { db } from '../db';
 import { OllamaClient, ChatMessage, ChatRole } from '../utils';
 import type { Message, Chat, Tool, APIConfig } from '../db';
@@ -443,6 +444,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         const modelList = await newClient.listModels();
         setModels(modelList);
 
+        // Show model pull modal if we're connected to Ollama but have no models
+        if (config.api_type === 'ollama' && modelList.length === 0) {
+          setShowPullModal(true);
+        }
+
         // If no model is selected, try to select one automatically
         if (!selectedModel) {
           // First try to get the most used model
@@ -499,8 +505,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
-  const getContextMessages = (messages: Message[]): Message[] => {
-    // Get the last MAX_CONTEXT_MESSAGES messages
+  const getContextMessages = (messages: Message[], useTool: boolean = false): Message[] => {
+    // For tool calls, only get the last message for context
+    if (useTool) {
+      return messages.slice(-1);
+    }
+    // For normal chat, get the last MAX_CONTEXT_MESSAGES messages
     return messages.slice(-MAX_CONTEXT_MESSAGES);
   };
 
@@ -696,8 +706,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Get context messages
-      const contextMessages = getContextMessages([...messages, userMessage]);
+      // Get context messages - use minimal context for tool calls
+      const contextMessages = getContextMessages([...messages, userMessage], !!selectedTool);
       const formattedMessages: ChatMessage[] = [
         { role: 'system' as ChatRole, content: systemPrompt },
         ...contextMessages.map(msg => {
@@ -1330,6 +1340,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onClose={() => setShowSettings(false)}
           isStreaming={isStreaming}
           setIsStreaming={setIsStreaming}
+          onOpenTools={() => setShowToolModal(true)}
         />
 
         {showModelWarning && (

@@ -104,6 +104,20 @@ interface TestParameters {
   [key: string]: string | number | boolean;
 }
 
+const DEFAULT_TOOL_SKELETON = `{
+  "name": "example_tool",
+  "description": "A tool that does something useful",
+  "parameters": [
+    {
+      "name": "input_text",
+      "type": "string",
+      "description": "The text to process",
+      "required": true
+    }
+  ],
+  "implementation": "async function implementation(args) {\\n  try {\\n    // Your code here\\n    const result = args.input_text.toUpperCase();\\n    return result;\\n  } catch (error) {\\n    throw new Error(\`Tool execution failed: \${error.message}\`);\\n  }\\n}"
+}`;
+
 export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: defaultModel }) => {
   const [tools, setTools] = useState<Tool[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -114,12 +128,19 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
   const [testResult, setTestResult] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(defaultModel);
-  const [mode, setMode] = useState<'automated' | 'manual'>('automated');
+  const [mode, setMode] = useState<'automated' | 'manual'>('manual');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentOnboardingStep, setCurrentOnboardingStep] = useState(0);
   const [testParams, setTestParams] = useState<TestParameters>({});
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
+  const [showWIPModal, setShowWIPModal] = useState(false);
+  const [manualToolData, setManualToolData] = useState({
+    name: '',
+    description: '',
+    parameters: '',
+    implementation: ''
+  });
 
   useEffect(() => {
     loadTools();
@@ -378,33 +399,22 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
         <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
           <h4 className="text-sm font-medium mb-2">Create New Tool</h4>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Model
-            </label>
-            <div className="relative">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm appearance-none"
-              >
-                {availableModels.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
-            </div>
-          </div>
-
           {mode === 'automated' ? (
-            <textarea
-              value={userPrompt}
-              onChange={(e) => setUserPrompt(e.target.value)}
-              placeholder="Describe the tool you want to create..."
-              className="w-full min-h-[100px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm mb-3"
-            />
+            <div className="space-y-4">
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/50 rounded-lg">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                  🚧 The automated tool creation mode is currently under development. Please use the manual mode to create tools.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setMode('manual')}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors"
+                >
+                  Switch to Manual Mode
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="space-y-4">
               <div>
@@ -413,64 +423,129 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
                 </label>
                 <input
                   type="text"
-                  value={userPrompt}
-                  onChange={(e) => setUserPrompt(e.target.value)}
+                  value={manualToolData.name}
+                  onChange={(e) => setManualToolData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="my_custom_tool"
-                  className="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm"
+                  className="w-full px-3 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm font-mono"
                 />
+                <p className="mt-1 text-xs text-gray-500">Example: fetch_weather_data</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
-                  placeholder="Describe what your tool does..."
+                  value={manualToolData.description}
+                  onChange={(e) => setManualToolData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="A clear description of what your tool does..."
                   className="w-full min-h-[60px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">Example: Fetches current weather data for a given city using the OpenWeather API</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Parameters (JSON)
+                </label>
+                <textarea
+                  value={manualToolData.parameters}
+                  onChange={(e) => setManualToolData(prev => ({ ...prev, parameters: e.target.value }))}
+                  placeholder='[
+  {
+    "name": "city",
+    "type": "string",
+    "description": "City name",
+    "required": true
+  }
+]'
+                  className="w-full min-h-[120px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm font-mono"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Implementation
                 </label>
-                <textarea
-                  placeholder="async function implementation(args) {
-  // Your code here
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      const skeleton = DEFAULT_TOOL_SKELETON;
+                      try {
+                        const parsed = JSON.parse(skeleton);
+                        setManualToolData(prev => ({
+                          ...prev,
+                          implementation: parsed.implementation
+                        }));
+                      } catch (e) {
+                        console.error('Failed to parse skeleton:', e);
+                      }
+                    }}
+                    className="absolute right-2 top-2 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                  >
+                    Insert Example
+                  </button>
+                  <textarea
+                    value={manualToolData.implementation}
+                    onChange={(e) => setManualToolData(prev => ({ ...prev, implementation: e.target.value }))}
+                    placeholder="async function implementation(args) {
+  try {
+    // Your code here
+    return result;
+  } catch (error) {
+    throw new Error(`Tool execution failed: ${error.message}`);
+  }
 }"
-                  className="w-full min-h-[150px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm font-mono"
-                />
+                    className="w-full min-h-[200px] p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsCreating(false);
+                    setManualToolData({
+                      name: '',
+                      description: '',
+                      parameters: '',
+                      implementation: ''
+                    });
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const parameters = JSON.parse(manualToolData.parameters);
+                      const toolDefinition = {
+                        name: manualToolData.name,
+                        description: manualToolData.description,
+                        parameters,
+                        implementation: manualToolData.implementation,
+                        isEnabled: true
+                      };
+                      await db.addTool(toolDefinition);
+                      await loadTools();
+                      setIsCreating(false);
+                      setManualToolData({
+                        name: '',
+                        description: '',
+                        parameters: '',
+                        implementation: ''
+                      });
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Failed to create tool');
+                    }
+                  }}
+                  disabled={!manualToolData.name || !manualToolData.description || !manualToolData.parameters || !manualToolData.implementation}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors disabled:opacity-50"
+                >
+                  <Code className="w-4 h-4" />
+                  Create Tool
+                </button>
               </div>
             </div>
           )}
-
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => {
-                setIsCreating(false);
-                setUserPrompt('');
-                setError(null);
-              }}
-              className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={generateTool}
-              disabled={isGenerating || !userPrompt.trim()}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 transition-colors disabled:opacity-50"
-            >
-              {isGenerating ? (
-                <>
-                  <span className="animate-spin">⌛</span>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Code className="w-4 h-4" />
-                  {mode === 'automated' ? 'Generate Tool' : 'Create Tool'}
-                </>
-              )}
-            </button>
-          </div>
         </div>
       )}
 
