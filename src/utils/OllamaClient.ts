@@ -1,4 +1,4 @@
-import { stringify } from "querystring";
+import type { Tool } from '../db';
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -7,6 +7,7 @@ export interface ChatMessage {
   content: string;
   images?: string[];
   tool_calls?: any[];
+  name?: string; // For tool responses
 }
 
 export interface RequestOptions {
@@ -17,6 +18,42 @@ export interface OpenAIConfig {
   apiKey: string;
   baseUrl: string;
   type: 'ollama' | 'openai';
+}
+
+interface APIResponse {
+  message?: {
+    content: string;
+    role: ChatRole;
+    tool_calls?: {
+      function: {
+        name: string;
+        arguments: string | Record<string, unknown>;
+      };
+    }[];
+  };
+  choices?: [{
+    message: {
+      content: string;
+      role: string;
+      function_call?: {
+        name: string;
+        arguments: string;
+      };
+    };
+    delta?: {
+      content?: string;
+    };
+  }];
+  usage?: {
+    total_tokens: number;
+  };
+  eval_count?: number;
+}
+
+interface ToolParameter {
+  type: string;
+  description?: string;
+  properties?: Record<string, ToolParameter>;
 }
 
 export class OllamaClient {
@@ -173,50 +210,181 @@ export class OllamaClient {
   }
 
   /**
-   * Send a chat message (non-streaming).
+   * Send a chat message with optional tools.
    */
   public async sendChat(
     model: string,
     messages: ChatMessage[],
-    options: RequestOptions = {}
-  ): Promise<any> {
-    const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
-    
-    const payload = this.config.type === 'ollama' 
-      ? { model, messages, ...options, stream: false }
-      : { model, messages, stream: false, ...options };
+    options: RequestOptions = {},
+    tools?: Tool[]
+  ): Promise<APIResponse> {
+    if (this.config.type === 'ollama') {
+      // Format tools according to Ollama's expected format
+      const formattedTools = tools?.map(tool => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: 'object',
+            required: tool.parameters.filter(p => p.required).map(p => p.name),
+            properties: tool.parameters.reduce((acc, param) => ({
+              ...acc,
+              [param.name]: {
+                type: param.type,
+                description: param.description
+              }
+            }), {})
+          }
+        }
+      }));
 
-    const response = await this.request(endpoint, "POST", payload);
+      // Create the Ollama chat request
+      const ollamaRequest: any = {
+        model,
+        messages,
+        stream: false,
+        ...options
+      };
 
-    // Transform response to a consistent format
-    if (this.config.type !== 'ollama') {
+      // Only add tools if they exist
+      if (formattedTools && formattedTools.length > 0) {
+        ollamaRequest.tools = formattedTools;
+      }
+
+      console.log("Sending Ollama request:", JSON.stringify(ollamaRequest, null, 2));
+      const response = await this.request('/api/chat', 'POST', ollamaRequest);
+      console.log("Received Ollama response:", JSON.stringify(response, null, 2));
+
+      // Handle tool calls in the response
+      if (response.message?.tool_calls?.length) {
+        console.log("Tool calls detected, executing tools...");
+        const toolCalls = response.message.tool_calls;
+        
+        // Execute tool calls
+        const toolResults = await Promise.all(
+          toolCalls.map(async (toolCall: any) => {
+            const tool = tools?.find(t => t.name === toolCall.function.name);
+            if (!tool) {
+              throw new Error(`Tool ${toolCall.function.name} not found`);
+            }
+
+            try {
+              // Create function from implementation
+              const func = new Function('args', `
+                ${tool.implementation}
+                return implementation(args);
+              `);
+              
+              // Parse arguments
+              const args = toolCall.function.arguments;
+              console.log(`Executing tool ${tool.name} with args:`, args);
+              
+              // Execute the tool
+              const result = await func(args);
+              console.log(`Tool ${tool.name} execution result:`, result);
+              
+              // Format the result for the message
+              return {
+                role: 'tool' as ChatRole,
+                name: tool.name,
+                content: typeof result === 'string' ? result : JSON.stringify(result)
+              };
+            } catch (error) {
+              console.error(`Error executing tool ${tool.name}:`, error);
+              return {
+                role: 'tool' as ChatRole,
+                name: tool.name,
+                content: `Error executing tool: ${error instanceof Error ? error.message : String(error)}`
+              };
+            }
+          })
+        );
+
+        console.log("Tool execution results:", toolResults);
+
+        // Add tool results to messages and get final response
+        const updatedMessages = [
+          ...messages,
+          response.message,
+          ...toolResults
+        ];
+
+        console.log("Sending follow-up request with tool results:", updatedMessages);
+        
+        // Get final response without tools to avoid infinite loop
+        const ollamaFollowupRequest: any = {
+          model,
+          messages: updatedMessages,
+          stream: false,
+          temperature: options.temperature || 0.7,
+          top_p: options.top_p || 0.9
+        };
+        
+        // Send the follow-up request WITHOUT tools to get the final answer
+        const finalResponse = await this.request('/api/chat', 'POST', ollamaFollowupRequest);
+        console.log("Final response:", finalResponse);
+        
+        return finalResponse;
+      }
+
+      return response;
+    } else {
+      // OpenAI format remains unchanged
+      const endpoint = '/chat/completions';
+      const payload = {
+        model,
+        messages,
+        stream: false,
+        ...options
+      };
+
+      const response = await this.request(endpoint, "POST", payload);
       return {
         message: {
-          content: response.choices[0].message.content,
-          role: response.choices[0].message.role
+          content: response.choices?.[0]?.message?.content || '',
+          role: response.choices?.[0]?.message?.role as ChatRole
         },
         eval_count: response.usage?.total_tokens || 0
       };
     }
-    
-    return response;
   }
 
   /**
-   * Stream a chat response.
+   * Stream a chat response with optional tools.
    */
   public async *streamChat(
     model: string,
     messages: ChatMessage[],
-    options: RequestOptions = {}
-  ): AsyncGenerator<any> {
+    options: RequestOptions = {},
+    tools?: Tool[]
+  ): AsyncGenerator<APIResponse> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
     
     const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
+    
+    // Convert tools to API format
+    const formattedTools = tools?.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: 'object',
+        properties: tool.parameters.reduce((acc, param) => ({
+          ...acc,
+          [param.name]: {
+            type: param.type,
+            description: param.description
+          }
+        }), {}),
+        required: tool.parameters.filter(p => p.required).map(p => p.name)
+      }
+    }));
+    
     const payload = { 
       model, 
       messages: this.prepareMessages(messages), 
+      tools: formattedTools,
       stream: true,
       ...options 
     };
@@ -230,20 +398,20 @@ export class OllamaClient {
     }
 
     try {
-      const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+      const streamResponse = await fetch(`${this.config.baseUrl}${endpoint}`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
         signal
       });
 
-      if (!response.ok) {
-        throw new Error(`Stream request failed: ${response.status} ${response.statusText}`);
+      if (!streamResponse.ok) {
+        throw new Error(`Stream request failed: ${streamResponse.status} ${streamResponse.statusText}`);
       }
 
-      if (!response.body) throw new Error("No response body");
+      if (!streamResponse.body) throw new Error("No response body");
 
-      const reader = response.body.getReader();
+      const reader = streamResponse.body.getReader();
       const decoder = new TextDecoder();
 
       while (true) {
@@ -257,17 +425,63 @@ export class OllamaClient {
           if (!line.trim() || line === 'data: [DONE]') continue;
           
           try {
-            let data;
+            let data: APIResponse;
             if (this.config.type === 'ollama') {
               data = JSON.parse(line);
+              
+              // Handle tool calls in stream
+              if (data.message?.tool_calls?.length) {
+                // Execute tools and continue conversation
+                const toolResults = await Promise.all(
+                  data.message.tool_calls.map(async (toolCall: any) => {
+                    const tool = tools?.find(t => t.name === toolCall.function.name);
+                    if (!tool) {
+                      throw new Error(`Tool ${toolCall.function.name} not found`);
+                    }
+
+                    try {
+                      const func = new Function('args', tool.implementation);
+                      const args = typeof toolCall.function.arguments === 'string'
+                        ? JSON.parse(toolCall.function.arguments)
+                        : toolCall.function.arguments;
+                      
+                      const result = await func(args);
+                      return {
+                        role: 'tool' as const,
+                        name: tool.name,
+                        content: typeof result === 'string' ? result : JSON.stringify(result)
+                      };
+                    } catch (error) {
+                      console.error(`Error executing tool ${tool.name}:`, error);
+                      throw error;
+                    }
+                  })
+                );
+
+                // Add tool results to messages and continue conversation
+                const updatedMessages = [
+                  ...messages,
+                  {
+                    role: 'assistant' as const,
+                    content: data.message.content || '',
+                    tool_calls: data.message.tool_calls
+                  },
+                  ...toolResults
+                ];
+
+                // Start a new non-streaming request to get the final response
+                const finalResponse = await this.sendChat(model, updatedMessages, { ...options, stream: false });
+                yield finalResponse;
+                return;
+              }
             } else {
               // Parse OpenAI SSE format
-              data = JSON.parse(line.replace('data: ', ''));
+              const parsed = JSON.parse(line.replace('data: ', ''));
               data = {
                 message: {
-                  content: data.choices[0]?.delta?.content || ''
-                },
-                eval_count: 1
+                  content: parsed.choices?.[0]?.delta?.content || '',
+                  role: 'assistant'
+                }
               };
             }
             yield data;
@@ -652,5 +866,31 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
       console.error('Error checking Ollama connection:', error);
       return false;
     }
+  }
+
+  private isOllamaResponse(response: APIResponse | OpenAIResponse): response is APIResponse {
+    return 'message' in response;
+  }
+
+  private isOpenAIResponse(response: APIResponse | OpenAIResponse): response is OpenAIResponse {
+    return 'choices' in response;
+  }
+
+  private expandObject(obj: Record<string, ToolParameter>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    
+    for (const [key, value] of Object.entries(obj)) {
+      if (value && typeof value === 'object') {
+        if ('properties' in value && value.properties) {
+          result[key] = this.expandObject(value.properties);
+        } else {
+          result[key] = value;
+        }
+      } else {
+        result[key] = value;
+      }
+    }
+    
+    return result;
   }
 }

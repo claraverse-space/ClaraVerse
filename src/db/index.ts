@@ -1,4 +1,5 @@
 import { indexedDBService } from '../services/indexedDB';
+import { ChatRole } from '../utils';
 
 // Types
 export interface Chat {
@@ -15,10 +16,14 @@ export interface Message {
   id: string;
   chat_id: string;
   content: string;
-  role: 'user' | 'assistant';
-  timestamp: string;
-  tokens: number;
+  role: ChatRole;
+  timestamp: number;
+  tokens?: number;
   images?: string[];
+  tool?: {
+    name: string;
+    result: string;
+  };
 }
 
 export interface StorageItem {
@@ -67,6 +72,20 @@ export interface ModelUsage {
 
 export interface SystemSettings {
   system_prompt: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  description: string;
+  parameters: {
+    name: string;
+    type: string;
+    description: string;
+    required: boolean;
+  }[];
+  implementation: string;
+  isEnabled: boolean;
 }
 
 const DB_PREFIX = 'clara_db_';
@@ -303,8 +322,8 @@ class LocalStorageDB {
       chat_id: chatId,
       content,
       role,
+      timestamp: new Date().getTime(),
       tokens,
-      timestamp: new Date().toISOString(),
       images
     };
     
@@ -350,7 +369,7 @@ class LocalStorageDB {
         const updatedMessage = {
           ...existingMessage,
           ...update,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().getTime()
         };
 
         // Delete and re-add as a reliable update strategy
@@ -378,7 +397,7 @@ class LocalStorageDB {
       messages[index] = {
         ...messages[index],
         ...update,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().getTime()
       };
       
       await this.setItem('messages', messages);
@@ -719,6 +738,64 @@ class LocalStorageDB {
     } else {
       const settings = await this.getItem<SystemSettings>('system_settings');
       return settings?.system_prompt || DEFAULT_SYSTEM_PROMPT;
+    }
+  }
+
+  // Tool methods
+  async getAllTools(): Promise<Tool[]> {
+    if (this.useIndexedDB) {
+      return await indexedDBService.getAll<Tool>('tools');
+    } else {
+      return await this.getItem<Tool[]>('tools') || [];
+    }
+  }
+
+  async getEnabledTools(): Promise<Tool[]> {
+    const tools = await this.getAllTools();
+    return tools.filter(tool => tool.isEnabled);
+  }
+
+  async addTool(tool: Omit<Tool, 'id'>): Promise<string> {
+    const id = this.generateId();
+    const newTool: Tool = {
+      ...tool,
+      id
+    };
+
+    if (this.useIndexedDB) {
+      await indexedDBService.put('tools', newTool);
+    } else {
+      const tools = await this.getItem<Tool[]>('tools') || [];
+      tools.push(newTool);
+      await this.setItem('tools', tools);
+    }
+
+    return id;
+  }
+
+  async updateTool(id: string, updates: Partial<Tool>): Promise<void> {
+    if (this.useIndexedDB) {
+      const tool = await indexedDBService.get<Tool>('tools', id);
+      if (tool) {
+        await indexedDBService.put('tools', { ...tool, ...updates });
+      }
+    } else {
+      const tools = await this.getItem<Tool[]>('tools') || [];
+      const index = tools.findIndex(t => t.id === id);
+      if (index !== -1) {
+        tools[index] = { ...tools[index], ...updates };
+        await this.setItem('tools', tools);
+      }
+    }
+  }
+
+  async deleteTool(id: string): Promise<void> {
+    if (this.useIndexedDB) {
+      await indexedDBService.delete('tools', id);
+    } else {
+      const tools = await this.getItem<Tool[]>('tools') || [];
+      const filtered = tools.filter(t => t.id !== id);
+      await this.setItem('tools', filtered);
     }
   }
 

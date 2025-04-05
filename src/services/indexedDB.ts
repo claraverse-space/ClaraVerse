@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 3; // Increment version to trigger upgrade
+const DB_VERSION = 4; // Increment version to trigger upgrade
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -9,26 +9,28 @@ export class IndexedDBService {
     this.initDB();
   }
 
-  async initDB(): Promise<IDBDatabase> {
-    // Return existing connection or in-progress connection
-    if (this.db) return this.db;
-    if (this.connecting) return this.connecting;
-
-    this.connecting = new Promise((resolve, reject) => {
+  private async initDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = (event) => {
-        console.error('IndexedDB error:', event);
-        reject('Failed to open database');
+        console.error('Error opening database:', event);
+        reject(new Error('Could not open database'));
       };
 
       request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
-        resolve(this.db);
+        const db = (event.target as IDBOpenDBRequest).result;
+        resolve(db);
       };
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        
+        if (!transaction) {
+          console.error('No transaction available during upgrade');
+          return;
+        }
 
         // Create stores for all our data types
         if (!db.objectStoreNames.contains('chats')) {
@@ -64,26 +66,34 @@ export class IndexedDBService {
         if (!db.objectStoreNames.contains('system_settings')) {
           db.createObjectStore('system_settings', { keyPath: 'key' });
         }
+        // Add the tools store
+        if (!db.objectStoreNames.contains('tools')) {
+          db.createObjectStore('tools', { keyPath: 'id' });
+        }
         // Add the apps object store
         if (!db.objectStoreNames.contains('apps')) {
           db.createObjectStore('apps', { keyPath: 'id' });
         }
       };
     });
-
-    return this.connecting;
   }
 
   async getAll<T>(storeName: string): Promise<T[]> {
     try {
       const db = await this.initDB();
-      return new Promise((resolve, reject) => {
+      return new Promise<T[]>((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readonly');
         const store = transaction.objectStore(storeName);
         const request = store.getAll();
 
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          const result = (event.target as IDBRequest<T[]>).result;
+          resolve(result || []);
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in getAll(${storeName}):`, error);
@@ -91,20 +101,26 @@ export class IndexedDBService {
     }
   }
 
-  async get<T>(storeName: string, key: string | number): Promise<T | undefined> {
+  async get<T>(storeName: string, key: string | number): Promise<T | null> {
     try {
       const db = await this.initDB();
-      return new Promise((resolve, reject) => {
+      return new Promise<T | null>((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readonly');
         const store = transaction.objectStore(storeName);
         const request = store.get(key);
 
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          const result = (event.target as IDBRequest<T>).result;
+          resolve(result || null);
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in get(${storeName}, ${key}):`, error);
-      return undefined;
+      return null;
     }
   }
 

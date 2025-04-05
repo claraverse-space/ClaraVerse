@@ -4,6 +4,8 @@ import { db } from '../../db';
 import { OllamaClient } from '../../utils';
 import { indexedDBService } from '../../services/indexedDB';
 import ModelPullModal from './ModelPullModal';
+import { ToolManager } from './ToolManager';
+import type { APIConfig } from '../../db';
 
 interface ModelConfig {
   name: string;
@@ -34,6 +36,8 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [isUsingDefault, setIsUsingDefault] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [apiConfig, setApiConfig] = useState<APIConfig | null>(null);
 
   const loadModels = async () => {
     setIsLoading(true);
@@ -138,6 +142,20 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        if (config && config.api_type) {
+          setApiConfig(config as APIConfig);
+        }
+      } catch (err) {
+        console.error('Failed to load API config:', err);
+      }
+    };
+    loadConfig();
+  }, []);
+
   const handleModelConfigChange = (modelName: string, supportsImages: boolean) => {
     const updatedConfigs = modelConfigs.map(config =>
       config.name === modelName ? { ...config, supportsImages } : config
@@ -188,7 +206,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="glassmorphic rounded-2xl p-8 max-w-2xl w-full mx-4 space-y-6">
+      <div className="glassmorphic rounded-2xl p-8 max-w-2xl w-full mx-4 space-y-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <SettingsIcon className="w-6 h-6 text-sakura-500" />
@@ -277,6 +295,19 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
               </span>
             </label>
           </div>
+
+          {/* Add Tool Manager section */}
+          {apiType === 'ollama' && apiConfig && (
+            <div>
+              <ToolManager
+                client={new OllamaClient(
+                  apiConfig.ollama_base_url || 'http://localhost:11434',
+                  { type: 'ollama' }
+                )}
+                model={selectedModel || 'llama2'}
+              />
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-4">

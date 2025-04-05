@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Home, Bot, CheckCircle2, AlertCircle, ChevronDown, Sun, Moon, Image as ImageIcon, Star, BarChart3, Database, RefreshCw, Loader2 } from 'lucide-react';
+import { Home, Bot, CheckCircle2, AlertCircle, ChevronDown, Sun, Moon, Image as ImageIcon, Star, BarChart3, Database, RefreshCw, Loader2, Settings, Wrench } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { db } from '../../db';
 import UserProfileButton from '../common/UserProfileButton';
@@ -7,7 +7,7 @@ import UserProfileButton from '../common/UserProfileButton';
 interface AssistantHeaderProps {
   connectionStatus: 'checking' | 'connected' | 'disconnected';
   selectedModel: string;
-  models: any[];
+  models: Array<{ name: string; id: string }>;
   showModelSelect: boolean;
   setShowModelSelect: (show: boolean) => void;
   setSelectedModel: (model: string) => void;
@@ -15,6 +15,7 @@ interface AssistantHeaderProps {
   onNavigateHome: () => void;
   onOpenSettings: () => void;
   onOpenKnowledgeBase: () => void;
+  onOpenTools: () => void;
 }
 
 interface Model {
@@ -34,7 +35,8 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   onPageChange,
   onNavigateHome,
   onOpenSettings,
-  onOpenKnowledgeBase
+  onOpenKnowledgeBase,
+  onOpenTools
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -318,6 +320,14 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
         >
           <Database className="w-5 h-5" />
           <span className="text-sm font-medium">Knowledge Base</span>
+        </button>
+
+        <button
+          onClick={onOpenTools}
+          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          title="Tool Management"
+        >
+          <Wrench className="w-5 h-5" />
         </button>
 
         <button 
