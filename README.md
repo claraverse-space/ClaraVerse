@@ -10,7 +10,7 @@
 
   [![Clara](https://img.shields.io/badge/Clara-1.2.1-FFD700.svg)](https://clara-ollama.netlify.app/)
   
-  <a href="https://clara.badboysm890.in/" target="_blank">Try Clara Online</a> | <a href="https://github.com/badboysm890/ClaraVerse/releases/tag/v1.2.1">Download Desktop App</a>
+  <a href="https://clara.badboysm890.in/" target="_blank">Try Clara Online</a> | <a href="https://github.com/badboysm890/ClaraVerse/releases">Download Desktop App</a>
 
   <a href="https://www.producthunt.com/posts/clara-433c5291-7639-4271-b246-8df30cbc449f?embed=true&utm_source=badge-featured&utm_medium=badge&utm_souce=badge-clara&#0045;433c5291&#0045;7639&#0045;4271&#0045;b246&#0045;8df30cbc449f" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=942765&theme=light&t=1742154003625" alt="Clara - Browser&#0045;Based&#0032;AI&#0032;for&#0032;Chat&#0044;&#0032;Agents&#0032;&#0038;&#0032;Image&#0032;Generation&#0032;Locally | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
@@ -75,17 +75,7 @@ AI Assistant
 
 ## 🚀 Installation Options
 
-### 1. Docker (Recommended for Windows & Linux)
-```bash
-# Pull the image
-docker pull claraverse/clara-ollama:latest
-
-# Run with auto-restart
-docker run -d --restart always -p 8069:8069 claraverse/clara-ollama:latest
-```
-Then visit http://localhost:8069 in your browser.
-
-### 2. Native Desktop Apps
+### 1. Native Desktop Apps
 
 #### macOS (Signed)
 - [Download .dmg installer](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.2.1)
@@ -104,7 +94,7 @@ Then visit http://localhost:8069 in your browser.
 
 ### 3. Web Version
 - [Try Clara Online](https://clara-ollama.netlify.app/)
-- Requires local Ollama installation
+- Requires local Ollama installation - limited to just chat and needed remote ollama config
 
 ### Prerequisites
 1. **Install Ollama** (Required for all versions except Docker)
@@ -116,9 +106,9 @@ Then visit http://localhost:8069 in your browser.
 
 For faster performance and offline convenience, download the native desktop version:
 
-- [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
-- [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases/tag/v1.0.4)
-- [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases/tag/v0.2.0)
+- [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases)
+- [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases)
+- [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases)
 
 ## Mac Distribution Note
 
