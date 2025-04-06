@@ -56,6 +56,21 @@ interface ToolParameter {
   properties?: Record<string, ToolParameter>;
 }
 
+interface OpenAITool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: any;
+  };
+}
+
+interface OllamaTool {
+  name: string;
+  description: string;
+  parameters: any;
+}
+
 export class OllamaClient {
   private abortController: AbortController | null = null;
   private config: OpenAIConfig;
@@ -218,9 +233,11 @@ export class OllamaClient {
     options: RequestOptions = {},
     tools?: Tool[]
   ): Promise<APIResponse> {
+    const formattedTools = tools?.map(tool => this.formatTool(tool));
+    
     if (this.config.type === 'ollama') {
       // Format tools according to Ollama's expected format
-      const formattedTools = tools?.map(tool => ({
+      const formattedToolsOllama = formattedTools?.map(tool => ({
         type: 'function',
         function: {
           name: tool.name,
@@ -248,8 +265,8 @@ export class OllamaClient {
       };
 
       // Only add tools if they exist
-      if (formattedTools && formattedTools.length > 0) {
-        ollamaRequest.tools = formattedTools;
+      if (formattedToolsOllama && formattedToolsOllama.length > 0) {
+        ollamaRequest.tools = formattedToolsOllama;
       }
 
       console.log("Sending Ollama request:", JSON.stringify(ollamaRequest, null, 2));
@@ -365,21 +382,7 @@ export class OllamaClient {
     const endpoint = this.config.type === 'ollama' ? '/api/chat' : '/chat/completions';
     
     // Convert tools to API format
-    const formattedTools = tools?.map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: {
-        type: 'object',
-        properties: tool.parameters.reduce((acc, param) => ({
-          ...acc,
-          [param.name]: {
-            type: param.type,
-            description: param.description
-          }
-        }), {}),
-        required: tool.parameters.filter(p => p.required).map(p => p.name)
-      }
-    }));
+    const formattedTools = tools?.map(tool => this.formatTool(tool));
     
     const payload = { 
       model, 
@@ -892,5 +895,75 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
     }
     
     return result;
+  }
+
+  private formatTool(tool: OpenAITool | OllamaTool) {
+    if (this.config.type === 'openai') {
+      // Tool is already in OpenAI format
+      return tool;
+    } else {
+      // Convert OpenAI format to Ollama format if needed
+      if ('function' in tool) {
+        return {
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: tool.function.parameters
+        };
+      }
+      return tool;
+    }
+  }
+
+  // Add a new method specifically for tool calls that preserves OpenAI response format
+  async sendChatWithToolsPreserveFormat(model: string, messages: ChatMessage[], options?: any, tools?: any[]) {
+    if (this.config.type === 'openai') {
+      // Implement OpenAI-specific request that returns the raw response
+      return this.sendOpenAIRequest(model, messages, options, tools);
+    } else {
+      // For Ollama, use the regular sendChat method
+      return this.sendChat(model, messages, options, tools);
+    }
+  }
+
+  // Helper method for OpenAI requests
+  private async sendOpenAIRequest(model: string, messages: any[], options?: any, tools?: any[]) {
+    const formattedTools = tools?.map(tool => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: 'object',
+          properties: tool.parameters.reduce((acc: any, param: any) => {
+            acc[param.name] = {
+              type: param.type.toLowerCase(),
+              description: param.description
+            };
+            return acc;
+          }, {}),
+          required: tool.parameters
+            .filter((param: any) => param.required)
+            .map((param: any) => param.name)
+        }
+      }
+    }));
+
+    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools: formattedTools,
+        temperature: options?.temperature || 0.7,
+        top_p: options?.top_p || 0.9,
+        stream: options?.stream || false
+      })
+    });
+
+    return await response.json();
   }
 }

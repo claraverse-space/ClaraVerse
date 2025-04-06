@@ -651,21 +651,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     // Get base system prompt
     let systemPrompt = await db.getSystemPrompt();
-
-    // Check if we need to do RAG search and inject into system prompt
-    if ((temporaryDocs.length > 0 || ragEnabled) && pythonPort) {
-      const results = await searchDocuments(input);
-      if (results && results.results && results.results.length > 0) {
-        const contextFromSearch = results.results
-          .map(r => r.content)
-          .join('\n\n');
-        
-        // Inject context into system prompt
-        systemPrompt = `${systemPrompt || ''}\n\nRelevant context for the current query:\n${contextFromSearch}\n\nPlease use this context to inform your response to the user's query.`;
-      }
-    }
-
-    // Create user message (without RAG context)
+    
+    // Create user message (keeping the original user input for display)
     const userMessage: Message = {
       id: uuidv4(),
       chat_id: currentChatId,
@@ -676,7 +663,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       images: images.map(img => img.preview)
     };
 
-    // Save user message
+    // Save user message as-is (without RAG context)
     await db.addMessage(
       currentChatId,
       userMessage.content,
@@ -708,18 +695,42 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       // Get context messages - use minimal context for tool calls
       const contextMessages = getContextMessages([...messages, userMessage], !!selectedTool);
+      
+      // Check if we need to do RAG search and inject into user query
+      let userContentWithContext = userMessage.content;
+      if ((temporaryDocs.length > 0 || ragEnabled) && pythonPort) {
+        const results = await searchDocuments(input);
+        if (results && results.results && results.results.length > 0) {
+          const contextFromSearch = results.results
+            .map(r => r.content)
+            .join('\n\n');
+          
+          // Inject context into user query (this won't be displayed in the UI)
+          userContentWithContext = `Query: ${input}\n\nRelevant context:\n${contextFromSearch}\n\nPlease use this context to inform your response, but do not explicitly mention the provided context unless specifically asked.`;
+        }
+      }
+      
+      // Map context messages, replacing the last user message with the context-enhanced version
       const formattedMessages: ChatMessage[] = [
-        { role: 'system' as ChatRole, content: systemPrompt },
-        ...contextMessages.map(msg => {
-          const role = msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant'
-            ? msg.role as ChatRole
-            : 'user' as ChatRole;
-          return {
-            role,
-            content: msg.content
-          };
-        })
+        { role: 'system' as ChatRole, content: systemPrompt }
       ];
+      
+      contextMessages.forEach((msg, index) => {
+        // If this is the most recent user message (the one we just added), use the context-enhanced version
+        if (index === contextMessages.length - 1 && msg.role === 'user') {
+          formattedMessages.push({
+            role: 'user' as ChatRole,
+            content: userContentWithContext
+          });
+        } else {
+          formattedMessages.push({
+            role: msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant'
+              ? msg.role as ChatRole
+              : 'user' as ChatRole,
+            content: msg.content
+          });
+        }
+      });
 
       // Define chat options
       const chatOptions: RequestOptions = {
@@ -752,11 +763,189 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           throw error;
         }
       } else if (selectedTool) {
-        // Only include tools when a tool is explicitly selected
-        chatOptions.tools = [selectedTool];
+        // Format tool differently based on API type
+        const formattedTool = client.getConfig().type === 'openai' 
+          ? {
+              ...selectedTool,
+              type: 'function',
+              function: {
+                name: selectedTool.name,
+                description: selectedTool.description,
+                parameters: {
+                  type: 'object',
+                  properties: selectedTool.parameters.reduce((acc: any, param: any) => {
+                    acc[param.name] = {
+                      type: param.type.toLowerCase(),
+                      description: param.description
+                    };
+                    return acc;
+                  }, {}),
+                  required: selectedTool.parameters
+                    .filter((param: any) => param.required)
+                    .map((param: any) => param.name)
+                }
+              }
+            }
+          : selectedTool;
+
+        chatOptions.tools = [formattedTool];
         
         try {
-          const response = await client.sendChat(selectedModel, formattedMessages, chatOptions, [selectedTool]);
+          console.log("Sending chat with tool...");
+          // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
+          const response = client.getConfig().type === 'openai'
+            ? await client.sendChatWithToolsPreserveFormat(selectedModel, formattedMessages, chatOptions, [formattedTool])
+            : await client.sendChat(selectedModel, formattedMessages, chatOptions, [formattedTool]);
+          
+          console.log("Raw response:", JSON.stringify(response, null, 2));
+          
+          // Handle OpenAI tool calls
+          if (client.getConfig().type === 'openai') {
+            console.log("OpenAI API detected");
+            
+            if (response.choices && response.choices.length > 0) {
+              const message = response.choices[0].message;
+              console.log("OpenAI message:", message);
+              
+              if (message.tool_calls && message.tool_calls.length > 0) {
+                console.log("Tool calls found, executing tool");
+                const toolCall = message.tool_calls[0];
+                const toolArgs = JSON.parse(toolCall.function.arguments);
+                console.log("Tool arguments:", toolArgs);
+                
+                try {
+                  console.log("Executing tool:", selectedTool.name);
+                  let toolResult;
+                  
+                  // Execute tool using the implementation string
+                  if (selectedTool.implementation) {
+                    try {
+                      // Create a safe execution environment for the tool
+                      const func = new Function('args', `
+                        ${selectedTool.implementation}
+                        return implementation(args);
+                      `);
+                      toolResult = await func(toolArgs);
+                    } catch (implError) {
+                      console.error("Error executing tool implementation:", implError);
+                      toolResult = { error: `Error executing ${selectedTool.name}: ${implError.message}` };
+                    }
+                  } else {
+                    // Fallback implementations for common tools if no implementation exists
+                    if (selectedTool.name === 'get_time') {
+                      const timezone = toolArgs.timezone || 'UTC';
+                      const format = toolArgs.format || '24h';
+                      
+                      try {
+                        const now = new Date();
+                        let timeString = new Intl.DateTimeFormat('en-US', {
+                          hour: format === '12h' ? 'numeric' : '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          hour12: format === '12h',
+                          timeZone: timezone
+                        }).format(now);
+                        
+                        toolResult = {
+                          time: timeString,
+                          timezone: timezone,
+                          format: format
+                        };
+                      } catch (err) {
+                        toolResult = {
+                          error: `Invalid timezone: ${timezone}`,
+                          fallback_time: new Date().toISOString()
+                        };
+                      }
+                    } else {
+                      toolResult = {
+                        error: `No implementation for tool: ${selectedTool.name}`,
+                        args: toolArgs
+                      };
+                    }
+                  }
+                  
+                  console.log("Tool execution result:", toolResult);
+                  
+                  // Create new messages array with tool result
+                  const messagesWithToolResult = [
+                    ...formattedMessages,
+                    {
+                      role: 'assistant',
+                      content: null,
+                      tool_calls: [toolCall]
+                    },
+                    {
+                      role: 'tool',
+                      content: JSON.stringify(toolResult),
+                      tool_call_id: toolCall.id,
+                      name: toolCall.function.name
+                    }
+                  ];
+                  
+                  console.log("Getting final response with tool result");
+                  // Use sendChatWithToolsPreserveFormat for the follow-up as well
+                  const finalResponse = await client.sendChatWithToolsPreserveFormat(
+                    selectedModel, 
+                    messagesWithToolResult, 
+                    { temperature: 0.7, top_p: 0.9 }
+                  );
+                  
+                  console.log("Final response:", JSON.stringify(finalResponse, null, 2));
+                  
+                  const content = finalResponse.choices?.[0]?.message?.content || 
+                    'Error: No content received after tool execution';
+                  const tokens = finalResponse.usage?.total_tokens || 0;
+                  
+                  console.log("Final content:", content);
+                  
+                  // Update message with both tool result and final content
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessage.id
+                      ? { ...msg, content, tokens }
+                      : msg
+                  ));
+                  
+                  await db.addMessage(currentChatId, content, 'assistant', tokens);
+                } catch (toolError) {
+                  console.error("Tool execution error:", toolError);
+                  const errorMessage = `Error executing tool: ${toolError.message}`;
+                  
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessage.id
+                      ? { ...msg, content: errorMessage }
+                      : msg
+                  ));
+                  
+                  await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+                }
+              } else {
+                // Handle normal response (no tool calls)
+                const content = message.content || 'No response content';
+                const tokens = response.usage?.total_tokens || 0;
+                
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content, tokens }
+                    : msg
+                ));
+                
+                await db.addMessage(currentChatId, content, 'assistant', tokens);
+              }
+            } else {
+              console.log("Unexpected OpenAI response structure");
+              const errorMessage = 'Unexpected response from OpenAI API';
+              
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: errorMessage }
+                  : msg
+              ));
+              
+              await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+            }
+          } else {
+            // Handle Ollama response (unchanged)
           const content = response.message?.content || '';
           const tokens = response.eval_count || 0;
 
@@ -767,9 +956,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           ));
 
           await db.addMessage(currentChatId, content, 'assistant', tokens);
+          }
         } catch (error: any) {
           console.error('Tool execution error:', error);
-          throw error;
+          const errorMessage = `Error: ${error.message || 'Unknown error'}`;
+          
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? { ...msg, content: errorMessage }
+              : msg
+          ));
+          
+          await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
         }
       } else if (isStreaming) {
         // Normal streaming mode when no tools are being used
