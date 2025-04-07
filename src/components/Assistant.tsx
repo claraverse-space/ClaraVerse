@@ -5,10 +5,9 @@ import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
 import ModelWarning from './assistant_components/ModelWarning';
 import ModelPullModal from './assistant_components/ModelPullModal';
-import WhatsNewWidget from './assistant_components/WhatsNewWidget';
 import { db } from '../db';
 import { OllamaClient, ChatMessage, ChatRole } from '../utils';
-import type { Message, Chat, Tool, APIConfig } from '../db';
+import type { Message, Chat, Tool } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 
 // Add RequestOptions type definition
@@ -52,6 +51,13 @@ interface SearchResult {
 const MAX_CONTEXT_MESSAGES = 20;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_TEMP_COLLECTIONS = 5; // Maximum number of temporary collections
+
+const ensureChatMessageFormat = (messages: any[]): ChatMessage[] => {
+  return messages.map(msg => ({
+    role: (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' ? msg.role : 'user') as ChatRole,
+    content: msg.content || ''
+  }));
+};
 
 const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [activeChat, setActiveChat] = useState<string | null>(null);
@@ -484,7 +490,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       chat_id: chatId,
       content: "Hello! How can I help you today?",
       role: 'assistant' as const,
-      timestamp: new Date().toISOString(),
+      timestamp: Date.now(),
       tokens: 0
     };
 
@@ -492,7 +498,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       chatId,
       welcomeMessage.content,
       welcomeMessage.role,
-      welcomeMessage.tokens
+      welcomeMessage.tokens || 0
     );
 
     setMessages([welcomeMessage]);
@@ -599,7 +605,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       // For default collection, still filter by score > 0
       const defaultFilteredResults = (defaultResults?.results || [])
-        .filter(result => result.score > 0);
+        .filter(result => (result.score || 0) > 0);
 
       // Combine results, prioritizing higher scores
       const allResults = [
@@ -724,9 +730,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           });
         } else {
           formattedMessages.push({
-            role: msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant'
-              ? msg.role as ChatRole
-              : 'user' as ChatRole,
+            role: (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' 
+              ? msg.role 
+              : 'user') as ChatRole,
             content: msg.content
           });
         }
@@ -758,7 +764,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           ));
 
           await db.addMessage(currentChatId, content, 'assistant', tokens);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('Image generation error:', error);
           throw error;
         }
@@ -794,8 +800,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           console.log("Sending chat with tool...");
           // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
           const response = client.getConfig().type === 'openai'
-            ? await client.sendChatWithToolsPreserveFormat(selectedModel, formattedMessages, chatOptions, [formattedTool])
-            : await client.sendChat(selectedModel, formattedMessages, chatOptions, [formattedTool]);
+            ? await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, [formattedTool])
+            : await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, [formattedTool]);
           
           console.log("Raw response:", JSON.stringify(response, null, 2));
           
@@ -813,112 +819,65 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
                 const toolArgs = JSON.parse(toolCall.function.arguments);
                 console.log("Tool arguments:", toolArgs);
                 
+                console.log("Executing tool:", selectedTool.name);
+                let toolResult: any = {}; // Declare and initialize outside try block
+                  
                 try {
-                  console.log("Executing tool:", selectedTool.name);
-                  let toolResult;
-                  
-                  // Execute tool using the implementation string
-                  if (selectedTool.implementation) {
-                    try {
-                      // Create a safe execution environment for the tool
-                      const func = new Function('args', `
-                        ${selectedTool.implementation}
-                        return implementation(args);
-                      `);
-                      toolResult = await func(toolArgs);
-                    } catch (implError) {
-                      console.error("Error executing tool implementation:", implError);
-                      toolResult = { error: `Error executing ${selectedTool.name}: ${implError.message}` };
-                    }
-                  } else {
-                    // Fallback implementations for common tools if no implementation exists
-                    if (selectedTool.name === 'get_time') {
-                      const timezone = toolArgs.timezone || 'UTC';
-                      const format = toolArgs.format || '24h';
-                      
-                      try {
-                        const now = new Date();
-                        let timeString = new Intl.DateTimeFormat('en-US', {
-                          hour: format === '12h' ? 'numeric' : '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          hour12: format === '12h',
-                          timeZone: timezone
-                        }).format(now);
-                        
-                        toolResult = {
-                          time: timeString,
-                          timezone: timezone,
-                          format: format
-                        };
-                      } catch (err) {
-                        toolResult = {
-                          error: `Invalid timezone: ${timezone}`,
-                          fallback_time: new Date().toISOString()
-                        };
-                      }
-                    } else {
-                      toolResult = {
-                        error: `No implementation for tool: ${selectedTool.name}`,
-                        args: toolArgs
-                      };
-                    }
-                  }
-                  
-                  console.log("Tool execution result:", toolResult);
-                  
-                  // Create new messages array with tool result
-                  const messagesWithToolResult = [
-                    ...formattedMessages,
-                    {
-                      role: 'assistant',
-                      content: null,
-                      tool_calls: [toolCall]
-                    },
-                    {
-                      role: 'tool',
-                      content: JSON.stringify(toolResult),
-                      tool_call_id: toolCall.id,
-                      name: toolCall.function.name
-                    }
-                  ];
-                  
-                  console.log("Getting final response with tool result");
-                  // Use sendChatWithToolsPreserveFormat for the follow-up as well
-                  const finalResponse = await client.sendChatWithToolsPreserveFormat(
-                    selectedModel, 
-                    messagesWithToolResult, 
-                    { temperature: 0.7, top_p: 0.9 }
-                  );
-                  
-                  console.log("Final response:", JSON.stringify(finalResponse, null, 2));
-                  
-                  const content = finalResponse.choices?.[0]?.message?.content || 
-                    'Error: No content received after tool execution';
-                  const tokens = finalResponse.usage?.total_tokens || 0;
-                  
-                  console.log("Final content:", content);
-                  
-                  // Update message with both tool result and final content
-                  setMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessage.id
-                      ? { ...msg, content, tokens }
-                      : msg
-                  ));
-                  
-                  await db.addMessage(currentChatId, content, 'assistant', tokens);
-                } catch (toolError) {
-                  console.error("Tool execution error:", toolError);
-                  const errorMessage = `Error executing tool: ${toolError.message}`;
-                  
-                  setMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessage.id
-                      ? { ...msg, content: errorMessage }
-                      : msg
-                  ));
-                  
-                  await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+                  // Create a safe execution environment for the tool
+                  const func = new Function('args', `
+                    ${selectedTool.implementation}
+                    return implementation(args);
+                  `);
+                  toolResult = await func(toolArgs);
+                } catch (implError: unknown) {
+                  console.error("Error executing tool implementation:", implError);
+                  toolResult = { 
+                    error: `Error executing ${selectedTool.name}: ${implError instanceof Error ? implError.message : String(implError)}` 
+                  };
                 }
+                
+                console.log("Tool execution result:", toolResult);
+                
+                // Create new messages array with tool result
+                const messagesWithToolResult = [
+                  ...formattedMessages,
+                  {
+                    role: 'assistant' as ChatRole,
+                    content: '',
+                    tool_calls: [toolCall]
+                  },
+                  {
+                    role: 'tool' as ChatRole,
+                    content: JSON.stringify(toolResult),
+                    tool_call_id: toolCall.id,
+                    name: toolCall.function.name
+                  }
+                ];
+                
+                console.log("Getting final response with tool result");
+                // Use sendChatWithToolsPreserveFormat for the follow-up as well
+                const finalResponse = await client.sendChatWithToolsPreserveFormat(
+                  selectedModel, 
+                  messagesWithToolResult, 
+                  { temperature: 0.7, top_p: 0.9 }
+                );
+                
+                console.log("Final response:", JSON.stringify(finalResponse, null, 2));
+                
+                const content = finalResponse.choices?.[0]?.message?.content || 
+                  'Error: No content received after tool execution';
+                const tokens = finalResponse.usage?.total_tokens || 0;
+                
+                console.log("Final content:", content);
+                
+                // Update message with both tool result and final content
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content, tokens }
+                    : msg
+                ));
+                
+                await db.addMessage(currentChatId, content, 'assistant', tokens);
               } else {
                 // Handle normal response (no tool calls)
                 const content = message.content || 'No response content';
@@ -957,9 +916,9 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
           await db.addMessage(currentChatId, content, 'assistant', tokens);
           }
-        } catch (error: any) {
-          console.error('Tool execution error:', error);
-          const errorMessage = `Error: ${error.message || 'Unknown error'}`;
+        } catch (toolError: unknown) {
+          console.error("Tool execution error:", toolError);
+          const errorMessage = `Error executing tool: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
           
           setMessages(prev => prev.map(msg =>
             msg.id === assistantMessage.id
@@ -976,7 +935,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
         try {
           chatOptions.stream = true;
-          for await (const chunk of client.streamChat(selectedModel, formattedMessages, chatOptions)) {
+          for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions)) {
             if (chunk.message?.content) {
               streamedContent += chunk.message.content;
               tokens = chunk.eval_count || tokens;
@@ -993,12 +952,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
           // Only save the message if we completed normally
           await db.addMessage(currentChatId, streamedContent, 'assistant', tokens);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('Streaming error:', error);
           
           // Always preserve the content that was generated
           const finalContent = streamedContent + (
-            error.name === 'AbortError' || error.message?.includes('BodyStreamBuffer was aborted')
+            (error instanceof Error && (error.name === 'AbortError' || error.message.includes('BodyStreamBuffer was aborted')))
               ? "\n\n_Response was interrupted._"
               : "\n\n_Error: Stream ended unexpectedly._"
           );
@@ -1014,13 +973,13 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           await db.addMessage(currentChatId, finalContent, 'assistant', tokens);
 
           // Don't throw the error if it was just an abort
-          if (error.name !== 'AbortError' && !error.message?.includes('BodyStreamBuffer was aborted')) {
+          if (!(error instanceof Error && (error.name === 'AbortError' || error.message.includes('BodyStreamBuffer was aborted')))) {
             throw error;
           }
         }
       } else {
         // Normal non-streaming mode
-        const response = await client.sendChat(selectedModel, formattedMessages, chatOptions);
+        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions);
         const content = response.message?.content || '';
         const tokens = response.eval_count || 0;
 
@@ -1041,14 +1000,22 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       scrollToBottom();
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error generating response:', error);
       let errorContent;
       try {
-        const parsedError = JSON.parse(error.message);
-        errorContent = `Error Response:\n\`\`\`json\n${JSON.stringify(parsedError, null, 2)}\n\`\`\``;
+        if (typeof error === 'object' && error !== null && 'message' in error) {
+          try {
+            const parsedError = JSON.parse((error as Error).message);
+            errorContent = `Error Response:\n\`\`\`json\n${JSON.stringify(parsedError, null, 2)}\n\`\`\``;
+          } catch (e) {
+            errorContent = `Error: ${(error as Error).message}`;
+          }
+        } else {
+          errorContent = `Error: ${String(error)}`;
+        }
       } catch (e) {
-        errorContent = `Error: ${error.message}`;
+        errorContent = `Error: ${String(error)}`;
       }
 
       setMessages(prev => prev.map(msg =>
@@ -1118,7 +1085,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         chat_id: activeChat || '',
         content: `Model "${modelName}" has been successfully installed and selected. You can now start using it for your conversations.`,
         role: 'assistant' as ChatRole,
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(),
         tokens: 0
       };
 
@@ -1128,7 +1095,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           activeChat,
           message.content,
           message.role,
-          message.tokens
+          message.tokens || 0
         );
       }
       setMessages(prev => [...prev, message]);
@@ -1156,7 +1123,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         chat_id: activeChat!,
         content: '',
         role: 'assistant',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(),
         tokens: 0
       };
 
@@ -1173,7 +1140,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       let responseTokens = 0;
 
       if (isStreaming) {
-        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1188,7 +1155,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           }
         }
       } else {
-        const response = await client.sendChat(selectedModel, formattedMessages);
+        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1204,7 +1171,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         await db.updateMessage(messageId, {
           content: responseContent,
           tokens: responseTokens,
-          timestamp: new Date().toISOString()
+          timestamp: Date.now()
         });
       } catch (dbError) {
         console.warn('Failed to update message in database:', dbError);
@@ -1225,7 +1192,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         await db.updateMessage(messageId, {
           content: `Error: ${errorContent}`,
           tokens: 0,
-          timestamp: new Date().toISOString()
+          timestamp: Date.now()
         });
       } catch (dbError) {
         console.warn('Failed to save error message to database:', dbError);
@@ -1264,7 +1231,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         chat_id: activeChat!,
         content: '',
         role: 'assistant',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(),
         tokens: 0
       };
 
@@ -1276,7 +1243,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       if (isStreaming) {
         // Handle streaming response
-        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1292,7 +1259,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         }
       } else {
         // Handle non-streaming response
-        const response = await client.sendChat(selectedModel, formattedMessages);
+        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1344,7 +1311,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       const updatedMessage = {
         ...messages[messageIndex],
         content: newContent,
-        timestamp: new Date().toISOString()
+        timestamp: Date.now()
       };
 
       // Update UI state first - only show up to the edited message
@@ -1374,7 +1341,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         chat_id: activeChat,
         content: '',
         role: 'assistant',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(),
         tokens: 0
       };
 
@@ -1390,7 +1357,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       let responseTokens = 0;
 
       if (isStreaming) {
-        for await (const chunk of client.streamChat(selectedModel, formattedMessages)) {
+        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1405,7 +1372,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           }
         }
       } else {
-        const response = await client.sendChat(selectedModel, formattedMessages);
+        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1434,7 +1401,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         chat_id: activeChat,
         content: `Error: ${errorContent}`,
         role: 'assistant',
-        timestamp: new Date().toISOString(),
+        timestamp: Date.now(),
         tokens: 0
       };
 
@@ -1450,19 +1417,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const handleModelInstallSuccess = async (modelName: string) => {
-    const message: Message = {
-      id: uuidv4(),
-      chat_id: activeChat || '',
-      content: `Model "${modelName}" has been successfully installed and selected. You can now start using it for your conversations.`,
-      role: 'assistant' as ChatRole,
-      timestamp: Date.now(),
-      tokens: 0
-    };
-
-    // ... rest of the existing code ...
   };
 
   return (

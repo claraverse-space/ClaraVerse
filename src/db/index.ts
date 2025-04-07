@@ -197,7 +197,11 @@ class LocalStorageDB {
     if (this.useIndexedDB) {
       try {
         const items = await indexedDBService.getAll<T>(key);
-        return items.length ? items : null;
+        // For collection types, we need to return the whole array
+        if (Array.isArray(items)) {
+          return items as unknown as T;
+        }
+        return (items as any[] && (items as any[]).length > 0) ? (items as any[])[0] as T : null;
       } catch (error) {
         console.error(`Error getting from IndexedDB: ${key}`, error);
         // Fall back to localStorage
@@ -260,7 +264,8 @@ class LocalStorageDB {
 
   async getChat(id: string): Promise<Chat | undefined> {
     if (this.useIndexedDB) {
-      return await indexedDBService.get<Chat>('chats', id);
+      const result = await indexedDBService.get<Chat>('chats', id);
+      return result || undefined;
     } else {
       const chats = await this.getItem<Chat[]>('chats') || [];
       return chats.find(chat => chat.id === id);
@@ -335,8 +340,8 @@ class LocalStorageDB {
       await this.setItem('messages', messages);
     }
     
-    await this.updateUsage('tokens', tokens);
-    await this.updateUsage('messages', 1);
+    await this._updateUsage('tokens', tokens);
+    await this._updateUsage('messages', 1);
     return newMessage.id;
   }
 
@@ -435,13 +440,14 @@ class LocalStorageDB {
       await this.setItem('storage', storage);
     }
     
-    await this.updateUsage('storage', item.size);
+    await this._updateUsage('storage', item.size);
     return newItem.id;
   }
 
   async getStorageItem(id: string): Promise<StorageItem | undefined> {
     if (this.useIndexedDB) {
-      return await indexedDBService.get<StorageItem>('storage', id);
+      const result = await indexedDBService.get<StorageItem>('storage', id);
+      return result || undefined;
     } else {
       const storage = await this.getItem<StorageItem[]>('storage') || [];
       return storage.find(item => item.id === id);
@@ -463,7 +469,7 @@ class LocalStorageDB {
   }
 
   // Usage methods
-  private async updateUsage(type: Usage['type'], value: number): Promise<void> {
+  private async _updateUsage(type: Usage['type'], value: number): Promise<void> {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
     
@@ -479,18 +485,18 @@ class LocalStorageDB {
       await indexedDBService.put('usage', usageRecord);
       
       // Also update daily summary
-      await this.updateDailySummary(type, value, dateStr);
+      await this._updateDailySummary(type, value, dateStr);
     } else {
       const usage = await this.getItem<Usage[]>('usage') || [];
       usage.push(usageRecord);
       await this.setItem('usage', usage);
       
       // Also update daily summary
-      await this.updateDailySummary(type, value, dateStr);
+      await this._updateDailySummary(type, value, dateStr);
     }
   }
   
-  private async updateDailySummary(type: Usage['type'], value: number, dateStr: string): Promise<void> {
+  private async _updateDailySummary(type: Usage['type'], value: number, dateStr: string): Promise<void> {
     const summaryKey = `daily_summary_${type}_${dateStr}`;
     
     if (this.useIndexedDB) {
@@ -822,19 +828,40 @@ class LocalStorageDB {
       .filter(key => key.startsWith(DB_PREFIX))
       .forEach(key => localStorage.removeItem(key));
   }
+
+  async clearAll(): Promise<void> {
+    // Clear IndexedDB if it's being used
+    if (this.useIndexedDB) {
+      // Clear all stores one by one
+      await indexedDBService.clear('chats');
+      await indexedDBService.clear('messages');
+      await indexedDBService.clear('storage');
+      await indexedDBService.clear('usage');
+      await indexedDBService.clear('model_usage');
+      await indexedDBService.clear('settings');
+      await indexedDBService.clear('tools');
+    }
+    
+    // Also clear localStorage for good measure
+    const keys = Object.keys(localStorage)
+      .filter(key => key.startsWith(DB_PREFIX));
+    
+    if (keys.length > 0) {
+      console.info(`Clearing ${keys.length} items from localStorage`);
+      keys
+        .forEach(key => localStorage.removeItem(key));
+    }
+  }
+  
+  // Public wrapper for the private updateUsage method
+  async updateUsage(type: Usage['type'], value: number): Promise<void> {
+    await this._updateUsage(type, value);
+  }
 }
 
 export const db = new LocalStorageDB();
 
 export const updateChat = async (chatId: string, updates: { title?: string }) => {
-  const tx = db.transaction('chats', 'readwrite');
-  const store = tx.objectStore('chats');
-  const chat = await store.get(chatId);
-  
-  if (chat) {
-    const updatedChat = { ...chat, ...updates };
-    await store.put(updatedChat);
-  }
-  
-  await tx.done;
+  // Use the existing updateChat method on db instance
+  await db.updateChat(chatId, updates);
 };

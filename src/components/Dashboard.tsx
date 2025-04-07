@@ -16,7 +16,11 @@ import {
   Star,
   RefreshCw,
   Sparkles,
-  Server
+  Server,
+  TerminalSquare,
+  Database,
+  Trash2,
+  Cpu
 } from 'lucide-react';
 import { db } from '../db';
 import axios from 'axios';
@@ -491,51 +495,67 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
-              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-sakura-200 dark:border-sakura-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-sakura-100 dark:bg-sakura-900/30">
-                    <FileText className="w-5 h-5 text-sakura-500" />
-                  </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Knowledge Base System</h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Store documents and personalize Clara to speak based on your data and facts. Upload your content and get responses that adapt to your specific information, enabling more accurate and contextually relevant interactions.
-                </p>
-              </div>
-              
-              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-indigo-200 dark:border-indigo-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
+              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-indigo-200 dark:border-indigo-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-12 -top-12 w-24 h-24 bg-indigo-200/30 dark:bg-indigo-500/10 rounded-full blur-2xl opacity-70 group-hover:opacity-100 transition-opacity"></div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-                    <Server className="w-5 h-5 text-indigo-500" />
+                    <TerminalSquare className="w-5 h-5 text-indigo-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Enhanced Python Backend</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                    Tool Calling Functionality
+                    <span className="px-2 py-0.5 text-xs bg-gradient-to-r from-indigo-500 to-blue-500 text-white rounded-full">New</span>
+                  </h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Significantly improved Python backend with better stability, faster response times, and expanded capabilities. The new architecture supports more complex operations and lays the groundwork for upcoming advanced features.
+                  Clara now features advanced tool calling capabilities, enabling AI to execute specific functions and access external systems. This powerful upgrade allows for more interactive and capability-rich conversations with your AI assistant.
                 </p>
               </div>
               
-              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-emerald-200 dark:border-emerald-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
+              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-emerald-200 dark:border-emerald-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -left-12 -bottom-12 w-24 h-24 bg-emerald-200/30 dark:bg-emerald-500/10 rounded-full blur-2xl opacity-70 group-hover:opacity-100 transition-opacity"></div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                    <Sparkles className="w-5 h-5 text-emerald-500" />
+                    <Cpu className="w-5 h-5 text-emerald-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">Coming Soon: MCP & Agentic Functions</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                    Custom Model Installation
+                    <span className="px-2 py-0.5 text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full">New</span>
+                  </h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Get ready for Mission Control Protocol (MCP) and a new Node system with Agentic functions. These upcoming features will enable complex task automation, multi-step reasoning, and sophisticated workflows all within Clara's interface.
+                  Personalize your AI experience with our new custom model installation option. Choose and install specialized AI models tailored to your specific needs, enabling more diverse and task-specific interactions with Clara.
                 </p>
               </div>
               
-              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-amber-200 dark:border-amber-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md">
+              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-amber-200 dark:border-amber-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -right-12 -bottom-12 w-24 h-24 bg-amber-200/30 dark:bg-amber-500/10 rounded-full blur-2xl opacity-70 group-hover:opacity-100 transition-opacity"></div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                    <Settings className="w-5 h-5 text-amber-500" />
+                    <Database className="w-5 h-5 text-amber-500" />
                   </div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">UI and QOL Improvements</h3>
+                  <h3 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                    Optimized RAG System
+                    <span className="px-2 py-0.5 text-xs bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-full">Improved</span>
+                  </h3>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Numerous UI refinements and quality-of-life updates make Clara more reliable and user-friendly. Enjoy smoother transitions, improved responsiveness, and a more intuitive design that enhances your overall experience.
+                  Experience a significantly enhanced Retrieval-Augmented Generation system with better performance for temporary documents, improved processing efficiency, and optimized memory management, making your knowledge-base interactions faster and more reliable.
+                </p>
+              </div>
+              
+              <div className="bg-white/70 dark:bg-gray-800/70 p-5 rounded-xl border border-rose-200 dark:border-rose-800/50 backdrop-blur-sm transform transition-transform hover:scale-102 hover:shadow-md relative overflow-hidden group">
+                <div className="absolute -left-12 -top-12 w-24 h-24 bg-rose-200/30 dark:bg-rose-500/10 rounded-full blur-2xl opacity-70 group-hover:opacity-100 transition-opacity"></div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30">
+                    <Trash2 className="w-5 h-5 text-rose-500" />
+                  </div>
+                  <h3 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                    Database Purging Option
+                    <span className="px-2 py-0.5 text-xs bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-full">New</span>
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Take complete control of your data with our new RAG database purging feature. This powerful option allows you to easily clear your entire knowledge base when needed, ensuring both privacy and optimal system performance.
                 </p>
               </div>
             </div>
