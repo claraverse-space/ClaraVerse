@@ -69,7 +69,19 @@ contextBridge.exposeInMainWorld(
       if (validReceiveChannels.includes(channel)) {
         ipcRenderer.removeListener(channel, func);
       }
-    }
+    },
+    checkN8NHealth: () => ipcRenderer.invoke('check-n8n-health'),
+    checkNodejs: () => ipcRenderer.invoke('check-nodejs'),
+    checkN8NInstallation: () => ipcRenderer.invoke('check-n8n-installation'),
+    installN8N: () => ipcRenderer.invoke('install-n8n'),
+    startN8N: () => ipcRenderer.invoke('start-n8n'),
+    stopN8N: () => ipcRenderer.invoke('stop-n8n'),
+    onN8NInstallProgress: (callback) => {
+      ipcRenderer.on('n8n-install-progress', (event, data) => callback(data));
+      return () => {
+        ipcRenderer.removeAllListeners('n8n-install-progress');
+      };
+    },
   }
 );
 

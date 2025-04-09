@@ -16,6 +16,10 @@ let pythonBackend;
 let mainWindow;
 let splash;
 
+// N8N Process Management
+let n8nProcess = null;
+const N8N_PORT = 5678;
+
 // Initialize Python setup
 const pythonSetup = new PythonSetup();
 
@@ -111,32 +115,51 @@ function createMainWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true,
+      sandbox: false
     },
     show: false,
     backgroundColor: '#f5f5f5'
   });
   
+  // Set security policies for webview
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const url = webContents.getURL();
+    if (url.startsWith('http://localhost:5678')) {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   // Development mode with hot reload
   if (process.env.NODE_ENV === 'development') {
-    const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-    
-    log.info('Loading development server:', devServerUrl);
-    mainWindow.loadURL(devServerUrl).catch(err => {
-      log.error('Failed to load dev server:', err);
-      // Fallback to local file if dev server fails
+    if (process.env.ELECTRON_HOT_RELOAD === 'true') {
+      // Hot reload mode
+      const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+      
+      log.info('Loading development server with hot reload:', devServerUrl);
+      mainWindow.loadURL(devServerUrl).catch(err => {
+        log.error('Failed to load dev server:', err);
+        // Fallback to local file if dev server fails
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+      });
+
+      // Enable hot reload by watching the renderer process
+      mainWindow.webContents.on('did-fail-load', () => {
+        log.warn('Page failed to load, retrying...');
+        setTimeout(() => {
+          mainWindow?.webContents.reload();
+        }, 1000);
+      });
+    } else {
+      // Development mode without hot reload - use built files
+      log.info('Loading development build from dist directory');
       mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    });
+    }
 
-    // Enable hot reload by watching the renderer process
-    mainWindow.webContents.on('did-fail-load', () => {
-      log.warn('Page failed to load, retrying...');
-      setTimeout(() => {
-        mainWindow?.webContents.reload();
-      }, 1000);
-    });
-
-    // Open DevTools automatically in development
+    // Open DevTools in both development modes
     mainWindow.webContents.openDevTools();
   } else {
     // Production mode - load built files
@@ -175,7 +198,7 @@ function createMainWindow() {
 }
 
 // Add development mode watcher
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV === 'development' && process.env.ELECTRON_HOT_RELOAD === 'true') {
   const { watch } = require('fs');
   
   // Watch for changes in the renderer process
@@ -183,15 +206,6 @@ if (process.env.NODE_ENV === 'development') {
     if (mainWindow && mainWindow.webContents) {
       log.info('Detected renderer change:', filename);
       mainWindow.webContents.reload();
-    }
-  });
-
-  // Watch for changes in the main process
-  watch(__dirname, (event, filename) => {
-    if (filename && !filename.includes('node_modules')) {
-      log.info('Detected main process change:', filename);
-      app.relaunch();
-      app.quit();
     }
   });
 }
@@ -203,70 +217,186 @@ ipcMain.handle('get-python-port', () => {
   return port;
 });
 
-// Add a new handler for health check
-ipcMain.handle('check-python-backend', async () => {
-  if (!pythonBackend) {
-    return { status: 'not_initialized' };
-  }
-  
+// Helper function to find process by port
+async function findProcessByPort(port) {
   try {
-    const status = pythonBackend.getStatus();
-    
-    // Test connection directly using Node's http instead of fetch
-    if (status.port) {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      const result = execSync(`netstat -ano | findstr :${port}`).toString();
+      const match = result.match(/\s+(\d+)\s*$/);
+      return match ? { pid: match[1] } : null;
+    } else {
+      const result = execSync(`lsof -i :${port} -t`).toString().trim();
+      return result ? { pid: result } : null;
+    }
+  } catch (error) {
+    return null;
+  }
+}
+
+// Helper function to kill N8N process
+async function killN8NProcess() {
+  try {
+    const { execSync } = require('child_process');
+    const processInfo = await findProcessByPort(N8N_PORT);
+    if (processInfo) {
       try {
-        const http = require('http');
-        const result = await new Promise((resolve, reject) => {
-          const req = http.get(`http://localhost:${status.port}/`, {
-            timeout: 2000,
-            headers: { 'Accept': 'application/json' }
-          }, (res) => {
-            let data = '';
-            
-            res.on('data', (chunk) => {
-              data += chunk;
-            });
-            
-            res.on('end', () => {
-              try {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                  resolve({ success: true, data: JSON.parse(data) });
-                } else {
-                  reject(new Error(`HTTP status ${res.statusCode}`));
-                }
-              } catch (e) {
-                reject(e);
-              }
-            });
-          });
-          
-          req.on('error', reject);
-          req.on('timeout', () => {
-            req.destroy();
-            reject(new Error('Request timeout'));
-          });
-        });
-        
-        if (result && result.success) {
-          return { 
-            status: 'running', 
-            port: status.port,
-            available: true,
-            serverInfo: result.data
-          };
+        execSync(`kill ${processInfo.pid}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const stillRunning = await findProcessByPort(N8N_PORT);
+        if (stillRunning) {
+          execSync(`kill -9 ${processInfo.pid}`);
         }
       } catch (error) {
-        log.warn(`Backend connection test failed: ${error.message}`);
+        if (!error.message.includes('No such process')) {
+          throw error;
+        }
       }
+      return true;
     }
-    
-    return {
-      ...status,
-      available: false
-    };
+    return false;
   } catch (error) {
-    log.error(`Error checking Python backend: ${error.message}`);
-    return { status: 'error', error: error.message };
+    log.warn(`Error killing N8N process: ${error.message}`);
+    return false;
+  }
+}
+
+// Check N8N health
+ipcMain.handle('check-n8n-health', async () => {
+  try {
+    const http = require('http');
+    const result = await new Promise((resolve, reject) => {
+      const req = http.get(`http://localhost:${N8N_PORT}/healthz`, {
+        timeout: 2000,
+        headers: { 'Accept': 'application/json' }
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          try {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve({ success: true, data });
+            } else {
+              reject(new Error(`HTTP status ${res.statusCode}`));
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+    });
+    return { success: true, data: result.data };
+  } catch (error) {
+    log.warn(`N8N health check failed: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+});
+
+// Start N8N process
+ipcMain.handle('start-n8n', async () => {
+  try {
+    // Check if port is already in use
+    const existingProcess = await findProcessByPort(N8N_PORT);
+    if (existingProcess) {
+      return { 
+        success: false, 
+        error: `Port ${N8N_PORT} is already in use. Please stop any existing N8N process first.` 
+      };
+    }
+
+    // Get the path to the bundled N8N
+    const n8nPath = path.join(__dirname, '..', 'node_modules', 'n8n', 'bin', 'n8n');
+    
+    // Verify the N8N binary exists
+    if (!fs.existsSync(n8nPath)) {
+      return { 
+        success: false, 
+        error: `N8N binary not found at ${n8nPath}. Please ensure N8N is properly installed.` 
+      };
+    }
+
+    // Start N8N in a separate process
+    n8nProcess = require('child_process').spawn('node', [n8nPath, 'start'], {
+      env: {
+        ...process.env,
+        NODE_PATH: path.join(__dirname, '..', 'node_modules'),
+        N8N_PORT: N8N_PORT.toString()
+      },
+      detached: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Handle process output
+    n8nProcess.stdout.on('data', (data) => {
+      log.info(`N8N stdout: ${data}`);
+      if (mainWindow) {
+        mainWindow.webContents.send('n8n-output', { type: 'stdout', data: data.toString() });
+      }
+    });
+
+    n8nProcess.stderr.on('data', (data) => {
+      log.error(`N8N stderr: ${data}`);
+      if (mainWindow) {
+        mainWindow.webContents.send('n8n-output', { type: 'stderr', data: data.toString() });
+      }
+    });
+
+    n8nProcess.on('error', (error) => {
+      log.error(`N8N process error: ${error.message}`);
+      if (mainWindow) {
+        mainWindow.webContents.send('n8n-error', error.message);
+      }
+    });
+
+    // Wait for process to start and verify it's running
+    return new Promise((resolve) => {
+      setTimeout(async () => {
+        const processInfo = await findProcessByPort(N8N_PORT);
+        if (processInfo) {
+          resolve({ success: true, pid: parseInt(processInfo.pid) });
+        } else {
+          resolve({ success: false, error: 'Failed to start N8N process' });
+        }
+      }, 2000);
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop N8N process
+ipcMain.handle('stop-n8n', async () => {
+  try {
+    const processInfo = await findProcessByPort(N8N_PORT);
+    if (!processInfo) {
+      n8nProcess = null;
+      return { success: true, message: `No process found running on port ${N8N_PORT}` };
+    }
+
+    const killed = await killN8NProcess();
+    if (killed) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const isStillRunning = await findProcessByPort(N8N_PORT);
+      
+      if (isStillRunning) {
+        return { 
+          success: false, 
+          error: 'Failed to stop process. You may need to restart your system.' 
+        };
+      }
+      
+      n8nProcess = null;
+      return { success: true, message: `Successfully stopped process (PID: ${processInfo.pid})` };
+    } else {
+      return { success: false, error: 'Failed to stop process' };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
   }
 });
 

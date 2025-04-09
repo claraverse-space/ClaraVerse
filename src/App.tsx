@@ -12,6 +12,7 @@ import AppRunner from './components/AppRunner';
 import ImageGen from './components/ImageGen';
 import Gallery from './components/Gallery';
 import Help from './components/Help';
+import N8N from './components/N8N';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
@@ -87,6 +88,10 @@ function App() {
       return <Gallery onPageChange={setActivePage} />;
     }
 
+    if (activePage === 'n8n') {
+      return <N8N onPageChange={setActivePage} />;
+    }
+
     return (
       <div className="flex h-screen">
         <Sidebar activePage={activePage} onPageChange={setActivePage} />
@@ -134,3 +139,5 @@ function App() {
 }
 
 export default App;
+
+

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home, Bot, Settings, HelpCircle, ChevronRight, Bug, Grid, ImageIcon } from 'lucide-react';
+import { Home, Bot, Settings, HelpCircle, ChevronRight, Bug, Grid, ImageIcon, Network } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
     { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Grid, label: 'Apps', id: 'apps' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
+    { icon: Network, label: 'N8N', id: 'n8n' },
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: Bug, label: 'Debug', id: 'debug' },
     { icon: HelpCircle, label: 'Help', id: 'help' },

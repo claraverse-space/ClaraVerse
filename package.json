@@ -19,7 +19,8 @@
     "test:ui": "npx vitest --ui",
     "test:coverage": "npx vitest run --coverage",
     "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json",
-    "electron:dev": "cross-env NODE_ENV=development concurrently \"npm run dev\" \"electron .\"",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "electron:dev:hot": "cross-env NODE_ENV=development ELECTRON_HOT_RELOAD=true concurrently \"npm run dev\" \"electron .\"",
     "electron:build-all": "npm run build && electron-builder --mac --win --linux",
     "electron:build": "npm run build && electron-builder",
     "electron:preview": "npm run build && electron .",
@@ -69,10 +70,11 @@
     "remark-gfm": "^4.0.0",
     "tar": "^6.2.1",
     "ws": "^8.18.1",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "n8n": "1.86.0"
   },
   "devDependencies": {
-    "@electron/notarize": "^2.2.0",
+    "@electron/notarize": "^2.5.0",
     "@eslint/js": "^9.9.1",
     "@tailwindcss/typography": "^0.5.10",
     "@testing-library/jest-dom": "^6.6.3",
@@ -142,6 +144,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
       "target": [
         {
           "target": "default",
@@ -199,7 +202,7 @@
       "license": "LICENSE",
       "deleteAppDataOnUninstall": true
     },
-    "afterSign": "notarize.js"
+    "afterSign": "notarize.cjs"
   },
   "vite": {
     "build": {
