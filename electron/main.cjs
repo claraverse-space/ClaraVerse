@@ -4,6 +4,7 @@ const fs = require('fs');
 const log = require('electron-log');
 const PythonSetup = require('./pythonSetup.cjs');
 const PythonBackendService = require('./pythonBackend.cjs');
+const NodeSetup = require('./nodeSetup.cjs');
 const { setupAutoUpdater } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 
@@ -15,13 +16,30 @@ log.info('Application starting...');
 let pythonBackend;
 let mainWindow;
 let splash;
+let nodeSetup;
 
 // N8N Process Management
 let n8nProcess = null;
 const N8N_PORT = 5678;
 
-// Initialize Python setup
+// Initialize setup instances
 const pythonSetup = new PythonSetup();
+nodeSetup = new NodeSetup();
+
+// Get the path to N8N binary
+const getN8NPath = () => {
+  if (process.platform === 'darwin') {
+    return nodeSetup.getN8nPath();
+  } else {
+    // Fallback to bundled N8N for other platforms
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) {
+      return path.join(__dirname, '..', 'node_modules', 'n8n', 'bin', 'n8n');
+    } else {
+      return path.join(process.resourcesPath, 'node_modules', 'n8n', 'bin', 'n8n');
+    }
+  }
+};
 
 async function initializeApp() {
   try {
@@ -29,11 +47,19 @@ async function initializeApp() {
     splash = new SplashScreen();
     splash.setStatus('Starting Clara...', 'info');
     
-    // Always setup Python environment on first run
+    // Setup Python environment
     splash.setStatus('Setting up Python environment...', 'info');
     await pythonSetup.setup((status) => {
       splash.setStatus(status, 'info');
     });
+
+    // Setup Node.js and N8N (Mac only)
+    if (process.platform === 'darwin') {
+      splash.setStatus('Setting up Node.js and N8N...', 'info');
+      await nodeSetup.setup((status) => {
+        splash.setStatus(status, 'info');
+      });
+    }
     
     // Initialize Python backend service
     pythonBackend = new PythonBackendService(pythonSetup);
@@ -309,8 +335,14 @@ ipcMain.handle('start-n8n', async () => {
       };
     }
 
-    // Get the path to the bundled N8N
-    const n8nPath = path.join(__dirname, '..', 'node_modules', 'n8n', 'bin', 'n8n');
+    // Get the path to N8N
+    const n8nPath = getN8NPath();
+    
+    // For Mac, we need to use the NVM-installed Node
+    let nodePath = 'node';
+    if (process.platform === 'darwin') {
+      nodePath = nodeSetup.getNodePath();
+    }
     
     // Verify the N8N binary exists
     if (!fs.existsSync(n8nPath)) {
@@ -321,10 +353,12 @@ ipcMain.handle('start-n8n', async () => {
     }
 
     // Start N8N in a separate process
-    n8nProcess = require('child_process').spawn('node', [n8nPath, 'start'], {
+    n8nProcess = require('child_process').spawn(nodePath, [n8nPath, 'start'], {
       env: {
         ...process.env,
-        NODE_PATH: path.join(__dirname, '..', 'node_modules'),
+        NODE_PATH: process.platform === 'darwin' 
+          ? path.dirname(nodePath)
+          : path.join(__dirname, '..', 'node_modules'),
         N8N_PORT: N8N_PORT.toString()
       },
       detached: true,

@@ -13,6 +13,15 @@ class PythonSetup {
     this.app = electron.app;
     this.isDevMode = process.env.NODE_ENV === 'development';
     
+    // Enhanced path logging
+    const resourcesPath = process.resourcesPath;
+    this.log('Initializing Python Setup', {
+      isDevMode: this.isDevMode,
+      resourcesPath,
+      platform: process.platform,
+      arch: process.arch
+    });
+    
     if (this.isDevMode) {
       // In development, use user's home directory for persistent storage
       this.appDataPath = path.join(os.homedir(), '.clara');
@@ -22,32 +31,59 @@ class PythonSetup {
       // In production, use bundled Python runtime from resources
       this.appDataPath = path.join(process.resourcesPath, 'clara-data'); 
       this.envPath = path.join(process.resourcesPath, 'python-env');
-      // In production mode, .initialized file is not used as the bundled runtime is prepackaged
       this.initPath = path.join(this.appDataPath, '.initialized');
+      
+      // Verify resources path exists
+      if (!fs.existsSync(process.resourcesPath)) {
+        throw new Error(`Resources path does not exist: ${process.resourcesPath}`);
+      }
     }
     
-    // Platform-specific paths
+    // Platform-specific paths with validation
     if (process.platform === 'win32') {
       this.pythonExe = path.join(this.envPath, 'python.exe');
     } else {
       this.pythonExe = path.join(this.envPath, 'bin', 'python');
     }
 
+    // Log all critical paths
+    this.log('Python paths configured', {
+      appDataPath: this.appDataPath,
+      envPath: this.envPath,
+      pythonExe: this.pythonExe,
+      initPath: this.initPath
+    });
+
     // Create app data directory if it doesn't exist
-    if (!fs.existsSync(this.appDataPath)) {
-      fs.mkdirSync(this.appDataPath, { recursive: true });
+    try {
+      if (!fs.existsSync(this.appDataPath)) {
+        fs.mkdirSync(this.appDataPath, { recursive: true });
+        this.log('Created app data directory', { path: this.appDataPath });
+      }
+    } catch (error) {
+      this.log('Failed to create app data directory', { 
+        error: error.message,
+        code: error.code,
+        path: this.appDataPath
+      });
+      throw new Error(`Failed to create app data directory: ${error.message}`);
     }
 
     // Initialize a flag to force bundled Python usage
     this.useBundled = false;
-    
-    // Flag to control whether to force reinstall Python environment
-    // Set to false by default - will reuse existing environment if available
     this.forceSetup = false;
 
-    // Logger setup
+    // Logger setup with error handling
     this.logPath = path.join(this.appDataPath, 'python-setup.log');
-    this.log('Python setup initialized', { appDataPath: this.appDataPath });
+    try {
+      // Test write access to log file
+      fs.appendFileSync(this.logPath, '--- New Session Started ---\n');
+    } catch (error) {
+      console.error('Failed to write to log file:', error);
+      // Try alternate location if primary fails
+      this.logPath = path.join(os.tmpdir(), 'clara-python-setup.log');
+      fs.appendFileSync(this.logPath, '--- New Session Started (Alternate Location) ---\n');
+    }
   }
 
   log(message, data = {}) {
@@ -80,7 +116,26 @@ class PythonSetup {
 
   async setup(progressCallback) {
     try {
+      // Log system information
+      const sysInfo = {
+        platform: process.platform,
+        arch: process.arch,
+        nodeVersion: process.version,
+        electronVersion: process.versions.electron,
+        isDevMode: this.isDevMode,
+        resourcesPath: process.resourcesPath
+      };
+      this.log('Starting Python setup with system info:', sysInfo);
       progressCallback?.('Setting up Python environment...');
+      
+      // Verify write permissions
+      try {
+        const testFile = path.join(this.appDataPath, '.write-test');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+      } catch (error) {
+        throw new Error(`No write permission in app data directory: ${error.message}`);
+      }
       
       // Only remove existing Python environment if forceSetup is true
       if (this.forceSetup && fs.existsSync(this.envPath)) {
@@ -201,36 +256,35 @@ class PythonSetup {
     }
   }
 
-  async downloadFile(url, destination, progressCallback) {
+  async downloadFile(url, dest, progressCallback) {
     return new Promise((resolve, reject) => {
-      const file = createWriteStream(destination);
-      let receivedBytes = 0;
-      let totalBytes = 0;
+      const file = createWriteStream(dest);
       
-      https.get(url, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download: ${response.statusCode}`));
-          return;
-        }
-        
-        totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-        
-        response.on('data', (chunk) => {
-          receivedBytes += chunk.length;
-          if (totalBytes > 0) {
-            const percentage = Math.floor((receivedBytes / totalBytes) * 100);
-            progressCallback?.(`Downloading... ${percentage}%`);
+      https.get(url, response => {
+        const totalSize = parseInt(response.headers['content-length'], 10);
+        let downloadedSize = 0;
+        let lastProgress = 0;
+
+        response.on('data', chunk => {
+          downloadedSize += chunk.length;
+          const progress = Math.round((downloadedSize / totalSize) * 100);
+          
+          // Only update progress if it changed by at least 1%
+          if (progress > lastProgress) {
+            progressCallback?.(`Downloading ${path.basename(url)}: ${progress}%`, 'info');
+            lastProgress = progress;
           }
         });
-        
+
         response.pipe(file);
-        
+
         file.on('finish', () => {
           file.close();
+          progressCallback?.(`Download complete: ${path.basename(url)}`, 'success');
           resolve();
         });
-      }).on('error', (err) => {
-        fs.unlink(destination, () => {});
+      }).on('error', err => {
+        fs.unlink(dest, () => {}); // Delete the file if download failed
         reject(err);
       });
     });
@@ -280,41 +334,41 @@ class PythonSetup {
     });
   }
 
-  async runCommand(command, args, options = {}) {
+  async runCommand(cmd, args, options = {}) {
     return new Promise((resolve, reject) => {
-      const proc = spawn(command, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        ...options
+      const proc = spawn(cmd, args, {
+        ...options,
+        stdio: ['ignore', 'pipe', 'pipe']
       });
-      
-      let stdout = '';
-      let stderr = '';
-      
+
+      let output = '';
+
       proc.stdout.on('data', (data) => {
-        const output = data.toString();
-        stdout += output;
-        options.progress?.(`${output.trim().slice(0, 50)}...`);
-      });
-      
-      proc.stderr.on('data', (data) => {
-        const output = data.toString();
-        stderr += output;
-        this.log('Command stderr', { command, output });
-      });
-      
-      proc.on('close', (code) => {
-        if (code === 0) {
-          resolve(stdout);
-        } else {
-          const error = new Error(`Command failed with code ${code}: ${stderr}`);
-          this.log('Command failed', { command, code, stderr });
-          reject(error);
+        const text = data.toString();
+        output += text;
+        // Send real-time output to progress callback
+        if (options.progress) {
+          options.progress(text.trim(), 'info');
         }
       });
-      
-      proc.on('error', (err) => {
-        this.log('Command error', { command, error: err.message });
-        reject(err);
+
+      proc.stderr.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        // Send error output to progress callback
+        if (options.progress) {
+          // Some tools use stderr for progress info, so we don't mark all as errors
+          const type = text.toLowerCase().includes('error') ? 'error' : 'info';
+          options.progress(text.trim(), type);
+        }
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve(output);
+        } else {
+          reject(new Error(`Command failed with code ${code}: ${output}`));
+        }
       });
     });
   }
@@ -418,11 +472,26 @@ class PythonSetup {
   }
 
   async getPythonPath() {
-    // Always use the bundled Python. If it doesn't exist, perform setup.
+    // Enhanced Python path validation
     if (!fs.existsSync(this.pythonExe)) {
-      await this.setup();
+      this.log('Python executable not found', { path: this.pythonExe });
+      throw new Error(`Python executable not found at: ${this.pythonExe}`);
     }
-    return this.pythonExe;
+
+    try {
+      // Verify Python executable is actually executable
+      await this.runCommand(this.pythonExe, ['--version'], {
+        timeout: 5000,
+        progress: (msg) => this.log('Python version check:', { output: msg })
+      });
+      return this.pythonExe;
+    } catch (error) {
+      this.log('Python executable validation failed', { 
+        error: error.message,
+        path: this.pythonExe 
+      });
+      throw new Error(`Python executable validation failed: ${error.message}`);
+    }
   }
 }
 

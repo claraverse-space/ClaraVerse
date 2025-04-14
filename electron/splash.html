@@ -16,34 +16,35 @@
     }
     .container {
       background: rgba(255, 255, 255, 0.95);
-      padding: 30px;
-      border-radius: 16px;
-      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+      padding: 40px;
+      border-radius: 24px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
       text-align: center;
-      max-width: 400px;
+      width: 800px;
       position: relative;
       overflow: hidden;
+      margin: auto;
     }
     .logo {
-      width: 140px;
-      height: 140px;
-      margin-bottom: 15px;
+      width: 180px;
+      height: 180px;
+      margin-bottom: 25px;
     }
     h2 {
-      font-size: 28px;
+      font-size: 32px;
       font-weight: 500;
-      margin: 10px 0;
+      margin: 15px 0;
       color: #222;
     }
     .message {
-      font-size: 14px;
+      font-size: 16px;
       color: #666;
-      margin: 12px 0;
-      padding: 0 15px;
+      margin: 16px 0;
+      padding: 0 20px;
     }
     .status {
-      margin-top: 15px;
-      font-size: 15px;
+      margin-top: 20px;
+      font-size: 16px;
       color: #666;
       font-weight: 500;
     }
@@ -79,6 +80,28 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
+    .terminal {
+      margin-top: 25px;
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      height: 250px;
+      width: calc(100% - 40px);
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      color: #fff;
+      text-align: left;
+    }
+    .terminal-line {
+      margin: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .terminal-line.info { color: #fff; }
+    .terminal-line.success { color: #2ecc71; }
+    .terminal-line.warning { color: #f39c12; }
+    .terminal-line.error { color: #e74c3c; }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -102,10 +125,20 @@
     <div class="progress-bar">
       <div class="fill" id="progress"></div>
     </div>
+    <div class="terminal" id="terminal"></div>
     <div class="spinner"></div>
   </div>
   <script>
     const { ipcRenderer } = require('electron');
+    
+    function addTerminalLine(message, type = 'info') {
+      const terminal = document.getElementById('terminal');
+      const line = document.createElement('div');
+      line.className = `terminal-line ${type}`;
+      line.textContent = message;
+      terminal.appendChild(line);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
     
     function updateStatus(message, type = 'info') {
       console.log(`[Splash] ${type}: ${message}`);
@@ -115,6 +148,9 @@
       
       statusEl.textContent = message;
       statusEl.className = 'status ' + type;
+
+      // Add message to terminal
+      addTerminalLine(message, type);
 
       if (type === 'error') {
         errorEl.textContent = message;

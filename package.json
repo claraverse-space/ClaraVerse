@@ -56,6 +56,7 @@
     "inquirer": "^12.4.3",
     "langchain": "^0.3.19",
     "lucide-react": "^0.344.0",
+    "ngrok": "^5.0.0-beta.2",
     "ollama": "^0.5.14",
     "openai": "^4.89.0",
     "openai-zod-functions": "^0.1.2",
@@ -70,8 +71,7 @@
     "remark-gfm": "^4.0.0",
     "tar": "^6.2.1",
     "ws": "^8.18.1",
-    "zod": "^3.24.2",
-    "n8n": "1.86.0"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",

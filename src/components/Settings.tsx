@@ -215,6 +215,55 @@ const Settings = () => {
               placeholder="http://localhost:8188"
             />
           </div>
+
+          {/* n8n Configuration Section */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Server className="w-5 h-5 text-sakura-500" />
+              n8n Configuration
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  n8n Base URL
+                </label>
+                <input
+                  type="url"
+                  value={apiConfig.n8n_base_url || ''}
+                  onChange={(e) => setApiConfig(prev => ({ ...prev, n8n_base_url: e.target.value }))}
+                  className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                  placeholder="http://localhost:5678"
+                />
+                <p className="mt-1 text-sm text-gray-500">The URL where your n8n instance is running</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  n8n API Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={apiConfig.n8n_api_key || ''}
+                    onChange={(e) => setApiConfig(prev => ({ ...prev, n8n_api_key: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    placeholder="Your n8n API key"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                  >
+                    {showApiKey ? (
+                      <Lock className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <Key className="h-4 w-4 text-gray-500" />
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">API key for authenticating with your n8n instance</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

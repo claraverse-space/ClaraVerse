@@ -61,13 +61,25 @@ class PythonBackendService extends EventEmitter {
       this.port = options.port || await this.findAvailablePort(8090, 8199);
       this.logger.info(`Selected port ${this.port} for Python backend`);
       
-      // Get the Python executable - this could fail if pythonSetup hasn't completed yet
-      const pythonExe = await this.pythonSetup.getPythonPath();
+      // Enhanced environment validation
+      const pythonExe = await this.pythonSetup.getPythonPath().catch(error => {
+        this.logger.error('Failed to get Python path', { error: error.message });
+        throw new Error(`Python environment not ready: ${error.message}`);
+      });
       
-      // Get the path to the Python backend
+      // Get the path to the Python backend with enhanced validation
       const isDev = process.env.NODE_ENV === 'development';
       const isWin = process.platform === 'win32';
       const isMac = process.platform === 'darwin';
+      
+      // Log all relevant paths for debugging
+      this.logger.info('Environment paths', {
+        isDev,
+        isWin,
+        isMac,
+        resourcesPath: process.resourcesPath,
+        __dirname
+      });
       
       const backendPath = isDev 
         ? path.join(__dirname, '..', 'py_backend')
@@ -77,41 +89,62 @@ class PythonBackendService extends EventEmitter {
       
       const mainPyPath = path.join(backendPath, 'main.py');
       
+      // Enhanced path validation
+      if (!fs.existsSync(backendPath)) {
+        throw new Error(`Python backend directory not found: ${backendPath}`);
+      }
+      
       if (!fs.existsSync(mainPyPath)) {
         throw new Error(`Python backend script not found: ${mainPyPath}`);
       }
       
-      // Add more robust validation for Python environment
-      if (!pythonExe || typeof pythonExe !== 'string') {
-        throw new Error('Python executable path is invalid or not available. Environment setup may not be complete.');
+      // Verify Python environment
+      try {
+        const pythonVersion = await this.pythonSetup.runCommand(pythonExe, ['--version'], {
+          timeout: 5000,
+          progress: (msg) => this.logger.info('Python version check:', { output: msg })
+        });
+        this.logger.info('Python version:', { version: pythonVersion.trim() });
+      } catch (error) {
+        throw new Error(`Failed to verify Python installation: ${error.message}`);
       }
       
-      this.logger.info(`Starting Python backend from: ${mainPyPath} using Python: ${pythonExe}`);
-      
-      // Set environment variables
+      // Set environment variables with enhanced logging
       const env = {
         ...process.env,
         PYTHONUNBUFFERED: '1',
         PYTHONIOENCODING: 'utf-8',
-        CLARA_PORT: this.port.toString()
+        CLARA_PORT: this.port.toString(),
+        CLARA_DEBUG: '1', // Enable debug logging
+        CLARA_LOG_PATH: path.join(this.pythonSetup.appDataPath, 'python-backend.log')
       };
       
-      // Check if Python executable exists before spawning
-      if (!fs.existsSync(pythonExe)) {
-        throw new Error(`Python executable not found at: ${pythonExe}`);
-      }
+      this.logger.info('Starting Python backend with config:', {
+        pythonExe,
+        mainPyPath,
+        backendPath,
+        port: this.port
+      });
       
-      // Start the process
+      // Start the process with enhanced error handling
       this.process = spawn(pythonExe, [mainPyPath], {
         cwd: backendPath,
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
       
-      // Set up stdout handler
+      let startupOutput = '';
+      
+      // Enhanced stdout handler with startup logging
       this.process.stdout.on('data', (data) => {
         const output = data.toString().trim();
+        startupOutput += output + '\n';
         this.logger.info(`Python stdout: ${output}`);
+        
+        if (output.includes('ERROR') || output.includes('Exception')) {
+          this.logger.error('Python error detected:', { output });
+          this.emit('error', new Error(output));
+        }
         
         // Check for port announcement in output
         const portMatch = output.match(/CLARA_PORT:(\d+)/);
@@ -132,18 +165,21 @@ class PythonBackendService extends EventEmitter {
         }
       });
       
-      // Set up stderr handler
+      // Enhanced stderr handler
       this.process.stderr.on('data', (data) => {
         const output = data.toString().trim();
+        startupOutput += output + '\n';
         
-        // Only log real errors, filter out normal uvicorn startup info
-        if (!output.startsWith('INFO:') && !output.includes('Uvicorn running')) {
-          this.logger.error(`Python stderr: ${output}`);
+        if (output.includes('ERROR') || output.includes('Exception')) {
+          this.logger.error('Python error:', { output });
+          this.emit('error', new Error(output));
+        } else if (!output.startsWith('INFO:') && !output.includes('Uvicorn running')) {
+          this.logger.warn('Python stderr:', { output });
         } else {
-          this.logger.debug(`Python stderr: ${output}`);
+          this.logger.debug('Python stderr:', { output });
         }
         
-        // Check for startup complete message in stderr (uvicorn logs to stderr)
+        // Check for startup complete in stderr
         if (output.includes('Application startup complete')) {
           this.status = 'running';
           this.isReady = true;
@@ -154,9 +190,13 @@ class PythonBackendService extends EventEmitter {
         }
       });
       
-      // Handle process exit
+      // Enhanced process exit handler
       this.process.on('exit', (code, signal) => {
-        this.logger.info(`Python process exited with code ${code} and signal ${signal}`);
+        this.logger.info('Python process exited', { 
+          code, 
+          signal,
+          startupOutput: startupOutput.split('\n').slice(-20).join('\n') // Last 20 lines
+        });
         
         this.stopHealthCheck();
         this.process = null;
@@ -164,16 +204,24 @@ class PythonBackendService extends EventEmitter {
         
         if (this.status !== 'stopping') {
           this.status = 'crashed';
-          this.emit('status-change', { status: 'crashed', code, signal });
+          this.emit('status-change', { 
+            status: 'crashed', 
+            code, 
+            signal,
+            lastOutput: startupOutput 
+          });
           
-          // Auto-restart on crash (with limits)
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
-            this.logger.info(`Attempting to restart Python backend (${this.retryCount}/${this.maxRetries})`);
+            this.logger.info(`Attempting restart (${this.retryCount}/${this.maxRetries})`);
             setTimeout(() => this.start(), 2000);
           } else {
             this.status = 'failed';
-            this.emit('status-change', { status: 'failed', message: 'Maximum retry attempts reached' });
+            this.emit('status-change', { 
+              status: 'failed',
+              message: 'Maximum retry attempts reached',
+              lastOutput: startupOutput
+            });
           }
         } else {
           this.status = 'stopped';

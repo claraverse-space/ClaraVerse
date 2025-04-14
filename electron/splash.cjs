@@ -1,13 +1,21 @@
-const { BrowserWindow, app } = require('electron');
+const { BrowserWindow, app, screen } = require('electron');
 const path = require('path');
 
 class SplashScreen {
   constructor() {
     const isDev = process.env.NODE_ENV === 'development';
     
+    // Get primary display dimensions
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+    
+    // Calculate 80% of screen dimensions
+    const windowWidth = Math.floor(width * 0.8);
+    const windowHeight = Math.floor(height * 0.8);
+    
     this.window = new BrowserWindow({
-      width: 500,  // Increased from 400
-      height: 400, // Increased from 300
+      width: windowWidth,
+      height: windowHeight,
       frame: false,
       transparent: true,
       webPreferences: {
