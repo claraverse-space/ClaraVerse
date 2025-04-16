@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code } from 'lucide-react';
+import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check } from 'lucide-react';
 import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
 
@@ -49,6 +49,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showToolSelector, setShowToolSelector] = useState(false);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+  const [useAllTools, setUseAllTools] = useState(false);
   const toolSelectorRef = useRef<HTMLDivElement>(null);
   
   // Voice recording states
@@ -420,21 +421,29 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [tools]);
 
-  // Handle tool selection
+  // Handle selecting all tools
+  const handleAllToolsClick = () => {
+    setUseAllTools(!useAllTools);
+    if (!useAllTools) {
+      // Enable all tools mode
+      onToolSelect?.(null); // Clear single tool selection
+      setSelectedTool(null);
+    }
+    setShowToolSelector(false);
+  };
+
+  // Modify handleToolClick to handle single tool selection
   const handleToolClick = (tool: Tool) => {
     setSelectedTool(tool);
     onToolSelect?.(tool);
+    setUseAllTools(false); // Disable all tools mode when selecting a single tool
     setShowToolSelector(false);
-    
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
   };
 
-  // Clear selected tool
   const clearSelectedTool = () => {
     setSelectedTool(null);
     onToolSelect?.(null);
+    setUseAllTools(false);
   };
 
   // Clean up tool selection when input is cleared
@@ -603,33 +612,80 @@ const ChatInput: React.FC<ChatInputProps> = ({
             {/* Left Side Actions */}
             <div className="flex items-center gap-2">
               {/* Tool Selector */}
-              <div className="relative" ref={toolSelectorRef}>
-                <button 
-                  className={`group p-2 rounded-lg transition-colors relative ${
-                    selectedTool 
-                      ? 'bg-sakura-500 text-white hover:bg-sakura-600' 
-                      : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
-                  }`}
+              <div className="relative">
+                <button
                   onClick={() => setShowToolSelector(!showToolSelector)}
-                  title={selectedTool ? `Using: ${selectedTool.name}` : 'Select Tool'}
+                  className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                    (selectedTool || useAllTools) ? 'text-indigo-500' : 'text-gray-500'
+                  }`}
+                  title="Select Tool"
                 >
                   <Wrench className="w-5 h-5" />
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    {selectedTool ? `Using: ${selectedTool.name}` : 'Select Tool'}
-                  </div>
                 </button>
+
+                {/* Tool selector dropdown */}
+                {showToolSelector && (
+                  <div
+                    ref={toolSelectorRef}
+                    className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50"
+                  >
+                    <div className="p-2">
+                      <input
+                        type="text"
+                        value={toolSearchQuery}
+                        onChange={(e) => setToolSearchQuery(e.target.value)}
+                        placeholder="Search tools..."
+                        className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md"
+                      />
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto">
+                      {/* Let Clara Decide option */}
+                      <button
+                        onClick={handleAllToolsClick}
+                        className={`w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
+                          useAllTools ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Code className="w-4 h-4" />
+                          <span className="text-sm">Let Clara Decide</span>
+                        </div>
+                        {useAllTools && <Check className="w-4 h-4" />}
+                      </button>
+
+                      <div className="border-t border-gray-200 dark:border-gray-700"></div>
+
+                      {/* Individual tools */}
+                      {filteredTools.map((tool) => (
+                        <button
+                          key={tool.id}
+                          onClick={() => handleToolClick(tool)}
+                          className={`w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
+                            selectedTool?.id === tool.id ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Wrench className="w-4 h-4" />
+                            <span className="text-sm">{tool.name}</span>
+                          </div>
+                          {selectedTool?.id === tool.id && <Check className="w-4 h-4" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Selected Tool Indicator */}
-              {selectedTool && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-sakura-500 text-white rounded-lg">
-                  <Code className="w-4 h-4" />
-                  <span className="text-sm">{selectedTool.name}</span>
-                  <button 
+              {(selectedTool || useAllTools) && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-md text-sm">
+                  <span>{useAllTools ? 'Using All Tools' : selectedTool?.name}</span>
+                  <button
                     onClick={clearSelectedTool}
-                    className="ml-1 p-1 rounded-full hover:bg-sakura-600 transition-colors"
+                    className="p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
@@ -779,73 +835,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Tool Selector Modal */}
-      {showToolSelector && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => {
-            setShowToolSelector(false);
-            setToolSearchQuery('');
-          }} />
-          <div ref={toolSelectorRef} className="relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-lg shadow-xl">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Select Tool</h3>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={toolSearchQuery}
-                  onChange={(e) => setToolSearchQuery(e.target.value)}
-                  placeholder="Search tools..."
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500"
-                  autoFocus
-                />
-              </div>
-            </div>
-            
-            {/* Tool List */}
-            <div className="p-2 max-h-[40vh] overflow-y-auto">
-              {filteredTools.length > 0 ? (
-                <div className="grid grid-cols-1 gap-1">
-                  {filteredTools.map(tool => (
-                    <button
-                      key={tool.id}
-                      onClick={() => {
-                        handleToolClick(tool);
-                        setToolSearchQuery('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg flex items-center gap-2 group"
-                    >
-                      <Code className="w-4 h-4 text-gray-500 group-hover:text-sakura-500" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{tool.name}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">{tool.description}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                  No tools found
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-              <button
-                onClick={() => {
-                  setShowToolSelector(false);
-                  setToolSearchQuery('');
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

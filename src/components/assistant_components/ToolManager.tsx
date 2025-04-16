@@ -134,6 +134,7 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
   const [testParams, setTestParams] = useState<TestParameters>({});
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
+  const [editingParameter, setEditingParameter] = useState<number | null>(null);
   const [showWIPModal, setShowWIPModal] = useState(false);
   const [manualToolData, setManualToolData] = useState({
     name: '',
@@ -275,6 +276,60 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
     }
   };
 
+  const updateTool = async (updatedTool: Tool) => {
+    try {
+      if (!updatedTool.id) return;
+      await db.updateTool(updatedTool.id, updatedTool);
+      await loadTools(); // Reload tools after update
+      setEditingTool(null);
+      setEditingParameter(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred while updating tool');
+    }
+  };
+
+  const updateParameter = (index: number, field: string, value: string | boolean) => {
+    if (!editingTool) return;
+    
+    const updatedParameters = [...editingTool.parameters];
+    updatedParameters[index] = {
+      ...updatedParameters[index],
+      [field]: field === 'required' ? Boolean(value) : value
+    };
+
+    setEditingTool({
+      ...editingTool,
+      parameters: updatedParameters
+    });
+  };
+
+  const addParameter = () => {
+    if (!editingTool) return;
+    
+    setEditingTool({
+      ...editingTool,
+      parameters: [
+        ...editingTool.parameters,
+        {
+          name: 'new_parameter',
+          type: 'string',
+          description: 'Parameter description',
+          required: false
+        }
+      ]
+    });
+  };
+
+  const removeParameter = (index: number) => {
+    if (!editingTool) return;
+    
+    const updatedParameters = editingTool.parameters.filter((_, i) => i !== index);
+    setEditingTool({
+      ...editingTool,
+      parameters: updatedParameters
+    });
+  };
+
   const renderOnboarding = () => {
     const step = ONBOARDING_STEPS[currentOnboardingStep];
     return (
@@ -324,6 +379,191 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
             {currentOnboardingStep === ONBOARDING_STEPS.length - 1 ? 'Get Started' : 'Next'}
           </button>
         </div>
+      </div>
+    );
+  };
+
+  const renderToolEditor = () => {
+    if (!editingTool) return null;
+
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 space-y-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Tool Name
+            </label>
+            <input
+              type="text"
+              value={editingTool.name}
+              onChange={(e) => setEditingTool({ ...editingTool, name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Description
+            </label>
+            <textarea
+              value={editingTool.description}
+              onChange={(e) => setEditingTool({ ...editingTool, description: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Parameters
+            </label>
+            <div className="space-y-4">
+              {editingTool.parameters.map((param, index) => (
+                <div key={index} className="flex items-start space-x-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="text"
+                      value={param.name}
+                      onChange={(e) => updateParameter(index, 'name', e.target.value)}
+                      placeholder="Parameter name"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded"
+                    />
+                    <select
+                      value={param.type}
+                      onChange={(e) => updateParameter(index, 'type', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded"
+                    >
+                      <option value="string">string</option>
+                      <option value="number">number</option>
+                      <option value="boolean">boolean</option>
+                      <option value="object">object</option>
+                      <option value="array">array</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={param.description}
+                      onChange={(e) => updateParameter(index, 'description', e.target.value)}
+                      placeholder="Parameter description"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded"
+                    />
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={param.required}
+                        onChange={(e) => updateParameter(index, 'required', e.target.checked)}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Required</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeParameter(index)}
+                    className="p-1 text-red-500 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addParameter}
+                className="flex items-center text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Parameter
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Implementation
+            </label>
+            <textarea
+              value={editingTool.implementation}
+              onChange={(e) => setEditingTool({ ...editingTool, implementation: e.target.value })}
+              rows={10}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-3 mt-6">
+          <button
+            onClick={() => setEditingTool(null)}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => updateTool(editingTool)}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTools = () => {
+    return (
+      <div className="space-y-4">
+        {tools.map((tool) => (
+          <div
+            key={tool.id}
+            className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                  {tool.name}
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {tool.description}
+                </p>
+                <div className="mt-2">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Parameters:
+                  </h4>
+                  <ul className="mt-1 space-y-1">
+                    {tool.parameters.map((param, index) => (
+                      <li
+                        key={index}
+                        className="text-sm text-gray-500 dark:text-gray-400"
+                      >
+                        {param.name} ({param.type}){param.required ? ' *' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setEditingTool(tool)}
+                  className="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <Edit2 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => toggleTool(tool.id!, !tool.isEnabled)}
+                  className={`p-1 ${
+                    tool.isEnabled
+                      ? 'text-green-500 hover:text-green-600'
+                      : 'text-gray-400 hover:text-gray-500'
+                  }`}
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => deleteTool(tool.id!)}
+                  className="p-1 text-red-400 hover:text-red-500"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   };
@@ -549,169 +789,24 @@ export const ToolManager: React.FC<ToolManagerProps> = ({ client, model: default
         </div>
       )}
 
-      <div className="space-y-4">
-        {tools.map(tool => (
-          <div
-            key={tool.id}
-            className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h4 className="text-sm font-medium">{tool.name}</h4>
-                <p className="text-xs text-gray-500">{tool.description}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setEditingTool(tool);
-                    setEditingCode(tool.implementation);
-                  }}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => testTool(tool)}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  <Play className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => toggleTool(tool.id, !tool.isEnabled)}
-                  className={`p-1.5 ${
-                    tool.isEnabled
-                      ? 'text-green-500 hover:text-green-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => deleteTool(tool.id)}
-                  className="p-1.5 text-red-500 hover:text-red-700"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-2">
-              <h5 className="text-xs font-medium mb-1">Parameters:</h5>
-              <div className="space-y-2">
-                {tool.parameters.map((param, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <label className="text-xs font-mono flex-shrink-0">
-                      {param.name}
-                      <span className="text-gray-500 ml-1">({param.type})</span>
-                      {param.required && (
-                        <span className="text-red-500 ml-1">*</span>
-                      )}
-                    </label>
-                    {param.type === 'boolean' ? (
-                      <input
-                        type="checkbox"
-                        checked={!!testParams[param.name]}
-                        onChange={(e) => setTestParams(prev => ({
-                          ...prev,
-                          [param.name]: e.target.checked
-                        }))}
-                        className="ml-2"
-                      />
-                    ) : param.type === 'number' ? (
-                      <input
-                        type="number"
-                        value={String(testParams[param.name] || '')}
-                        onChange={(e) => setTestParams(prev => ({
-                          ...prev,
-                          [param.name]: e.target.value ? parseFloat(e.target.value) : ''
-                        }))}
-                        className="flex-1 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={String(testParams[param.name] || '')}
-                        onChange={(e) => setTestParams(prev => ({
-                          ...prev,
-                          [param.name]: e.target.value
-                        }))}
-                        placeholder={param.description}
-                        className="flex-1 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {testResult && (
-              <div className="mt-2 p-2 text-xs font-mono bg-gray-50 dark:bg-gray-800 rounded whitespace-pre-wrap">
-                {testResult}
-              </div>
-            )}
+      {editingTool ? (
+        renderToolEditor()
+      ) : (
+        <>
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+              Available Tools
+            </h2>
+            <button
+              onClick={() => setIsCreating(true)}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              New Tool
+            </button>
           </div>
-        ))}
-      </div>
-
-      {/* Code Editor Modal */}
-      {editingTool && editingCode !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => {
-            setEditingTool(null);
-            setEditingCode(null);
-          }} />
-          <div className="relative w-full max-w-3xl bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-medium">Edit Tool Implementation</h3>
-              <button
-                onClick={() => {
-                  setEditingTool(null);
-                  setEditingCode(null);
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4">
-              <textarea
-                value={editingCode}
-                onChange={(e) => setEditingCode(e.target.value)}
-                className="w-full h-96 p-4 font-mono text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
-              />
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => {
-                  setEditingTool(null);
-                  setEditingCode(null);
-                }}
-                className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (editingTool && editingCode) {
-                    try {
-                      await db.updateTool(editingTool.id, {
-                        implementation: editingCode
-                      });
-                      await loadTools();
-                      setEditingTool(null);
-                      setEditingCode(null);
-                    } catch (err: unknown) {
-                      setError(err instanceof Error ? err.message : 'An unknown error occurred while updating the tool');
-                    }
-                  }
-                }}
-                className="px-4 py-2 text-sm text-white bg-sakura-500 rounded-lg hover:bg-sakura-600"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
+          {renderTools()}
+        </>
       )}
     </div>
   );

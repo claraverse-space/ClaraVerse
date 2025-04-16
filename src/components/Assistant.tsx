@@ -795,32 +795,85 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           : selectedTool;
 
         chatOptions.tools = [formattedTool];
+      } else if (tools.length > 0) {
+        // If no specific tool is selected but tools exist, format all enabled tools
+        const formattedTools = tools
+          .filter(tool => tool.isEnabled)
+          .map(tool => 
+            client.getConfig().type === 'openai' 
+              ? {
+                  ...tool,
+                  type: 'function',
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: {
+                      type: 'object',
+                      properties: tool.parameters.reduce((acc: any, param: any) => {
+                        acc[param.name] = {
+                          type: param.type.toLowerCase(),
+                          description: param.description
+                        };
+                        return acc;
+                      }, {}),
+                      required: tool.parameters
+                        .filter((param: any) => param.required)
+                        .map((param: any) => param.name)
+                    }
+                  }
+                }
+              : tool
+          );
+
+        if (formattedTools.length > 0) {
+          chatOptions.tools = formattedTools;
+        }
+      }
+      
+      try {
+        // Update status: Clara decided to use tool
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessage.id
+            ? { ...msg, content: selectedTool 
+                ? `Clara decided to use tool - ${selectedTool.name}...`
+                : chatOptions.tools?.length 
+                  ? `Clara is analyzing which tool(s) to use...`
+                  : msg.content }
+            : msg
+        ));
+
+        // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
+        const response = client.getConfig().type === 'openai'
+          ? await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools)
+          : await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools);
         
-        try {
-          console.log("Sending chat with tool...");
-          // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
-          const response = client.getConfig().type === 'openai'
-            ? await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, [formattedTool])
-            : await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, [formattedTool]);
-          
-          console.log("Raw response:", JSON.stringify(response, null, 2));
-          
-          // Handle OpenAI tool calls
-          if (client.getConfig().type === 'openai') {
-            console.log("OpenAI API detected");
+        // Handle OpenAI tool calls
+        if (client.getConfig().type === 'openai') {
+          if (response.choices && response.choices.length > 0) {
+            const message = response.choices[0].message;
             
-            if (response.choices && response.choices.length > 0) {
-              const message = response.choices[0].message;
-              console.log("OpenAI message:", message);
+            if (message.tool_calls && message.tool_calls.length > 0) {
+              // Handle multiple tool calls sequentially
+              const toolResults = [];
               
-              if (message.tool_calls && message.tool_calls.length > 0) {
-                console.log("Tool calls found, executing tool");
-                const toolCall = message.tool_calls[0];
+              for (const toolCall of message.tool_calls) {
                 const toolArgs = JSON.parse(toolCall.function.arguments);
-                console.log("Tool arguments:", toolArgs);
                 
-                console.log("Executing tool:", selectedTool.name);
-                let toolResult: any = {}; // Declare and initialize outside try block
+                // Find the corresponding tool
+                const selectedTool = tools.find(t => t.name === toolCall.function.name);
+                if (!selectedTool) {
+                  console.error(`Tool ${toolCall.function.name} not found`);
+                  continue;
+                }
+
+                // Update status: Tool is responding
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content: `Clara is using tool - ${selectedTool.name}...` }
+                    : msg
+                ));
+                
+                let toolResult: any = {};
                   
                 try {
                   // Create a safe execution environment for the tool
@@ -830,81 +883,86 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
                   `);
                   toolResult = await func(toolArgs);
                 } catch (implError: unknown) {
-                  console.error("Error executing tool implementation:", implError);
                   toolResult = { 
                     error: `Error executing ${selectedTool.name}: ${implError instanceof Error ? implError.message : String(implError)}` 
                   };
                 }
-                
-                console.log("Tool execution result:", toolResult);
-                
-                // Create new messages array with tool result
-                const messagesWithToolResult = [
-                  ...formattedMessages,
-                  {
-                    role: 'assistant' as ChatRole,
-                    content: '',
-                    tool_calls: [toolCall]
-                  },
-                  {
-                    role: 'tool' as ChatRole,
-                    content: JSON.stringify(toolResult),
-                    tool_call_id: toolCall.id,
-                    name: toolCall.function.name
-                  }
-                ];
-                
-                console.log("Getting final response with tool result");
-                // Use sendChatWithToolsPreserveFormat for the follow-up as well
-                const finalResponse = await client.sendChatWithToolsPreserveFormat(
-                  selectedModel, 
-                  messagesWithToolResult, 
-                  { temperature: 0.7, top_p: 0.9 }
-                );
-                
-                console.log("Final response:", JSON.stringify(finalResponse, null, 2));
-                
-                const content = finalResponse.choices?.[0]?.message?.content || 
-                  'Error: No content received after tool execution';
-                const tokens = finalResponse.usage?.total_tokens || 0;
-                
-                console.log("Final content:", content);
-                
-                // Update message with both tool result and final content
-                setMessages(prev => prev.map(msg =>
-                  msg.id === assistantMessage.id
-                    ? { ...msg, content, tokens }
-                    : msg
-                ));
-                
-                await db.addMessage(currentChatId, content, 'assistant', tokens);
-              } else {
-                // Handle normal response (no tool calls)
-                const content = message.content || 'No response content';
-                const tokens = response.usage?.total_tokens || 0;
-                
-                setMessages(prev => prev.map(msg =>
-                  msg.id === assistantMessage.id
-                    ? { ...msg, content, tokens }
-                    : msg
-                ));
-                
-                await db.addMessage(currentChatId, content, 'assistant', tokens);
+
+                toolResults.push({
+                  tool_call_id: toolCall.id,
+                  name: toolCall.function.name,
+                  content: JSON.stringify(toolResult)
+                });
               }
-            } else {
-              console.log("Unexpected OpenAI response structure");
-              const errorMessage = 'Unexpected response from OpenAI API';
               
+              // Update status: Clara is summarizing
               setMessages(prev => prev.map(msg =>
                 msg.id === assistantMessage.id
-                  ? { ...msg, content: errorMessage }
+                  ? { ...msg, content: `Clara is working on summarizing the results...` }
                   : msg
               ));
               
-              await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+              // Create new messages array with all tool results
+              const messagesWithToolResults = [
+                ...formattedMessages,
+                {
+                  role: 'assistant' as ChatRole,
+                  content: '',
+                  tool_calls: message.tool_calls
+                },
+                ...toolResults.map(result => ({
+                  role: 'tool' as ChatRole,
+                  content: result.content,
+                  tool_call_id: result.tool_call_id,
+                  name: result.name
+                }))
+              ];
+              
+              // Get final response with all tool results
+              const finalResponse = await client.sendChatWithToolsPreserveFormat(
+                selectedModel, 
+                messagesWithToolResults, 
+                { temperature: 0.7, top_p: 0.9 }
+              );
+              
+              const content = finalResponse.choices?.[0]?.message?.content || 
+                'Error: No content received after tool execution';
+              const tokens = finalResponse.usage?.total_tokens || 0;
+              
+              // Update message with final content
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content, tokens }
+                  : msg
+              ));
+              
+              await db.addMessage(currentChatId, content, 'assistant', tokens);
+            } else {
+              // Handle normal response (no tool calls)
+              const content = message.content || 'No response content';
+              const tokens = response.usage?.total_tokens || 0;
+              
+              setMessages(prev => prev.map(msg =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content, tokens }
+                  : msg
+              ));
+              
+              await db.addMessage(currentChatId, content, 'assistant', tokens);
             }
           } else {
-            // Handle Ollama response (unchanged)
+            const errorMessage = 'Unexpected response from OpenAI API';
+            
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: errorMessage }
+                : msg
+            ));
+            
+            await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+          }
+        } else {
+          // Handle Ollama response
           const content = response.message?.content || '';
           const tokens = response.eval_count || 0;
 
@@ -915,81 +973,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           ));
 
           await db.addMessage(currentChatId, content, 'assistant', tokens);
-          }
-        } catch (toolError: unknown) {
-          console.error("Tool execution error:", toolError);
-          const errorMessage = `Error executing tool: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
-          
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? { ...msg, content: errorMessage }
-              : msg
-          ));
-          
-          await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
         }
-      } else if (isStreaming) {
-        // Normal streaming mode when no tools are being used
-        let streamedContent = '';
-        let tokens = 0;
-
-        try {
-          chatOptions.stream = true;
-          for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions)) {
-            if (chunk.message?.content) {
-              streamedContent += chunk.message.content;
-              tokens = chunk.eval_count || tokens;
-
-              setMessages(prev => prev.map(msg =>
-                msg.id === assistantMessage.id
-                  ? { ...msg, content: streamedContent, tokens }
-                  : msg
-              ));
-
-              scrollToBottom();
-            }
-          }
-
-          // Only save the message if we completed normally
-          await db.addMessage(currentChatId, streamedContent, 'assistant', tokens);
-        } catch (error: unknown) {
-          console.error('Streaming error:', error);
-          
-          // Always preserve the content that was generated
-          const finalContent = streamedContent + (
-            (error instanceof Error && (error.name === 'AbortError' || error.message.includes('BodyStreamBuffer was aborted')))
-              ? "\n\n_Response was interrupted._"
-              : "\n\n_Error: Stream ended unexpectedly._"
-          );
-
-          // Update UI with what we have
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? { ...msg, content: finalContent, tokens }
-              : msg
-          ));
-
-          // Save what we have
-          await db.addMessage(currentChatId, finalContent, 'assistant', tokens);
-
-          // Don't throw the error if it was just an abort
-          if (!(error instanceof Error && (error.name === 'AbortError' || error.message.includes('BodyStreamBuffer was aborted')))) {
-            throw error;
-          }
-        }
-      } else {
-        // Normal non-streaming mode
-        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions);
-        const content = response.message?.content || '';
-        const tokens = response.eval_count || 0;
-
+      } catch (toolError: unknown) {
+        console.error("Tool execution error:", toolError);
+        const errorMessage = `Error executing tool: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
+        
         setMessages(prev => prev.map(msg =>
           msg.id === assistantMessage.id
-            ? { ...msg, content, tokens }
+            ? { ...msg, content: errorMessage }
             : msg
         ));
-
-        await db.addMessage(currentChatId, content, 'assistant', tokens);
+        
+        await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
       }
 
       const endTime = performance.now();
