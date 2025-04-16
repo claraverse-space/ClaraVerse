@@ -1,4 +1,3 @@
-
 <div align="center">
   <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
@@ -16,15 +15,47 @@
 
 </div>
 
+## 🔒 Enterprise-Ready Security
 
-
-## 🔒 Privacy First
-
-- **Local Execution**: Clara connects directly to Ollama and uses open-source language and image generation models—**all running on your device**.  
-- **No Third-Party Clouds**: Your data never leaves your machine. Zero telemetry, zero tracking.  
-- **Open-Source Technology**: Built to leverage community-driven innovations, giving you full control over your AI stack.
+- **On-Premise Execution**: All AI models and automation workflows run entirely on your infrastructure
+- **Zero Data Leakage**: Your business data never leaves your network. No cloud dependencies, no external APIs
+- **Complete Control**: Built on open-source technology stack, giving you full control over your automation infrastructure
 
 # ✨ Key Features
+
+<h3 align="center">
+🔄  Workflow Automation
+</h3>
+<p align="center">
+  Leverage embedded N8N workflow engine to create sophisticated business processes with AI integration:
+</p>
+
+<p align="center">
+  <img src="/public/screenshots/n8n_ScreenShot.png" alt="Clara N8N Workflow" width="800"/>
+</p>
+
+<h3 align="center">
+  🤖 AI-Powered Process Builder
+</h3>
+<p align="center">
+  Design intelligent business processes that combine N8N workflows with custom AI agents - all from a single interface:
+</p>
+
+<p align="center">
+  <img src="/public/screenshots/Appstore.png" alt="Clara N8N Integration" width="800"/>
+</p>
+
+<h3 align="center">
+  🏗️ Intelligent Agent Builder
+</h3>
+<p align="center">
+  Design custom AI agents with a node-based editor, then convert them into standalone business applications:
+</p>
+
+<p align="center">
+  <img src="/public/screenshots/app-builder-screenshot.png" alt="Clara Agent Builder" width="800"/>
+</p>
+
 <h3 align="center">
 AI Assistant
 </h3>
@@ -35,7 +66,6 @@ AI Assistant
 <p align="center">
   <img src="/public/screenshots/assistant-screenshot.png" alt="Clara Assistant" width="800"/>
 </p>
-
 
 <h3 align="center">
 🎨 Image Generation
@@ -48,19 +78,6 @@ AI Assistant
   <img src="/public/screenshots/image-gen-screenshot.png" alt="Clara Image Generation" width="800"/>
 </p>
 
-
-<h3 align="center">
-  🏗️ Intelligent Agent Builder
-</h3>
-<p align="center">
-  Design custom AI agents with a node-based editor, then convert them into standalone apps without leaving Clara:
-</p>
-
-<p align="center">
-  <img src="/public/screenshots/app-builder-screenshot.png" alt="Clara Agent Builder" width="800"/>
-</p>
-
-
 <h3 align="center">
 🖼️ Image Gallery
 </h3>
@@ -71,7 +88,6 @@ AI Assistant
 <p align="center">
   <img src="/public/screenshots/gallery-screenshot.png" alt="Clara Gallery" width="800"/>
 </p>
-
 
 ## 🚀 Installation Options
 
@@ -182,3 +198,138 @@ npm run electron:build
 ## 🤝 Support & Contact
 
 Have questions or need help? Reach out via **praveensm890@gmail.com**.
+
+## 📋 N8N Setup & Troubleshooting
+
+### Prerequisites
+
+Before using Clara's N8N integration, ensure you have the following installed:
+
+#### 1. Install NVM (Node Version Manager)
+
+**macOS & Linux:**
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+```
+Then add to your shell configuration (~/.bash_profile, ~/.zshrc, ~/.bashrc):
+```bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+```
+
+**Windows:**
+1. Download and install [nvm-windows](https://github.com/coreybutler/nvm-windows/releases)
+2. Run installer as administrator
+3. Restart terminal after installation
+
+#### 2. Install Node.js via NVM
+
+```bash
+# Install latest LTS version
+nvm install --lts
+
+# Use the installed version
+nvm use --lts
+```
+
+#### 3. Install N8N Globally
+
+```bash
+npm install n8n -g
+```
+
+### Starting N8N
+
+Clara automatically manages N8N processes, but you can also run it manually:
+
+```bash
+# Start N8N
+n8n start
+
+# Start in tunnel mode (for remote access)
+n8n start --tunnel
+```
+
+### Troubleshooting
+
+#### Common Issues & Solutions
+
+1. **N8N Doesn't Start**
+   ```bash
+   # Check if port 5678 is in use
+   lsof -i :5678    # macOS/Linux
+   netstat -ano | findstr :5678    # Windows
+   
+   # Kill existing process if needed
+   kill -9 <PID>    # macOS/Linux
+   taskkill /PID <PID> /F    # Windows
+   ```
+
+2. **Permission Issues**
+   ```bash
+   # macOS/Linux
+   sudo chown -R $USER ~/.n8n
+   
+   # Windows (Run PowerShell as Administrator)
+   takeown /F "%USERPROFILE%\.n8n" /R
+   ```
+
+3. **Database Errors**
+   ```bash
+   # Clear N8N cache
+   rm -rf ~/.n8n/database.sqlite    # macOS/Linux
+   del "%USERPROFILE%\.n8n\database.sqlite"    # Windows
+   ```
+
+4. **Node Version Conflicts**
+   ```bash
+   # Ensure correct Node version
+   nvm install 16
+   nvm use 16
+   npm install n8n -g
+   ```
+
+#### OS-Specific Notes
+
+**macOS:**
+- If installation fails, ensure Xcode Command Line Tools are installed:
+  ```bash
+  xcode-select --install
+  ```
+- For M1/M2 Macs, you might need Rosetta:
+  ```bash
+  softwareupdate --install-rosetta
+  ```
+
+**Linux:**
+- Ensure build essentials are installed:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y build-essential
+  ```
+- For Ubuntu/Debian, you might need additional dependencies:
+  ```bash
+  sudo apt-get install -y python3 make gcc g++
+  ```
+
+**Windows:**
+- Run PowerShell as Administrator when installing global packages
+- Ensure Windows Build Tools are installed:
+  ```powershell
+  npm install --global windows-build-tools
+  ```
+- If you encounter path issues:
+  1. Check System Environment Variables
+  2. Ensure Node and npm paths are correctly set
+  3. Restart PowerShell/CMD after path changes
+
+### Verifying Installation
+
+```bash
+# Check N8N version
+n8n --version
+
+# Check if N8N service is running
+curl http://localhost:5678    # macOS/Linux
+Invoke-WebRequest -Uri http://localhost:5678    # Windows
+```
