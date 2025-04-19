@@ -5,6 +5,7 @@ import logging
 import signal
 import sqlite3
 import traceback
+import time
 from datetime import datetime
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Depends, Query
@@ -106,20 +107,44 @@ data_dir = os.path.join(home_dir, ".clara")
 os.makedirs(data_dir, exist_ok=True)
 DATABASE = os.path.join(data_dir, "clara.db")
 
+# Maximum number of retries for database operations
+MAX_RETRIES = 3
+RETRY_DELAY = 0.1  # seconds
+
 @contextmanager
-def get_db_connection():
-    """Context manager for database connections"""
+def get_db_connection(timeout=20):
+    """Context manager for database connections with retry logic"""
     conn = None
-    try:
-        conn = sqlite3.connect(DATABASE)
-        conn.row_factory = sqlite3.Row
-        yield conn
-    except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail="Database error")
-    finally:
-        if conn:
-            conn.close()
+    retries = 0
+    last_error = None
+    
+    while retries < MAX_RETRIES:
+        try:
+            conn = sqlite3.connect(DATABASE, timeout=timeout)
+            conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrency
+            conn.execute('PRAGMA journal_mode=WAL')
+            # Set busy timeout
+            conn.execute(f'PRAGMA busy_timeout={timeout * 1000}')
+            yield conn
+            return
+        except sqlite3.Error as e:
+            last_error = e
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
+            retries += 1
+            if retries < MAX_RETRIES:
+                time.sleep(RETRY_DELAY * (2 ** retries))  # Exponential backoff
+            logger.warning(f"Database retry {retries}/{MAX_RETRIES}: {str(e)}")
+    
+    logger.error(f"Database error after {MAX_RETRIES} retries: {last_error}")
+    raise HTTPException(
+        status_code=500,
+        detail=f"Database error: {str(last_error)}"
+    )
 
 def init_db():
     """Initialize the database with tables"""
@@ -167,16 +192,24 @@ def init_db():
                 )
             """)
             
+            # Create clara-assistant collection if it doesn't exist
+            cursor.execute("""
+                INSERT OR IGNORE INTO collections (name, description)
+                VALUES ('clara-assistant', 'Default collection for Clara Assistant')
+            """)
+            
             # Check if test data exists
             cursor.execute("SELECT COUNT(*) FROM test")
             count = cursor.fetchone()[0]
             if count == 0:
                 cursor.execute("INSERT INTO test (value) VALUES ('Hello from SQLite')")
-                conn.commit()
+            
+            conn.commit()
                 
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+        logger.error(traceback.format_exc())
         raise
 
 # Initialize the database
@@ -290,27 +323,54 @@ def health_check():
 
 # Document management endpoints
 @app.post("/collections")
-def create_collection(collection: CollectionCreate):
-    """Create a new document collection"""
+async def create_collection(collection: CollectionCreate):
+    """Create a new collection"""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            
+            # First check if collection exists
             cursor.execute(
-                "INSERT INTO collections (name, description) VALUES (?, ?)",
-                (collection.name, collection.description)
+                "SELECT name FROM collections WHERE name = ?",
+                (collection.name,)
             )
-            conn.commit()
+            existing = cursor.fetchone()
             
-            # Create directory for this collection's vector store
-            persist_dir = os.path.join(vectordb_dir, collection.name)
-            os.makedirs(persist_dir, exist_ok=True)
+            if existing:
+                return JSONResponse(
+                    status_code=409,
+                    content={"detail": f"Collection '{collection.name}' already exists"}
+                )
             
-            return {"status": "success", "message": f"Collection '{collection.name}' created"}
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail=f"Collection '{collection.name}' already exists")
+            # Create the collection
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO collections (name, description)
+                    VALUES (?, ?)
+                    """,
+                    (collection.name, collection.description or "")
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                # Handle race condition where collection was created between our check and insert
+                return JSONResponse(
+                    status_code=409,
+                    content={"detail": f"Collection '{collection.name}' already exists"}
+                )
+            
+            # Initialize vector store for the collection
+            get_doc_ai(collection.name)
+            
+            return {"message": f"Collection '{collection.name}' created successfully"}
+            
     except Exception as e:
         logger.error(f"Error creating collection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @app.get("/collections")
 def list_collections():

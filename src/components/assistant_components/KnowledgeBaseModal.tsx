@@ -47,10 +47,11 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
 
   const loadDocuments = async (port: number) => {
     try {
-      const response = await fetch(`http://0.0.0.0:${port}/documents`);
+      const response = await fetch(`http://0.0.0.0:${port}/documents?collection_name=clara-assistant`);
       if (!response.ok) throw new Error('Failed to load documents');
       const data = await response.json();
-      setDocuments(data.documents);
+      // Filter to only show documents from clara-assistant collection
+      setDocuments(data.documents.filter((doc: Document) => doc.collection_name === 'clara-assistant'));
     } catch (error) {
       console.error('Error loading documents:', error);
       setError('Failed to load documents');
@@ -74,11 +75,32 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
     setUploadProgress(0);
     setError(null);
 
+    // First ensure the collection exists
+    try {
+      const createCollectionResponse = await fetch(`http://0.0.0.0:${pythonPort}/collections`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'clara-assistant',
+          description: 'Default collection for Clara Assistant'
+        })
+      });
+      // Ignore if collection already exists (409 status)
+      if (!createCollectionResponse.ok && createCollectionResponse.status !== 409) {
+        throw new Error('Failed to create collection');
+      }
+    } catch (error) {
+      console.error('Collection creation error:', error);
+      // Continue anyway as collection might already exist
+    }
+
     for (const file of files) {
       try {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('collection_name', 'default_collection');
+        formData.append('collection_name', 'clara-assistant');
         formData.append('metadata', JSON.stringify({ source: 'user_upload' }));
 
         const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/upload`, {
@@ -146,7 +168,7 @@ const KnowledgeBaseModal: React.FC<KnowledgeBaseModalProps> = ({ isOpen, onClose
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          collection_name: 'default_collection'
+          collection_name: 'clara-assistant'
         })
       });
 

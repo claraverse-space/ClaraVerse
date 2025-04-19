@@ -5,8 +5,9 @@ const executeRag = async (context: NodeExecutionContext) => {
   const config = node.data.config || {};
   
   try {
-    // Get the query from input
+    // Get the query and collection name from inputs
     const query = inputs.text || inputs['text-in'] || '';
+    const customCollection = inputs.collection || config.collectionName || '';
     
     if (!query) {
       throw new Error('No query provided. Please connect a text input to this node.');
@@ -15,8 +16,8 @@ const executeRag = async (context: NodeExecutionContext) => {
     // Get Python port for backend communication
     const pythonPort = await window.electron?.getPythonPort?.() || 8099;
     
-    // If no collection is selected, use the default
-    const collectionName = config.collectionName || 'default_collection';
+    // Use custom collection if provided, otherwise use default
+    const collectionName = customCollection ? customCollection : 'default_collection';
     
     if (updateNodeOutput) {
       updateNodeOutput(node.id, { 
@@ -56,6 +57,7 @@ const executeRag = async (context: NodeExecutionContext) => {
     // Save to node for visualization
     if (!node.data.config) node.data.config = {};
     node.data.config.resultText = resultText;
+    node.data.config.collectionName = collectionName;
     
     if (updateNodeOutput) {
       updateNodeOutput(node.id, resultText);
@@ -77,33 +79,94 @@ const executeRag = async (context: NodeExecutionContext) => {
   }
 };
 
+// Check if collection exists
+const checkCollectionExists = async (collectionName: string, pythonPort: number): Promise<boolean> => {
+  try {
+    const response = await fetch(`http://0.0.0.0:${pythonPort}/collections`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch collections: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.collections?.some((c: any) => c.name === collectionName) || false;
+  } catch (error) {
+    console.error('Error checking collection:', error);
+    return false;
+  }
+};
+
+// Create a new collection
+const createCollection = async (collectionName: string, description: string, pythonPort: number): Promise<void> => {
+  const response = await fetch(`http://0.0.0.0:${pythonPort}/collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: collectionName,
+      description
+    }),
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    if (response.status === 409) {
+      // Collection already exists, which is fine
+      return;
+    }
+    throw new Error(`Failed to create collection: ${errorData.detail || response.statusText}`);
+  }
+};
+
 // Handle file upload functionality
 const handleFileUpload = async (file: File, collectionName: string): Promise<string> => {
   try {
     const pythonPort = await window.electron?.getPythonPort?.() || 8099;
     
+    // Check if collection exists first
+    const exists = await checkCollectionExists(collectionName, pythonPort);
+    
+    // Create collection if it doesn't exist
+    if (!exists) {
+      try {
+        await createCollection(
+          collectionName,
+          `Collection created by RAG node for ${file.name}`,
+          pythonPort
+        );
+      } catch (error) {
+        // If creation fails, check one more time if it exists (in case of race condition)
+        const doubleCheck = await checkCollectionExists(collectionName, pythonPort);
+        if (!doubleCheck) {
+          throw error;
+        }
+      }
+    }
+    
+    // Prepare upload
     const formData = new FormData();
     formData.append('file', file);
     formData.append('collection_name', collectionName);
     formData.append('metadata', JSON.stringify({
       source: 'rag_node_upload',
+      source_file: file.name,
       timestamp: new Date().toISOString()
     }));
     
+    // Upload file
     const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/upload`, {
       method: 'POST',
       body: formData,
     });
     
     if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(`Upload failed: ${errorData.detail || response.statusText}`);
     }
     
-    const data = await response.json();
+    await response.json(); // Consume the response
     return `Successfully uploaded ${file.name} to collection ${collectionName}`;
   } catch (error) {
     console.error('Upload error:', error);
-    return `Error uploading file: ${error instanceof Error ? error.message : String(error)}`;
+    throw error;
   }
 };
 

@@ -578,73 +578,78 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     if (!pythonPort) return null;
 
     try {
-      // Get results from temporary collections first
-      const tempResults = await Promise.all(
-        temporaryDocs.map(async (doc) => {
-          try {
-            const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query,
-                collection_name: doc.collection,
-                k: 8,
-              }),
-            });
-            
-            if (!response.ok) {
-              console.warn(`Search failed for collection ${doc.collection}:`, response.status);
+      // If there are temporary documents, only use temp collections
+      if (temporaryDocs.length > 0) {
+        const tempResults = await Promise.all(
+          temporaryDocs.map(async (doc) => {
+            try {
+              const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  query,
+                  collection_name: doc.collection,
+                  k: 8,
+                }),
+              });
+              
+              if (!response.ok) {
+                console.warn(`Search failed for collection ${doc.collection}:`, response.status);
+                return { results: [] };
+              }
+              
+              return await response.json() as SearchResponse;
+            } catch (error) {
+              console.warn(`Search error for collection ${doc.collection}:`, error);
               return { results: [] };
             }
-            
-            return await response.json() as SearchResponse;
-          } catch (error) {
-            console.warn(`Search error for collection ${doc.collection}:`, error);
-            return { results: [] };
-          }
-        })
-      );
+          })
+        );
 
-      // For temp docs, use all results regardless of score
-      const allTempResults = tempResults.flatMap(r => r.results || []);
+        // For temp docs, use all results regardless of score
+        const allTempResults = tempResults.flatMap(r => r.results || []);
 
-      // Only search default collection if no temp docs exist and RAG is enabled
-      let defaultResults: SearchResponse = { results: [] };
-      if (temporaryDocs.length === 0 && ragEnabled) {
+        // Sort by score and return
+        return {
+          results: allTempResults
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .slice(0, 8)
+        };
+      }
+
+      // If RAG is enabled and no temp docs, use only clara-assistant collection
+      if (ragEnabled) {
         try {
           const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               query,
-              collection_name: 'default_collection',
+              collection_name: 'clara-assistant',
               k: 8,
             }),
           });
 
           if (response.ok) {
-            defaultResults = await response.json() as SearchResponse;
+            const defaultResults = await response.json() as SearchResponse;
+            // Filter results by score > 0
+            return {
+              results: (defaultResults?.results || [])
+                .filter(result => (result.score || 0) > 0)
+                .slice(0, 8)
+            };
           } else {
-            console.warn('Default collection search failed:', response.status);
+            console.warn('Clara Assistant collection search failed:', response.status);
+            return { results: [] };
           }
         } catch (error) {
-          console.warn('Default collection search error:', error);
+          console.warn('Clara Assistant collection search error:', error);
+          return { results: [] };
         }
       }
 
-      // For default collection, still filter by score > 0
-      const defaultFilteredResults = (defaultResults?.results || [])
-        .filter(result => (result.score || 0) > 0);
-
-      // Combine results, prioritizing higher scores
-      const allResults = [
-        ...allTempResults,
-        ...defaultFilteredResults
-      ].sort((a, b) => (b.score || 0) - (a.score || 0));
-
-      return {
-        results: allResults.slice(0, 8)
-      };
+      // If neither temp docs nor RAG enabled, return empty results
+      return { results: [] };
     } catch (error) {
       console.error('Error searching documents:', error);
       return { results: [] };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
-import { BookA, Upload, X, Plus, Settings, RefreshCw, Database } from 'lucide-react';
+import { BookA, Upload, X, Plus, Settings, RefreshCw, Database, Check } from 'lucide-react';
 import { getNodeExecutor } from '../../../nodeExecutors/NodeExecutorRegistry';
 
 const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConnectable }) => {
@@ -15,6 +15,9 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAddingCollection, setIsAddingCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [pythonPort, setPythonPort] = useState<number>(8099);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Initialize config if not present
@@ -25,16 +28,22 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
   const [collectionName, setCollectionName] = useState(data.config.collectionName);
   const [resultCount, setResultCount] = useState(data.config.resultCount);
   
-  // Load available collections on mount
+  // Load available collections and port on mount
   useEffect(() => {
+    const initializePort = async () => {
+      const port = await window.electron?.getPythonPort?.() || 8099;
+      setPythonPort(port);
+    };
+    
+    initializePort();
     fetchCollections();
   }, []);
   
   const fetchCollections = async () => {
     setIsLoadingCollections(true);
     try {
-      const pythonPort = await window.electron?.getPythonPort?.() || 8099;
-      const response = await fetch(`http://0.0.0.0:${pythonPort}/collections`);
+      const port = await window.electron?.getPythonPort?.() || 8099;
+      const response = await fetch(`http://0.0.0.0:${port}/collections`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch collections: ${response.statusText}`);
@@ -45,7 +54,7 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
       
       // Create default collection if not exists
       if (!data.collections.some((c: any) => c.name === 'default_collection')) {
-        await fetch(`http://0.0.0.0:${pythonPort}/collections`, {
+        await fetch(`http://0.0.0.0:${port}/collections`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -109,33 +118,37 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
   };
   
   const handleAddCollection = async () => {
-    const name = prompt('Enter collection name:');
-    if (!name) return;
+    if (!newCollectionName.trim()) return;
     
     try {
-      const pythonPort = await window.electron?.getPythonPort?.() || 8099;
-      const response = await fetch(`http://0.0.0.0:${pythonPort}/collections`, {
+      const port = await window.electron?.getPythonPort?.() || 8099;
+      const response = await fetch(`http://0.0.0.0:${port}/collections`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
+          name: newCollectionName.trim(),
           description: `Collection created from RAG node`
         })
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to create collection: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || response.statusText);
       }
       
+      // Reset form
+      setNewCollectionName('');
+      setIsAddingCollection(false);
+      
       // Refresh collections
-      fetchCollections();
+      await fetchCollections();
       
       // Set as active collection
-      setCollectionName(name);
-      data.config.collectionName = name;
+      setCollectionName(newCollectionName.trim());
+      data.config.collectionName = newCollectionName.trim();
     } catch (error) {
       console.error('Error creating collection:', error);
-      alert(`Failed to create collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setUploadStatus(`Failed to create collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
   
@@ -190,13 +203,42 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
             <RefreshCw size={14} className={isLoadingCollections ? 'animate-spin' : ''} />
           </button>
           <button 
-            onClick={handleAddCollection}
+            onClick={() => setIsAddingCollection(!isAddingCollection)}
             className={`p-2 rounded ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
             title="Add new collection"
           >
             <Plus size={14} />
           </button>
         </div>
+        
+        {isAddingCollection && (
+          <div className="mt-2 flex items-center gap-1">
+            <input
+              type="text"
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              placeholder="Enter collection name"
+              className={`flex-1 p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm`}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddCollection()}
+            />
+            <button
+              onClick={handleAddCollection}
+              disabled={!newCollectionName.trim()}
+              className={`p-2 rounded ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} ${!newCollectionName.trim() ? 'opacity-50' : ''}`}
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={() => {
+                setIsAddingCollection(false);
+                setNewCollectionName('');
+              }}
+              className={`p-2 rounded ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
       </div>
       
       {showSettings && (
@@ -217,7 +259,7 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
           
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <Database size={12} />
-            <span>Using Python Backend on port {window.electron?.getPythonPort?.() || 8099}</span>
+            <span>Using Python Backend on port {pythonPort}</span>
           </div>
         </div>
       )}
@@ -248,50 +290,42 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            className={`w-full p-2 flex items-center justify-center gap-2 rounded border ${
+            className={`w-full p-2 rounded border border-dashed flex items-center justify-center gap-2 ${
               isDark 
-                ? 'bg-gray-700 border-gray-600 text-white hover:bg-gray-600' 
-                : 'bg-white border-gray-300 hover:bg-gray-50'
-            } text-sm transition-colors`}
+                ? 'border-gray-600 hover:border-gray-500 hover:bg-gray-700' 
+                : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+            } ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <Upload size={14} className={isUploading ? 'animate-bounce' : ''} />
-            {isUploading ? 'Uploading...' : 'Upload File'}
+            <Upload size={14} />
+            <span className="text-sm">{isUploading ? 'Uploading...' : 'Upload File'}</span>
           </button>
         </div>
         
         {uploadStatus && (
-          <div className={`mt-2 p-2 text-xs rounded ${
+          <div className={`mt-2 text-xs p-2 rounded ${
             uploadStatus.startsWith('Error') 
-              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
-              : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+              ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+              : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
           }`}>
             {uploadStatus}
           </div>
         )}
       </div>
       
-      <div className="mb-1">
-        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-          Connect text input for query and receive document results
-        </p>
-      </div>
-      
       <Handle
         type="target"
         position={Position.Left}
         id="text-in"
+        className={`w-3 h-3 ${isDark ? '!bg-gray-400' : '!bg-gray-700'}`}
         isConnectable={isConnectable}
-        className="!bg-blue-500 !w-3 !h-3"
-        style={{ left: -6 }}
       />
       
       <Handle
         type="source"
         position={Position.Right}
         id="text-out"
+        className={`w-3 h-3 ${isDark ? '!bg-gray-400' : '!bg-gray-700'}`}
         isConnectable={isConnectable}
-        className="!bg-purple-500 !w-3 !h-3"
-        style={{ right: -6 }}
       />
     </div>
   );
