@@ -3,7 +3,7 @@ import {
   ArrowLeft, Play, Loader, Check, ImageIcon, Send,
   Activity, FileText, Code, MessageSquare, Database, Globe,
   Sparkles, Zap, User, Settings, BarChart2 as Chart, Search, Bot, Brain,
-  Command, Book, Layout, Compass, Download
+  Command, Book, Layout, Compass, Download, RotateCw, AlertCircle
 } from 'lucide-react';
 import { Node } from 'reactflow';
 import ReactMarkdown from 'react-markdown';
@@ -64,6 +64,30 @@ interface ChatMessage {
   isImage?: boolean;
 }
 
+// Update the NodeData interface
+interface NodeData {
+  label?: string;
+  config?: {
+    placeholder?: string;
+    isRequired?: boolean;
+    description?: string;
+    text?: string;
+    imageBuffer?: ArrayBuffer;
+  };
+  runtimeImage?: string;
+}
+
+interface AppNode extends Node {
+  type: string;
+  data: NodeData;
+  id: string;
+}
+
+interface ChatContext {
+  userInput: string;
+  botOutput: string;
+}
+
 const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const { isDark } = useTheme();
   const [appData, setAppData] = useState<any>(null);
@@ -77,6 +101,8 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activePage, setActivePage] = useState('apps');
   const [messageHistory, setMessageHistory] = useState<ChatMessage[]>([]);
+  const [chainEnabled, setChainEnabled] = useState(false);
+  const [showChainWarning, setShowChainWarning] = useState(false);
 
   // Refs for scrolling
   const outputSectionRef = useRef<HTMLDivElement>(null);
@@ -108,11 +134,11 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
           // Initialize input state for text/image input nodes
           const inputNodes = app.nodes.filter(
-            (node: Node) =>
+            (node: AppNode) =>
               node.type === 'textInputNode' || node.type === 'imageInputNode'
           );
 
-          const initialInputs = inputNodes.reduce((acc: InputState, node: Node) => {
+          const initialInputs = inputNodes.reduce((acc: InputState, node: AppNode) => {
             acc[node.id] = '';
             return acc;
           }, {});
@@ -132,28 +158,27 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     loadApp();
   }, [appId]);
 
-  // Analyze app structure to categorize nodes
+  // Update the type annotations for the node parameters
   const { inputNodes, outputNodes, processingNodes } = useMemo(() => {
     if (!appData) {
       return {
-        inputNodes: [],
-        outputNodes: [],
-        processingNodes: [],
+        inputNodes: [] as AppNode[],
+        outputNodes: [] as AppNode[],
+        processingNodes: [] as AppNode[],
       };
     }
 
-    const inputs = appData.nodes.filter(
-      (node: Node) =>
-        node.type === 'textInputNode' || node.type === 'imageInputNode'
+    const inputs = (appData.nodes as AppNode[]).filter(
+      (node) => node.type === 'textInputNode' || node.type === 'imageInputNode'
     );
-    const outputs = appData.nodes.filter(
-      (node: Node) =>
+    const outputs = (appData.nodes as AppNode[]).filter(
+      (node) => 
         node.type === 'textOutputNode' || 
         node.type === 'markdownOutputNode' ||
-        node.type === 'imageOutputNode'  // Add this line
+        node.type === 'imageOutputNode'
     );
-    const processing = appData.nodes.filter(
-      (node: Node) => !inputs.includes(node) && !outputs.includes(node)
+    const processing = (appData.nodes as AppNode[]).filter(
+      (node) => !inputs.includes(node) && !outputs.includes(node)
     );
 
     return {
@@ -176,7 +201,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const isFormComplete = useMemo(() => {
     if (!inputNodes.length) return true;
     return Object.entries(inputState).every(([nodeId, value]) => {
-      const node = inputNodes.find((n: Node) => n.id === nodeId);
+      const node = inputNodes.find((n: AppNode) => n.id === nodeId);
       if (!node) return true;
       if (node.type === 'textInputNode') {
         return typeof value === 'string' && value.trim() !== '';
@@ -232,7 +257,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
         setAppData((prevAppData: any) => ({
           ...prevAppData,
-          nodes: prevAppData.nodes.map((node: Node) => {
+          nodes: prevAppData.nodes.map((node: AppNode) => {
             if (node.id === nodeId) {
               return {
                 ...node,
@@ -274,6 +299,36 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
     }
   };
 
+  // Get the previous chat context
+  const getPreviousContext = (): ChatContext | null => {
+    if (messageHistory.length < 2) return null;
+    
+    // Get the last user message and bot response
+    const lastMessages = messageHistory.slice(-2);
+    const userMessage = lastMessages.find(m => m.type === 'user');
+    const botMessage = lastMessages.find(m => m.type === 'ai');
+    
+    if (!userMessage || !botMessage) return null;
+    
+    return {
+      userInput: userMessage.content,
+      botOutput: botMessage.content
+    };
+  };
+
+  // Format the input with context
+  const formatInputWithContext = (currentInput: string): string => {
+    const context = getPreviousContext();
+    if (!context) return currentInput;
+    
+    return `Previous Chat:
+
+User input: "${context.userInput}"
+Bot's output: "${context.botOutput}"
+
+Current request: ${currentInput}`;
+  };
+
   // Main "Run App" function
   const runApp = async () => {
     setIsRunning(true);
@@ -286,10 +341,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
 
       // For a single text input app
       if (isSimpleApp && inputNodes.length === 1) {
+        const formattedInput = chainEnabled ? formatInputWithContext(simpleInputValue) : simpleInputValue;
         setInputState((prev) => ({
           ...prev,
-          [inputNodes[0].id]: simpleInputValue,
+          [inputNodes[0].id]: formattedInput,
         }));
+        // Only add the original input to message history
         userInputs.push(simpleInputValue);
       } else {
         // Collect all non-empty inputs
@@ -323,7 +380,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
       const appDataClone = JSON.parse(JSON.stringify(appData));
 
       // Update input node configs
-      appDataClone.nodes = appDataClone.nodes.map((node: Node) => {
+      appDataClone.nodes = appDataClone.nodes.map((node: AppNode) => {
         if (inputState[node.id] !== undefined) {
           if (node.type === 'textInputNode') {
             return {
@@ -338,7 +395,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             };
           } else if (node.type === 'imageInputNode') {
             // For image nodes, use the stored buffer from the node's config
-            const originalNode = appData.nodes.find(n => n.id === node.id);
+            const originalNode = appData.nodes.find((n: AppNode) => n.id === node.id);
             return {
               ...node,
               data: {
@@ -365,7 +422,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         setOutputState((prev) => ({ ...prev, [nodeId]: output }));
 
         // Find the node to determine its type
-        const node = appData.nodes.find((n) => n.id === nodeId);
+        const node = appData.nodes.find((n: AppNode) => n.id === nodeId);
         if (node) {
           // Only add to message history if it's an output node
           if (node.type === 'imageOutputNode' || node.type === 'textOutputNode' || node.type === 'markdownOutputNode') {
@@ -428,14 +485,19 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   const renderOutputs = () => {
     if (messageHistory.length === 0 && !isRunning) {
       return (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Send a message to start
-          </h3>
-          <p className="text-gray-600 dark:text-gray-400 max-w-md">
-            {appData?.description ||
-              'Enter your information and run the app to get started.'}
-          </p>
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-blue-500" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Start a conversation
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 max-w-md text-sm leading-relaxed">
+              {appData?.description ||
+                'Enter your information and run the app to get started.'}
+            </p>
+          </div>
         </div>
       );
     }
@@ -455,16 +517,16 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               }`}
             >
               <div
-                className={`max-w-[85%] p-3 rounded-xl shadow-md relative text-sm leading-relaxed
-                  ${isUserMessage ? 'rounded-tr-none ml-auto' : 'rounded-tl-none mr-auto'}
+                className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative text-sm leading-relaxed
+                  ${isUserMessage ? 'rounded-tr-md ml-auto' : 'rounded-tl-md mr-auto'}
                   ${
                     isUserMessage
                       ? isDark
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-blue-500 text-white'
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/20'
+                        : 'bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 shadow-blue-100/50 border border-blue-100'
                       : isDark
-                      ? 'bg-gray-700 text-gray-100'
-                      : 'bg-white text-gray-800'
+                      ? 'bg-gray-800/80 text-gray-100 border border-gray-700/50'
+                      : 'bg-white text-gray-800 border border-gray-100'
                   }
                 `}
               >
@@ -473,7 +535,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                     <img 
                       src={message.content} 
                       alt="Generated" 
-                      className="max-w-full rounded"
+                      className="max-w-full rounded-xl shadow-sm"
                       style={{ maxHeight: '512px' }}
                     />
                     <button
@@ -485,10 +547,18 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                         link.click();
                         document.body.removeChild(link);
                       }}
-                      className="mt-2 px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center gap-1"
+                      className={`mt-3 px-4 py-1.5 text-xs rounded-full flex items-center gap-1.5 transition-colors
+                        ${isUserMessage 
+                          ? isDark
+                            ? 'bg-white/20 hover:bg-white/30 text-white'
+                            : 'bg-blue-200/50 hover:bg-blue-200/70 text-blue-800'
+                          : isDark
+                            ? 'bg-gray-700/50 hover:bg-gray-700/70 text-gray-200'
+                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                        }`}
                     >
                       <Download className="w-3 h-3" />
-                      Download
+                      Download Image
                     </button>
                   </div>
                 ) : isUserMessage ? (
@@ -503,8 +573,12 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
                 <div
                   className={`text-xs mt-2 text-right opacity-80 ${
                     isUserMessage
-                      ? 'text-blue-200 dark:text-blue-100'
-                      : 'text-gray-500 dark:text-gray-400'
+                      ? isDark
+                        ? 'text-blue-50'
+                        : 'text-blue-500'
+                      : isDark
+                        ? 'text-gray-400'
+                        : 'text-gray-500'
                   }`}
                 >
                   {new Date(message.timestamp).toLocaleTimeString()}
@@ -518,12 +592,14 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         {isRunning && (
           <div className="flex justify-start w-full">
             <div
-              className={`max-w-[85%] p-3 rounded-xl rounded-tl-none flex items-center gap-2 shadow-md text-sm
-                ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-white text-gray-500'}
+              className={`max-w-[85%] p-4 rounded-2xl flex items-center gap-3 shadow-sm text-sm
+                ${isDark ? 'bg-gray-800/80 text-gray-300 border border-gray-700/50' : 'bg-white text-gray-600 border border-gray-100'}
               `}
             >
-              <Loader className="w-4 h-4 animate-spin" />
-              <div>Processing...</div>
+              <div className="w-5 h-5 relative">
+                <div className="absolute inset-0 rounded-full border-2 border-current border-r-transparent animate-spin" />
+              </div>
+              <div>Processing your request...</div>
             </div>
           </div>
         )}
@@ -531,7 +607,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         {/* Error display */}
         {error && !isRunning && (
           <div className="flex justify-start w-full">
-            <div className="max-w-[85%] p-3 rounded-xl bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-md text-sm">
+            <div className="max-w-[85%] p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-sm text-sm border border-red-100 dark:border-red-800/30">
               {error}
             </div>
           </div>
@@ -540,9 +616,9 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         {/* Success indicator */}
         {isSuccess && !isRunning && (
           <div className="flex justify-center my-4">
-            <div className="px-4 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm">
+            <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm border border-green-100 dark:border-green-800/30">
               <Check className="w-4 h-4" />
-              <span>Completed</span>
+              <span>Completed successfully</span>
             </div>
           </div>
         )}
@@ -553,246 +629,310 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
   // Render text & image inputs
   const renderInputSection = () => {
     if (isSimpleApp) {
+      // Check if any input node is an image type
+      const hasImageInput = inputNodes.some(node => node.type === 'imageInputNode');
+      const previousContext = getPreviousContext();
+      const canEnableChain = !hasImageInput && previousContext !== null;
+
       return (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-lg">
-          <div className="flex items-center gap-2">
-            <textarea
-              className="flex-1 p-2.5 border rounded-lg focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600 resize-none min-h-[40px] max-h-[120px] text-sm"
-              placeholder={
-                inputNodes[0]?.data?.config?.placeholder || 'Ask something...'
-              }
-              value={simpleInputValue}
-              onChange={handleSimpleInputChange}
-              onKeyDown={handleKeyDown}
-            />
-            <button
-              disabled={isRunning || simpleInputValue.trim() === ''}
-              onClick={runApp}
-              className={`h-[40px] w-[40px] flex items-center justify-center rounded-lg shadow-sm transition-colors
-                ${
-                  isRunning || simpleInputValue.trim() === ''
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:opacity-90'
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+          <div className="bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-3 shadow-lg backdrop-blur-xl relative">
+            {showChainWarning && (
+              <div className="absolute bottom-full mb-2 left-0 right-0 p-3 bg-yellow-50 dark:bg-yellow-900/50 border border-yellow-200 dark:border-yellow-800/50 rounded-xl text-sm text-yellow-800 dark:text-yellow-200 backdrop-blur-sm">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium mb-1">Chain Mode Enabled</p>
+                    <p className="text-xs opacity-80">This will include previous chat context in your request. For complex apps, this might lead to unexpected behavior or reduced performance.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <textarea
+                className="flex-1 p-3 border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
+                bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white 
+                border-gray-200/50 dark:border-gray-700/50 resize-none min-h-[44px] max-h-[120px] 
+                text-sm transition-all backdrop-blur-sm"
+                placeholder={
+                  inputNodes[0]?.data?.config?.placeholder || 'Ask something...'
                 }
-              `}
-              style={{
-                backgroundColor:
-                  isRunning || simpleInputValue.trim() === ''
-                    ? undefined
-                    : appData?.color || '#3B82F6',
-              }}
-            >
-              {isRunning ? (
-                <Loader className="w-4 h-4 animate-spin text-white" />
-              ) : (
-                <Send className="w-4 h-4 text-white" />
+                value={simpleInputValue}
+                onChange={handleSimpleInputChange}
+                onKeyDown={handleKeyDown}
+              />
+              {canEnableChain && (
+                <button
+                  onClick={() => {
+                    setChainEnabled(!chainEnabled);
+                    setShowChainWarning(!showChainWarning);
+                  }}
+                  className={`h-[44px] w-[44px] flex items-center justify-center rounded-xl shadow-sm transition-all
+                    border border-gray-200/50 dark:border-gray-700/50
+                    ${
+                      chainEnabled
+                        ? isDark
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : 'bg-pink-50 text-pink-400'
+                        : 'bg-white/50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500'
+                    }
+                    hover:bg-opacity-90 hover:shadow-md active:scale-95
+                  `}
+                  title={chainEnabled ? 'Disable chain mode' : 'Enable chain mode'}
+                >
+                  <RotateCw className={`w-5 h-5 transition-transform ${chainEnabled ? 'rotate-180' : ''}`} />
+                </button>
               )}
-            </button>
+              <button
+                disabled={isRunning || simpleInputValue.trim() === ''}
+                onClick={runApp}
+                className={`h-[44px] w-[44px] flex items-center justify-center rounded-xl shadow-sm transition-all
+                  ${
+                    isRunning || simpleInputValue.trim() === ''
+                      ? 'bg-gray-400/50 cursor-not-allowed backdrop-blur-sm'
+                      : isDark
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:opacity-90 hover:shadow-md active:scale-95'
+                        : 'bg-white hover:bg-gray-50 border border-gray-200/50 hover:shadow-md active:scale-95'
+                  }
+                `}
+              >
+                {isRunning ? (
+                  <div className="w-5 h-5 relative">
+                    <div className={`absolute inset-0 rounded-full border-2 border-r-transparent animate-spin ${
+                      isDark ? 'border-white' : 'border-gray-400'
+                    }`} />
+                  </div>
+                ) : (
+                  <Send className={`w-5 h-5 ${isDark ? 'text-white' : 'text-pink-400'}`} />
+                )}
+              </button>
+            </div>
+            {chainEnabled && previousContext && (
+              <div className="mt-2 p-2 bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200/50 dark:border-gray-700/50 text-xs">
+                <div className="text-gray-500 dark:text-gray-400 mb-1">Previous context:</div>
+                <div className="text-gray-700 dark:text-gray-300">
+                  <div className="mb-1">User: {previousContext.userInput}</div>
+                  <div>Assistant: {previousContext.botOutput}</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       );
     }
 
     // If both text and image inputs, consider a horizontal layout
-    const hasImageInput = inputNodes.some((node) => node.type === 'imageInputNode');
-    const hasTextInput = inputNodes.some((node) => node.type === 'textInputNode');
+    const hasImageInput = inputNodes.some((node: AppNode) => node.type === 'imageInputNode');
+    const hasTextInput = inputNodes.some((node: AppNode) => node.type === 'textInputNode');
     const useHorizontalLayout = hasImageInput && hasTextInput;
 
     return (
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-lg">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            runApp();
-          }}
-        >
-          <div
-            className={`grid gap-4 ${
-              useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7' : 'grid-cols-1'
-            }`}
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+        <div className="bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-4 shadow-lg backdrop-blur-xl relative">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              runApp();
+            }}
           >
-            {inputNodes.map((node: Node) => {
-              if (node.type === 'textInputNode') {
-                return (
-                  <div
-                    key={node.id}
-                    className={useHorizontalLayout ? 'md:col-span-5' : ''}
-                  >
-                    {node.data.label && (
-                      <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        {node.data.label}
-                        {node.data.config?.isRequired && (
-                          <span className="text-red-500 ml-1">*</span>
-                        )}
-                      </label>
-                    )}
-                    <textarea
-                      className="w-full p-2.5 text-sm border rounded-lg focus:ring-1 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600"
-                      style={{ minHeight: useHorizontalLayout ? '120px' : '80px' }}
-                      placeholder={node.data.config?.placeholder || 'Enter text...'}
-                      value={(inputState[node.id] as string) || ''}
-                      onChange={(e) => handleInputChange(node.id, e.target.value)}
-                    />
-                    {node.data.config?.description && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {node.data.config.description}
-                      </p>
-                    )}
-                  </div>
-                );
-              }
-              if (node.type === 'imageInputNode') {
-                return (
-                  <div
-                    key={node.id}
-                    className={useHorizontalLayout ? 'md:col-span-2' : ''}
-                  >
-                    {node.data.label && (
-                      <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
-                        {node.data.label}
-                        {node.data.config?.isRequired && (
-                          <span className="text-red-500 ml-1">*</span>
-                        )}
-                      </label>
-                    )}
-                    <div className="flex justify-center w-full h-full">
-                      <label
-                        className={`
-                          flex flex-col items-center justify-center w-full border border-dashed rounded-lg cursor-pointer
-                          hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200
-                          bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600
-                          ${
-                            useHorizontalLayout
-                              ? 'h-[120px]'
-                              : 'h-16'
-                          }
-                        `}
-                      >
-                        {inputState[node.id] instanceof File ? (
-                          <div
-                            className={`flex items-center justify-center p-2 w-full h-full ${
-                              useHorizontalLayout
-                                ? 'flex-col'
-                                : 'flex-row'
-                            }`}
-                          >
-                            <div
-                              className={`shrink-0 ${
-                                useHorizontalLayout
-                                  ? 'w-16 h-16 mb-2'
-                                  : 'w-10 h-10 mr-3'
-                              }`}
-                            >
-                              <img
-                                src={URL.createObjectURL(
-                                  inputState[node.id] as File
-                                )}
-                                alt="Preview"
-                                className="w-full h-full object-cover rounded"
-                              />
-                            </div>
-                            <div className="text-left">
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
-                                {(inputState[node.id] as File).name}
-                              </p>
-                              <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
-                                Click to replace
-                              </p>
-                            </div>
-                          </div>
-                        ) : node.data.runtimeImage ? (
-                          <div
-                            className={`flex items-center justify-center p-2 w-full h-full ${
-                              useHorizontalLayout
-                                ? 'flex-col'
-                                : 'flex-row'
-                            }`}
-                          >
-                            <div
-                              className={`shrink-0 ${
-                                useHorizontalLayout
-                                  ? 'w-16 h-16 mb-2'
-                                  : 'w-10 h-10 mr-3'
-                              }`}
-                            >
-                              <img
-                                src={node.data.runtimeImage}
-                                alt="Preview"
-                                className="w-full h-full object-cover rounded"
-                              />
-                            </div>
-                            <div className="text-left">
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Image selected
-                              </p>
-                              <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
-                                Click to replace
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            className={`flex flex-col items-center justify-center p-2 ${
-                              useHorizontalLayout ? 'py-4' : ''
-                            }`}
-                          >
-                            <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
-                            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                              Click to upload an image
-                            </p>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              handleImageUpload(node.id, e.target.files[0]);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                    {node.data.config?.description && !useHorizontalLayout && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {node.data.config.description}
-                      </p>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })}
-          </div>
-
-          <div className={`${!hasTextInput ? 'flex justify-center' : 'flex justify-end'} mt-4`}>
-            <button
-              type="submit"
-              disabled={isRunning || !isFormComplete}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white text-sm shadow-sm transition-colors
-                ${!hasTextInput ? 'w-full max-w-[200px]' : ''}
-                ${
-                  isRunning || !isFormComplete
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:opacity-90'
-                }
-              `}
+            <div
+              className={`grid gap-4 ${
+                useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7' : 'grid-cols-1'
+              }`}
             >
-              {isRunning ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>{!hasTextInput ? 'Generate' : 'Send'}</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+              {inputNodes.map((node: AppNode) => {
+                if (node.type === 'textInputNode') {
+                  return (
+                    <div
+                      key={node.id}
+                      className={useHorizontalLayout ? 'md:col-span-5' : ''}
+                    >
+                      {node.data.label && (
+                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                          {node.data.label}
+                          {node.data.config?.isRequired && (
+                            <span className="text-red-500 ml-1">*</span>
+                          )}
+                        </label>
+                      )}
+                      <textarea
+                        className="w-full p-3 text-sm border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
+                        bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white 
+                        border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm transition-all"
+                        style={{ minHeight: useHorizontalLayout ? '120px' : '80px' }}
+                        placeholder={node.data.config?.placeholder || 'Enter text...'}
+                        value={(inputState[node.id] as string) || ''}
+                        onChange={(e) => handleInputChange(node.id, e.target.value)}
+                      />
+                      {node.data.config?.description && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {node.data.config.description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+                if (node.type === 'imageInputNode') {
+                  return (
+                    <div
+                      key={node.id}
+                      className={useHorizontalLayout ? 'md:col-span-2' : ''}
+                    >
+                      {node.data.label && (
+                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                          {node.data.label}
+                          {node.data.config?.isRequired && (
+                            <span className="text-red-500 ml-1">*</span>
+                          )}
+                        </label>
+                      )}
+                      <div className="flex justify-center w-full h-full">
+                        <label
+                          className={`
+                            flex flex-col items-center justify-center w-full border border-dashed rounded-xl cursor-pointer
+                            hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-all duration-200
+                            bg-white/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm
+                            ${
+                              useHorizontalLayout
+                                ? 'h-[120px]'
+                                : 'h-16'
+                            }
+                          `}
+                        >
+                          {inputState[node.id] instanceof File ? (
+                            <div
+                              className={`flex items-center justify-center p-2 w-full h-full ${
+                                useHorizontalLayout
+                                  ? 'flex-col'
+                                  : 'flex-row'
+                              }`}
+                            >
+                              <div
+                                className={`shrink-0 ${
+                                  useHorizontalLayout
+                                    ? 'w-16 h-16 mb-2'
+                                    : 'w-10 h-10 mr-3'
+                                }`}
+                              >
+                                <img
+                                  src={URL.createObjectURL(
+                                    inputState[node.id] as File
+                                  )}
+                                  alt="Preview"
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+                                  {(inputState[node.id] as File).name}
+                                </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                  Click to replace
+                                </p>
+                              </div>
+                            </div>
+                          ) : node.data.runtimeImage ? (
+                            <div
+                              className={`flex items-center justify-center p-2 w-full h-full ${
+                                useHorizontalLayout
+                                  ? 'flex-col'
+                                  : 'flex-row'
+                              }`}
+                            >
+                              <div
+                                className={`shrink-0 ${
+                                  useHorizontalLayout
+                                    ? 'w-16 h-16 mb-2'
+                                    : 'w-10 h-10 mr-3'
+                                }`}
+                              >
+                                <img
+                                  src={node.data.runtimeImage}
+                                  alt="Preview"
+                                  className="w-full h-full object-cover rounded-lg"
+                                />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Image selected
+                                </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                  Click to replace
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              className={`flex flex-col items-center justify-center p-2 ${
+                                useHorizontalLayout ? 'py-4' : ''
+                              }`}
+                            >
+                              <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                                Click to upload an image
+                              </p>
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageUpload(node.id, e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {node.data.config?.description && !useHorizontalLayout && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {node.data.config.description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+
+            <div className={`${!hasTextInput ? 'flex justify-center' : 'flex justify-end'} mt-4`}>
+              <button
+                type="submit"
+                disabled={isRunning || !isFormComplete}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm shadow-sm transition-all
+                  ${!hasTextInput ? 'w-full max-w-[200px]' : ''}
+                  ${
+                    isRunning || !isFormComplete
+                      ? 'bg-gray-400/50 text-white cursor-not-allowed backdrop-blur-sm'
+                      : isDark
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:opacity-90 hover:shadow-md active:scale-95'
+                        : 'bg-white text-pink-400 border border-gray-200/50 hover:bg-gray-50 hover:shadow-md active:scale-95'
+                  }
+                `}
+              >
+                {isRunning ? (
+                  <>
+                    <div className="w-4 h-4 relative">
+                      <div className={`absolute inset-0 rounded-full border-2 border-r-transparent animate-spin ${
+                        isDark ? 'border-white' : 'border-gray-400'
+                      }`} />
+                    </div>
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>{!hasTextInput ? 'Generate' : 'Send'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     );
   };
@@ -876,13 +1016,15 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
         <Sidebar activePage={activePage} onPageChange={onBack} />
         <div className="flex-1 flex flex-col">
           <Topbar userName={appData?.name || 'App Runner'} />
-          <div className="flex-1 overflow-hidden flex flex-col" style={gradientStyle}>
+          <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
             {/* Header / Info Section */}
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 m-4 p-4 rounded-xl flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-3">
+            <div className="bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 m-4 p-4 rounded-2xl flex items-center justify-between shadow-sm backdrop-blur-xl">
+              <div className="flex items-center gap-4">
                 <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"
-                  style={{ backgroundColor: appData?.color || '#3B82F6' }}
+                  className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm bg-gradient-to-br"
+                  style={{ 
+                    background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}, ${appData?.color || '#3B82F6'}dd)`
+                  }}
                 >
                   {appData?.icon &&
                     React.createElement(iconMap[appData.icon] || Activity, {
@@ -900,8 +1042,8 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               </div>
               <button
                 onClick={onBack}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-700 dark:text-gray-300
-                  hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-gray-700 dark:text-gray-300
+                  hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back to Apps</span>
@@ -922,9 +1064,11 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
               {showScrollTop && (
                 <button
                   onClick={scrollToTop}
-                  className="fixed bottom-24 right-6 p-2 rounded-full shadow-lg z-10
-                  opacity-90 hover:opacity-100 transition-opacity"
-                  style={{ backgroundColor: appData?.color || '#3B82F6' }}
+                  className="fixed bottom-24 right-6 p-3 rounded-xl shadow-lg z-10
+                  opacity-90 hover:opacity-100 transition-all hover:shadow-md active:scale-95"
+                  style={{ 
+                    background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}, ${appData?.color || '#3B82F6'}dd)`
+                  }}
                 >
                   <svg
                     className="w-5 h-5 text-white"
@@ -944,7 +1088,7 @@ const AppRunner: React.FC<AppRunnerProps> = ({ appId, onBack }) => {
             </div>
 
             {/* Input Section */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/50 backdrop-blur-sm">
               <div className="container mx-auto max-w-4xl">
                 {renderInputSection()}
               </div>
