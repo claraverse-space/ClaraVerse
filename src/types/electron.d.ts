@@ -1,14 +1,15 @@
 export interface ElectronAPI {
-  send: (channel: string, data?: unknown) => void;
-  receive: (channel: string, func: (...args: unknown[]) => void) => void;
-  removeListener: (channel: string, func: (...args: unknown[]) => void) => void;
-  getAppVersion: () => string;
-  getPlatform: () => string;
-  getAppPath: () => string;
+  checkN8NHealth: () => Promise<{ success: boolean; data?: any; error?: string }>;
+  startN8N: () => Promise<{ success: boolean; pid?: number; error?: string }>;
+  stopN8N: () => Promise<{ success: boolean; error?: string }>;
+  receive: (channel: string, callback: (data: any) => void) => void;
+  removeListener: (channel: string) => void;
   getPythonPort: () => Promise<number | null>;
-  checkPythonBackend: () => Promise<boolean>;
+  checkPythonBackend: () => Promise<{ port: number | null }>;
 }
 
-declare interface Window {
-  electron: ElectronAPI;
+declare global {
+  interface Window {
+    readonly electron?: ElectronAPI;
+  }
 } 

@@ -53,37 +53,27 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
       }
 
       // Store the API type for UI decisions
-      setApiType(config.api_type as 'ollama' | 'openai');
+      const apiType = config.api_type === 'ollama' || config.api_type === 'openai' 
+        ? config.api_type 
+        : 'openai' as const;
 
       const client = new OllamaClient(
-        config.api_type === 'ollama' ? config.ollama_base_url : (config.openai_base_url || 'https://api.openai.com/v1'), 
+        apiType === 'ollama' ? config.ollama_base_url : 'https://api.openai.com/v1', 
         { 
-          type: config.api_type,
-          apiKey: config.api_type === 'openai' ? config.openai_api_key : ''
+          type: apiType,
+          apiKey: apiType === 'openai' ? config.openai_api_key : ''
         }
       );
 
-      let modelList;
+      let modelList: string[] = [];
       try {
-        // For OpenAI, we'll create a fallback model list if the real listing fails
-        if (config.api_type === 'openai') {
-          try {
-            modelList = await client.listModels();
-          } catch (err) {
-            console.warn('Could not load OpenAI models, using fallback list', err);
-            modelList = [
-              { name: 'gpt-3.5-turbo' },
-              { name: 'gpt-4' },
-              { name: 'gpt-4-vision-preview', supportsImages: true },
-              { name: 'gpt-4o', supportsImages: true },
-              { name: 'gpt-4o-mini' }
-            ];
-          }
-        } else {
+        if (config.api_type === 'ollama') {
           modelList = await client.listModels();
         }
-      } catch (err) {
-        throw err;
+      } catch (err: unknown) {
+        console.error('Failed to load models:', err);
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        throw new Error(`Failed to load models: ${errorMessage}`);
       }
 
       // Get existing configs
@@ -148,11 +138,24 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
     const loadConfig = async () => {
       try {
         const config = await db.getAPIConfig();
-        if (config && config.api_type) {
-          setApiConfig(config as APIConfig);
+        if (config) {
+          // Ensure required fields have default values
+          const configWithDefaults: APIConfig = {
+            ollama_base_url: config.ollama_base_url || 'http://localhost:11434',
+            comfyui_base_url: config.comfyui_base_url || '',
+            api_type: config.api_type || 'ollama',
+            openai_api_key: config.openai_api_key,
+            openrouter_api_key: config.openrouter_api_key,
+            n8n_base_url: config.n8n_base_url,
+            n8n_api_key: config.n8n_api_key
+          };
+          setApiConfig(configWithDefaults);
+          setApiType(configWithDefaults.api_type as 'ollama' | 'openai');
         }
-      } catch (err) {
-        console.error('Failed to load API config:', err);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        console.error('Failed to load config:', errorMessage);
+        setError(`Failed to load config: ${errorMessage}`);
       }
     };
     loadConfig();
@@ -252,6 +255,120 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
             </p>
           </div>
 
+          {/* API Type Selection */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+              API Type
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={async () => {
+                  setApiType('ollama');
+                  if (apiConfig) {
+                    const updatedConfig: APIConfig = {
+                      ...apiConfig,
+                      api_type: 'ollama',
+                      ollama_base_url: apiConfig.ollama_base_url || 'http://localhost:11434',
+                      comfyui_base_url: apiConfig.comfyui_base_url || ''
+                    };
+                    await db.updateAPIConfig(updatedConfig);
+                    setApiConfig(updatedConfig);
+                    loadModels();
+                  }
+                }}
+                className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
+                  apiType === 'ollama'
+                    ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-500/10'
+                    : 'border-gray-200 hover:border-sakura-200 dark:border-gray-700'
+                }`}
+              >
+                <div className="text-center">
+                  <h3 className="font-medium text-gray-900 dark:text-white">Ollama</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Local AI models</p>
+                </div>
+              </button>
+              <button
+                onClick={async () => {
+                  setApiType('openai');
+                  if (apiConfig) {
+                    const updatedConfig: APIConfig = {
+                      ...apiConfig,
+                      api_type: 'openai',
+                      ollama_base_url: 'http://localhost:11434', // Keep default value
+                      comfyui_base_url: apiConfig.comfyui_base_url || ''
+                    };
+                    await db.updateAPIConfig(updatedConfig);
+                    setApiConfig(updatedConfig);
+                    loadModels();
+                  }
+                }}
+                className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
+                  apiType === 'openai'
+                    ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-500/10'
+                    : 'border-gray-200 hover:border-sakura-200 dark:border-gray-700'
+                }`}
+              >
+                <div className="text-center">
+                  <h3 className="font-medium text-gray-900 dark:text-white">OpenAI-like API</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Compatible with OpenAI API format</p>
+                </div>
+              </button>
+            </div>
+            
+            {apiType === 'ollama' && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Ollama Base URL
+                </label>
+                <input
+                  type="url"
+                  value={apiConfig?.ollama_base_url || ''}
+                  onChange={async (e) => {
+                    if (apiConfig) {
+                      const updatedConfig: APIConfig = {
+                        ...apiConfig,
+                        ollama_base_url: e.target.value || 'http://localhost:11434',
+                        comfyui_base_url: apiConfig.comfyui_base_url || ''
+                      };
+                      await db.updateAPIConfig(updatedConfig);
+                      setApiConfig(updatedConfig);
+                    }
+                  }}
+                  className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                  placeholder="http://localhost:11434"
+                />
+              </div>
+            )}
+
+            {apiType === 'openai' && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={apiConfig?.openai_api_key || ''}
+                    onChange={async (e) => {
+                      if (apiConfig) {
+                        const updatedConfig: APIConfig = {
+                          ...apiConfig,
+                          openai_api_key: e.target.value,
+                          ollama_base_url: apiConfig.ollama_base_url || 'http://localhost:11434',
+                          comfyui_base_url: apiConfig.comfyui_base_url || ''
+                        };
+                        await db.updateAPIConfig(updatedConfig);
+                        setApiConfig(updatedConfig);
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                    placeholder="sk-..."
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
               Tools
@@ -312,7 +429,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
-                {apiType === 'ollama' && (
+                {apiType === 'openai' && (
                   <button
                     onClick={() => setShowPullModal(true)}
                     className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -387,6 +504,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                             <ImageIcon className={`ml-2 w-4 h-4 ${config.supportsImages ? 'text-sakura-500' : 'text-gray-400'}`} />
                           </label>
                         </div>
+
                       </div>
                     ))
                   )}

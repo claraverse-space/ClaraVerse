@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check } from 'lucide-react';
+import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check, Settings } from 'lucide-react';
 import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
+import ModelConfigModal from './ModelConfigModal';
 
 interface ChatInputProps {
   input: string;
@@ -22,6 +23,18 @@ interface ChatInputProps {
   onRemoveTemporaryDoc?: (id: string) => void;
   tools?: Tool[];
   onToolSelect?: (tool: Tool | null) => void;
+  models?: any[];
+  modelConfig?: {
+    visionModel: string;
+    toolModel: string;
+    ragModel: string;
+  };
+  onModelConfigSave?: (config: {
+    visionModel: string;
+    toolModel: string;
+    ragModel: string;
+  }) => void;
+  onModelSelect?: (modelName: string) => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -43,6 +56,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onRemoveTemporaryDoc,
   tools = [],
   onToolSelect,
+  models = [],
+  modelConfig,
+  onModelConfigSave,
+  onModelSelect,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tempDocInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +98,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
       tool.name.toLowerCase().includes(query)
     );
   }, [tools, toolSearchQuery]);
+
+  // Add state for model configuration
+  const [showModelConfig, setShowModelConfig] = useState(false);
 
   // Get API endpoint on component mount
   useEffect(() => {
@@ -772,6 +792,20 @@ const ChatInput: React.FC<ChatInputProps> = ({
                   {isRecording ? "Stop Recording" : isTranscribing ? "Transcribing..." : "Voice Input (hold Ctrl)"}
                 </div>
               </button>
+
+              {/* Model Config Button */}
+              {models.length > 0 && onModelConfigSave && (
+                <button
+                  onClick={() => setShowModelConfig(true)}
+                  className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                  title="Model Configuration"
+                >
+                  <Settings className="w-5 h-5" />
+                  <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    Model Configuration
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* Right Side Actions */}
@@ -835,6 +869,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Model Config Modal */}
+      {modelConfig && onModelConfigSave && (
+        <ModelConfigModal
+          isOpen={showModelConfig}
+          onClose={() => setShowModelConfig(false)}
+          models={models}
+          modelConfig={modelConfig}
+          onSave={onModelConfigSave}
+          onModelSelect={onModelSelect}
+        />
+      )}
     </div>
   );
 };

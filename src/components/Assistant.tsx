@@ -3,11 +3,11 @@ import AssistantSidebar from './AssistantSidebar';
 import { AssistantHeader, ChatInput, ChatWindow, KnowledgeBaseModal, ToolModal } from './assistant_components';
 import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
-import ModelWarning from './assistant_components/ModelWarning';
 import ModelPullModal from './assistant_components/ModelPullModal';
 import { db } from '../db';
-import { OllamaClient, ChatMessage, ChatRole } from '../utils';
+import { AssistantOllamaClient, ChatMessage, ChatRole } from '../utils';
 import type { Message, Chat, Tool } from '../db';
+import type { ElectronAPI } from '../types/electron';
 import { v4 as uuidv4 } from 'uuid';
 
 // Add RequestOptions type definition
@@ -42,10 +42,12 @@ interface ToolResult {
 }
 
 interface SearchResult {
-  results: Array<{
-    score: number;
-    content: string;
-  }>;
+  score: number;
+  content: string;
+}
+
+interface SearchResponse {
+  results: SearchResult[];
 }
 
 const MAX_CONTEXT_MESSAGES = 20;
@@ -64,7 +66,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
-  const [client, setClient] = useState<OllamaClient | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState(() => {
@@ -80,7 +81,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [showImageWarning, setShowImageWarning] = useState(true);
-  const [showModelWarning, setShowModelWarning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -92,7 +92,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [temporaryDocs, setTemporaryDocs] = useState<TemporaryDocument[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
-  const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
 
   // Initialize or get temporary collection names from localStorage
   const [tempCollectionNames] = useState(() => {
@@ -417,6 +417,15 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
+  const [modelConfig, setModelConfig] = useState({
+    visionModel: '',
+    toolModel: '',
+    ragModel: ''
+  });
+
+  // Replace OllamaClient with AssistantOllamaClient
+  const [client, setClient] = useState<AssistantOllamaClient | null>(null);
+
   useEffect(() => {
     const initializeOllama = async () => {
       const config = await db.getAPIConfig();
@@ -443,8 +452,16 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           };
         }
 
-        const newClient = new OllamaClient(baseUrl, clientConfig);
+        const newClient = new AssistantOllamaClient(baseUrl, clientConfig);
         setClient(newClient);
+
+        // Load saved model config
+        const savedModelConfig = localStorage.getItem('assistant_model_config');
+        if (savedModelConfig) {
+          const config = JSON.parse(savedModelConfig);
+          setModelConfig(config);
+          newClient.setModelConfig(config);
+        }
 
         // Test connection and get model list
         const modelList = await newClient.listModels();
@@ -479,6 +496,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     initializeOllama();
   }, []);
+
+  const handleModelConfigSave = (config: {
+    visionModel: string;
+    toolModel: string;
+    ragModel: string;
+  }) => {
+    setModelConfig(config);
+    localStorage.setItem('assistant_model_config', JSON.stringify(config));
+    if (client) {
+      client.setModelConfig(config);
+    }
+  };
 
   const handleNewChat = async (initialMessage?: string) => {
     // Create chat with a temporary name - it will be updated after first message
@@ -545,7 +574,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     return formattedMessages;
   };
 
-  const searchDocuments = async (query: string) => {
+  const searchDocuments = async (query: string): Promise<SearchResponse | null> => {
     if (!pythonPort) return null;
 
     try {
@@ -568,7 +597,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
               return { results: [] };
             }
             
-            return await response.json();
+            return await response.json() as SearchResponse;
           } catch (error) {
             console.warn(`Search error for collection ${doc.collection}:`, error);
             return { results: [] };
@@ -580,7 +609,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       const allTempResults = tempResults.flatMap(r => r.results || []);
 
       // Only search default collection if no temp docs exist and RAG is enabled
-      let defaultResults = { results: [] };
+      let defaultResults: SearchResponse = { results: [] };
       if (temporaryDocs.length === 0 && ragEnabled) {
         try {
           const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
@@ -594,7 +623,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           });
 
           if (response.ok) {
-            defaultResults = await response.json();
+            defaultResults = await response.json() as SearchResponse;
           } else {
             console.warn('Default collection search failed:', response.status);
           }
@@ -618,7 +647,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       };
     } catch (error) {
       console.error('Error searching documents:', error);
-      return { results: [] }; // Return empty results instead of null
+      return { results: [] };
     }
   };
 
@@ -634,9 +663,16 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const handleSend = async () => {
     if (!input.trim() || !client || !selectedModel || isProcessing) return;
 
-    // Show warning but don't block if using images with unconfirmed model
+    // Store original model to switch back after image processing
+    const originalModel = selectedModel;
+
+    // If using images, automatically switch to image-supported model if needed
     if (images.length > 0 && !checkModelImageSupport(selectedModel)) {
-      setShowModelWarning(true);
+      const imageModel = findImageSupportedModel();
+      if (imageModel) {
+        setSelectedModel(imageModel);
+      }
+      // Proceed even if no image model is found - will use current model
     }
 
     let currentChatId = activeChat;
@@ -655,9 +691,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       }
     }
 
-    // Get base system prompt
-    let systemPrompt = await db.getSystemPrompt();
-    
     // Create user message (keeping the original user input for display)
     const userMessage: Message = {
       id: uuidv4(),
@@ -699,45 +732,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       // Add placeholder immediately
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Get context messages - use minimal context for tool calls
-      const contextMessages = getContextMessages([...messages, userMessage], !!selectedTool);
-      
-      // Check if we need to do RAG search and inject into user query
-      let userContentWithContext = userMessage.content;
-      if ((temporaryDocs.length > 0 || ragEnabled) && pythonPort) {
-        const results = await searchDocuments(input);
-        if (results && results.results && results.results.length > 0) {
-          const contextFromSearch = results.results
-            .map(r => r.content)
-            .join('\n\n');
-          
-          // Inject context into user query (this won't be displayed in the UI)
-          userContentWithContext = `Query: ${input}\n\nRelevant context:\n${contextFromSearch}\n\nPlease use this context to inform your response, but do not explicitly mention the provided context unless specifically asked.`;
-        }
-      }
-      
-      // Map context messages, replacing the last user message with the context-enhanced version
-      const formattedMessages: ChatMessage[] = [
-        { role: 'system' as ChatRole, content: systemPrompt }
-      ];
-      
-      contextMessages.forEach((msg, index) => {
-        // If this is the most recent user message (the one we just added), use the context-enhanced version
-        if (index === contextMessages.length - 1 && msg.role === 'user') {
-          formattedMessages.push({
-            role: 'user' as ChatRole,
-            content: userContentWithContext
-          });
-        } else {
-          formattedMessages.push({
-            role: (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' 
-              ? msg.role 
-              : 'user') as ChatRole,
-            content: msg.content
-          });
-        }
-      });
-
       // Define chat options
       const chatOptions: RequestOptions = {
         temperature: 0.7,
@@ -764,11 +758,58 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           ));
 
           await db.addMessage(currentChatId, content, 'assistant', tokens);
+
+          // Switch back to original model after image processing
+          if (originalModel !== selectedModel) {
+            setSelectedModel(originalModel);
+          }
+          return;
         } catch (error: unknown) {
           console.error('Image generation error:', error);
           throw error;
         }
-      } else if (selectedTool) {
+      }
+
+      // Get context messages - use minimal context for tool calls
+      const contextMessages = getContextMessages([...messages, userMessage], !!selectedTool);
+      
+      // Check if we need to do RAG search and inject into user query
+      let userContentWithContext = userMessage.content;
+      if ((temporaryDocs.length > 0 || ragEnabled) && pythonPort) {
+        const results = await searchDocuments(input);
+        if (results && results.results && results.results.length > 0) {
+          const contextFromSearch = results.results
+            .map(r => r.content)
+            .join('\n\n');
+          
+          // Inject context into user query (this won't be displayed in the UI)
+          userContentWithContext = `Query: ${input}\n\nRelevant context:\n${contextFromSearch}\n\nPlease use this context to inform your response, but do not explicitly mention the provided context unless specifically asked.`;
+        }
+      }
+      
+      // Map context messages, replacing the last user message with the context-enhanced version
+      const formattedMessages: ChatMessage[] = [
+        { role: 'system' as ChatRole, content: await db.getSystemPrompt() }
+      ];
+      
+      contextMessages.forEach((msg, index) => {
+        // If this is the most recent user message (the one we just added), use the context-enhanced version
+        if (index === contextMessages.length - 1 && msg.role === 'user') {
+          formattedMessages.push({
+            role: 'user' as ChatRole,
+            content: userContentWithContext
+          });
+        } else {
+          formattedMessages.push({
+            role: (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' 
+              ? msg.role 
+              : 'user') as ChatRole,
+            content: msg.content
+          });
+        }
+      });
+
+      if (selectedTool) {
         // Format tool differently based on API type
         const formattedTool = client.getConfig().type === 'openai' 
           ? {
@@ -1480,6 +1521,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onRemoveTemporaryDoc={removeTemporaryDoc}
           tools={tools}
           onToolSelect={setSelectedTool}
+          models={models}
+          onModelConfigSave={handleModelConfigSave}
+          modelConfig={modelConfig}
+          onModelSelect={handleModelSelect}
         />
 
         <AssistantSettings
@@ -1489,23 +1534,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           setIsStreaming={setIsStreaming}
           onOpenTools={() => setShowToolModal(true)}
         />
-
-        {showModelWarning && (
-          <ModelWarning
-            onClose={() => setShowModelWarning(false)}
-            onConfirm={() => {
-              setShowModelWarning(false);
-              handleSend();
-            }}
-            onCancel={() => {
-              setShowModelWarning(false);
-              const imageModel = findImageSupportedModel();
-              if (imageModel) {
-                setSelectedModel(imageModel);
-              }
-            }}
-          />
-        )}
 
         <ModelPullModal
           isOpen={showPullModal}
