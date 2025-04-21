@@ -6,10 +6,14 @@ export interface ElectronAPI {
   removeListener: (channel: string) => void;
   getPythonPort: () => Promise<number | null>;
   checkPythonBackend: () => Promise<{ port: number | null }>;
+  getAppVersion: () => string;
+  getElectronVersion: () => string;
+  getPlatform: () => string;
+  getOsVersion: () => string;
 }
 
 declare global {
   interface Window {
-    readonly electron?: ElectronAPI;
+    electron: ElectronAPI;
   }
 } 
