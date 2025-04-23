@@ -12,27 +12,12 @@ async function initializeDockerServices(win: BrowserWindow) {
   dockerSetup = new DockerSetup();
   
   try {
-    const success = await dockerSetup.setup((status: string, type: string = 'info') => {
+    await dockerSetup.setup((status: string, type: string = 'info') => {
       // Send status updates to renderer
       win.webContents.send('setup-status', { status, type });
-      
-      if (type === 'error') {
-        dialog.showErrorBox('Setup Error', status);
-      }
     });
-
-    if (!success) {
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Docker Setup',
-        message: 'Please start Docker Desktop and restart the application.',
-        buttons: ['OK']
-      });
-      app.quit();
-    }
   } catch (error) {
     dialog.showErrorBox('Setup Error', error.message);
-    app.quit();
   }
 }
 
