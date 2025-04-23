@@ -201,75 +201,76 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  async createDockerCompose() {
-    // Get absolute path to py_backend directory
-    const pyBackendPath = path.join(this.appRoot, 'py_backend');
-    
-    // Check if Ollama is already running
-    const ollamaRunning = await this.isOllamaRunning();
-    
-    // Create services object
-    const services = {
-      n8n: {
-        image: 'n8nio/n8n:latest',
-        container_name: 'clara_n8n',
-        ports: [`${this.ports.n8n}:5678`],
-        volumes: ['n8n_data:/home/node/.n8n'],
-        restart: 'unless-stopped',
-        environment: {
-          N8N_HOST: 'localhost',
-          N8N_PORT: '5678',
-          N8N_PROTOCOL: 'http',
-          NODE_ENV: 'production'
-        }
-      },
-      python_backend: {
-        build: {
-          context: pyBackendPath,
-          dockerfile: 'Dockerfile'
+  async generateDockerCompose() {
+    // Get available ports
+    const pythonPort = await this.findAvailablePort(5000);
+    const n8nPort = await this.findAvailablePort(5678);
+    const ollamaPort = await this.findAvailablePort(11434);
+
+    // Store the ports
+    this.ports = {
+      python: pythonPort,
+      n8n: n8nPort,
+      ollama: ollamaPort
+    };
+
+    // Check if host Ollama is running
+    const hostOllamaRunning = await this.isOllamaRunning();
+
+    // Base compose configuration
+    const composeConfig = {
+      version: '3.8',
+      services: {
+        python: {
+          build: {
+            context: path.join(this.appRoot, 'py_backend'),
+            dockerfile: 'Dockerfile'
+          },
+          volumes: [
+            `${this.appDataPath}:/root/.clara`,
+            `${path.join(this.appRoot, 'py_backend')}:/app`
+          ],
+          ports: [`${pythonPort}:5000`],
+          environment: [
+            'PYTHONUNBUFFERED=1',
+            // If host Ollama is running, set OLLAMA_HOST to host.docker.internal
+            ...(hostOllamaRunning ? ['OLLAMA_HOST=host.docker.internal'] : ['DOCKER_OLLAMA=true'])
+          ],
+          extra_hosts: [
+            'host.docker.internal:host-gateway'
+          ]
         },
-        container_name: 'clara_python',
-        ports: [`${this.ports.python}:5000`],
-        volumes: ['python_data:/app/data'],
-        restart: 'unless-stopped',
-        depends_on: ollamaRunning ? [] : ['ollama'],
-        environment: {
-          PORT: '5000',
-          HOST: '0.0.0.0',
-          PYTHONUNBUFFERED: '1'
+        n8n: {
+          image: 'n8nio/n8n',
+          ports: [`${n8nPort}:5678`],
+          volumes: [
+            `${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`
+          ]
         }
       }
     };
 
-    // Only add Ollama service if it's not already running
-    if (!ollamaRunning) {
-      services.ollama = {
-        image: 'ollama/ollama:latest',
-        container_name: 'clara_ollama',
-        ports: [`${this.ports.ollama}:11434`],
-        volumes: ['ollama_data:/root/.ollama'],
-        restart: 'unless-stopped'
+    // Add Ollama service only if host Ollama is not running
+    if (!hostOllamaRunning) {
+      composeConfig.services.ollama = {
+        image: 'ollama/ollama',
+        ports: [`${ollamaPort}:11434`],
+        volumes: [
+          `${path.join(this.appDataPath, 'ollama')}:/root/.ollama`
+        ]
       };
+
+      // Add Ollama network dependency to Python service
+      composeConfig.services.python.depends_on = ['ollama'];
     }
 
-    const composeContent = `
-version: '3.8'
-services:
-${Object.entries(services).map(([name, config]) => `  ${name}:
-${JSON.stringify(config, null, 4).split('\n').map(line => `    ${line}`).join('\n')}`).join('\n')}
+    // Write the compose file
+    fs.writeFileSync(
+      this.composeFilePath,
+      require('yaml').stringify(composeConfig)
+    );
 
-volumes:
-  n8n_data:
-  python_data:${ollamaRunning ? '' : '\n  ollama_data:'}
-`;
-    fs.writeFileSync(this.composeFilePath, composeContent);
-
-    // Return the ports being used
-    return {
-      python: this.ports.python,
-      n8n: this.ports.n8n,
-      ollama: ollamaRunning ? 11434 : this.ports.ollama
-    };
+    return this.ports;
   }
 
   async setup(statusCallback) {
@@ -355,7 +356,7 @@ CMD ["sh", "-c", "python main.py --port $PORT --host $HOST"]`;
 
       // Create Docker Compose file
       statusCallback('Setting up Docker environment...');
-      const ports = await this.createDockerCompose();
+      const ports = await this.generateDockerCompose();
 
       // Pull and start containers
       statusCallback('Starting Clara services...');

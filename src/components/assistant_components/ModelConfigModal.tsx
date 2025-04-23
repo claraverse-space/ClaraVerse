@@ -1,189 +1,173 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles } from 'lucide-react';
+import { Dialog } from '@headlessui/react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { db } from '../../db';
+
+interface ModelConfig {
+  visionModel: string;
+  toolModel: string;
+  ragModel: string;
+}
 
 interface ModelConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   models: any[];
-  modelConfig: {
-    visionModel: string;
-    toolModel: string;
-    ragModel: string;
-  };
-  onSave: (config: {
-    visionModel: string;
-    toolModel: string;
-    ragModel: string;
-  }) => void;
-  onModelSelect?: (modelName: string) => void;
+  onSave: (config: ModelConfig) => void;
+  currentConfig?: ModelConfig;
 }
+
+const defaultConfig: ModelConfig = {
+  visionModel: '',
+  toolModel: '',
+  ragModel: ''
+};
 
 const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   isOpen,
   onClose,
   models,
-  modelConfig,
   onSave,
-  onModelSelect,
+  currentConfig = defaultConfig
 }) => {
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [glowEffect, setGlowEffect] = useState(false);
+  const [visionModel, setVisionModel] = useState(currentConfig.visionModel);
+  const [toolModel, setToolModel] = useState(currentConfig.toolModel);
+  const [ragModel, setRagModel] = useState(currentConfig.ragModel);
+  const [apiType, setApiType] = useState('ollama');
 
-  if (!isOpen) return null;
-
-  const handleModelChange = (modelName: string, field: 'visionModel' | 'toolModel' | 'ragModel') => {
-    // Update the form and trigger the glow effect
-    const formElement = document.querySelector(`select[name="${field}"]`) as HTMLSelectElement;
-    if (formElement) {
-      formElement.value = modelName;
-    }
-
-    // Update the selected model in the header
-    if (onModelSelect) {
-      onModelSelect(modelName);
-      setSelectedModel(modelName);
-      // Trigger glow effect
-      setGlowEffect(true);
-      setTimeout(() => setGlowEffect(false), 1500);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
-    const config = {
-      visionModel: formData.get('visionModel') as string,
-      toolModel: formData.get('toolModel') as string,
-      ragModel: formData.get('ragModel') as string,
+  useEffect(() => {
+    const loadApiType = async () => {
+      const config = await db.getAPIConfig();
+      if (config) {
+        setApiType(config.api_type || 'ollama');
+      }
     };
-    onSave(config);
+    loadApiType();
+  }, []);
+
+  useEffect(() => {
+    // Only update if currentConfig changes and is not undefined
+    if (currentConfig) {
+      setVisionModel(currentConfig.visionModel);
+      setToolModel(currentConfig.toolModel);
+      setRagModel(currentConfig.ragModel);
+    }
+  }, [currentConfig]);
+
+  const handleSave = () => {
+    onSave({
+      visionModel,
+      toolModel,
+      ragModel
+    });
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Model Configuration</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  // Filter models based on API type
+  const filteredModels = models.filter(model => {
+    if (apiType === 'ollama') {
+      return !model.name.startsWith('gpt-');
+    } else {
+      return model.name.startsWith('gpt-');
+    }
+  });
 
-        <form onSubmit={handleSubmit}>
+  return (
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      className="fixed inset-0 z-50 overflow-y-auto"
+    >
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="fixed inset-0 bg-black/30" />
+
+        <div className="relative bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="absolute right-4 top-4">
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-500 focus:outline-none"
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
+
+          <Dialog.Title className="text-lg font-medium mb-4 dark:text-white">
+            Model Configuration
+          </Dialog.Title>
+
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium mb-1 dark:text-white">
                 Vision Model
               </label>
-              <div className="relative">
-                <select
-                  name="visionModel"
-                  defaultValue={modelConfig.visionModel}
-                  onChange={(e) => handleModelChange(e.target.value, 'visionModel')}
-                  className={`w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all ${
-                    glowEffect && selectedModel === modelConfig.visionModel
-                      ? 'ring-2 ring-sakura-500 ring-opacity-50 border-sakura-500'
-                      : ''
-                  }`}
-                >
-                  <option value="">Select a model</option>
-                  {models.map(model => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                      {selectedModel === model.name && ' ✨'}
-                    </option>
-                  ))}
-                </select>
-                {glowEffect && selectedModel === modelConfig.visionModel && (
-                  <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 text-sakura-500 animate-pulse" />
-                )}
-              </div>
-              <p className="mt-1 text-sm text-gray-500">Model used for image-related tasks</p>
+              <select
+                value={visionModel}
+                onChange={(e) => setVisionModel(e.target.value)}
+                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
+              >
+                <option value="">Select a model</option>
+                {filteredModels.map((model) => (
+                  <option key={model.name} value={model.name}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium mb-1 dark:text-white">
                 Tool Model
               </label>
-              <div className="relative">
-                <select
-                  name="toolModel"
-                  defaultValue={modelConfig.toolModel}
-                  onChange={(e) => handleModelChange(e.target.value, 'toolModel')}
-                  className={`w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all ${
-                    glowEffect && selectedModel === modelConfig.toolModel
-                      ? 'ring-2 ring-sakura-500 ring-opacity-50 border-sakura-500'
-                      : ''
-                  }`}
-                >
-                  <option value="">Select a model</option>
-                  {models.map(model => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                      {selectedModel === model.name && ' ✨'}
-                    </option>
-                  ))}
-                </select>
-                {glowEffect && selectedModel === modelConfig.toolModel && (
-                  <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 text-sakura-500 animate-pulse" />
-                )}
-              </div>
-              <p className="mt-1 text-sm text-gray-500">Model used for tool-related tasks</p>
+              <select
+                value={toolModel}
+                onChange={(e) => setToolModel(e.target.value)}
+                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
+              >
+                <option value="">Select a model</option>
+                {filteredModels.map((model) => (
+                  <option key={model.name} value={model.name}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium mb-1 dark:text-white">
                 RAG Model
               </label>
-              <div className="relative">
-                <select
-                  name="ragModel"
-                  defaultValue={modelConfig.ragModel}
-                  onChange={(e) => handleModelChange(e.target.value, 'ragModel')}
-                  className={`w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all ${
-                    glowEffect && selectedModel === modelConfig.ragModel
-                      ? 'ring-2 ring-sakura-500 ring-opacity-50 border-sakura-500'
-                      : ''
-                  }`}
-                >
-                  <option value="">Select a model</option>
-                  {models.map(model => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                      {selectedModel === model.name && ' ✨'}
-                    </option>
-                  ))}
-                </select>
-                {glowEffect && selectedModel === modelConfig.ragModel && (
-                  <Sparkles className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 text-sakura-500 animate-pulse" />
-                )}
-              </div>
-              <p className="mt-1 text-sm text-gray-500">Model used for RAG (Retrieval-Augmented Generation)</p>
+              <select
+                value={ragModel}
+                onChange={(e) => setRagModel(e.target.value)}
+                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
+              >
+                <option value="">Select a model</option>
+                {filteredModels.map((model) => (
+                  <option key={model.name} value={model.name}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-6 flex justify-end space-x-3">
             <button
-              type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
             >
               Cancel
             </button>
             <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-sakura-500 hover:bg-sakura-600 rounded-lg"
+              onClick={handleSave}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
             >
-              Save Changes
+              Save
             </button>
           </div>
-        </form>
+        </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 

@@ -4,6 +4,12 @@ import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
 import ModelConfigModal from './ModelConfigModal';
 
+interface ModelConfig {
+  visionModel: string;
+  toolModel: string;
+  ragModel: string;
+}
+
 interface ChatInputProps {
   input: string;
   setInput: (input: string) => void;
@@ -24,18 +30,16 @@ interface ChatInputProps {
   tools?: Tool[];
   onToolSelect?: (tool: Tool | null) => void;
   models?: any[];
-  modelConfig?: {
-    visionModel: string;
-    toolModel: string;
-    ragModel: string;
-  };
-  onModelConfigSave?: (config: {
-    visionModel: string;
-    toolModel: string;
-    ragModel: string;
-  }) => void;
+  modelConfig?: ModelConfig;
+  onModelConfigSave?: (config: ModelConfig) => void;
   onModelSelect?: (modelName: string) => void;
 }
+
+const defaultModelConfig: ModelConfig = {
+  visionModel: '',
+  toolModel: '',
+  ragModel: ''
+};
 
 const ChatInput: React.FC<ChatInputProps> = ({
   input,
@@ -57,7 +61,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   tools = [],
   onToolSelect,
   models = [],
-  modelConfig,
+  modelConfig = defaultModelConfig,
   onModelConfigSave,
   onModelSelect,
 }) => {
@@ -871,14 +875,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
       </div>
 
       {/* Model Config Modal */}
-      {modelConfig && onModelConfigSave && (
+      {showModelConfig && (
         <ModelConfigModal
           isOpen={showModelConfig}
           onClose={() => setShowModelConfig(false)}
           models={models}
-          modelConfig={modelConfig}
-          onSave={onModelConfigSave}
-          onModelSelect={onModelSelect}
+          currentConfig={modelConfig}
+          onSave={(config) => {
+            if (onModelConfigSave) {
+              onModelConfigSave(config);
+            }
+            setShowModelConfig(false);
+          }}
         />
       )}
     </div>

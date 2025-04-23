@@ -69,8 +69,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState(() => {
-    const storedModel = localStorage.getItem('selected_model');
-    return storedModel || '';
+    const apiType = localStorage.getItem('api_type') || 'ollama';
+    const storedOllamaModel = localStorage.getItem('selected_ollama_model');
+    const storedOpenAIModel = localStorage.getItem('selected_openai_model');
+    return apiType === 'ollama' ? (storedOllamaModel || '') : (storedOpenAIModel || '');
   });
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -391,15 +393,22 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     try {
       // Get model usage statistics from the database
       const modelUsage = await db.getModelUsage();
+      const apiType = client?.getConfig().type || 'ollama';
 
       if (!modelUsage || Object.keys(modelUsage).length === 0) {
         return null;
       }
 
-      // Filter to only include currently available models
+      // Filter to only include currently available models and models for current API type
       const availableModelNames = availableModels.map(model => model.name);
       const validUsageEntries = Object.entries(modelUsage)
-        .filter(([modelName]) => availableModelNames.includes(modelName));
+        .filter(([modelName]) => {
+          const isAvailable = availableModelNames.includes(modelName);
+          const isCorrectType = apiType === 'ollama' 
+            ? !modelName.startsWith('gpt-') 
+            : modelName.startsWith('gpt-');
+          return isAvailable && isCorrectType;
+        });
 
       if (validUsageEntries.length === 0) {
         return null;
@@ -474,7 +483,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
         // If no model is selected, try to select one automatically
         if (!selectedModel) {
-          // First try to get the most used model
+          // First try to get the most used model for the current API type
           const mostUsed = await getMostUsedModel(modelList);
           if (mostUsed) {
             handleModelSelect(mostUsed);
@@ -485,6 +494,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
               handleModelSelect(defaultModel);
             }
           }
+        }
+
+        // Update selected model based on API type
+        const storedOllamaModel = localStorage.getItem('selected_ollama_model');
+        const storedOpenAIModel = localStorage.getItem('selected_openai_model');
+        const currentModel = config.api_type === 'ollama' ? storedOllamaModel : storedOpenAIModel;
+        
+        if (currentModel && modelList.some(m => m.name === currentModel)) {
+          setSelectedModel(currentModel);
+        } else if (modelList.length > 0) {
+          // If stored model not found in current list, select first available
+          handleModelSelect(modelList[0].name);
         }
 
         setConnectionStatus('connected');
@@ -841,60 +862,14 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           : selectedTool;
 
         chatOptions.tools = [formattedTool];
-      } else if (tools.length > 0) {
-        // If no specific tool is selected but tools exist, format all enabled tools
-        const formattedTools = tools
-          .filter(tool => tool.isEnabled)
-          .map(tool => 
-            client.getConfig().type === 'openai' 
-              ? {
-                  ...tool,
-                  type: 'function',
-                  function: {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: {
-                      type: 'object',
-                      properties: tool.parameters.reduce((acc: any, param: any) => {
-                        acc[param.name] = {
-                          type: param.type.toLowerCase(),
-                          description: param.description
-                        };
-                        return acc;
-                      }, {}),
-                      required: tool.parameters
-                        .filter((param: any) => param.required)
-                        .map((param: any) => param.name)
-                    }
-                  }
-                }
-              : tool
-          );
-
-        if (formattedTools.length > 0) {
-          chatOptions.tools = formattedTools;
-        }
       }
       
       try {
-        // Update status: Clara decided to use tool
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessage.id
-            ? { ...msg, content: selectedTool 
-                ? `Clara decided to use tool - ${selectedTool.name}...`
-                : chatOptions.tools?.length 
-                  ? `Clara is analyzing which tool(s) to use...`
-                  : msg.content }
-            : msg
-        ));
-
         // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
-        const response = client.getConfig().type === 'openai'
-          ? await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools)
-          : await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools);
-        
-        // Handle OpenAI tool calls
         if (client.getConfig().type === 'openai') {
+          const response = await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools);
+          
+          // Handle OpenAI tool calls
           if (response.choices && response.choices.length > 0) {
             const message = response.choices[0].message;
             
@@ -996,41 +971,68 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
               
               await db.addMessage(currentChatId, content, 'assistant', tokens);
             }
-          } else {
-            const errorMessage = 'Unexpected response from OpenAI API';
-            
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantMessage.id
-                ? { ...msg, content: errorMessage }
-                : msg
-            ));
-            
-            await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
           }
         } else {
-          // Handle Ollama response
-          const content = response.message?.content || '';
-          const tokens = response.eval_count || 0;
+          // Handle Ollama response with streaming support
+          let responseContent = '';
+          let responseTokens = 0;
 
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? { ...msg, content, tokens }
-              : msg
-          ));
+          if (isStreaming) {
+            // Use streaming for non-image messages when streaming is enabled
+            for await (const chunk of client.streamChat(selectedModel, formattedMessages, chatOptions)) {
+              if (chunk.message?.content) {
+                responseContent += chunk.message.content;
+                responseTokens = chunk.eval_count || responseTokens;
 
-          await db.addMessage(currentChatId, content, 'assistant', tokens);
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content: responseContent, tokens: responseTokens }
+                    : msg
+                ));
+
+                scrollToBottom();
+              }
+            }
+          } else {
+            const response = await client.sendChat(selectedModel, formattedMessages, chatOptions);
+            responseContent = response.message?.content || '';
+            responseTokens = response.eval_count || 0;
+
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: responseContent, tokens: responseTokens }
+                : msg
+            ));
+          }
+
+          await db.addMessage(currentChatId, responseContent, 'assistant', responseTokens);
         }
-      } catch (toolError: unknown) {
-        console.error("Tool execution error:", toolError);
-        const errorMessage = `Error executing tool: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
-        
+
+      } catch (error: unknown) {
+        console.error('Error generating response:', error);
+        let errorContent;
+        try {
+          if (typeof error === 'object' && error !== null && 'message' in error) {
+            try {
+              const parsedError = JSON.parse((error as Error).message);
+              errorContent = `Error Response:\n\`\`\`json\n${JSON.stringify(parsedError, null, 2)}\n\`\`\``;
+            } catch (e) {
+              errorContent = `Error: ${(error as Error).message}`;
+            }
+          } else {
+            errorContent = `Error: ${String(error)}`;
+          }
+        } catch (e) {
+          errorContent = `Error: ${String(error)}`;
+        }
+
         setMessages(prev => prev.map(msg =>
           msg.id === assistantMessage.id
-            ? { ...msg, content: errorMessage }
+            ? { ...msg, content: errorContent }
             : msg
         ));
-        
-        await db.addMessage(currentChatId, errorMessage, 'assistant', 0);
+
+        await db.addMessage(currentChatId, errorContent, 'assistant', 0);
       }
 
       const endTime = performance.now();
@@ -1100,7 +1102,13 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const handleModelSelect = (modelName: string) => {
     setSelectedModel(modelName);
-    localStorage.setItem('selected_model', modelName);
+    // Store model selection based on API type
+    const apiType = client?.getConfig().type || 'ollama';
+    if (apiType === 'ollama') {
+      localStorage.setItem('selected_ollama_model', modelName);
+    } else {
+      localStorage.setItem('selected_openai_model', modelName);
+    }
   };
 
   const handlePullModel = async function* (modelName: string): AsyncGenerator<any, void, unknown> {

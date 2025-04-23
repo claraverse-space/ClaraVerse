@@ -19,6 +19,29 @@ import os
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def get_ollama_host():
+    """
+    Get the Ollama host based on environment.
+    If OLLAMA_HOST is set, use that.
+    If running in Docker and OLLAMA_HOST is not set, use 'host.docker.internal' on macOS/Windows or 'localhost' otherwise.
+    """
+    # Check if OLLAMA_HOST environment variable is set
+    ollama_host = os.getenv('OLLAMA_HOST')
+    if ollama_host:
+        return ollama_host
+        
+    # Check if running in Docker
+    if os.path.exists('/.dockerenv'):
+        # On macOS/Windows, host.docker.internal is available
+        if os.system('ping -c 1 host.docker.internal > /dev/null 2>&1') == 0:
+            return 'host.docker.internal'
+        # On Linux, need to use the Docker network
+        if os.getenv('DOCKER_OLLAMA') == 'true':
+            return 'ollama'
+    
+    # Default to localhost
+    return 'localhost'
+
 class DocumentAI:
     """
     A library for document storage, retrieval, and chat interactions with LLMs.
@@ -37,7 +60,7 @@ class DocumentAI:
         collection_name: str = "document_collection",
         persist_directory: Optional[str] = None,
         client: Optional[chromadb.Client] = None,
-        ollama_base_url: str = "http://localhost:11434"
+        ollama_base_url: Optional[str] = None
     ):
         """
         Initialize the DocumentAI with configurable models and storage options.
@@ -49,21 +72,28 @@ class DocumentAI:
             collection_name: Name for the vector store collection
             persist_directory: Directory to save vector DB (None for in-memory)
             client: Optional existing chromadb client
-            ollama_base_url: Base URL for Ollama API
+            ollama_base_url: Base URL for Ollama API (optional, will be determined automatically if not provided)
         """
-        self.ollama_base_url = ollama_base_url
+        # Determine Ollama host and set base URL
+        ollama_host = get_ollama_host()
+        self.ollama_base_url = ollama_base_url or f"http://{ollama_host}:11434"
+        logger.info(f"Connecting to Ollama at: {self.ollama_base_url}")
         
-        # Ensure embedding model is available
-        self._ensure_model_available(embedding_model)
-        
-        # Initialize language model
+        # Initialize language model with the determined base URL
         self.llm = ChatOllama(
             model=llm_model,
             temperature=temperature,
+            base_url=self.ollama_base_url,
         )
         
-        # Initialize embedding model
-        self.embeddings = OllamaEmbeddings(model=embedding_model)
+        # Initialize embedding model with the determined base URL
+        self.embeddings = OllamaEmbeddings(
+            model=embedding_model,
+            base_url=self.ollama_base_url,
+        )
+        
+        # Ensure embedding model is available
+        self._ensure_model_available(embedding_model)
         
         # Set up vector store based on provided parameters
         if client:
