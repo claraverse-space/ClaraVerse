@@ -40,6 +40,7 @@
     "docker:push": "npm run docker:check-env && docker push $DOCKER_USERNAME/clara-ollama:latest",
     "docker:all": "npm run docker:check-env && npm run docker:login && npm run docker:build && npm run docker:push",
     "docker:publish": "chmod +x ./docker-publish.sh && ./docker-publish.sh",
+    "docker:build-backend": "./scripts/build-backend-docker.sh",
     "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false",
     "electron:build-linux": "npm run build && electron-builder --linux",
     "electron:build-mac-permissions": "npm run build && electron-builder --mac --universal --config.mac.hardenedRuntime=true --config.mac.entitlements=build/entitlements.mac.plist --config.mac.entitlementsInherit=build/entitlements.mac.plist"
