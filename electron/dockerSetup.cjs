@@ -37,6 +37,13 @@ class DockerSetup extends EventEmitter {
       n8n: 5678,
       ollama: 11434
     };
+
+    // Maximum retry attempts for service health checks
+    this.maxRetries = 3;
+    this.retryDelay = 5000; // 5 seconds
+
+    // Clara container names
+    this.containerNames = ['clara_python', 'clara_n8n', 'clara_ollama'];
   }
 
   async execAsync(command, timeout = 60000) {
@@ -240,15 +247,37 @@ class DockerSetup extends EventEmitter {
             'host.docker.internal:host-gateway'
           ]
         },
-        n8n: {
+      n8n: {
           image: 'n8nio/n8n',
           ports: [`${n8nPort}:5678`],
           volumes: [
             `${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`
+          ],
+          extra_hosts: [
+            'host.docker.internal:host-gateway'
+          ],
+          environment: [
+            'OLLAMA_HOST=host.docker.internal',
+            'N8N_HOST=0.0.0.0',
+            'N8N_PROTOCOL=http',
+            'NODE_ENV=production',
+            'N8N_EDITOR_BASE_URL=localhost',
+            'N8N_METRICS=true',
+            'N8N_PORT=5678'
           ]
+        }
+      },
+      networks: {
+        clara_network: {
+          driver: 'bridge'
         }
       }
     };
+
+    // Add network configuration to services
+    Object.values(composeConfig.services).forEach(service => {
+      service.networks = ['clara_network'];
+    });
 
     // Add Ollama service only if host Ollama is not running
     if (!hostOllamaRunning) {
@@ -257,7 +286,8 @@ class DockerSetup extends EventEmitter {
         ports: [`${ollamaPort}:11434`],
         volumes: [
           `${path.join(this.appDataPath, 'ollama')}:/root/.ollama`
-        ]
+        ],
+        networks: ['clara_network']
       };
 
       // Add Ollama network dependency to Python service
@@ -273,107 +303,212 @@ class DockerSetup extends EventEmitter {
     return this.ports;
   }
 
+  // Add automatic retry mechanism for commands
+  async execWithRetry(command, retries = this.maxRetries) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await this.execAsync(command);
+      } catch (error) {
+        if (attempt === retries) throw error;
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+      }
+    }
+  }
+
+  // Add automatic network check and repair
+  async ensureNetwork() {
+    try {
+      // Check if network exists
+      const networks = await this.execAsync('docker network ls --format "{{.Name}}"');
+      if (!networks.includes('clara_network')) {
+        await this.execAsync('docker network create clara_network');
+      }
+
+      // Ensure all containers are connected to the network
+      const containers = ['clara_python', 'clara_n8n'];
+      for (const container of containers) {
+        try {
+          await this.execAsync(`docker network connect clara_network ${container}`);
+        } catch (error) {
+          // Ignore "already connected" errors
+          if (!error.message.includes('already exists')) {
+            throw error;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Network setup error:', error);
+      // Try to recreate network
+      await this.execAsync('docker network rm clara_network').catch(() => {});
+      await this.execAsync('docker network create clara_network');
+    }
+  }
+
+  // Add automatic service recovery
+  async ensureServiceHealth(statusCallback) {
+    const services = {
+      n8n: this.checkN8NHealth.bind(this),
+      python: this.isPythonRunning.bind(this),
+      ollama: this.isOllamaRunning.bind(this)
+    };
+
+    for (const [service, healthCheck] of Object.entries(services)) {
+      for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+        try {
+          const isHealthy = await healthCheck();
+          if (!isHealthy) {
+            statusCallback(`${service} is unhealthy, attempting recovery (attempt ${attempt}/${this.maxRetries})...`);
+            await this.recoverService(service);
+          }
+          break;
+        } catch (error) {
+          if (attempt === this.maxRetries) {
+            throw new Error(`Failed to ensure ${service} health after ${this.maxRetries} attempts`);
+          }
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+        }
+      }
+    }
+  }
+
+  // Add service recovery logic
+  async recoverService(service) {
+    const containerName = `clara_${service}`;
+    try {
+      // Check container status
+      const status = await this.execAsync(`docker inspect -f {{.State.Status}} ${containerName}`);
+      
+      if (status !== 'running') {
+        // Try to restart the container
+        await this.execAsync(`docker restart ${containerName}`);
+        // Wait for container to be ready
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+
+      // Ensure network connectivity
+      await this.ensureNetwork();
+      
+      // Additional service-specific recovery steps
+      switch (service) {
+        case 'n8n':
+          // Ensure n8n configuration is correct
+          await this.execAsync(`docker exec ${containerName} sh -c 'echo "N8N_HOST=0.0.0.0" >> /home/node/.n8n/.env'`);
+          break;
+        case 'python':
+          // Ensure Python service has correct environment
+          await this.execAsync(`docker exec ${containerName} sh -c 'python -c "import os; assert os.environ.get('PYTHONUNBUFFERED')"'`);
+          break;
+      }
+    } catch (error) {
+      console.error(`Recovery failed for ${service}:`, error);
+      // If recovery fails, try to recreate the container
+      await this.recreateContainer(service);
+    }
+  }
+
+  // Add container recreation logic
+  async recreateContainer(service) {
+    const containerName = `clara_${service}`;
+    try {
+      // Stop and remove the container
+      await this.execAsync(`docker stop ${containerName}`).catch(() => {});
+      await this.execAsync(`docker rm ${containerName}`).catch(() => {});
+      
+      // Rebuild and restart the service
+      await this.execAsync(`docker-compose -f "${this.composeFilePath}" up -d --no-deps --build ${service}`);
+      
+      // Wait for container to be ready
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Ensure network connectivity
+      await this.ensureNetwork();
+    } catch (error) {
+      throw new Error(`Failed to recreate ${service}: ${error.message}`);
+    }
+  }
+
+  // Add method to clean up existing containers
+  async cleanupExistingContainers(statusCallback) {
+    statusCallback('Cleaning up existing Clara containers...');
+    
+    try {
+      // Get list of all containers (running and stopped)
+      const allContainers = await this.execAsync('docker ps -a --format "{{.Names}}"');
+      const containerList = allContainers.split('\n').filter(Boolean);
+
+      // Stop and remove Clara containers if they exist
+      for (const containerName of this.containerNames) {
+        if (containerList.includes(containerName)) {
+          statusCallback(`Stopping container: ${containerName}`);
+          await this.execAsync(`docker stop ${containerName}`).catch(() => {});
+          
+          statusCallback(`Removing container: ${containerName}`);
+          await this.execAsync(`docker rm ${containerName}`).catch(() => {});
+        }
+      }
+
+      // Remove the network if it exists
+      statusCallback('Cleaning up Clara network...');
+      await this.execAsync('docker network rm clara_network').catch(() => {});
+
+      // Remove any dangling containers and networks, but preserve volumes
+      statusCallback('Cleaning up dangling resources...');
+      await this.execAsync('docker container prune -f').catch(() => {});
+      await this.execAsync('docker network prune -f').catch(() => {});
+
+      statusCallback('Cleanup completed successfully');
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      statusCallback(`Cleanup encountered an error: ${error.message}`);
+      // Continue with setup even if cleanup has issues
+    }
+  }
+
+  // Update setup method to include cleanup
   async setup(statusCallback) {
     try {
-      // Check if Docker is installed
+      // Check Docker installation and running status
       if (!await this.isDockerInstalled()) {
         statusCallback('Docker not found. Installing Docker Desktop...');
         await this.installDocker(statusCallback);
         return false;
       }
 
-      // Check if Docker is running
       if (!await this.isDockerRunning()) {
         statusCallback('Docker is not running. Please start Docker Desktop and try again.');
         return false;
       }
 
-      // Check if default ports are in use and find alternatives if needed
-      statusCallback('Checking port availability...');
-      if (await this.isPortInUse(this.ports.python)) {
-        statusCallback('Default Python port 5000 is in use, finding alternative port...');
-        this.ports.python = await this.findAvailablePort(5001);
-        statusCallback(`Will use port ${this.ports.python} for Python backend`);
-      }
+      // Clean up existing containers before starting
+      await this.cleanupExistingContainers(statusCallback);
 
-      if (await this.isPortInUse(this.ports.n8n)) {
-        statusCallback('Default n8n port 5678 is in use, finding alternative port...');
-        this.ports.n8n = await this.findAvailablePort(5679);
-        statusCallback(`Will use port ${this.ports.n8n} for n8n`);
-      }
-
-      // Check if Ollama is already running
-      const ollamaRunning = await this.isOllamaRunning();
-      if (ollamaRunning) {
-        statusCallback('Found existing Ollama instance, will use it instead of creating a new container');
-      } else if (await this.isPortInUse(this.ports.ollama)) {
-        statusCallback('Default Ollama port 11434 is in use, finding alternative port...');
-        this.ports.ollama = await this.findAvailablePort(11435);
-        statusCallback(`Will use port ${this.ports.ollama} for Ollama`);
-      }
-
-      // Create Python backend Dockerfile if it doesn't exist
-      const pyBackendPath = path.join(this.appRoot, 'py_backend');
-      const dockerfilePath = path.join(pyBackendPath, 'Dockerfile');
-
-      // Ensure py_backend directory exists
-      if (!fs.existsSync(pyBackendPath)) {
-        throw new Error('Python backend directory not found. Please ensure the py_backend directory exists.');
-      }
-
-      if (!fs.existsSync(dockerfilePath)) {
-        const dockerfileContent = `FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \\
-    build-essential \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create data directory
-RUN mkdir -p /app/data
-
-# Expose port
-EXPOSE 5000
-
-# Run the application with environment variables
-CMD ["sh", "-c", "python main.py --port $PORT --host $HOST"]`;
-
-        try {
-          fs.writeFileSync(dockerfilePath, dockerfileContent);
-        } catch (error) {
-          throw new Error(`Failed to create Dockerfile: ${error.message}. Please ensure you have write permissions to ${pyBackendPath}`);
-        }
-      }
-
-      // Create Docker Compose file
-      statusCallback('Setting up Docker environment...');
+      // Generate fresh Docker Compose configuration
+      statusCallback('Generating Docker configuration...');
       const ports = await this.generateDockerCompose();
 
-      // Pull and start containers
+      // Start services with automatic recovery
       statusCallback('Starting Clara services...');
       try {
-        // First pull the images that need pulling
-        if (!ollamaRunning) {
-          await this.execAsync('docker pull ollama/ollama:latest');
+        // Pull images with retry
+        if (!await this.isOllamaRunning()) {
+          await this.execWithRetry('docker pull ollama/ollama:latest');
         }
-        await this.execAsync('docker pull n8nio/n8n:latest');
+        await this.execWithRetry('docker pull n8nio/n8n:latest');
         
-        // Then start the services
-        await this.execAsync(`docker-compose -f "${this.composeFilePath}" up -d --build --remove-orphans`);
+        // Start services
+        await this.execWithRetry(`docker-compose -f "${this.composeFilePath}" up -d --build --remove-orphans`);
+        
+        // Ensure network is properly set up
+        await this.ensureNetwork();
+        
+        // Check and ensure service health
+        await this.ensureServiceHealth(statusCallback);
+        
       } catch (error) {
-        throw new Error(`Failed to start Docker containers: ${error.message}`);
+        throw new Error(`Failed to start services: ${error.message}`);
       }
 
-      statusCallback(`Docker setup completed successfully! Services running on ports: Python=${ports.python}, n8n=${ports.n8n}, Ollama=${ports.ollama}`);
+      statusCallback(`Services started successfully on ports: Python=${ports.python}, n8n=${ports.n8n}, Ollama=${ports.ollama}`);
       return true;
     } catch (error) {
       statusCallback(`Setup failed: ${error.message}`, 'error');
@@ -381,12 +516,28 @@ CMD ["sh", "-c", "python main.py --port $PORT --host $HOST"]`;
     }
   }
 
+  // Update stop method to be more thorough
   async stop() {
     if (fs.existsSync(this.composeFilePath)) {
       try {
-        await this.execAsync(`docker-compose -f "${this.composeFilePath}" down --remove-orphans`);
+        // Stop all services using docker-compose
+        await this.execWithRetry(`docker-compose -f "${this.composeFilePath}" down --remove-orphans`);
+        
+        // Additional cleanup for any remaining containers
+        for (const containerName of this.containerNames) {
+          await this.execAsync(`docker stop ${containerName}`).catch(() => {});
+          await this.execAsync(`docker rm ${containerName}`).catch(() => {});
+        }
+        
+        // Clean up network
+        await this.execAsync('docker network rm clara_network').catch(() => {});
+        
+        // Remove any dangling containers and networks, but preserve volumes
+        await this.execAsync('docker container prune -f').catch(() => {});
+        await this.execAsync('docker network prune -f').catch(() => {});
       } catch (error) {
-        console.error('Error stopping Docker containers:', error);
+        console.error('Error stopping services:', error);
+        throw error;
       }
     }
   }

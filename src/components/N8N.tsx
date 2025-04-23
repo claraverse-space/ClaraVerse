@@ -122,22 +122,60 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
     const handleLoadStop = () => setIsLoading(false);
     const handleDidFailLoad = (event: Event) => {
       const failEvent = event as any;
+      // Ignore -3 error code which is a normal cancellation
       if (failEvent.errorCode !== -3) {
         setError(`Failed to load n8n view: ${failEvent.errorDescription} (Code: ${failEvent.errorCode})`);
         setIsLoading(false);
+        
+        // Add retry logic
+        setTimeout(() => {
+          if (webview) {
+            console.log('Retrying n8n connection...');
+            webview.reload();
+          }
+        }, 2000); // Retry after 2 seconds
       }
+    };
+
+    const handleDomReady = () => {
+      // Inject custom styles to fix any UI issues
+      webview.insertCSS(`
+        body { overflow: auto !important; }
+        #app { height: 100vh !important; }
+      `);
     };
 
     webview.addEventListener('did-start-loading', handleLoadStart);
     webview.addEventListener('did-stop-loading', handleLoadStop);
     webview.addEventListener('did-fail-load', handleDidFailLoad);
+    webview.addEventListener('dom-ready', handleDomReady);
 
-    webview.src = `http://localhost:${n8nPort}`;
+    // Set initial URL
+    const n8nUrl = `http://localhost:${n8nPort}`;
+    console.log('Setting n8n URL:', n8nUrl);
+    webview.src = n8nUrl;
+
+    // Add periodic health check
+    const healthCheck = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:${n8nPort}/healthz`);
+        if (!response.ok) {
+          throw new Error(`Health check failed: ${response.status}`);
+        }
+      } catch (err) {
+        console.warn('N8N health check failed:', err);
+        if (webview) {
+          webview.reload();
+        }
+      }
+    }, 30000); // Check every 30 seconds
 
     return () => {
       webview.removeEventListener('did-start-loading', handleLoadStart);
       webview.removeEventListener('did-stop-loading', handleLoadStop);
       webview.removeEventListener('did-fail-load', handleDidFailLoad);
+      webview.removeEventListener('dom-ready', handleDomReady);
+      clearInterval(healthCheck);
     };
   }, [n8nPort]);
 
