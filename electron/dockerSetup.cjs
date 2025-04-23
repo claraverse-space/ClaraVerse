@@ -33,7 +33,7 @@ class DockerSetup extends EventEmitter {
 
     // Default ports with fallbacks
     this.ports = {
-      python: 5000,
+      python: 5001,
       n8n: 5678,
       ollama: 11434
     };
@@ -209,99 +209,82 @@ class DockerSetup extends EventEmitter {
   }
 
   async generateDockerCompose() {
-    // Get available ports
-    const pythonPort = await this.findAvailablePort(5000);
-    const n8nPort = await this.findAvailablePort(5678);
-    const ollamaPort = await this.findAvailablePort(11434);
-
+    // Use fixed ports instead of finding available ones
+    const pythonPort = 5001;
+    const n8nPort = 5678;
+    const ollamaPort = 11434;
+  
     // Store the ports
-    this.ports = {
-      python: pythonPort,
-      n8n: n8nPort,
-      ollama: ollamaPort
-    };
-
+    this.ports = { python: pythonPort, n8n: n8nPort, ollama: ollamaPort };
+  
     // Check if host Ollama is running
     const hostOllamaRunning = await this.isOllamaRunning();
-
+  
     // Base compose configuration
     const composeConfig = {
       version: '3.8',
       services: {
         python: {
+          container_name: 'clara_python',
           build: {
             context: path.join(this.appRoot, 'py_backend'),
-            dockerfile: 'Dockerfile'
+            dockerfile: 'Dockerfile',
           },
           volumes: [
             `${this.appDataPath}:/root/.clara`,
-            `${path.join(this.appRoot, 'py_backend')}:/app`
+            `${path.join(this.appRoot, 'py_backend')}:/app`,
           ],
-          ports: [`${pythonPort}:5000`],
+          ports: ['5001:5000'],
           environment: [
             'PYTHONUNBUFFERED=1',
-            // If host Ollama is running, set OLLAMA_HOST to host.docker.internal
-            ...(hostOllamaRunning ? ['OLLAMA_HOST=host.docker.internal'] : ['DOCKER_OLLAMA=true'])
+            'OLLAMA_BASE_URL=http://clara_ollama:11434'
           ],
-          extra_hosts: [
-            'host.docker.internal:host-gateway'
-          ]
+          extra_hosts: ['host.docker.internal:host-gateway'],
+          networks: ['clara_network'],
         },
-      n8n: {
+        n8n: {
+          container_name: 'clara_n8n',
           image: 'n8nio/n8n',
-          ports: [`${n8nPort}:5678`],
-          volumes: [
-            `${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`
-          ],
-          extra_hosts: [
-            'host.docker.internal:host-gateway'
-          ],
+          ports: ['5678:5678'],
+          volumes: [`${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`],
           environment: [
-            'OLLAMA_HOST=host.docker.internal',
+            'OLLAMA_BASE_URL=http://clara_ollama:11434',
             'N8N_HOST=0.0.0.0',
             'N8N_PROTOCOL=http',
             'NODE_ENV=production',
             'N8N_EDITOR_BASE_URL=localhost',
             'N8N_METRICS=true',
-            'N8N_PORT=5678'
-          ]
+            'N8N_PORT=5678',
+          ],
+          extra_hosts: ['host.docker.internal:host-gateway'],
+          depends_on: ['ollama'],
+          networks: ['clara_network'],
+        },
+        ollama: {
+          container_name: 'clara_ollama',
+          image: 'ollama/ollama',
+          ports: ['11434:11434'],
+          volumes: [`${path.join(this.appDataPath, 'ollama')}:/root/.ollama`],
+          networks: ['clara_network']
         }
       },
       networks: {
         clara_network: {
+          name: 'clara_network',
           driver: 'bridge'
         }
       }
     };
-
-    // Add network configuration to services
-    Object.values(composeConfig.services).forEach(service => {
-      service.networks = ['clara_network'];
-    });
-
-    // Add Ollama service only if host Ollama is not running
-    if (!hostOllamaRunning) {
-      composeConfig.services.ollama = {
-        image: 'ollama/ollama',
-        ports: [`${ollamaPort}:11434`],
-        volumes: [
-          `${path.join(this.appDataPath, 'ollama')}:/root/.ollama`
-        ],
-        networks: ['clara_network']
-      };
-
-      // Add Ollama network dependency to Python service
-      composeConfig.services.python.depends_on = ['ollama'];
-    }
-
+  
     // Write the compose file
     fs.writeFileSync(
       this.composeFilePath,
-      require('yaml').stringify(composeConfig)
+      require('yaml').stringify(composeConfig),
     );
-
+  
     return this.ports;
   }
+  
 
   // Add automatic retry mechanism for commands
   async execWithRetry(command, retries = this.maxRetries) {
@@ -324,15 +307,20 @@ class DockerSetup extends EventEmitter {
         await this.execAsync('docker network create clara_network');
       }
 
-      // Ensure all containers are connected to the network
-      const containers = ['clara_python', 'clara_n8n'];
-      for (const container of containers) {
-        try {
-          await this.execAsync(`docker network connect clara_network ${container}`);
-        } catch (error) {
-          // Ignore "already connected" errors
-          if (!error.message.includes('already exists')) {
-            throw error;
+      // Get list of running containers
+      const containers = await this.execAsync('docker ps --format "{{.Names}}"');
+      const runningContainers = containers.split('\n').filter(Boolean);
+
+      // Ensure all running Clara containers are connected to the network
+      for (const containerName of this.containerNames) {
+        if (runningContainers.includes(containerName)) {
+          try {
+            await this.execAsync(`docker network connect clara_network ${containerName}`);
+          } catch (error) {
+            // Ignore "already connected" errors
+            if (!error.message.includes('already exists')) {
+              throw error;
+            }
           }
         }
       }
@@ -341,6 +329,16 @@ class DockerSetup extends EventEmitter {
       // Try to recreate network
       await this.execAsync('docker network rm clara_network').catch(() => {});
       await this.execAsync('docker network create clara_network');
+      
+      // Retry connecting containers after network recreation
+      for (const containerName of this.containerNames) {
+        try {
+          await this.execAsync(`docker network connect clara_network ${containerName}`);
+        } catch (error) {
+          // Ignore errors here as containers might not exist
+          console.warn(`Failed to connect ${containerName} to network:`, error.message);
+        }
+      }
     }
   }
 
