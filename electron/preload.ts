@@ -1,4 +1,4 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 import * as os from 'os';
 import { app } from '@electron/remote';
 
@@ -20,5 +20,31 @@ contextBridge.exposeInMainWorld(
         return `${os.type()} ${os.release()}`;
       }
     },
+    getServicePorts: () => ipcRenderer.invoke('get-service-ports'),
+    checkN8NHealth: () => ipcRenderer.invoke('check-n8n-health'),
+    startN8N: () => ipcRenderer.invoke('start-n8n'),
+    stopN8N: () => ipcRenderer.invoke('stop-n8n'),
+    getPythonPort: () => ipcRenderer.invoke('get-python-port'),
+    checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
+    ipcRenderer: {
+      on: (channel: string, callback: (data: any) => void) => {
+        ipcRenderer.on(channel, (_event, data) => callback(data));
+        return () => ipcRenderer.removeListener(channel, callback);
+      },
+      removeListener: (channel: string, callback: (...args: any[]) => void) => {
+        ipcRenderer.removeListener(channel, callback);
+      },
+      removeAllListeners: (channel: string) => {
+        ipcRenderer.removeAllListeners(channel);
+      }
+    }
+  }
+);
+
+contextBridge.exposeInMainWorld(
+  'api', {
+    onSetupStatus: (callback: (status: { status: string, type: string }) => void) => {
+      ipcRenderer.on('setup-status', (_event, status) => callback(status));
+    }
   }
 ); 

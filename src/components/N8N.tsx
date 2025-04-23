@@ -2,158 +2,144 @@ import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { ExternalLink, AlertCircle, RefreshCcw, Terminal, XCircle } from 'lucide-react';
+import type { ElectronAPI, SetupStatus } from '../types/electron';
+import type { WebviewTag } from 'electron';
 
-declare global {
-  interface Window {
-    electron: {
-      checkN8NHealth: () => Promise<{ success: boolean; data?: any; error?: string }>;
-      startN8N: () => Promise<{ success: boolean; pid?: number; error?: string }>;
-      stopN8N: () => Promise<{ success: boolean; error?: string }>;
-      receive: (channel: string, callback: (data: any) => void) => void;
-      removeListener: (channel: string) => void;
-    };
-  }
+// --- Consolidated Type Definitions ---
+
+// Define the expected structure for service ports
+interface ServicePorts {
+  python: number;
+  n8n: number;
+  ollama: number;
 }
 
-// Add Electron WebviewTag type
 declare global {
+  // Declare window.electron once with the correct type
+  interface Window {
+    electron: ElectronAPI;
+  }
+  
+  // Define Electron Webview HTML Attributes correctly
+  interface WebViewHTMLAttributes<T> extends React.HTMLAttributes<T> {
+    src?: string;
+    allowpopups?: string; // Note: HTML standard is allowPopups (camelCase), but Electron might use lowercase
+    // Add other webview specific attributes if needed
+  }
+
   namespace JSX {
     interface IntrinsicElements {
       webview: React.DetailedHTMLProps<React.WebViewHTMLAttributes<HTMLWebViewElement>, HTMLWebViewElement>;
     }
   }
+
+  // Define Electron DidFailLoadEvent type (simplified)
+  interface DidFailLoadEvent {
+    errorCode: number;
+    errorDescription: string;
+    // other properties might exist
+  }
 }
+// --- End of Type Definitions ---
 
 interface N8NProps {
   onPageChange?: (page: string) => void;
 }
 
 const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); 
   const [error, setError] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
-  const [retryCount, setRetryCount] = useState(0);
-  const [isStarting, setIsStarting] = useState(false);
-  const webviewRef = useRef<HTMLWebViewElement | null>(null);
-  const maxRetries = 30;
-  const retryInterval = 2000; // 2 seconds
+  const [n8nPort, setN8nPort] = useState<number | null>(null);
+  const [ports, setPorts] = useState<ServicePorts | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const webviewRef = useRef<WebviewTag | null>(null);
 
   useEffect(() => {
-    checkEnvironment();
-    
-    // Listen for N8N output
-    window.electron.receive('n8n-output', (data) => {
-      setTerminalOutput(prev => [...prev, `${data.type}: ${data.data}`]);
-    });
-    
-    // Listen for N8N errors
-    window.electron.receive('n8n-error', (error) => {
-      setError(error);
-      setTerminalOutput(prev => [...prev, `Error: ${error}`]);
-    });
+    const fetchPorts = async () => {
+      try {
+        if (!window.electron?.getServicePorts) {
+          throw new Error('Electron API not available');
+        }
+        const ports = await window.electron.getServicePorts();
+        setN8nPort(ports.n8n);
+        setPorts(ports);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to get service ports';
+        setError(errorMessage);
+        console.error(err);
+      }
+    };
+    fetchPorts();
+
+    let cleanup: (() => void) | null = null;
+    if (window.electron?.ipcRenderer) {
+      cleanup = window.electron.ipcRenderer.on('setup-status', (status) => {
+        if (typeof status === 'object' && status !== null) {
+          const { type = 'info', message } = status as SetupStatus;
+          setTerminalOutput(prev => [...prev, `${type}: ${message}`]);
+          setSetupStatus(status as SetupStatus);
+        } else if (typeof status === 'string') {
+          setTerminalOutput(prev => [...prev, `info: ${status}`]);
+        }
+      });
+    }
 
     return () => {
-      window.electron.removeListener('n8n-output');
-      window.electron.removeListener('n8n-error');
+      if (cleanup) {
+        cleanup();
+      }
     };
   }, []);
 
-  // Add retry mechanism
-  useEffect(() => {
-    let retryTimer: NodeJS.Timeout;
-    
-    if (isStarting && retryCount < maxRetries) {
-      retryTimer = setInterval(async () => {
-        const healthCheck = await window.electron.checkN8NHealth();
-        if (healthCheck.success) {
-          setIsRunning(true);
-          setIsStarting(false);
-          setRetryCount(0);
-          if (webviewRef.current) {
-            (webviewRef.current as any).reload();
-          }
-        } else {
-          setRetryCount(prev => prev + 1);
-        }
-      }, retryInterval);
-    }
-
-    return () => {
-      if (retryTimer) clearInterval(retryTimer);
-    };
-  }, [isStarting, retryCount]);
-
-  const checkEnvironment = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Check if N8N is running
-      const healthCheck = await window.electron.checkN8NHealth();
-      setIsRunning(healthCheck.success);
-      
-      if (healthCheck.success) {
-        setTerminalOutput(prev => [...prev, 'N8N is running and healthy']);
-      } else {
-        setTerminalOutput(prev => [...prev, 'N8N is not running']);
-      }
-    } catch (err) {
-      setError('Failed to check N8N status.');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleStartN8N = async () => {
-    try {
-      setIsStarting(true);
-      setRetryCount(0);
-      setTerminalOutput(prev => [...prev, 'Starting N8N...']);
-      const result = await window.electron.startN8N();
-      
-      if (result.success) {
-        setTerminalOutput(prev => [...prev, `N8N started successfully with PID: ${result.pid}`]);
-      } else {
-        setIsStarting(false);
-        setError(result.error || 'Failed to start N8N');
-        setTerminalOutput(prev => [...prev, `Failed to start N8N: ${result.error}`]);
-      }
-    } catch (err) {
-      setIsStarting(false);
-      setError('Error starting N8N');
-      setTerminalOutput(prev => [...prev, `Error starting N8N: ${err}`]);
-    }
-  };
-
-  const handleStopN8N = async () => {
-    try {
-      setTerminalOutput(prev => [...prev, 'Stopping N8N...']);
-      const result = await window.electron.stopN8N();
-      
-      if (result.success) {
-        setIsRunning(false);
-        setTerminalOutput(prev => [...prev, 'N8N stopped successfully']);
-      } else {
-        setError(result.error || 'Failed to stop N8N');
-        setTerminalOutput(prev => [...prev, `Failed to stop N8N: ${result.error}`]);
-      }
-    } catch (err) {
-      setError('Error stopping N8N');
-      setTerminalOutput(prev => [...prev, `Error stopping N8N: ${err}`]);
-    }
-  };
-
   const handleRefresh = () => {
     if (webviewRef.current) {
-      (webviewRef.current as any).reload();
+      try {
+        webviewRef.current.reload();
+      } catch (e) {
+        console.error("Error reloading webview:", e);
+        setError("Could not reload n8n view.");
+      }
     }
   };
 
   const handleOpenExternal = () => {
-    window.open('http://localhost:5678', '_blank');
+    if (n8nPort) {
+      window.open(`http://localhost:${n8nPort}`, '_blank');
+    } else {
+      setError("Cannot open n8n externally: Port not determined.");
+    }
   };
+
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview || n8nPort === null) {
+      return;
+    }
+
+    const handleLoadStart = () => setIsLoading(true);
+    const handleLoadStop = () => setIsLoading(false);
+    const handleDidFailLoad = (event: Event) => {
+      const failEvent = event as any;
+      if (failEvent.errorCode !== -3) {
+        setError(`Failed to load n8n view: ${failEvent.errorDescription} (Code: ${failEvent.errorCode})`);
+        setIsLoading(false);
+      }
+    };
+
+    webview.addEventListener('did-start-loading', handleLoadStart);
+    webview.addEventListener('did-stop-loading', handleLoadStop);
+    webview.addEventListener('did-fail-load', handleDidFailLoad);
+
+    webview.src = `http://localhost:${n8nPort}`;
+
+    return () => {
+      webview.removeEventListener('did-start-loading', handleLoadStart);
+      webview.removeEventListener('did-stop-loading', handleLoadStop);
+      webview.removeEventListener('did-fail-load', handleDidFailLoad);
+    };
+  }, [n8nPort]);
 
   return (
     <div className="flex h-screen">
@@ -162,111 +148,83 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       <div className="flex-1 flex flex-col">
         <Topbar onPageChange={onPageChange || (() => {})} />
         
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-6 overflow-auto bg-gray-50 dark:bg-gray-900">
           {error && (
             <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
               <span>{error}</span>
+              <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700">X</button>
             </div>
           )}
 
-          <div className="h-full flex flex-col">
-            <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="h-full flex flex-col border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+            {/* Header/Toolbar */}
+            <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleRefresh}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
-                  title="Refresh"
+                  disabled={isLoading || !n8nPort}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Refresh n8n View"
                 >
                   <RefreshCcw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setShowTerminal(!showTerminal)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
-                  title="Toggle Terminal"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                  title="Toggle Setup Logs"
                 >
                   <Terminal className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={isRunning ? handleStopN8N : handleStartN8N}
-                  disabled={isStarting}
-                  className={`px-3 py-1.5 rounded-lg text-sm ${
-                    isRunning
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
-                      : 'bg-green-500 hover:bg-green-600 text-white'
-                  } ${isStarting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isStarting ? 'Starting...' : (isRunning ? 'Stop N8N' : 'Start N8N')}
-                </button>
-                {isStarting && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                    <span>Waiting for N8N to start... ({retryCount}/{maxRetries})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                 {n8nPort ? <span className="text-xs text-gray-500 dark:text-gray-400">n8n Port: {n8nPort}</span> : <span className="text-xs text-yellow-500">Fetching port...</span>}
+                 <button
+                   onClick={handleOpenExternal}
+                   disabled={!n8nPort}
+                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                   title="Open n8n in Browser"
+                 >
+                   <ExternalLink className="w-4 h-4" />
+                 </button>
+              </div>
+            </div>
+
+            {/* Webview and Terminal Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className={`flex-1 ${showTerminal ? 'h-2/3' : 'h-full'} transition-height duration-300 ease-in-out`}>
+                {n8nPort !== null ? (
+                  <webview
+                    ref={webviewRef}
+                    className="w-full h-full border-none"
+                    allowpopups={true}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    {isLoading ? 'Loading...' : 'Determining n8n port...'}
                   </div>
                 )}
               </div>
-              <button
-                onClick={handleOpenExternal}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open in Browser
-              </button>
-            </div>
-            
-            {isRunning ? (
-              <webview
-                ref={webviewRef}
-                src="http://localhost:5678"
-                className="flex-1 w-full h-full"
-                allowpopups={true}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    N8N is not running. Click 'Start N8N' to begin.
-                  </p>
-                  {isStarting && (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
-                      <p className="text-sm text-gray-500">
-                        Starting N8N... ({retryCount}/{maxRetries} retries)
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+              {showTerminal && (
+                <div className="h-1/3 border-t border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 font-mono text-xs overflow-y-auto p-3 flex flex-col-reverse">
+                   <div style={{ maxHeight: 'calc(100% - 30px)', overflowY: 'auto' }} >
+                     {terminalOutput.map((line, index) => (
+                       <div key={index} className={`${line.startsWith('error:') ? 'text-red-400' : line.startsWith('warning:') ? 'text-yellow-400' : 'text-gray-300'} whitespace-pre-wrap`}>{line}</div>
+                     ))}
+                     <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                   </div>
+                   <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-900 py-1">
+                     <span className="font-semibold">Setup Logs</span>
+                     <button onClick={() => setTerminalOutput([])} className="text-xs hover:text-red-400">Clear</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+           </div>
+         </main>
+       </div>
+     </div>
+   );
+ };
 
-          {/* Terminal Sidebar */}
-          <div
-            className={`absolute right-0 top-0 bottom-0 w-96 bg-gray-900 text-white transform transition-transform duration-300 ${
-              showTerminal ? 'translate-x-0' : 'translate-x-full'
-            }`}
-          >
-            <div className="flex items-center justify-between p-2 border-b border-gray-700">
-              <h3 className="text-sm font-semibold">Terminal Output</h3>
-              <button
-                onClick={() => setShowTerminal(false)}
-                className="p-1 hover:text-gray-300"
-              >
-                <XCircle className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 font-mono text-sm h-full overflow-y-auto">
-              {terminalOutput.map((line, index) => (
-                <div key={index} className="mb-1">
-                  {line}
-                </div>
-              ))}
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
-  );
-};
-
-export default N8N; 
+ export default N8N; 

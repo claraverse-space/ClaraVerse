@@ -6,6 +6,7 @@ import signal
 import sqlite3
 import traceback
 import time
+import argparse
 from datetime import datetime
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Depends, Query
@@ -36,45 +37,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("clara-backend")
 
-# Default port configuration - check environment first, then try to find available port
-DEFAULT_PORT = int(os.environ.get("CLARA_PORT", "8099"))
-PORT_RANGE_MIN = 8090
-PORT_RANGE_MAX = 8199
+# Store start time
 START_TIME = datetime.now().isoformat()
 
-def find_available_port(start_port=DEFAULT_PORT, max_port=PORT_RANGE_MAX):
-    """Find an available port between start_port and max_port."""
-    for port in range(start_port, max_port + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(('127.0.0.1', port))
-                return port
-            except socket.error:
-                continue
-    return None
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Clara Backend Server')
+parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to bind to')
+parser.add_argument('--port', type=int, default=5000, help='Port to bind to')
+args = parser.parse_args()
 
-# Find an available port (use environment-provided port first)
-port = DEFAULT_PORT
-if port:
-    # Test if the provided port is available
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(('127.0.0.1', port))
-        except socket.error:
-            # Port is in use, find another one
-            logger.warning(f"Port {port} is in use, finding another one")
-            port = find_available_port(PORT_RANGE_MIN, PORT_RANGE_MAX)
-else:
-    # No port specified, find one
-    port = find_available_port(PORT_RANGE_MIN, PORT_RANGE_MAX)
+# Use the provided host and port
+HOST = args.host
+PORT = args.port
 
-if port is None:
-    logger.error(f"No available ports found in range {PORT_RANGE_MIN}-{PORT_RANGE_MAX}")
-    sys.exit(1)
-
-# Print port info in a structured format that Electron can parse
-print(f"CLARA_PORT:{port}")
-logger.info(f"Selected port: {port}")
+logger.info(f"Starting server on {HOST}:{PORT}")
 
 # Setup FastAPI
 app = FastAPI(title="Clara Backend API", version="1.0.0")
@@ -82,10 +58,11 @@ app = FastAPI(title="Clara Backend API", version="1.0.0")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Add global exception middleware
@@ -291,7 +268,7 @@ def read_root():
     return {
         "status": "ok", 
         "service": "Clara Backend", 
-        "port": port,
+        "port": PORT,
         "uptime": str(datetime.now() - datetime.fromisoformat(START_TIME)),
         "start_time": START_TIME
     }
@@ -306,8 +283,8 @@ def read_test():
             row = cursor.fetchone()
             
         if row:
-            return JSONResponse(content={"id": row[0], "value": row[1], "port": port})
-        return JSONResponse(content={"error": "No data found", "port": port})
+            return JSONResponse(content={"id": row[0], "value": row[1], "port": PORT})
+        return JSONResponse(content={"error": "No data found", "port": PORT})
     except Exception as e:
         logger.error(f"Error in /test endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -317,7 +294,7 @@ def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "port": port,
+        "port": PORT,
         "uptime": str(datetime.now() - datetime.fromisoformat(START_TIME))
     }
 
@@ -879,13 +856,13 @@ signal.signal(signal.SIGTERM, handle_exit)
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info(f"Starting server on port {port}")
+    logger.info(f"Starting server on {HOST}:{PORT}")
     
     # Start the server with reload=False to prevent duplicate processes
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=port,
+        host=HOST,
+        port=PORT,
         log_level="info",
         reload=False  # Change this to false to prevent multiple processes
     )
