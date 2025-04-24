@@ -115,6 +115,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [temporaryDocs, setTemporaryDocs] = useState<TemporaryDocument[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+  const [useAllTools, setUseAllTools] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     // Check if onboarding has been completed
@@ -768,7 +769,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     const context = {
       hasImages: images.length > 0,
-      hasTool: !!selectedTool,
+      hasTool: !!selectedTool || useAllTools,
       hasRag: ragEnabled || temporaryDocs.length > 0
     };
 
@@ -850,6 +851,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         temperature: 0.7,
         top_p: 0.9
       };
+
+      // Handle tools - either selected tool or all tools
+      if (selectedTool || useAllTools) {
+        chatOptions.tools = useAllTools ? tools.filter(tool => tool !== null) : selectedTool ? [selectedTool] : [];
+      }
 
       if (images.length > 0) {
         // Handle image generation
@@ -1837,6 +1843,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onRemoveTemporaryDoc={removeTemporaryDoc}
           tools={tools}
           onToolSelect={setSelectedTool}
+          useAllTools={useAllTools}
+          onUseAllToolsChange={setUseAllTools}
           models={models}
           onModelConfigSave={handleModelConfigSave}
           modelConfig={modelSelectionConfig}

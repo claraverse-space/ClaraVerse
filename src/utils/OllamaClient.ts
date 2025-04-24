@@ -334,7 +334,7 @@ export class OllamaClient {
           model,
           messages: updatedMessages,
           stream: false,
-          temperature: options.temperature || 0.7,
+          temperature: options.temperature || 0.5,
           top_p: options.top_p || 0.9
         };
         

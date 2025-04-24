@@ -33,6 +33,8 @@ interface ChatInputProps {
   onRemoveTemporaryDoc?: (id: string) => void;
   tools?: Tool[];
   onToolSelect?: (tool: Tool | null) => void;
+  useAllTools?: boolean;
+  onUseAllToolsChange?: (useAll: boolean) => void;
   models?: any[];
   modelConfig: ModelSelectionConfig;
   onModelConfigSave: (config: ModelSelectionConfig) => void;
@@ -64,6 +66,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onRemoveTemporaryDoc,
   tools = [],
   onToolSelect,
+  useAllTools = false,
+  onUseAllToolsChange,
   models = [],
   modelConfig,
   onModelConfigSave,
@@ -72,10 +76,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tempDocInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [showToolSelector, setShowToolSelector] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
-  const [useAllTools, setUseAllTools] = useState(false);
-  const toolSelectorRef = useRef<HTMLDivElement>(null);
   
   // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -96,16 +96,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   // Add state for microphone permission
   const [permissionState, setPermissionState] = useState<'unknown' | 'granted' | 'denied'>('unknown');
-
-  // Add state for tool search
-  const [toolSearchQuery, setToolSearchQuery] = useState('');
-  const filteredTools = useMemo(() => {
-    if (!toolSearchQuery) return tools;
-    const query = toolSearchQuery.toLowerCase();
-    return tools.filter(tool => 
-      tool.name.toLowerCase().includes(query)
-    );
-  }, [tools, toolSearchQuery]);
 
   // Add state for model configuration
   const [showModelConfig, setShowModelConfig] = useState(false);
@@ -438,48 +428,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
     handleSend();
     setInput('');
     // Clear tool selection after sending
-    setSelectedTool(null);
     onToolSelect?.(null);
   };
 
   // Update local state when parent state changes
   useEffect(() => {
-    if (!tools.some(t => t.id === selectedTool?.id)) {
-      setSelectedTool(null);
+    // Just ensure tools are valid, no need to check selectedTool anymore
+    if (tools.length === 0) {
+      onToolSelect?.(null);
     }
   }, [tools]);
-
-  // Handle selecting all tools
-  const handleAllToolsClick = () => {
-    setUseAllTools(!useAllTools);
-    if (!useAllTools) {
-      // Enable all tools mode
-      onToolSelect?.(null); // Clear single tool selection
-      setSelectedTool(null);
-    }
-    setShowToolSelector(false);
-  };
-
-  // Modify handleToolClick to handle single tool selection
-  const handleToolClick = (tool: Tool) => {
-    setSelectedTool(tool);
-    onToolSelect?.(tool);
-    setUseAllTools(false); // Disable all tools mode when selecting a single tool
-    setShowToolSelector(false);
-  };
-
-  const clearSelectedTool = () => {
-    setSelectedTool(null);
-    onToolSelect?.(null);
-    setUseAllTools(false);
-  };
-
-  // Clean up tool selection when input is cleared
-  useEffect(() => {
-    if (!input && selectedTool) {
-      clearSelectedTool();
-    }
-  }, [input]);
 
   // Handle keyboard recording (Ctrl key)
   useEffect(() => {
@@ -517,19 +475,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [isRecording, isTranscribing, isKeyboardRecording, isProcessing, handleSend]);
-
-  // Close tool selector when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (toolSelectorRef.current && !toolSelectorRef.current.contains(event.target as Node)) {
-        setShowToolSelector(false);
-        setToolSearchQuery(''); // Reset search when closing
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Clean up on unmount
   useEffect(() => {
@@ -639,84 +584,25 @@ const ChatInput: React.FC<ChatInputProps> = ({
           <div className="flex justify-between items-center">
             {/* Left Side Actions */}
             <div className="flex items-center gap-2">
-              {/* Tool Selector */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowToolSelector(!showToolSelector)}
-                  className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${
-                    (selectedTool || useAllTools) ? 'text-indigo-500' : 'text-gray-500'
-                  }`}
-                  title="Select Tool"
-                >
-                  <Wrench className="w-5 h-5" />
-                </button>
-
-                {/* Tool selector dropdown */}
-                {showToolSelector && (
-                  <div
-                    ref={toolSelectorRef}
-                    className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50"
-                  >
-                    <div className="p-2">
-                      <input
-                        type="text"
-                        value={toolSearchQuery}
-                        onChange={(e) => setToolSearchQuery(e.target.value)}
-                        placeholder="Search tools..."
-                        className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md"
-                      />
-                    </div>
-
-                    <div className="max-h-64 overflow-y-auto">
-                      {/* Let Clara Decide option */}
-                      <button
-                        onClick={handleAllToolsClick}
-                        className={`w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
-                          useAllTools ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Code className="w-4 h-4" />
-                          <span className="text-sm">Let Clara Decide</span>
-                        </div>
-                        {useAllTools && <Check className="w-4 h-4" />}
-                      </button>
-
-                      <div className="border-t border-gray-200 dark:border-gray-700"></div>
-
-                      {/* Individual tools */}
-                      {filteredTools.map((tool) => (
-                        <button
-                          key={tool.id}
-                          onClick={() => handleToolClick(tool)}
-                          className={`w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
-                            selectedTool?.id === tool.id ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Wrench className="w-4 h-4" />
-                            <span className="text-sm">{tool.name}</span>
-                          </div>
-                          {selectedTool?.id === tool.id && <Check className="w-4 h-4" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Selected Tool Indicator */}
-              {(selectedTool || useAllTools) && (
-                <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-md text-sm">
-                  <span>{useAllTools ? 'Using All Tools' : selectedTool?.name}</span>
-                  <button
-                    onClick={clearSelectedTool}
-                    className="p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+              {/* Tool Toggle Button */}
+              <button
+                onClick={() => {
+                  const newValue = !useAllTools;
+                  onUseAllToolsChange?.(newValue);
+                  if (newValue) {
+                    onToolSelect?.(null); // Clear any selected tool
+                  }
+                }}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
+                  useAllTools 
+                    ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+                title={useAllTools ? "Clara will decide which tools to use" : "Click to let Clara decide which tools to use"}
+              >
+                <Wrench className="w-4 h-4" />
+                <span className="text-sm">Tools</span>
+              </button>
 
               {/* Hide the New Chat button by adding the hidden class */}
               <button
