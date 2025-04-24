@@ -23,6 +23,9 @@ class DockerSetup extends EventEmitter {
         : '/var/run/docker.sock'
     });
 
+    // Path for storing pull timestamps
+    this.pullTimestampsPath = path.join(this.appDataPath, 'pull_timestamps.json');
+
     // Container configuration
     this.containers = {
       python: {
@@ -61,6 +64,9 @@ class DockerSetup extends EventEmitter {
     if (!fs.existsSync(this.appDataPath)) {
       fs.mkdirSync(this.appDataPath, { recursive: true });
     }
+
+    // Initialize pull timestamps if not exists
+    this.initializePullTimestamps();
 
     // Docker Compose file path
     this.composeFilePath = path.join(this.appDataPath, 'docker-compose.yml');
@@ -259,6 +265,53 @@ class DockerSetup extends EventEmitter {
     }
   }
 
+  async initializePullTimestamps() {
+    try {
+      if (!fs.existsSync(this.pullTimestampsPath)) {
+        const initialTimestamps = {};
+        Object.keys(this.containers).forEach(key => {
+          initialTimestamps[this.containers[key].image] = 0;
+        });
+        fs.writeFileSync(this.pullTimestampsPath, JSON.stringify(initialTimestamps, null, 2));
+      }
+    } catch (error) {
+      console.error('Error initializing pull timestamps:', error);
+    }
+  }
+
+  getPullTimestamps() {
+    try {
+      if (fs.existsSync(this.pullTimestampsPath)) {
+        return JSON.parse(fs.readFileSync(this.pullTimestampsPath, 'utf8'));
+      }
+    } catch (error) {
+      console.error('Error reading pull timestamps:', error);
+    }
+    return {};
+  }
+
+  updatePullTimestamp(imageName) {
+    try {
+      const timestamps = this.getPullTimestamps();
+      timestamps[imageName] = Date.now();
+      fs.writeFileSync(this.pullTimestampsPath, JSON.stringify(timestamps, null, 2));
+    } catch (error) {
+      console.error('Error updating pull timestamp:', error);
+    }
+  }
+
+  shouldPullImage(imageName) {
+    try {
+      const timestamps = this.getPullTimestamps();
+      const lastPull = timestamps[imageName] || 0;
+      const daysSinceLastPull = (Date.now() - lastPull) / (1000 * 60 * 60 * 24);
+      return daysSinceLastPull >= 10;
+    } catch (error) {
+      console.error('Error checking pull timestamp:', error);
+      return true; // Pull if there's an error reading timestamps
+    }
+  }
+
   async setup(statusCallback) {
     try {
       if (!await this.isDockerRunning()) {
@@ -268,10 +321,15 @@ class DockerSetup extends EventEmitter {
       statusCallback('Creating Docker network...');
       await this.createNetwork();
 
-      // Pull images first
+      // Check and pull images if needed
       for (const [name, config] of Object.entries(this.containers)) {
-        statusCallback(`Pulling ${name} image...`);
-        await this.pullImage(config.image, statusCallback);
+        if (this.shouldPullImage(config.image)) {
+          statusCallback(`Pulling ${name} image...`);
+          await this.pullImage(config.image, statusCallback);
+          this.updatePullTimestamp(config.image);
+        } else {
+          statusCallback(`Using cached ${name} image...`);
+        }
       }
 
       // Start containers in sequence
