@@ -117,6 +117,7 @@ npm run electron:build     # Desktop build
 
 ## ⭐ GitHub Star History
 
+
 [![Star History Chart](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse&type=Date)](https://www.star-history.com/#badboysm890/ClaraVerse&Date)
 
 ---
