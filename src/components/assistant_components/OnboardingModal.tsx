@@ -794,50 +794,37 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 renderRecommendationsStep()
               ) : (
                 <>
-                  <div>
-                    <h3 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
-                      Choose Your Model Selection Mode
-                    </h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <button
-                        className={`p-6 rounded-xl border-2 transition-all duration-200 ${
-                          selectedMode === 'auto'
-                            ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
-                        }`}
-                        onClick={() => setSelectedMode('auto')}
-                      >
-                        <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Auto Mode</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          Select specific models for different tasks
-                        </p>
-                      </button>
-                      <button
-                        className={`p-6 rounded-xl border-2 transition-all duration-200 ${
-                          selectedMode === 'manual'
-                            ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
-                        }`}
-                        onClick={() => setSelectedMode('manual')}
-                      >
-                        <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Manual Mode</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          Use selected model for all tasks
-                        </p>
-                      </button>
-                      <button
-                        className={`p-6 rounded-xl border-2 transition-all duration-200 ${
-                          selectedMode === 'smart'
-                            ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
-                        }`}
-                        onClick={() => setSelectedMode('smart')}
-                      >
-                        <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Smart Mode</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          Automatic model switching based on usage
-                        </p>
-                      </button>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Model Selection Mode</h3>
+                    <div className="space-y-2">
+                      <label className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          name="mode"
+                          value="manual"
+                          checked={selectedMode === 'manual'}
+                          onChange={(e) => setSelectedMode(e.target.value as 'auto' | 'manual')}
+                          className="form-radio text-sakura-500 focus:ring-sakura-500"
+                        />
+                        <div>
+                          <span className="text-gray-900 dark:text-white font-medium">Manual Selection</span>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Choose models manually for each conversation.</p>
+                        </div>
+                      </label>
+                      <label className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          name="mode"
+                          value="auto"
+                          checked={selectedMode === 'auto'}
+                          onChange={(e) => setSelectedMode(e.target.value as 'auto' | 'manual')}
+                          className="form-radio text-sakura-500 focus:ring-sakura-500"
+                        />
+                        <div>
+                          <span className="text-gray-900 dark:text-white font-medium">Automatic Selection</span>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Let Clara choose the best model based on the context.</p>
+                        </div>
+                      </label>
                     </div>
                   </div>
 

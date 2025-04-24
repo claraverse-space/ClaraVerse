@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Home, Bot, CheckCircle2, AlertCircle, ChevronDown, Sun, Moon, Image as ImageIcon, Star, BarChart3, Database, RefreshCw, Loader2, Settings, Wrench } from 'lucide-react';
+import { Home, Bot, CheckCircle2, AlertCircle, ChevronDown, Sun, Moon, Image as ImageIcon, Star, BarChart3, Database, RefreshCw, Loader2, Settings, Wrench, Zap, Hand } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { db } from '../../db';
 import UserProfileButton from '../common/UserProfileButton';
@@ -307,7 +307,17 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
             onClick={() => setShowModeSelect(!showModeSelect)}
             className="px-3 py-1.5 rounded-lg text-sm bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300 hover:bg-sakura-100 dark:hover:bg-sakura-900/30 transition-colors flex items-center gap-2"
           >
-            {modelSelectionMode === 'auto' ? 'Auto Mode' : modelSelectionMode === 'smart' ? 'Smart Mode' : 'Manual Mode'}
+            {modelSelectionMode === 'auto' ? (
+              <>
+                <Zap className="w-4 h-4" />
+                <span>Auto Mode</span>
+              </>
+            ) : (
+              <>
+                <Hand className="w-4 h-4" />
+                <span>Manual Mode</span>
+              </>
+            )}
             <ChevronDown className="w-4 h-4" />
           </button>
 
@@ -317,24 +327,18 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
                 onClick={() => handleModeSelect('auto')}
                 className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
                   modelSelectionMode === 'auto' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
-                }`}
+                } flex items-center gap-2`}
               >
+                <Zap className="w-4 h-4" />
                 Auto Mode
-              </button>
-              <button
-                onClick={() => handleModeSelect('smart')}
-                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                  modelSelectionMode === 'smart' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                Smart Mode
               </button>
               <button
                 onClick={() => handleModeSelect('manual')}
                 className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
                   modelSelectionMode === 'manual' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
-                }`}
+                } flex items-center gap-2`}
               >
+                <Hand className="w-4 h-4" />
                 Manual Mode
               </button>
             </div>

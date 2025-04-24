@@ -239,11 +239,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const computedMaxWidth = Math.min(window.innerWidth * 0.8, 900);
 
   return (
-    <div className={`${isAssistant ? 'border-b border-gray-200 dark:border-gray-700' : 'flex flex-col items-end mb-4 group'}`}>
+    <div className={`${isAssistant ? 'py-6' : 'flex flex-col items-end mb-4 group'}`}>
       <div
         className={`${
           isAssistant
-            ? 'py-8 px-4'
+            ? 'px-4'
             : 'rounded-2xl px-4 py-2.5 relative max-w-[85%] bg-sakura-500 text-white hover:bg-sakura-600 transition-colors mt-4'
         }`}
         style={{ maxWidth: isAssistant ? 'none' : computedMaxWidth }}
