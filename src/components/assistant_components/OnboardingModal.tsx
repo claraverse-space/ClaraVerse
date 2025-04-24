@@ -41,12 +41,17 @@ interface OnboardingModalProps {
 
 interface RecommendedModels {
   lite: { model: string; size: number };
+  image: { model: string; size: number };
 }
 
 const RECOMMENDED_MODELS: RecommendedModels = {
   lite: {
-    model: 'qwen2.5',
+    model: 'qwen2.5:latest',
     size: 4.7
+  },
+  image: {
+    model: 'gemma3:4b',
+    size: 3.8
   }
 };
 
@@ -60,14 +65,14 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [visionModel, setVisionModel] = useState('');
   const [toolModel, setToolModel] = useState('');
   const [ragModel, setRagModel] = useState('');
-  const [currentStep, setCurrentStep] = useState<'api' | 'hardware' | 'models' | 'recommendations'>('api');
+  const [currentStep, setCurrentStep] = useState<'api' | 'hardware' | 'models' | 'recommendations' | 'image_model' | 'final'>('api');
   const [hardwareConfig, setHardwareConfig] = useState<HardwareConfig>({
     ram: 8,
     hasGpu: false,
     gpuType: 'none'
   });
   const [isUnsureOfSpecs, setIsUnsureOfSpecs] = useState(false);
-  const [selectedModelSet, setSelectedModelSet] = useState<'full' | 'lite' | null>(null);
+  const [selectedModelSet, setSelectedModelSet] = useState<'full' | 'lite' | 'image' | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<{ model: string; progress: number }[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
@@ -202,7 +207,9 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
     } else if (currentStep === 'hardware') {
       setCurrentStep('recommendations');
     } else if (currentStep === 'recommendations') {
-      setCurrentStep('models');
+      setCurrentStep('image_model');
+    } else if (currentStep === 'image_model') {
+      setCurrentStep('final');
     }
   };
 
@@ -222,7 +229,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
         ]);
 
         try {
-          // Use the client's pullModel function instead of direct fetch
           for await (const data of client.pullModel(model)) {
             if (typeof data === 'object') {
               if (data.status === 'downloading') {
@@ -232,7 +238,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     percent = Math.round((data.completed / data.total) * 100);
                   }
                   
-                  // Update the last log line for progress
                   setLogs(prev => {
                     const newLogs = [...prev];
                     newLogs[newLogs.length - 1] = `Downloading model files... ${percent}%`;
@@ -243,19 +248,17 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 addLog(`\nVerifying ${model}...`);
               } else if (data.status === 'done') {
                 addLog(`\nSuccessfully installed ${model}`);
-                await fetchModels(); // Refresh the model list
+                await fetchModels();
               } else {
                 addLog(`${data.status}`);
               }
             }
 
-            // Ensure terminal scrolls to bottom with each update
             if (terminalRef.current) {
               terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
             }
           }
 
-          // Wait a moment after completion before proceeding
           await new Promise(resolve => setTimeout(resolve, 1000));
 
         } catch (error) {
@@ -268,9 +271,8 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
         }
       }
       
-      // Only proceed after all models are successfully downloaded
       addLog('\nAll models installed successfully!');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Give user time to see completion
+      await new Promise(resolve => setTimeout(resolve, 2000));
       setIsDownloading(false);
       handleNext();
 
@@ -278,6 +280,75 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
       console.error('Error downloading models:', error);
       addLog('\nAn error occurred during the download process.');
       addLog('Please try again or select different models.');
+      setIsDownloading(false);
+    }
+  };
+
+  const handleImageModelDownload = async () => {
+    if (!client) return;
+    
+    setIsDownloading(true);
+    const imageModel = RECOMMENDED_MODELS.image.model;
+
+    try {
+      setCurrentModel(imageModel);
+      setLogs([
+        `Starting download of ${imageModel}...`,
+        'Note: Download time may vary based on model size and internet speed.',
+        'Please wait while we download and verify the model...'
+      ]);
+
+      try {
+        for await (const data of client.pullModel(imageModel)) {
+          if (typeof data === 'object') {
+            if (data.status === 'downloading') {
+              if (data.digest) {
+                let percent = 0;
+                if (data.completed && data.total) {
+                  percent = Math.round((data.completed / data.total) * 100);
+                }
+                
+                setLogs(prev => {
+                  const newLogs = [...prev];
+                  newLogs[newLogs.length - 1] = `Downloading model files... ${percent}%`;
+                  return newLogs;
+                });
+              }
+            } else if (data.status === 'verifying') {
+              addLog(`\nVerifying ${imageModel}...`);
+            } else if (data.status === 'done') {
+              addLog(`\nSuccessfully installed ${imageModel}`);
+              await fetchModels();
+            } else {
+              addLog(`${data.status}`);
+            }
+          }
+
+          if (terminalRef.current) {
+            terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+          }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (error) {
+        console.error('Error pulling model:', error);
+        addLog(`\nError: Failed to pull ${imageModel}`);
+        if (error instanceof Error) {
+          addLog(`Error details: ${error.message}`);
+        }
+        throw error;
+      }
+      
+      addLog('\nImage model installed successfully!');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setIsDownloading(false);
+      handleNext();
+
+    } catch (error) {
+      console.error('Error downloading image model:', error);
+      addLog('\nAn error occurred during the download process.');
+      addLog('Please try again.');
       setIsDownloading(false);
     }
   };
@@ -600,6 +671,107 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
     </div>
   );
 
+  const renderImageModelStep = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+        Image Model Selection
+      </h3>
+
+      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+        <p className="text-sm text-blue-700 dark:text-blue-300">
+          <span className="font-medium">💡 Tip:</span> Gemma 3 is a powerful model for image-related tasks.
+        </p>
+      </div>
+
+      <div className="flex justify-center">
+        <button
+          onClick={() => setSelectedModelSet('image')}
+          disabled={isDownloading}
+          className={`w-full max-w-xl p-6 rounded-xl border-2 transition-all duration-200 ${
+            selectedModelSet === 'image'
+              ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
+              : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
+          }`}
+        >
+          <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Gemma 3</h4>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              A powerful image processing model:
+            </p>
+            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+              <li>• Model Size: {RECOMMENDED_MODELS.image.size}GB</li>
+              <li>• Optimized for image tasks</li>
+            </ul>
+          </div>
+        </button>
+      </div>
+
+      {selectedModelSet && !isDownloading && (
+        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Ready to download Gemma 3. Make sure you have a stable internet connection.
+          </p>
+        </div>
+      )}
+
+      {isDownloading && (
+        <div className="mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Terminal className="w-4 h-4 text-sakura-500" />
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+              Installation Progress - {currentModel}
+            </h3>
+          </div>
+          <div
+            ref={terminalRef}
+            className="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto font-mono text-sm text-gray-100 whitespace-pre-wrap"
+          >
+            {logs.map((log, index) => (
+              <div key={index} className="mb-1">
+                <span className="text-sakura-500">&gt;</span> {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end space-x-4 pt-4">
+        <button
+          onClick={() => setCurrentStep('recommendations')}
+          className="px-6 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-white font-medium transition-colors"
+        >
+          Back
+        </button>
+        <button
+          onClick={isDownloading ? undefined : handleImageModelDownload}
+          disabled={!selectedModelSet || isDownloading}
+          className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
+        >
+          {isDownloading ? 'Installing...' : 'Download Image Model'}
+        </button>
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    if (currentStep === 'final') {
+      // Automatically fetch and set models when reaching final step
+      fetchModels().then(() => {
+        const qwenModel = availableModels.find(m => m.name.includes('qwen2.5'));
+        const gemmaModel = availableModels.find(m => m.name.includes('gemma3'));
+        
+        if (qwenModel) {
+          setToolModel(qwenModel.name);
+          setRagModel(qwenModel.name);
+        }
+        
+        if (gemmaModel) {
+          setVisionModel(gemmaModel.name);
+        }
+      });
+    }
+  }, [currentStep]);
+
   return (
     <Dialog
       open={isOpen}
@@ -607,25 +779,25 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
       className="relative z-50"
     >
       {/* Backdrop with blur effect */}
-      <div className="fixed inset-0 bg-black/20 backdrop-blur-sm" aria-hidden="true" />
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
 
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel className="relative w-full max-w-2xl rounded-2xl overflow-hidden">
           {/* Glassmorphic background */}
-          <div className="absolute inset-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-white/20 dark:border-gray-700/30" />
+          <div className="absolute inset-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md" />
           
           {/* Content container */}
           <div className="relative p-8">
             <div className="absolute right-6 top-6">
               <button
                 onClick={onClose}
-                className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
               >
-                <XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+                <XMarkIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
 
-            <Dialog.Title className="text-3xl font-bold mb-8 bg-gradient-to-r from-sakura-600 to-sakura-400 bg-clip-text text-transparent">
+            <Dialog.Title className="text-xl font-semibold text-gray-900 dark:text-white mb-8">
               Welcome to Clara Assistant
             </Dialog.Title>
 
@@ -636,8 +808,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     Choose Your AI Provider
                   </h3>
 
-                  {/* Add tip message */}
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                  <div className="p-4 bg-blue-50/50 dark:bg-blue-900/20 rounded-xl border border-blue-100/50 dark:border-blue-800/50">
                     <p className="text-sm text-blue-700 dark:text-blue-300">
                       <span className="font-medium">💡 Tip:</span> New to AI models? Just select Ollama and Clara will help you set everything up. Ollama runs models locally on your machine, making it perfect for getting started.
                     </p>
@@ -646,10 +817,10 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={() => updateApiConfig({ api_type: 'ollama' })}
-                      className={`flex flex-col items-center p-6 rounded-xl border-2 transition-all duration-200 ${
+                      className={`flex flex-col items-center p-6 rounded-xl transition-all duration-200 ${
                         apiConfig.api_type === 'ollama'
-                          ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
+                          ? 'bg-sakura-50/50 dark:bg-sakura-500/10 shadow-lg shadow-sakura-500/10'
+                          : 'bg-white/30 dark:bg-gray-900/30 hover:bg-white/50 dark:hover:bg-gray-900/50'
                       }`}
                     >
                       <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Ollama</h4>
@@ -657,17 +828,17 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         Run AI models locally on your machine
                       </p>
                       {apiConfig.api_type === 'ollama' && (
-                        <span className="mt-2 px-2 py-1 bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-300 text-xs rounded-full">
+                        <span className="mt-2 px-2 py-1 bg-sakura-100/50 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-300 text-xs rounded-full">
                           Recommended for beginners
                         </span>
                       )}
                     </button>
                     <button
                       onClick={() => updateApiConfig({ api_type: 'openai' })}
-                      className={`flex flex-col items-center p-6 rounded-xl border-2 transition-all duration-200 ${
+                      className={`flex flex-col items-center p-6 rounded-xl transition-all duration-200 ${
                         apiConfig.api_type === 'openai'
-                          ? 'border-sakura-500 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-lg shadow-sakura-500/10'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300 dark:hover:border-sakura-700'
+                          ? 'bg-sakura-50/50 dark:bg-sakura-500/10 shadow-lg shadow-sakura-500/10'
+                          : 'bg-white/30 dark:bg-gray-900/30 hover:bg-white/50 dark:hover:bg-gray-900/50'
                       }`}
                     >
                       <h4 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">OpenAI-like API</h4>
@@ -675,7 +846,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         Use OpenAI or compatible API providers
                       </p>
                       {apiConfig.api_type === 'openai' && (
-                        <span className="mt-2 px-2 py-1 bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-300 text-xs rounded-full">
+                        <span className="mt-2 px-2 py-1 bg-sakura-100/50 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-300 text-xs rounded-full">
                           For advanced users
                         </span>
                       )}
@@ -693,7 +864,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           type="url"
                           value={apiConfig.ollama_base_url}
                           onChange={(e) => updateApiConfig({ ollama_base_url: e.target.value })}
-                          className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:border-sakura-500 dark:focus:border-sakura-500 focus:ring-2 focus:ring-sakura-500/20 transition-all text-gray-900 dark:text-white"
+                          className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all"
                           placeholder="http://localhost:11434"
                         />
                       </div>
@@ -707,7 +878,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             type="url"
                             value={apiConfig.openai_base_url}
                             onChange={(e) => updateApiConfig({ openai_base_url: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:border-sakura-500 dark:focus:border-sakura-500 focus:ring-2 focus:ring-sakura-500/20 transition-all text-gray-900 dark:text-white"
+                            className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all"
                             placeholder="https://api.openai.com/v1"
                           />
                         </div>
@@ -719,7 +890,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                             type="password"
                             value={apiConfig.openai_api_key}
                             onChange={(e) => updateApiConfig({ openai_api_key: e.target.value })}
-                            className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:border-sakura-500 dark:focus:border-sakura-500 focus:ring-2 focus:ring-sakura-500/20 transition-all text-gray-900 dark:text-white"
+                            className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all"
                             placeholder="sk-..."
                           />
                         </div>
@@ -731,14 +902,14 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       <button
                         onClick={testConnection}
                         disabled={connectionStatus === 'testing'}
-                        className={`w-full px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
                           connectionStatus === 'testing'
                             ? 'bg-gray-400 text-white cursor-not-allowed'
                             : connectionStatus === 'success'
                             ? 'bg-green-500 text-white'
                             : connectionStatus === 'error'
                             ? 'bg-red-500 text-white'
-                            : 'bg-sakura-500 text-white hover:bg-sakura-600'
+                            : 'bg-gradient-to-r from-sakura-600 to-sakura-400 text-white hover:from-sakura-700 hover:to-sakura-500'
                         }`}
                       >
                         {connectionStatus === 'testing' ? 'Testing Connection...' :
@@ -748,7 +919,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       </button>
 
                       {connectionStatus === 'success' && (
-                        <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <div className="mt-4 p-4 bg-green-50/50 dark:bg-green-900/20 rounded-xl border border-green-100/50 dark:border-green-800/50">
                           <p className="text-sm text-green-700 dark:text-green-300">
                             Found {availableModels.length} available models
                           </p>
@@ -763,7 +934,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       )}
 
                       {connectionStatus === 'error' && (
-                        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                        <div className="mt-4 p-4 bg-red-50/50 dark:bg-red-900/20 rounded-xl border border-red-100/50 dark:border-red-800/50">
                           <p className="text-sm text-red-700 dark:text-red-300">
                             {connectionError || 'Failed to connect to API'}
                           </p>
@@ -775,14 +946,14 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   <div className="flex justify-end space-x-4 pt-4">
                     <button
                       onClick={onClose}
-                      className="px-6 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-white font-medium transition-colors"
+                      className="px-6 py-2.5 rounded-xl bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm hover:bg-white/50 dark:hover:bg-gray-900/50 text-gray-700 dark:text-white font-medium transition-all"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleNext}
                       disabled={connectionStatus !== 'success'}
-                      className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
                     >
                       Next
                     </button>
@@ -792,6 +963,8 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 renderHardwareStep()
               ) : currentStep === 'recommendations' ? (
                 renderRecommendationsStep()
+              ) : currentStep === 'image_model' ? (
+                renderImageModelStep()
               ) : (
                 <>
                   <div className="space-y-4">
@@ -832,15 +1005,15 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
                   <div className="flex justify-end space-x-4 pt-4">
                     <button
-                      onClick={() => setCurrentStep('api')}
-                      className="px-6 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-white font-medium transition-colors"
+                      onClick={() => setCurrentStep('image_model')}
+                      className="px-6 py-2.5 rounded-xl bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm hover:bg-white/50 dark:hover:bg-gray-900/50 text-gray-700 dark:text-white font-medium transition-all"
                     >
                       Back
                     </button>
                     <button
                       onClick={handleSave}
                       disabled={selectedMode === 'auto' && (!visionModel || !toolModel || !ragModel)}
-                      className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
                     >
                       Save Preferences
                     </button>

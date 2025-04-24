@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings as SettingsIcon, Bot, Search, Image as ImageIcon, Loader2, RefreshCw, Download } from 'lucide-react';
+import { X, Settings as SettingsIcon, Bot, Search, Image as ImageIcon, Loader2, RefreshCw, Download, HelpCircle } from 'lucide-react';
 import { db } from '../../db';
 import { OllamaClient } from '../../utils';
 import { indexedDBService } from '../../services/indexedDB';
 import ModelPullModal from './ModelPullModal';
+import OnboardingModal from './OnboardingModal';
 import { ToolManager } from './ToolManager';
 import type { APIConfig } from '../../db';
 
@@ -40,6 +41,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
   const [isUsingDefault, setIsUsingDefault] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [apiConfig, setApiConfig] = useState<APIConfig | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const loadModels = async () => {
     setIsLoading(true);
@@ -100,9 +102,10 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
 
       setModelConfigs(updatedConfigs);
       localStorage.setItem('model_image_support', JSON.stringify(updatedConfigs));
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load models:', err);
-      setError(`Failed to load models: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(`Failed to load models: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -219,12 +222,21 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
               Assistant Settings
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
-          >
-            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowOnboarding(true)}
+              className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-500 dark:text-gray-400"
+              title="Setup Guide"
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
+            >
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -414,6 +426,22 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
           </div>
 
           <div>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+              Model Manager
+            </h3>
+            <button
+              onClick={() => setShowPullModal(true)}
+              className="w-full px-4 py-2 text-sm font-medium text-white bg-sakura-500 rounded-lg hover:bg-sakura-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Manage Models
+            </button>
+            <p className="mt-1 text-xs text-gray-500">
+              Install and manage AI models for your assistant.
+            </p>
+          </div>
+
+          <div>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-medium text-gray-900 dark:text-white">
@@ -431,15 +459,6 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
-                {apiType === 'openai' && (
-                  <button
-                    onClick={() => setShowPullModal(true)}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    title="Pull New Model"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                )}
               </div>
             </div>
 
@@ -520,6 +539,17 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
           isOpen={showPullModal}
           onClose={() => setShowPullModal(false)}
           onPullModel={handlePullModel}
+        />
+
+        <OnboardingModal
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          models={modelConfigs}
+          onModelConfigSave={(config) => {
+            // Refresh models after onboarding
+            loadModels();
+            setShowOnboarding(false);
+          }}
         />
       </div>
     </div>

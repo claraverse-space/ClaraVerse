@@ -46,6 +46,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
     const [pingStatus, setPingStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [animationClass, setAnimationClass] = useState('animate-fadeIn');
     const [showApiKey, setShowApiKey] = useState(false);
+    const [logoError, setLogoError] = useState(false);
 
     // For feature showcase animation
     const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
@@ -212,11 +213,16 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                 className="absolute inset-0 bg-sakura-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
                                             <div
                                                 className="relative bg-white dark:bg-gray-800 rounded-full p-3 sm:p-4 shadow-xl">
-                                                <img
-                                                    src="/logo.png"
-                                                    alt="Clara Logo"
-                                                    className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
-                                                />
+                                                {!logoError ? (
+                                                    <img
+                                                        src="/logo.png"
+                                                        alt="Clara Logo"
+                                                        className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
+                                                        onError={() => setLogoError(true)}
+                                                    />
+                                                ) : (
+                                                    <Bot className="w-12 h-12 sm:w-16 sm:h-16 text-sakura-500" />
+                                                )}
                                             </div>
                                         </div>
                                     </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { Settings as SettingsIcon, ChevronDown } from 'lucide-react';
 import { db } from '../../db';
 
 interface ModelConfig {
@@ -76,96 +77,115 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-50 overflow-y-auto"
+      className="relative z-50"
     >
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="fixed inset-0 bg-black/30" />
+      {/* Backdrop with blur effect */}
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
 
-        <div className="relative bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="absolute right-4 top-4">
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 focus:outline-none"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-
-          <Dialog.Title className="text-lg font-medium mb-4 dark:text-white">
-            Model Configuration
-          </Dialog.Title>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 dark:text-white">
-                Vision Model
-              </label>
-              <select
-                value={visionModel}
-                onChange={(e) => setVisionModel(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <Dialog.Panel className="relative w-full max-w-2xl rounded-2xl overflow-hidden">
+          {/* Glassmorphic background */}
+          <div className="absolute inset-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md" />
+          
+          {/* Content container */}
+          <div className="relative p-8">
+            <div className="absolute right-6 top-6">
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
               >
-                <option value="">Select a model</option>
-                {filteredModels.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                <XMarkIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              </button>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1 dark:text-white">
-                Tool Model
-              </label>
-              <select
-                value={toolModel}
-                onChange={(e) => setToolModel(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
-              >
-                <option value="">Select a model</option>
-                {filteredModels.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-3 mb-8">
+              <SettingsIcon className="w-6 h-6 text-sakura-500" />
+              <Dialog.Title className="text-xl font-semibold text-gray-900 dark:text-white">
+                Model Configuration
+              </Dialog.Title>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1 dark:text-white">
-                RAG Model
-              </label>
-              <select
-                value={ragModel}
-                onChange={(e) => setRagModel(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm dark:text-white"
+            <div className="space-y-8">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
+                  Vision Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={visionModel}
+                    onChange={(e) => setVisionModel(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all cursor-pointer"
+                  >
+                    <option value="" className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">Select a model</option>
+                    {filteredModels.map((model) => (
+                      <option key={model.name} value={model.name} className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
+                  Tool Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={toolModel}
+                    onChange={(e) => setToolModel(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all cursor-pointer"
+                  >
+                    <option value="" className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">Select a model</option>
+                    {filteredModels.map((model) => (
+                      <option key={model.name} value={model.name} className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
+                  RAG Model
+                </label>
+                <div className="relative">
+                  <select
+                    value={ragModel}
+                    onChange={(e) => setRagModel(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl appearance-none bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm focus:bg-white/50 dark:focus:bg-gray-900/50 focus:outline-none focus:ring-2 focus:ring-sakura-500/20 border-0 text-gray-900 dark:text-white shadow-sm transition-all cursor-pointer"
+                  >
+                    <option value="" className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">Select a model</option>
+                    {filteredModels.map((model) => (
+                      <option key={model.name} value={model.name} className="text-gray-900 dark:text-white bg-white dark:bg-gray-900">
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-4 pt-8">
+              <button
+                onClick={onClose}
+                className="px-6 py-2.5 rounded-xl bg-white/30 dark:bg-gray-900/30 backdrop-blur-sm hover:bg-white/50 dark:hover:bg-gray-900/50 text-gray-700 dark:text-white font-medium transition-all"
               >
-                <option value="">Select a model</option>
-                {filteredModels.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sakura-600 to-sakura-400 text-white font-medium hover:from-sakura-700 hover:to-sakura-500 transition-all duration-200 shadow-lg shadow-sakura-500/20 hover:shadow-sakura-500/30"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
-
-          <div className="mt-6 flex justify-end space-x-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
-            >
-              Save
-            </button>
-          </div>
-        </div>
+        </Dialog.Panel>
       </div>
     </Dialog>
   );

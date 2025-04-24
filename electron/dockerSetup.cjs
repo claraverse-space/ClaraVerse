@@ -436,7 +436,10 @@ class DockerSetup extends EventEmitter {
   async setup(statusCallback, forceUpdateCheck = false) {
     try {
       if (!await this.isDockerRunning()) {
-        throw new Error('Docker is not running. Please start Docker Desktop and try again.');
+        const dockerDownloadLink = 'https://desktop.docker.com/mac/main/arm64/Docker.dmg';
+        const errorMessage = `Docker is not running. Please download Docker Desktop from:\n${dockerDownloadLink}\n\nAfter installing and starting Docker Desktop, please restart Clara.`;
+        statusCallback(errorMessage, 'error');
+        throw new Error(errorMessage);
       }
 
       statusCallback('Creating Docker network...');

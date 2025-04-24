@@ -15,15 +15,12 @@ import Help from './components/Help';
 import N8N from './components/N8N';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
-import AnalyticsConsent from './components/AnalyticsConsent';
-import { useAnalyticsConsent } from './hooks/useAnalyticsConsent';
 import { db } from './db';
 
 function App() {
   const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userInfo, setUserInfo] = useState<{ name: string } | null>(null);
-  const { showConsentDialog, handleAccept, handleDecline } = useAnalyticsConsent();
 
   useEffect(() => {
     const checkUserInfo = async () => {
@@ -133,14 +130,7 @@ function App() {
       {showOnboarding ? (
         <Onboarding onComplete={handleOnboardingComplete} />
       ) : (
-        <>
-          {renderContent()}
-          <AnalyticsConsent
-            open={showConsentDialog}
-            onAccept={handleAccept}
-            onDecline={handleDecline}
-          />
-        </>
+        renderContent()
       )}
     </div>
   );

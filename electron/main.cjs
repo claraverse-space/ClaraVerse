@@ -61,12 +61,31 @@ async function initializeApp() {
     log.error(`Initialization error: ${error.message}`, error);
     splash?.setStatus(`Error: ${error.message}`, 'error');
     
-    dialog.showErrorBox('Setup Error', error.message);
-    // Keep splash open on error for a bit before quitting
-    setTimeout(() => {
-      splash?.close();
-      app.quit();
-    }, 4000);
+    if (error.message.includes('Docker is not running')) {
+      const downloadLink = error.message.split('\n')[1];
+      dialog.showMessageBox(null, {
+        type: 'info',
+        title: 'Docker Required',
+        message: 'Docker Desktop is required but not installed.',
+        detail: 'Please download and install Docker Desktop, then restart Clara.',
+        buttons: ['Download Docker Desktop', 'Close'],
+        defaultId: 0,
+        cancelId: 1
+      }).then(({ response }) => {
+        if (response === 0) {
+          require('electron').shell.openExternal(downloadLink);
+        }
+        splash?.close();
+        app.quit();
+      });
+    } else {
+      dialog.showErrorBox('Setup Error', error.message);
+      // Keep splash open on error for a bit before quitting
+      setTimeout(() => {
+        splash?.close();
+        app.quit();
+      }, 4000);
+    }
   }
 }
 

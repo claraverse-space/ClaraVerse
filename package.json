@@ -1,8 +1,8 @@
 {
   "name": "clara-ollama",
   "private": true,
-  "version": "1.2.31",
-  "description": "Clara – A privacy-first, client-side AI assistant WebUI for Ollama. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
+  "version": "1.2.4",
+  "description": "Clara – A privacy-first, client-side AI assistant WebUI for LLMs. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
     "name": "badboysm890",
     "email": "praveensm890@gmail.com"
@@ -71,7 +71,6 @@
     "ollama": "^0.5.14",
     "openai": "^4.89.0",
     "openai-zod-functions": "^0.1.2",
-    "posthog-js": "^1.236.2",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
