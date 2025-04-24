@@ -23,24 +23,23 @@ def get_ollama_host():
     """
     Get the Ollama host based on environment.
     If OLLAMA_HOST is set, use that.
-    If running in Docker and OLLAMA_HOST is not set, use 'host.docker.internal' on macOS/Windows or 'localhost' otherwise.
+    Otherwise try localhost first, then fall back to host.docker.internal if localhost fails.
     """
     # Check if OLLAMA_HOST environment variable is set
     ollama_host = os.getenv('OLLAMA_HOST')
     if ollama_host:
         return ollama_host
         
-    # Check if running in Docker
-    if os.path.exists('/.dockerenv'):
-        # On macOS/Windows, host.docker.internal is available
-        if os.system('ping -c 1 host.docker.internal > /dev/null 2>&1') == 0:
-            return 'host.docker.internal'
-        # On Linux, need to use the Docker network
-        if os.getenv('DOCKER_OLLAMA') == 'true':
-            return 'ollama'
+    # Try localhost first
+    try:
+        response = requests.get('http://localhost:11434/api/tags', timeout=2)
+        if response.status_code == 200:
+            return 'localhost'
+    except (requests.RequestException, requests.Timeout):
+        logger.info("Could not connect to Ollama on localhost, trying host.docker.internal")
     
-    # Default to localhost
-    return 'localhost'
+    # Fall back to host.docker.internal
+    return 'host.docker.internal'
 
 class DocumentAI:
     """

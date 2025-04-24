@@ -4,10 +4,11 @@ import { AssistantHeader, ChatInput, ChatWindow, KnowledgeBaseModal, ToolModal }
 import AssistantSettings from './assistant_components/AssistantSettings';
 import ImageWarning from './assistant_components/ImageWarning';
 import ModelPullModal from './assistant_components/ModelPullModal';
+import OnboardingModal from './assistant_components/OnboardingModal';
+import ModelConfigModal from './assistant_components/ModelConfigModal';
 import { db } from '../db';
 import { AssistantOllamaClient, ChatMessage, ChatRole } from '../utils';
 import type { Message, Chat, Tool } from '../db';
-import type { ElectronAPI } from '../types/electron';
 import { v4 as uuidv4 } from 'uuid';
 
 // Add RequestOptions type definition
@@ -49,6 +50,26 @@ interface SearchResult {
 interface SearchResponse {
   results: SearchResult[];
 }
+
+interface ModelConfig {
+  visionModel: string;
+  toolModel: string;
+  ragModel: string;
+}
+
+interface ModelSelectionConfig extends ModelConfig {
+  mode: 'auto' | 'manual' | 'smart';
+}
+
+interface OllamaModelConfig extends ModelSelectionConfig {
+  type: 'ollama';
+}
+
+interface OpenAIModelConfig extends ModelSelectionConfig {
+  type: 'openai';
+}
+
+type ApiModelConfig = OllamaModelConfig | OpenAIModelConfig;
 
 const MAX_CONTEXT_MESSAGES = 20;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -95,6 +116,28 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const [tools, setTools] = useState<Tool[]>([]);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    // Check if onboarding has been completed
+    const onboardingCompleted = localStorage.getItem('onboarding_completed');
+    // Only show if onboarding has never been completed
+    return !onboardingCompleted;
+  });
+  const [modelSelectionConfig, setModelSelectionConfig] = useState<ApiModelConfig>(() => {
+    const apiType = localStorage.getItem('api_type') || 'ollama';
+    const storedConfig = localStorage.getItem(`model_selection_config_${apiType}`);
+    
+    if (storedConfig) {
+      return JSON.parse(storedConfig);
+    }
+    
+    return {
+      type: apiType as 'ollama' | 'openai',
+      mode: 'manual',
+      visionModel: '',
+      toolModel: '',
+      ragModel: ''
+    };
+  });
 
   // Initialize or get temporary collection names from localStorage
   const [tempCollectionNames] = useState(() => {
@@ -426,13 +469,6 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
-  const [modelConfig, setModelConfig] = useState({
-    visionModel: '',
-    toolModel: '',
-    ragModel: ''
-  });
-
-  // Replace OllamaClient with AssistantOllamaClient
   const [client, setClient] = useState<AssistantOllamaClient | null>(null);
 
   useEffect(() => {
@@ -464,12 +500,31 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         const newClient = new AssistantOllamaClient(baseUrl, clientConfig);
         setClient(newClient);
 
-        // Load saved model config
-        const savedModelConfig = localStorage.getItem('assistant_model_config');
-        if (savedModelConfig) {
-          const config = JSON.parse(savedModelConfig);
-          setModelConfig(config);
-          newClient.setModelConfig(config);
+        // Load saved model selection config for current API type
+        const savedModelSelectionConfig = localStorage.getItem(`model_selection_config_${config.api_type}`);
+        if (savedModelSelectionConfig) {
+          const parsedConfig = JSON.parse(savedModelSelectionConfig);
+          setModelSelectionConfig(parsedConfig);
+          
+          if (parsedConfig.mode === 'auto') {
+            const modelConfig: ModelConfig = {
+              visionModel: parsedConfig.visionModel,
+              toolModel: parsedConfig.toolModel,
+              ragModel: parsedConfig.ragModel
+            };
+            newClient.setModelConfig(modelConfig);
+          }
+        } else {
+          // If no config exists for this API type, create default
+          const defaultConfig: ApiModelConfig = {
+            type: config.api_type as 'ollama' | 'openai',
+            mode: 'manual',
+            visionModel: '',
+            toolModel: '',
+            ragModel: ''
+          };
+          setModelSelectionConfig(defaultConfig);
+          localStorage.setItem(`model_selection_config_${config.api_type}`, JSON.stringify(defaultConfig));
         }
 
         // Test connection and get model list
@@ -518,15 +573,28 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     initializeOllama();
   }, []);
 
-  const handleModelConfigSave = (config: {
-    visionModel: string;
-    toolModel: string;
-    ragModel: string;
-  }) => {
-    setModelConfig(config);
-    localStorage.setItem('assistant_model_config', JSON.stringify(config));
-    if (client) {
-      client.setModelConfig(config);
+  const handleModelConfigSave = (config: ModelSelectionConfig) => {
+    const apiType = client?.getConfig().type || 'ollama';
+    const fullConfig: ApiModelConfig = {
+      ...config,
+      type: apiType as 'ollama' | 'openai'
+    };
+
+    setModelSelectionConfig(fullConfig);
+    localStorage.setItem(`model_selection_config_${apiType}`, JSON.stringify(fullConfig));
+    
+    // Mark onboarding as completed
+    localStorage.setItem('onboarding_completed', 'true');
+    setShowOnboarding(false);
+    
+    // If auto mode, set the model config for the client
+    if (config.mode === 'auto' && client) {
+      const modelConfig: ModelConfig = {
+        visionModel: config.visionModel,
+        toolModel: config.toolModel,
+        ragModel: config.ragModel
+      };
+      client.setModelConfig(modelConfig);
     }
   };
 
@@ -641,6 +709,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       // If RAG is enabled and no temp docs, use only clara-assistant collection
       if (ragEnabled) {
         try {
+          console.log('Searching clara-assistant collection with query:', query);
           const response = await fetch(`http://0.0.0.0:${pythonPort}/documents/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -653,11 +722,19 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
           if (response.ok) {
             const defaultResults = await response.json() as SearchResponse;
-            // Filter results by score > 0
+            console.log('Raw search results:', defaultResults);
+
+            // If we have few results (≤ 2), include them regardless of score
+            // Otherwise, filter by score > 0
+            const results = defaultResults?.results || [];
+            const filteredResults = results.length <= 2 
+              ? results 
+              : results.filter(result => (result.score || 0) > 0);
+
+            console.log('Filtered results:', filteredResults);
+            
             return {
-              results: (defaultResults?.results || [])
-                .filter(result => (result.score || 0) > 0)
-                .slice(0, 8)
+              results: filteredResults.slice(0, 8)
             };
           } else {
             console.warn('Clara Assistant collection search failed:', response.status);
@@ -689,17 +766,27 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const handleSend = async () => {
     if (!input.trim() || !client || !selectedModel || isProcessing) return;
 
-    // Store original model to switch back after image processing
-    const originalModel = selectedModel;
+    const context = {
+      hasImages: images.length > 0,
+      hasTool: !!selectedTool,
+      hasRag: ragEnabled || temporaryDocs.length > 0
+    };
 
-    // If using images, automatically switch to image-supported model if needed
-    if (images.length > 0 && !checkModelImageSupport(selectedModel)) {
+    // Get the appropriate model based on context and selection mode
+    const modelToUse = getAppropriateModel(context);
+    let actualModelToUse = modelToUse;
+    
+    // Only in manual mode, check if we need to switch to an image-supported model
+    if (modelSelectionConfig.mode === 'manual' && images.length > 0 && !checkModelImageSupport(modelToUse)) {
       const imageModel = findImageSupportedModel();
       if (imageModel) {
-        setSelectedModel(imageModel);
+        actualModelToUse = imageModel;
+        setSelectedModel(imageModel); // Update UI
       }
-      // Proceed even if no image model is found - will use current model
     }
+
+    // Store original model to switch back after image processing (manual mode only)
+    const originalModel = selectedModel;
 
     let currentChatId = activeChat;
     if (!currentChatId) {
@@ -767,28 +854,69 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       if (images.length > 0) {
         // Handle image generation
         try {
-          const response = await client.generateWithImages(
-            selectedModel,
-            input,
-            images.map(img => img.base64),
-            chatOptions
-          );
+          if (isStreaming) {
+            // Use streaming for image generation
+            let responseContent = '';
+            let responseTokens = 0;
 
-          const content = response.response || '';
-          const tokens = response.eval_count || 0;
+            for await (const chunk of client.streamGenerateWithImages(
+              actualModelToUse,
+              input,
+              images.map(img => img.base64),
+              chatOptions
+            )) {
+              if (chunk.response) {
+                responseContent += chunk.response;
+                responseTokens = chunk.eval_count || responseTokens;
 
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? { ...msg, content, tokens }
-              : msg
-          ));
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content: responseContent, tokens: responseTokens }
+                    : msg
+                ));
 
-          await db.addMessage(currentChatId, content, 'assistant', tokens);
+                scrollToBottom();
+              }
+            }
 
-          // Switch back to original model after image processing
-          if (originalModel !== selectedModel) {
+            // Save final response
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: responseContent, tokens: responseTokens }
+                : msg
+            ));
+
+            await db.addMessage(currentChatId, responseContent, 'assistant', responseTokens);
+          } else {
+            // Use non-streaming for image generation
+            const response = await client.generateWithImages(
+              actualModelToUse,
+              input,
+              images.map(img => img.base64),
+              chatOptions,
+            );
+
+            const content = response.response || '';
+            const tokens = response.eval_count || 0;
+
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content, tokens }
+                : msg
+            ));
+
+            await db.addMessage(currentChatId, content, 'assistant', tokens);
+          }
+
+          // Switch back to original model after image processing (manual mode only)
+          if (modelSelectionConfig.mode === 'manual' && originalModel !== actualModelToUse) {
             setSelectedModel(originalModel);
           }
+          
+          // Log model usage
+          await db.updateModelUsage(actualModelToUse, performance.now() - startTime);
+          await db.updateUsage('response_time', performance.now() - startTime);
+          
           return;
         } catch (error: unknown) {
           console.error('Image generation error:', error);
@@ -801,30 +929,56 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       
       // Check if we need to do RAG search and inject into user query
       let userContentWithContext = userMessage.content;
+      const formattedMessages: ChatMessage[] = [];
+      
       if ((temporaryDocs.length > 0 || ragEnabled) && pythonPort) {
-        const results = await searchDocuments(input);
+        console.log('RAG is enabled, searching for relevant context...');
+        const results = await searchDocuments(userMessage.content);
+        console.log('Search results:', results);
+        
         if (results && results.results && results.results.length > 0) {
           const contextFromSearch = results.results
             .map(r => r.content)
             .join('\n\n');
           
-          // Inject context into user query (this won't be displayed in the UI)
-          userContentWithContext = `Query: ${input}\n\nRelevant context:\n${contextFromSearch}\n\nPlease use this context to inform your response, but do not explicitly mention the provided context unless specifically asked.`;
+          console.log('Injecting context into prompt:', contextFromSearch);
+          
+          // Format the context injection differently based on API type
+          if (client?.getConfig().type === 'openai') {
+            // For OpenAI, use a system message to inject context
+            formattedMessages.unshift({
+              role: 'system',
+              content: `Context from knowledge base:\n${contextFromSearch}\n\nUse this context to inform your responses when relevant, but do not explicitly mention that you're using this context unless asked.`
+            });
+            console.log('OpenAI: Added context as system message');
+          } else {
+            // For Ollama, inject context directly into the user's message
+            userContentWithContext = `Context From the Doc:\n"${contextFromSearch}"\n\nUser's Query: ${userMessage.content}\n\nPlease use the above context to inform your response when relevant, but do not explicitly mention the provided context unless specifically asked.`;
+            console.log('Ollama: Injected context into user message');
+          }
+        } else {
+          console.log('No relevant context found in search results');
         }
       }
       
-      // Map context messages, replacing the last user message with the context-enhanced version
-      const formattedMessages: ChatMessage[] = [
-        { role: 'system' as ChatRole, content: await db.getSystemPrompt() }
-      ];
+      // Add system prompt first
+      const systemPrompt = await db.getSystemPrompt();
+      if (systemPrompt) {
+        formattedMessages.push({ 
+          role: 'system' as ChatRole, 
+          content: systemPrompt 
+        });
+      }
       
-      contextMessages.forEach((msg, index) => {
+      // Add context messages
+      contextMessages.forEach((msg: Message, index: number) => {
         // If this is the most recent user message (the one we just added), use the context-enhanced version
         if (index === contextMessages.length - 1 && msg.role === 'user') {
           formattedMessages.push({
             role: 'user' as ChatRole,
             content: userContentWithContext
           });
+          console.log('Final user message with context:', userContentWithContext);
         } else {
           formattedMessages.push({
             role: (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' 
@@ -834,6 +988,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           });
         }
       });
+
+      console.log('Final formatted messages:', formattedMessages);
 
       if (selectedTool) {
         // Format tool differently based on API type
@@ -867,7 +1023,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       try {
         // Use sendChatWithToolsPreserveFormat for OpenAI to get raw response format
         if (client.getConfig().type === 'openai') {
-          const response = await client.sendChatWithToolsPreserveFormat(selectedModel, ensureChatMessageFormat(formattedMessages), chatOptions, chatOptions.tools);
+          const response = await client.sendChatWithToolsPreserveFormat(
+            actualModelToUse, // Use the appropriate model
+            ensureChatMessageFormat(formattedMessages), 
+            chatOptions, 
+            chatOptions.tools
+          );
           
           // Handle OpenAI tool calls
           if (response.choices && response.choices.length > 0) {
@@ -941,7 +1102,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
               
               // Get final response with all tool results
               const finalResponse = await client.sendChatWithToolsPreserveFormat(
-                selectedModel, 
+                actualModelToUse, // Use the appropriate model
                 messagesWithToolResults, 
                 { temperature: 0.7, top_p: 0.9 }
               );
@@ -979,7 +1140,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
           if (isStreaming) {
             // Use streaming for non-image messages when streaming is enabled
-            for await (const chunk of client.streamChat(selectedModel, formattedMessages, chatOptions)) {
+            for await (const chunk of client.streamChat(actualModelToUse, formattedMessages, chatOptions)) {
               if (chunk.message?.content) {
                 responseContent += chunk.message.content;
                 responseTokens = chunk.eval_count || responseTokens;
@@ -994,7 +1155,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
               }
             }
           } else {
-            const response = await client.sendChat(selectedModel, formattedMessages, chatOptions);
+            const response = await client.sendChat(actualModelToUse, formattedMessages, chatOptions);
             responseContent = response.message?.content || '';
             responseTokens = response.eval_count || 0;
 
@@ -1032,13 +1193,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
             : msg
         ));
 
-        await db.addMessage(currentChatId, errorContent, 'assistant', 0);
+        await db.addMessage(
+          currentChatId,
+          errorContent,
+          'assistant',
+          0
+        );
       }
 
       const endTime = performance.now();
       const duration = endTime - startTime;
 
-      await db.updateModelUsage(selectedModel, duration);
+      await db.updateModelUsage(actualModelToUse, duration);
       await db.updateUsage('response_time', duration);
 
       scrollToBottom();
@@ -1165,6 +1331,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     try {
       setIsProcessing(true);
+      const startTime = performance.now();
 
       // Create new assistant message with the same ID
       const assistantMessage: Message = {
@@ -1185,11 +1352,21 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex)]);
       const formattedMessages = await formatMessagesForModel(contextMessages);
 
+      // Determine context for model selection
+      const context = {
+        hasImages: contextMessages.some(msg => msg.images && msg.images.length > 0),
+        hasTool: false, // Retry doesn't support tools currently
+        hasRag: ragEnabled || temporaryDocs.length > 0
+      };
+
+      // Get appropriate model
+      const modelToUse = getAppropriateModel(context);
+
       let responseContent = '';
       let responseTokens = 0;
 
       if (isStreaming) {
-        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
+        for await (const chunk of client.streamChat(modelToUse, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1204,7 +1381,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           }
         }
       } else {
-        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
+        const response = await client.sendChat(modelToUse, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1226,6 +1403,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         console.warn('Failed to update message in database:', dbError);
         // Continue execution - UI is already updated
       }
+
+      // Update model usage
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      await db.updateModelUsage(modelToUse, duration);
+      await db.updateUsage('response_time', duration);
 
     } catch (error: any) {
       console.error('Error retrying message:', error);
@@ -1269,10 +1452,21 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     try {
       setIsProcessing(true);
+      const startTime = performance.now();
 
       // Get context messages including the edited message
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
       const formattedMessages = await formatMessagesForModel(contextMessages);
+
+      // Determine context for model selection
+      const context = {
+        hasImages: contextMessages.some(msg => msg.images && msg.images.length > 0),
+        hasTool: false, // Edit doesn't support tools currently
+        hasRag: ragEnabled || temporaryDocs.length > 0
+      };
+
+      // Get appropriate model
+      const modelToUse = getAppropriateModel(context);
 
       // Create new assistant message
       const assistantMessage: Message = {
@@ -1292,7 +1486,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       if (isStreaming) {
         // Handle streaming response
-        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
+        for await (const chunk of client.streamChat(modelToUse, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1308,7 +1502,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         }
       } else {
         // Handle non-streaming response
-        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
+        const response = await client.sendChat(modelToUse, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1326,6 +1520,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         'assistant',
         responseTokens
       );
+
+      // Update model usage
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      await db.updateModelUsage(modelToUse, duration);
+      await db.updateUsage('response_time', duration);
 
     } catch (error: any) {
       console.error('Error generating edited response:', error);
@@ -1355,6 +1555,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
     try {
       setIsProcessing(true);
+      const startTime = performance.now();
 
       // Create updated user message for UI
       const updatedMessage = {
@@ -1401,12 +1602,22 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       const contextMessages = getContextMessages([...messages.slice(0, messageIndex), updatedMessage]);
       const formattedMessages = await formatMessagesForModel(contextMessages);
 
+      // Determine context for model selection
+      const context = {
+        hasImages: contextMessages.some(msg => msg.images && msg.images.length > 0),
+        hasTool: false, // SendEdit doesn't support tools currently
+        hasRag: ragEnabled || temporaryDocs.length > 0
+      };
+
+      // Get appropriate model
+      const modelToUse = getAppropriateModel(context);
+
       // Process response
       let responseContent = '';
       let responseTokens = 0;
 
       if (isStreaming) {
-        for await (const chunk of client.streamChat(selectedModel, ensureChatMessageFormat(formattedMessages))) {
+        for await (const chunk of client.streamChat(modelToUse, ensureChatMessageFormat(formattedMessages))) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
             responseTokens = chunk.eval_count || responseTokens;
@@ -1421,7 +1632,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           }
         }
       } else {
-        const response = await client.sendChat(selectedModel, ensureChatMessageFormat(formattedMessages));
+        const response = await client.sendChat(modelToUse, ensureChatMessageFormat(formattedMessages));
         responseContent = response.message?.content || '';
         responseTokens = response.eval_count || 0;
 
@@ -1439,6 +1650,12 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
         'assistant',
         responseTokens
       );
+
+      // Update model usage
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      await db.updateModelUsage(modelToUse, duration);
+      await db.updateUsage('response_time', duration);
 
     } catch (error: any) {
       console.error('Error processing edited message:', error);
@@ -1468,6 +1685,90 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     }
   };
 
+  // Update model selection logic
+  const getAppropriateModel = (context: {
+    hasImages: boolean;
+    hasTool: boolean;
+    hasRag: boolean;
+  }): string => {
+    const { hasImages, hasTool, hasRag } = context;
+    
+    switch (modelSelectionConfig.mode) {
+      case 'auto':
+        // Use the configured models for each context type
+        if (hasImages && modelSelectionConfig.visionModel) {
+          // Verify that the model supports images
+          if (checkModelImageSupport(modelSelectionConfig.visionModel)) {
+            return modelSelectionConfig.visionModel;
+          } else {
+            // If the configured vision model doesn't support images, find one that does
+            const imageModel = findImageSupportedModel();
+            if (imageModel) return imageModel;
+          }
+        }
+        
+        if (hasTool && modelSelectionConfig.toolModel) {
+          return modelSelectionConfig.toolModel;
+        }
+        
+        if (hasRag && modelSelectionConfig.ragModel) {
+          return modelSelectionConfig.ragModel;
+        }
+        
+        // Default to RAG model, or tool model, or vision model (in that order)
+        return modelSelectionConfig.ragModel || 
+               modelSelectionConfig.toolModel || 
+               modelSelectionConfig.visionModel || 
+               selectedModel;
+        
+      case 'smart':
+        // For now, behave like manual mode
+        // TODO: Implement smart selection based on usage patterns
+        return selectedModel;
+        
+      case 'manual':
+      default:
+        return selectedModel;
+    }
+  };
+
+  const handleModeChange = (mode: 'auto' | 'manual' | 'smart') => {
+    const apiType = client?.getConfig().type || 'ollama';
+    
+    // If switching to auto mode, check if models are configured
+    if (mode === 'auto') {
+      const currentConfig = modelSelectionConfig;
+      const hasValidConfig = currentConfig.visionModel || currentConfig.toolModel || currentConfig.ragModel;
+      
+      if (!hasValidConfig) {
+        // Show ModelConfigModal if no models are configured
+        setShowModelConfig(true);
+        return;
+      }
+    }
+
+    const newConfig: ApiModelConfig = {
+      ...modelSelectionConfig,
+      mode,
+      type: apiType as 'ollama' | 'openai'
+    };
+
+    setModelSelectionConfig(newConfig);
+    localStorage.setItem(`model_selection_config_${apiType}`, JSON.stringify(newConfig));
+
+    // If switching to auto mode, set the model config for the client
+    if (mode === 'auto' && client) {
+      const modelConfig: ModelConfig = {
+        visionModel: newConfig.visionModel,
+        toolModel: newConfig.toolModel,
+        ragModel: newConfig.ragModel
+      };
+      client.setModelConfig(modelConfig);
+    }
+  };
+
+  const [showModelConfig, setShowModelConfig] = useState(false);
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
       <AssistantSidebar
@@ -1491,6 +1792,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onOpenSettings={() => setShowSettings(true)}
           onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
           onOpenTools={() => setShowToolModal(true)}
+          modelSelectionMode={modelSelectionConfig.mode}
+          onModeChange={handleModeChange}
         />
 
         <ChatWindow
@@ -1536,7 +1839,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onToolSelect={setSelectedTool}
           models={models}
           onModelConfigSave={handleModelConfigSave}
-          modelConfig={modelConfig}
+          modelConfig={modelSelectionConfig}
           onModelSelect={handleModelSelect}
         />
 
@@ -1564,6 +1867,32 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onClose={() => setShowToolModal(false)}
           client={client!}
           model={selectedModel}
+        />
+
+        <ModelConfigModal
+          isOpen={showModelConfig}
+          onClose={() => setShowModelConfig(false)}
+          models={models}
+          onSave={(config) => {
+            // Add mode to the config before saving
+            handleModelConfigSave({
+              ...config,
+              mode: 'auto'
+            });
+            setShowModelConfig(false);
+          }}
+          currentConfig={{
+            visionModel: modelSelectionConfig.visionModel,
+            toolModel: modelSelectionConfig.toolModel,
+            ragModel: modelSelectionConfig.ragModel
+          }}
+        />
+
+        <OnboardingModal
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          models={models}
+          onModelConfigSave={handleModelConfigSave}
         />
       </div>
     </div>

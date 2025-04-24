@@ -3,6 +3,9 @@ import { Node, Edge } from 'reactflow';
 // Add import for NodeExecutorRegistry
 import { getNodeExecutor } from './nodeExecutors/NodeExecutorRegistry';
 
+const DEFAULT_LOCALHOST_URL = 'http://localhost:11434';
+const DEFAULT_DOCKER_URL = 'http://host.docker.internal:11434';
+
 export interface ExecutionPlan {
   nodes: Node[];
   edges: Edge[];
@@ -28,6 +31,34 @@ export interface ExecutionContext {
   onMessage?: (output: NodeOutput) => void;  // Add this line
   updateUi?: (type: string, nodeId: string, data: any) => void;
   updateNodeStatus?: (nodeId: string, status: 'running' | 'completed' | 'error') => void;
+  apiConfig: {
+    type: 'ollama';
+    baseUrl: string;
+  };
+}
+
+/**
+ * Tests connection to an Ollama instance
+ */
+async function testOllamaConnection(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    
+    const response = await fetch(`${url}/api/tags`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (error) {
+    console.warn(`Failed to connect to Ollama at ${url}:`, error);
+    return false;
+  }
 }
 
 /**
@@ -36,15 +67,13 @@ export interface ExecutionContext {
  * that URL is used in the plan configuration.
  */
 export function generateExecutionPlan(nodes: Node[], edges: Edge[]): ExecutionPlan {
-  const config: any = {
-    ollama: { baseUrl: 'http://localhost:11434' }
-  };
-
   // Look for LLM nodes to extract the Ollama base URL
   const llmNodes = nodes.filter((node) => node.type === 'baseLlmNode');
-  if (llmNodes.length > 0 && llmNodes[0].data.config?.ollamaUrl) {
-    config.ollama.baseUrl = llmNodes[0].data.config.ollamaUrl;
-  }
+  const configuredUrl = llmNodes.length > 0 ? llmNodes[0].data.config?.ollamaUrl : null;
+
+  const config: any = {
+    ollama: { baseUrl: configuredUrl || DEFAULT_LOCALHOST_URL }
+  };
 
   return { nodes, edges, config };
 }
@@ -76,7 +105,7 @@ async function executeNode(
   context: ExecutionContext,
   outputHandledNodes: Set<string>
 ): Promise<any> {
-  const { nodeOutputs, ollamaClient, setNodeOutput, updateUi, updateNodeStatus } = context;
+  const { nodeOutputs, ollamaClient, setNodeOutput, updateUi, updateNodeStatus, apiConfig } = context;
 
   // Update node status to running
   if (updateNodeStatus) {
@@ -102,7 +131,8 @@ async function executeNode(
         node,
         inputs: nodeOutputs,
         ollamaClient,
-        updateNodeOutput: trackingUpdateNodeOutput
+        updateNodeOutput: trackingUpdateNodeOutput,
+        apiConfig
       });
 
       // Update node status to completed
@@ -142,7 +172,6 @@ async function executeNode(
   }
 }
 
-
 /**
  * Executes the flow based on the execution plan.
  * Processes nodes in an order such that a node is executed only when all its input dependencies have been resolved.
@@ -153,8 +182,33 @@ export async function executeFlow(
   updateUi?: (type: string, nodeId: string, data: any) => void,
   updateNodeStatus?: (nodeId: string, status: 'running' | 'completed' | 'error') => void
 ): Promise<Map<string, any>> {
-  // Initialize the Ollama client using the baseUrl from the execution plan.
-  const ollamaClient = new OllamaClient(plan.config.ollama.baseUrl);
+  // Test connection and determine the correct URL
+  let baseUrl: string;
+  
+  // Get configured URL or use default
+  if (plan.config.ollama?.baseUrl) {
+    baseUrl = plan.config.ollama.baseUrl;
+  } else {
+    baseUrl = DEFAULT_LOCALHOST_URL;
+  }
+  
+  // If using default URL, test connection and potentially use fallback
+  if (baseUrl === DEFAULT_LOCALHOST_URL) {
+    const localhostWorks = await testOllamaConnection(DEFAULT_LOCALHOST_URL);
+    if (!localhostWorks) {
+      console.log('Falling back to host.docker.internal');
+      baseUrl = DEFAULT_DOCKER_URL;
+    }
+  }
+
+  // Initialize the Ollama client using the determined baseUrl
+  const ollamaClient = new OllamaClient(baseUrl);
+
+  // Create API config
+  const apiConfig = {
+    type: 'ollama' as const,
+    baseUrl: baseUrl,
+  };
 
   // Storage for node outputs.
   const nodeOutputs: { [nodeId: string]: any } = {};
@@ -203,7 +257,8 @@ export async function executeFlow(
     ollamaClient,
     setNodeOutput,
     updateUi,
-    updateNodeStatus
+    updateNodeStatus,
+    apiConfig
   };
 
   // Process nodes until none remain.

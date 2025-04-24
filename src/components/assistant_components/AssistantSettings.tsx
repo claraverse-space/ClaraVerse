@@ -273,7 +273,8 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                     };
                     await db.updateAPIConfig(updatedConfig);
                     setApiConfig(updatedConfig);
-                    loadModels();
+                    // Reload the page after configuration is saved
+                    window.location.reload();
                   }
                 }}
                 className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
@@ -299,7 +300,8 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                     };
                     await db.updateAPIConfig(updatedConfig);
                     setApiConfig(updatedConfig);
-                    loadModels();
+                    // Reload the page after configuration is saved
+                    window.location.reload();
                   }
                 }}
                 className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${

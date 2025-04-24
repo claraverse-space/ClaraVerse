@@ -10,6 +10,10 @@ interface ModelConfig {
   ragModel: string;
 }
 
+interface ModelSelectionConfig extends ModelConfig {
+  mode: 'auto' | 'manual' | 'smart';
+}
+
 interface ChatInputProps {
   input: string;
   setInput: (input: string) => void;
@@ -30,8 +34,8 @@ interface ChatInputProps {
   tools?: Tool[];
   onToolSelect?: (tool: Tool | null) => void;
   models?: any[];
-  modelConfig?: ModelConfig;
-  onModelConfigSave?: (config: ModelConfig) => void;
+  modelConfig: ModelSelectionConfig;
+  onModelConfigSave: (config: ModelSelectionConfig) => void;
   onModelSelect?: (modelName: string) => void;
 }
 
@@ -61,7 +65,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   tools = [],
   onToolSelect,
   models = [],
-  modelConfig = defaultModelConfig,
+  modelConfig,
   onModelConfigSave,
   onModelSelect,
 }) => {

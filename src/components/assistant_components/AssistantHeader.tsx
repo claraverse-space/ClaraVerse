@@ -3,6 +3,8 @@ import { Home, Bot, CheckCircle2, AlertCircle, ChevronDown, Sun, Moon, Image as 
 import { useTheme } from '../../hooks/useTheme';
 import { db } from '../../db';
 import UserProfileButton from '../common/UserProfileButton';
+import { ChevronDownIcon, HomeIcon } from '@heroicons/react/24/outline';
+import { Tool } from 'lucide-react';
 
 interface AssistantHeaderProps {
   connectionStatus: 'checking' | 'connected' | 'disconnected';
@@ -16,6 +18,8 @@ interface AssistantHeaderProps {
   onOpenSettings: () => void;
   onOpenKnowledgeBase: () => void;
   onOpenTools: () => void;
+  modelSelectionMode?: 'auto' | 'manual' | 'smart';
+  onModeChange?: (mode: 'auto' | 'manual' | 'smart') => void;
 }
 
 interface Model {
@@ -36,10 +40,13 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   onNavigateHome,
   onOpenSettings,
   onOpenKnowledgeBase,
-  onOpenTools
+  onOpenTools,
+  modelSelectionMode = 'manual',
+  onModeChange
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const [userName, setUserName] = useState<string>('');
   const [modelConfigs, setModelConfigs] = useState<Record<string, boolean>>({});
   const [modelUsage, setModelUsage] = useState<Record<string, number>>({});
@@ -48,6 +55,7 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [lastSelectedModel, setLastSelectedModel] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showModeSelect, setShowModeSelect] = useState(false);
 
   useEffect(() => {
     const loadUserName = async () => {
@@ -75,6 +83,9 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowModelSelect(false);
+      }
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(event.target as Node)) {
+        setShowModeSelect(false);
       }
     };
 
@@ -212,6 +223,13 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
     }
   };
 
+  const handleModeSelect = (mode: 'auto' | 'manual' | 'smart') => {
+    if (onModeChange) {
+      onModeChange(mode);
+    }
+    setShowModeSelect(false);
+  };
+
   return (
     <div className="h-16 glassmorphic flex items-center justify-between px-6 relative z-20">
       {/* Success Message */}
@@ -235,49 +253,90 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
 
       {/* Center section with model selector */}
       <div className="flex-1 flex items-center justify-center gap-2">
-        <div className="relative" ref={dropdownRef}>
+        {/* Only show model selector in manual mode */}
+        {modelSelectionMode === 'manual' && (
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowModelSelect(!showModelSelect)}
+              disabled={connectionStatus !== 'connected'}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                connectionStatus === 'connected'
+                  ? 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'opacity-50 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    connectionStatus === 'connected'
+                      ? 'bg-green-500'
+                      : connectionStatus === 'checking'
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-gray-700 dark:text-gray-300">
+                  {selectedModel || 'Select Model'}
+                </span>
+              </div>
+              <ChevronDownIcon className="w-4 h-4 text-gray-500" />
+            </button>
+
+            {showModelSelect && (
+              <div className="absolute top-full left-0 mt-2 w-64 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-50">
+                {models.map((model) => (
+                  <button
+                    key={model.name}
+                    onClick={() => {
+                      setSelectedModel(model.name);
+                      setShowModelSelect(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  >
+                    {model.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Show current mode indicator when not in manual mode */}
+        <div className="relative" ref={modeDropdownRef}>
           <button
-            onClick={() => setShowModelSelect(!showModelSelect)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors ${
-              !selectedModel ? 'animate-pulse' : ''
-            }`}
-            disabled={connectionStatus !== 'connected'}
+            onClick={() => setShowModeSelect(!showModeSelect)}
+            className="px-3 py-1.5 rounded-lg text-sm bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300 hover:bg-sakura-100 dark:hover:bg-sakura-900/30 transition-colors flex items-center gap-2"
           >
-            <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5" />
-              <span className="text-sm font-medium">
-                {selectedModel || (models.length > 0 ? 'Select a Model' : 'Loading Models...')}
-              </span>
-              {selectedModel === mostUsedModel && (
-                <Star className="w-4 h-4 text-yellow-500" title="Most used model" />
-              )}
-              {modelConfigs[selectedModel] && (
-                <ImageIcon className="w-4 h-4 text-sakura-500" title="Supports images" />
-              )}
-            </div>
+            {modelSelectionMode === 'auto' ? 'Auto Mode' : modelSelectionMode === 'smart' ? 'Smart Mode' : 'Manual Mode'}
             <ChevronDown className="w-4 h-4" />
           </button>
-          {showModelSelect && (
-            <div className="absolute top-full left-0 mt-1 w-80 max-h-96 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg z-50">
-              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-                <input
-                  type="text"
-                  placeholder="Search models..."
-                  value={searchTerm}
-                  onChange={handleModelSearch}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-sm"
-                  autoFocus
-                />
-              </div>
-              <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {filteredModels.length > 0 ? (
-                  filteredModels.map(model => renderModelDetails(model))
-                ) : (
-                  <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                    No models match your search
-                  </div>
-                )}
-              </div>
+
+          {showModeSelect && (
+            <div className="absolute top-full left-0 mt-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-50">
+              <button
+                onClick={() => handleModeSelect('auto')}
+                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                  modelSelectionMode === 'auto' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Auto Mode
+              </button>
+              <button
+                onClick={() => handleModeSelect('smart')}
+                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                  modelSelectionMode === 'smart' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Smart Mode
+              </button>
+              <button
+                onClick={() => handleModeSelect('manual')}
+                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                  modelSelectionMode === 'manual' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Manual Mode
+              </button>
             </div>
           )}
         </div>

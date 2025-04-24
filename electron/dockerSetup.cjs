@@ -176,17 +176,24 @@ class DockerSetup extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.docker.pull(imageName, (err, stream) => {
         if (err) {
+          console.error('Error pulling image:', err);
           reject(err);
           return;
         }
 
+        let lastStatus = '';
         stream.on('data', (data) => {
           const lines = data.toString().split('\n').filter(Boolean);
           lines.forEach(line => {
             try {
               const parsed = JSON.parse(line);
-              if (parsed.status) {
+              if (parsed.status && parsed.status !== lastStatus) {
+                lastStatus = parsed.status;
                 statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+              }
+              if (parsed.error) {
+                console.error('Pull error:', parsed.error);
+                reject(new Error(parsed.error));
               }
             } catch (e) {
               // Ignore parse errors
@@ -194,21 +201,61 @@ class DockerSetup extends EventEmitter {
           });
         });
 
-        stream.on('end', resolve);
-        stream.on('error', reject);
+        stream.on('end', () => {
+          statusCallback(`Successfully pulled ${imageName}`);
+          resolve();
+        });
+
+        stream.on('error', (error) => {
+          console.error('Stream error:', error);
+          reject(error);
+        });
       });
     });
   }
 
   async startContainer(config) {
     try {
-      // Check if container exists
-      let existingContainer;
+      // Check if container exists and is running
       try {
-        existingContainer = await this.docker.getContainer(config.name);
-        await existingContainer.remove({ force: true });
+        const existingContainer = await this.docker.getContainer(config.name);
+        const containerInfo = await existingContainer.inspect();
+        
+        if (containerInfo.State.Running) {
+          console.log(`Container ${config.name} is already running, checking health...`);
+          
+          // Check if the running container is healthy
+          const isHealthy = await config.healthCheck();
+          if (isHealthy) {
+            console.log(`Container ${config.name} is running and healthy, skipping recreation`);
+            return;
+          }
+          
+          console.log(`Container ${config.name} is running but not healthy, will recreate`);
+          await existingContainer.stop();
+          await existingContainer.remove({ force: true });
+        } else {
+          console.log(`Container ${config.name} exists but is not running, will recreate`);
+          await existingContainer.remove({ force: true });
+        }
       } catch (error) {
-        console.log(`No existing container ${config.name} to remove`);
+        if (error.statusCode !== 404) {
+          console.error(`Error checking container ${config.name}:`, error);
+        } else {
+          console.log(`No existing container ${config.name}, will create new one`);
+        }
+      }
+
+      // First ensure we have the image
+      try {
+        await this.docker.getImage(config.image).inspect();
+      } catch (error) {
+        if (error.statusCode === 404) {
+          console.log(`Image ${config.image} not found locally, pulling...`);
+          await this.pullImage(config.image, (status) => console.log(status));
+        } else {
+          throw error;
+        }
       }
 
       console.log(`Creating container ${config.name} with port mapping ${config.internalPort} -> ${config.port}`);
@@ -257,6 +304,14 @@ class DockerSetup extends EventEmitter {
       }
 
       if (!healthy) {
+        // Get container logs to help diagnose the issue
+        const container = await this.docker.getContainer(config.name);
+        const logs = await container.logs({
+          stdout: true,
+          stderr: true,
+          tail: 50
+        });
+        console.error(`Container logs for ${config.name}:`, logs.toString());
         throw new Error(`Container ${config.name} failed health check after 5 attempts`);
       }
     } catch (error) {
@@ -300,8 +355,74 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  shouldPullImage(imageName) {
+  async checkImageUpdate(imageName) {
     try {
+      // First try to inspect the local image
+      try {
+        await this.docker.getImage(imageName).inspect();
+      } catch (error) {
+        // If image doesn't exist locally, we need to pull it
+        if (error.statusCode === 404) {
+          return true;
+        }
+      }
+
+      // Try to pull the image to check for updates
+      return new Promise((resolve, reject) => {
+        this.docker.pull(imageName, (err, stream) => {
+          if (err) {
+            // If we can't pull, but have local image, use local
+            if (err.statusCode === 404) {
+              resolve(false);
+              return;
+            }
+            reject(err);
+            return;
+          }
+
+          let needsUpdate = false;
+          
+          stream.on('data', (data) => {
+            const lines = data.toString().split('\n').filter(Boolean);
+            lines.forEach(line => {
+              try {
+                const parsed = JSON.parse(line);
+                // Check for "up to date" message
+                if (parsed.status && parsed.status.includes('up to date')) {
+                  needsUpdate = false;
+                }
+                // Check for "downloading" or "extracting" which indicates an update
+                if (parsed.status && (parsed.status.includes('Downloading') || parsed.status.includes('Extracting'))) {
+                  needsUpdate = true;
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            });
+          });
+
+          stream.on('end', () => {
+            resolve(needsUpdate);
+          });
+
+          stream.on('error', (error) => {
+            console.error('Stream error during pull:', error);
+            resolve(true); // If we can't determine, assume update needed
+          });
+        });
+      });
+    } catch (error) {
+      console.error('Error checking image update:', error);
+      return true; // If we can't determine, assume update needed
+    }
+  }
+
+  shouldPullImage(imageName, forceCheck = false) {
+    try {
+      if (forceCheck) {
+        return this.checkImageUpdate(imageName);
+      }
+
       const timestamps = this.getPullTimestamps();
       const lastPull = timestamps[imageName] || 0;
       const daysSinceLastPull = (Date.now() - lastPull) / (1000 * 60 * 60 * 24);
@@ -312,7 +433,7 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  async setup(statusCallback) {
+  async setup(statusCallback, forceUpdateCheck = false) {
     try {
       if (!await this.isDockerRunning()) {
         throw new Error('Docker is not running. Please start Docker Desktop and try again.');
@@ -323,7 +444,8 @@ class DockerSetup extends EventEmitter {
 
       // Check and pull images if needed
       for (const [name, config] of Object.entries(this.containers)) {
-        if (this.shouldPullImage(config.image)) {
+        const shouldUpdate = await this.shouldPullImage(config.image, forceUpdateCheck);
+        if (shouldUpdate) {
           statusCallback(`Pulling ${name} image...`);
           await this.pullImage(config.image, statusCallback);
           this.updatePullTimestamp(config.image);
