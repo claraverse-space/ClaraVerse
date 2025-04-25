@@ -24,6 +24,10 @@ export interface ElectronAPI {
   getPlatform: () => string;
   getOsVersion: () => string;
   getServicePorts: () => Promise<ServicePorts>;
+  clipboard: {
+    writeText: (text: string) => void;
+    readText: () => string;
+  };
   ipcRenderer: {
     on: (channel: string, listener: (status: SetupStatus | string) => void) => () => void;
     removeListener: (channel: string, listener: (...args: any[]) => void) => void;

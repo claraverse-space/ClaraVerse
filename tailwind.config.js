@@ -58,11 +58,16 @@ export default {
           '50%': { 
             boxShadow: '0 0 15px rgba(244, 114, 182, 0.7), 0 0 25px rgba(244, 114, 182, 0.5), 0 0 35px rgba(244, 114, 182, 0.3)'
           }
+        },
+        'bounce-gentle': {
+          '0%, 100%': { transform: 'translateY(-5%)' },
+          '50%': { transform: 'translateY(5%)' },
         }
       },
       animation: {
         'fade-out': 'fade-out 3s ease-out forwards',
-        'glow': 'glow 2s ease-in-out infinite'
+        'glow': 'glow 2s ease-in-out infinite',
+        'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
       }
     },
   },

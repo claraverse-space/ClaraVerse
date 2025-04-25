@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import { Plus, Trash2, Edit2, Check, X, Code, Play, AlertCircle, ChevronDown, Wand2, Book, Lightbulb, ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2 } from 'lucide-react';
+import Store from './n8n_components/Store';
+import MiniStore from './n8n_components/MiniStore';
+import { Plus, Trash2, Edit2, Check, X, Code, Play, AlertCircle, ChevronDown, Wand2, Book, Lightbulb, ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon } from 'lucide-react';
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
 import { db } from '../db';
@@ -68,6 +70,9 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [toolCreationError, setToolCreationError] = useState<string | null>(null);
   const [showToolsList, setShowToolsList] = useState(false);
   const [tools, setTools] = useState<any[]>([]);
+  const [showStore, setShowStore] = useState(false);
+  const [showNewFeatureTag, setShowNewFeatureTag] = useState(false);
+  const [showMiniStore, setShowMiniStore] = useState(false);
 
   // Add effect to load tools when tools list is opened
   useEffect(() => {
@@ -111,6 +116,13 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
         cleanup();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const hasSeenFeature = localStorage.getItem('hasSeenWorkflowVerse');
+    if (!hasSeenFeature) {
+      setShowNewFeatureTag(true);
+    }
   }, []);
 
   const handleRefresh = () => {
@@ -276,6 +288,14 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       setTools(toolsList);
     } catch (err) {
       console.error('Failed to load tools:', err);
+    }
+  };
+
+  const handleStoreClick = () => {
+    setShowStore(true);
+    if (showNewFeatureTag) {
+      localStorage.setItem('hasSeenWorkflowVerse', 'true');
+      setShowNewFeatureTag(false);
     }
   };
 
@@ -543,54 +563,92 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           )}
 
           <div className="h-full flex overflow-hidden">
-            {/* Header/Toolbar */}
-            <div className="flex-1 flex flex-col">
-              <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-black">
+            <div className={`flex-1 flex flex-col ${showStore ? 'hidden' : ''}`}>
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-black">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleRefresh}
                     disabled={isLoading || !n8nPort}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed group relative"
                     title="Refresh n8n View"
                   >
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setShowTerminal(!showTerminal)}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300"
-                    title="Toggle Setup Logs"
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 group relative"
                   >
                     <Terminal className="w-4 h-4" />
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Setup Logs
+                    </div>
                   </button>
+                </div>
+                <div className="flex-1 flex justify-center items-center">
+                  <div className="relative group">
+                    <div className="absolute -inset-2 bg-gradient-to-r from-purple-600 via-blue-500 to-pink-500 rounded-full blur opacity-40 group-hover:opacity-75 transition duration-200"></div>
+                    <button
+                      onClick={handleStoreClick}
+                      className="relative flex items-center gap-2 px-4 py-1.5 bg-white dark:bg-black rounded-full group"
+                      title="Open ClaraVerse Store"
+                    >
+                      <StoreIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ClaraVerse Store</span>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                        Browse all workflows and integrations
+                      </div>
+                    </button>
+                    {showNewFeatureTag && (
+                      <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 whitespace-nowrap">
+                        <div className="bg-gradient-to-r from-purple-600 via-blue-500 to-pink-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
+                          New Feature 🎉 - Explore ClaraVerse Store!
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {n8nPort ? <span className="text-xs text-gray-500 dark:text-gray-400">n8n Port: {n8nPort}</span> : <span className="text-xs text-yellow-500">Fetching port...</span>}
                   <button
                     onClick={handleOpenExternal}
                     disabled={!n8nPort}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Open n8n in Browser"
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed group relative"
                   >
                     <ExternalLink className="w-4 h-4" />
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Open in Browser
+                    </div>
                   </button>
                   <button
                     onClick={() => setShowWebhookTester(!showWebhookTester)}
-                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showWebhookTester ? 'bg-gray-100 dark:bg-gray-900' : ''}`}
-                    title="Toggle Webhook Tester"
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showWebhookTester ? 'bg-gray-100 dark:bg-gray-900' : ''} group relative`}
                   >
                     <Webhook className="w-4 h-4" />
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Webhook Tester
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setShowMiniStore(!showMiniStore)}
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showMiniStore ? 'bg-gray-100 dark:bg-gray-900' : ''} group relative`}
+                  >
+                    <StoreIcon className="w-4 h-4" />
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Quick Workflows 
+                    </div>
                   </button>
                   <button
                     onClick={() => setShowToolsList(!showToolsList)}
-                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showToolsList ? 'bg-gray-100 dark:bg-gray-900' : ''}`}
-                    title="Toggle Tools List"
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showToolsList ? 'bg-gray-100 dark:bg-gray-900' : ''} group relative`}
                   >
                     <Settings2 className="w-4 h-4" />
+                    <div className="absolute right-full right-1/2  -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Clara's Tool Belt
+                    </div>
                   </button>
                 </div>
               </div>
 
-              {/* Webview and Terminal Area */}
               <div className="flex-1 flex flex-col overflow-hidden">
                 <div className={`flex-1 ${showTerminal ? 'h-2/3' : 'h-full'} transition-height duration-300 ease-in-out`}>
                   {n8nPort !== null ? (
@@ -621,12 +679,16 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                 )}
               </div>
             </div>
-            
-            {/* Webhook Tester Sidebar */}
-            {showWebhookTester && renderWebhookTester()}
 
-            {/* Tools List Sidebar */}
-            {showToolsList && renderToolsList()}
+            {showStore && <Store onBack={() => setShowStore(false)} />}
+            
+            {!showStore && showWebhookTester && renderWebhookTester()}
+
+            {!showStore && showMiniStore && (
+              <MiniStore onClose={() => setShowMiniStore(false)} />
+            )}
+
+            {!showStore && showToolsList && renderToolsList()}
           </div>
         </main>
       </div>

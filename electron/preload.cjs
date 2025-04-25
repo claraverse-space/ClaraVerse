@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('electron', {
   getServicePorts: () => ipcRenderer.invoke('get-service-ports'),
   getPythonPort: () => ipcRenderer.invoke('get-python-port'),
   checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
+
+  // Clipboard
+  clipboard: {
+    writeText: (text) => clipboard.writeText(text),
+    readText: () => clipboard.readText(),
+  },
   
   // IPC Communication
   send: (channel, data) => {
