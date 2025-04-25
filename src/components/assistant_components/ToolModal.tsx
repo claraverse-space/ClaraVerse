@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, Wrench } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Wrench, Workflow } from 'lucide-react';
 import { ToolManager } from './ToolManager';
+import { WorkflowToolModal } from './WorkflowToolModal';
 import { OllamaClient } from '../../utils';
 
 interface ToolModalProps {
@@ -11,6 +12,8 @@ interface ToolModalProps {
 }
 
 export const ToolModal: React.FC<ToolModalProps> = ({ isOpen, onClose, client, model }) => {
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+
   if (!isOpen) return null;
 
   return (
@@ -24,12 +27,21 @@ export const ToolModal: React.FC<ToolModalProps> = ({ isOpen, onClose, client, m
               Tool Management
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowWorkflowModal(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-sakura-500 hover:bg-sakura-600 rounded-lg transition-colors"
+            >
+              <Workflow className="w-4 h-4" />
+              Add Workflow Tool
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -47,6 +59,17 @@ export const ToolModal: React.FC<ToolModalProps> = ({ isOpen, onClose, client, m
           </button>
         </div>
       </div>
+
+      {/* Workflow Tool Modal */}
+      <WorkflowToolModal
+        isOpen={showWorkflowModal}
+        onClose={() => setShowWorkflowModal(false)}
+        onToolCreated={() => {
+          setShowWorkflowModal(false);
+          // Trigger a refresh of the tool list in ToolManager
+          // This will happen automatically if ToolManager uses the database
+        }}
+      />
     </div>
   );
 }; 

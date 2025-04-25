@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import { ExternalLink, AlertCircle, RefreshCcw, Terminal, XCircle } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Code, Play, AlertCircle, ChevronDown, Wand2, Book, Lightbulb, ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2 } from 'lucide-react';
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
+import { db } from '../db';
 
 // --- Consolidated Type Definitions ---
 
@@ -55,6 +56,25 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [ports, setPorts] = useState<ServicePorts | null>(null);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const webviewRef = useRef<WebviewTag | null>(null);
+  const [showWebhookTester, setShowWebhookTester] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookMethod, setWebhookMethod] = useState('GET');
+  const [webhookBody, setWebhookBody] = useState('');
+  const [webhookResponse, setWebhookResponse] = useState<string | null>(null);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [showCreateTool, setShowCreateTool] = useState(false);
+  const [toolName, setToolName] = useState('');
+  const [toolDescription, setToolDescription] = useState('');
+  const [toolCreationError, setToolCreationError] = useState<string | null>(null);
+  const [showToolsList, setShowToolsList] = useState(false);
+  const [tools, setTools] = useState<any[]>([]);
+
+  // Add effect to load tools when tools list is opened
+  useEffect(() => {
+    if (showToolsList) {
+      loadTools();
+    }
+  }, [showToolsList]);
 
   useEffect(() => {
     const fetchPorts = async () => {
@@ -179,6 +199,333 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
     };
   }, [n8nPort]);
 
+  const handleTestWebhook = async () => {
+    setIsTestingWebhook(true);
+    setWebhookResponse(null);
+    try {
+      const response = await fetch(webhookUrl, {
+        method: webhookMethod,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: webhookMethod !== 'GET' ? webhookBody : undefined,
+      });
+      
+      const data = await response.json();
+      setWebhookResponse(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setWebhookResponse(`Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`);
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
+  const handleCreateTool = async () => {
+    setToolCreationError(null);
+    
+    // Validate tool name (only underscores, no spaces)
+    if (!/^[a-z0-9_]+$/.test(toolName)) {
+      setToolCreationError('Tool name can only contain lowercase letters, numbers, and underscores');
+      return;
+    }
+
+    try {
+      const toolDefinition = {
+        name: toolName,
+        description: toolDescription,
+        parameters: [
+          {
+            name: "input",
+            type: "string",
+            description: "The input to send to the webhook",
+            required: true
+          }
+        ],
+        implementation: `async function implementation(args) {
+  try {
+    const response = await fetch("${webhookUrl}", {
+      method: "${webhookMethod}",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: ${webhookMethod !== 'GET' ? 'args.input' : 'undefined'}
+    });
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    throw new Error(\`Webhook call failed: \${error.message}\`);
+  }
+}`,
+        isEnabled: true
+      };
+
+      await db.addTool(toolDefinition);
+      setShowCreateTool(false);
+      setToolName('');
+      setToolDescription('');
+      setToolCreationError(null);
+    } catch (err) {
+      setToolCreationError(err instanceof Error ? err.message : 'Failed to create tool');
+    }
+  };
+
+  const loadTools = async () => {
+    try {
+      const toolsList = await db.getAllTools();
+      setTools(toolsList);
+    } catch (err) {
+      console.error('Failed to load tools:', err);
+    }
+  };
+
+  const renderWebhookTester = () => {
+    return (
+      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
+              <Webhook className="w-5 h-5" />
+              Webhook Tester
+            </h3>
+            <button
+              onClick={() => setShowWebhookTester(false)}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Webhook URL
+            </label>
+            <input
+              type="text"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+              placeholder="Enter webhook URL"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Method
+            </label>
+            <select
+              value={webhookMethod}
+              onChange={(e) => setWebhookMethod(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+
+          {webhookMethod !== 'GET' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Request Body (JSON)
+              </label>
+              <textarea
+                value={webhookBody}
+                onChange={(e) => setWebhookBody(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
+                placeholder="{}"
+              />
+            </div>
+          )}
+
+          <button
+            onClick={handleTestWebhook}
+            disabled={!webhookUrl || isTestingWebhook}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isTestingWebhook ? (
+              <>
+                <RefreshCcw className="w-4 h-4 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Test Webhook
+              </>
+            )}
+          </button>
+
+          {webhookResponse && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Response
+                </label>
+                <pre className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md overflow-x-auto text-sm font-mono">
+                  {webhookResponse}
+                </pre>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                <button
+                  onClick={() => setShowCreateTool(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-sakura-500 hover:bg-sakura-600 rounded-md"
+                >
+                  <Wrench className="w-4 h-4" />
+                  Create Clara Assistant Tool
+                </button>
+              </div>
+
+              {showCreateTool && (
+                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tool Name (lowercase, underscores only)
+                    </label>
+                    <input
+                      type="text"
+                      value={toolName}
+                      onChange={(e) => setToolName(e.target.value.toLowerCase())}
+                      placeholder="my_webhook_tool"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description (be friendly!)
+                    </label>
+                    <textarea
+                      value={toolDescription}
+                      onChange={(e) => setToolDescription(e.target.value)}
+                      rows={3}
+                      placeholder="This friendly tool helps you..."
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  {toolCreationError && (
+                    <div className="text-sm text-red-500">
+                      {toolCreationError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCreateTool}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create Tool
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCreateTool(false);
+                        setToolName('');
+                        setToolDescription('');
+                        setToolCreationError(null);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderToolsList = () => {
+    return (
+      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
+              <Settings2 className="w-5 h-5" />
+              Clara Tools
+            </h3>
+            <button
+              onClick={() => setShowToolsList(false)}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          {tools.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+              No tools found
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tools.map((tool) => (
+                <div
+                  key={tool.id}
+                  className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                        {tool.name}
+                      </h4>
+                      <div className="flex items-center gap-1">
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          tool.isEnabled 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                        }`}>
+                          {tool.isEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                        <button
+                          onClick={() => {
+                            db.updateTool(tool.id, { ...tool, isEnabled: !tool.isEnabled }).then(loadTools);
+                          }}
+                          className={`p-1.5 rounded-lg ${tool.isEnabled ? 'text-green-500 hover:text-green-600' : 'text-red-500 hover:text-red-600'}`}
+                          title={tool.isEnabled ? 'Tool is enabled - Click to disable' : 'Tool is disabled - Click to enable'}
+                        >
+                          {tool.isEnabled ? (
+                            <Check className="w-5 h-5" />
+                          ) : (
+                            <X className="w-5 h-5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this tool?')) {
+                              db.deleteTool(tool.id).then(loadTools);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500"
+                          title="Delete tool"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {tool.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen">
       <Sidebar activePage="n8n" onPageChange={onPageChange || (() => {})} />
@@ -186,7 +533,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       <div className="flex-1 flex flex-col">
         <Topbar onPageChange={onPageChange || (() => {})} />
         
-        <main className="flex-1 p-6 overflow-auto bg-gray-50 dark:bg-gray-900">
+        <main className="flex-1 p-6 overflow-auto bg-gray-50 dark:bg-black">
           {error && (
             <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
@@ -195,74 +542,96 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
             </div>
           )}
 
-          <div className="h-full flex flex-col border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+          <div className="h-full flex overflow-hidden">
             {/* Header/Toolbar */}
-            <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleRefresh}
-                  disabled={isLoading || !n8nPort}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Refresh n8n View"
-                >
-                  <RefreshCcw className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setShowTerminal(!showTerminal)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
-                  title="Toggle Setup Logs"
-                >
-                  <Terminal className="w-4 h-4" />
-                </button>
+            <div className="flex-1 flex flex-col">
+              <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-black">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRefresh}
+                    disabled={isLoading || !n8nPort}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Refresh n8n View"
+                  >
+                    <RefreshCcw className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowTerminal(!showTerminal)}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300"
+                    title="Toggle Setup Logs"
+                  >
+                    <Terminal className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {n8nPort ? <span className="text-xs text-gray-500 dark:text-gray-400">n8n Port: {n8nPort}</span> : <span className="text-xs text-yellow-500">Fetching port...</span>}
+                  <button
+                    onClick={handleOpenExternal}
+                    disabled={!n8nPort}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Open n8n in Browser"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowWebhookTester(!showWebhookTester)}
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showWebhookTester ? 'bg-gray-100 dark:bg-gray-900' : ''}`}
+                    title="Toggle Webhook Tester"
+                  >
+                    <Webhook className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setShowToolsList(!showToolsList)}
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showToolsList ? 'bg-gray-100 dark:bg-gray-900' : ''}`}
+                    title="Toggle Tools List"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                 {n8nPort ? <span className="text-xs text-gray-500 dark:text-gray-400">n8n Port: {n8nPort}</span> : <span className="text-xs text-yellow-500">Fetching port...</span>}
-                 <button
-                   onClick={handleOpenExternal}
-                   disabled={!n8nPort}
-                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                   title="Open n8n in Browser"
-                 >
-                   <ExternalLink className="w-4 h-4" />
-                 </button>
-              </div>
-            </div>
 
-            {/* Webview and Terminal Area */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className={`flex-1 ${showTerminal ? 'h-2/3' : 'h-full'} transition-height duration-300 ease-in-out`}>
-                {n8nPort !== null ? (
-                  <webview
-                    ref={webviewRef}
-                    className="w-full h-full border-none"
-                    allowpopups={true}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-500">
-                    {isLoading ? 'Loading...' : 'Determining n8n port...'}
+              {/* Webview and Terminal Area */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className={`flex-1 ${showTerminal ? 'h-2/3' : 'h-full'} transition-height duration-300 ease-in-out`}>
+                  {n8nPort !== null ? (
+                    <webview
+                      ref={webviewRef}
+                      className="w-full h-full border-none"
+                      allowpopups={true}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                      {isLoading ? 'Loading...' : 'Determining n8n port...'}
+                    </div>
+                  )}
+                </div>
+                {showTerminal && (
+                  <div className="h-1/3 border-t border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 font-mono text-xs overflow-y-auto p-3 flex flex-col-reverse">
+                    <div style={{ maxHeight: 'calc(100% - 30px)', overflowY: 'auto' }} >
+                      {terminalOutput.map((line, index) => (
+                        <div key={index} className={`${line.startsWith('error:') ? 'text-red-400' : line.startsWith('warning:') ? 'text-yellow-400' : 'text-gray-300'} whitespace-pre-wrap`}>{line}</div>
+                      ))}
+                      <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                    </div>
+                    <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-900 py-1">
+                      <span className="font-semibold">Setup Logs</span>
+                      <button onClick={() => setTerminalOutput([])} className="text-xs hover:text-red-400">Clear</button>
+                    </div>
                   </div>
                 )}
               </div>
-              {showTerminal && (
-                <div className="h-1/3 border-t border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 font-mono text-xs overflow-y-auto p-3 flex flex-col-reverse">
-                   <div style={{ maxHeight: 'calc(100% - 30px)', overflowY: 'auto' }} >
-                     {terminalOutput.map((line, index) => (
-                       <div key={index} className={`${line.startsWith('error:') ? 'text-red-400' : line.startsWith('warning:') ? 'text-yellow-400' : 'text-gray-300'} whitespace-pre-wrap`}>{line}</div>
-                     ))}
-                     <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
-                   </div>
-                   <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-900 py-1">
-                     <span className="font-semibold">Setup Logs</span>
-                     <button onClick={() => setTerminalOutput([])} className="text-xs hover:text-red-400">Clear</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-           </div>
-         </main>
-       </div>
-     </div>
-   );
- };
+            </div>
+            
+            {/* Webhook Tester Sidebar */}
+            {showWebhookTester && renderWebhookTester()}
 
- export default N8N; 
+            {/* Tools List Sidebar */}
+            {showToolsList && renderToolsList()}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default N8N; 
