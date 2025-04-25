@@ -65,13 +65,7 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   };
 
   // Filter models based on API type
-  const filteredModels = models.filter(model => {
-    if (apiType === 'ollama') {
-      return !model.name.startsWith('gpt-');
-    } else {
-      return model.name.startsWith('gpt-');
-    }
-  });
+  const filteredModels = models;
 
   return (
     <Dialog

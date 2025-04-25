@@ -489,13 +489,33 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           clientConfig = { type: 'ollama' };
         } else {
           baseUrl = config.api_type === 'openai' 
-            ? 'https://api.openai.com/v1'
+            ? (config.openai_base_url || 'https://api.openai.com/v1')
             : config.ollama_base_url || 'http://localhost:11434';
 
           clientConfig = {
             type: config.api_type || 'ollama',
             apiKey: config.openai_api_key || ''
           };
+        }
+
+        // Check if base URL has changed
+        const prevBaseUrl = localStorage.getItem(`${config.api_type}_base_url`);
+        if (prevBaseUrl && prevBaseUrl !== baseUrl) {
+          // Show model config modal if base URL changed
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            chat_id: activeChat || '',
+            content: `Base URL configuration change detected. Please reconfigure your models.`,
+            role: 'assistant' as ChatRole,
+            timestamp: Date.now(),
+            tokens: 0
+          }]);
+          setShowModelConfig(true);
+          // Update stored base URL
+          localStorage.setItem(`${config.api_type}_base_url`, baseUrl);
+        } else if (!prevBaseUrl) {
+          // Store initial base URL
+          localStorage.setItem(`${config.api_type}_base_url`, baseUrl);
         }
 
         const newClient = new AssistantOllamaClient(baseUrl, clientConfig);
@@ -516,7 +536,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
             newClient.setModelConfig(modelConfig);
           }
         } else {
-          // If no config exists for this API type, create default
+          // If no config exists for this API type, create default and show config modal
           const defaultConfig: ApiModelConfig = {
             type: config.api_type as 'ollama' | 'openai',
             mode: 'manual',
@@ -526,6 +546,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           };
           setModelSelectionConfig(defaultConfig);
           localStorage.setItem(`model_selection_config_${config.api_type}`, JSON.stringify(defaultConfig));
+          setShowModelConfig(true);
         }
 
         // Test connection and get model list

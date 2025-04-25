@@ -148,6 +148,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
             comfyui_base_url: config.comfyui_base_url || '',
             api_type: config.api_type || 'ollama',
             openai_api_key: config.openai_api_key,
+            openai_base_url: config.openai_base_url || 'https://api.openai.com/v1',
             openrouter_api_key: config.openrouter_api_key,
             n8n_base_url: config.n8n_base_url,
             n8n_api_key: config.n8n_api_key
@@ -161,8 +162,11 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
         setError(`Failed to load config: ${errorMessage}`);
       }
     };
-    loadConfig();
-  }, []);
+
+    if (isOpen) {
+      loadConfig();
+    }
+  }, [isOpen]);
 
   const handleModelConfigChange = (modelName: string, supportsImages: boolean) => {
     const updatedConfigs = modelConfigs.map(config =>
@@ -203,6 +207,52 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
       console.error('Failed to save system prompt:', error);
     } finally {
       setIsSavingPrompt(false);
+    }
+  };
+
+  const handleApiTypeChange = async (type: 'ollama' | 'openai') => {
+    if (apiConfig) {
+      const updatedConfig: APIConfig = {
+        ...apiConfig,
+        api_type: type
+      };
+      await db.updateAPIConfig(updatedConfig);
+      setApiConfig(updatedConfig);
+      // Reload the page after configuration is saved
+      window.location.reload();
+    }
+  };
+
+  const handleOllamaUrlChange = async (url: string) => {
+    if (apiConfig) {
+      const updatedConfig: APIConfig = {
+        ...apiConfig,
+        ollama_base_url: url || 'http://localhost:11434'
+      };
+      await db.updateAPIConfig(updatedConfig);
+      setApiConfig(updatedConfig);
+    }
+  };
+
+  const handleOpenAIKeyChange = async (key: string) => {
+    if (apiConfig) {
+      const updatedConfig: APIConfig = {
+        ...apiConfig,
+        openai_api_key: key
+      };
+      await db.updateAPIConfig(updatedConfig);
+      setApiConfig(updatedConfig);
+    }
+  };
+
+  const handleOpenAIBaseUrlChange = async (url: string) => {
+    if (apiConfig) {
+      const updatedConfig: APIConfig = {
+        ...apiConfig,
+        openai_base_url: url || 'https://api.openai.com/v1'
+      };
+      await db.updateAPIConfig(updatedConfig);
+      setApiConfig(updatedConfig);
     }
   };
 
@@ -274,21 +324,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <button
-                onClick={async () => {
-                  setApiType('ollama');
-                  if (apiConfig) {
-                    const updatedConfig: APIConfig = {
-                      ...apiConfig,
-                      api_type: 'ollama',
-                      ollama_base_url: apiConfig.ollama_base_url || 'http://localhost:11434',
-                      comfyui_base_url: apiConfig.comfyui_base_url || ''
-                    };
-                    await db.updateAPIConfig(updatedConfig);
-                    setApiConfig(updatedConfig);
-                    // Reload the page after configuration is saved
-                    window.location.reload();
-                  }
-                }}
+                onClick={() => handleApiTypeChange('ollama')}
                 className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
                   apiType === 'ollama'
                     ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-500/10'
@@ -301,21 +337,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                 </div>
               </button>
               <button
-                onClick={async () => {
-                  setApiType('openai');
-                  if (apiConfig) {
-                    const updatedConfig: APIConfig = {
-                      ...apiConfig,
-                      api_type: 'openai',
-                      ollama_base_url: 'http://localhost:11434', // Keep default value
-                      comfyui_base_url: apiConfig.comfyui_base_url || ''
-                    };
-                    await db.updateAPIConfig(updatedConfig);
-                    setApiConfig(updatedConfig);
-                    // Reload the page after configuration is saved
-                    window.location.reload();
-                  }
-                }}
+                onClick={() => handleApiTypeChange('openai')}
                 className={`flex flex-col items-center p-4 rounded-lg border-2 transition-all ${
                   apiType === 'openai'
                     ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-500/10'
@@ -337,17 +359,7 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                 <input
                   type="url"
                   value={apiConfig?.ollama_base_url || ''}
-                  onChange={async (e) => {
-                    if (apiConfig) {
-                      const updatedConfig: APIConfig = {
-                        ...apiConfig,
-                        ollama_base_url: e.target.value || 'http://localhost:11434',
-                        comfyui_base_url: apiConfig.comfyui_base_url || ''
-                      };
-                      await db.updateAPIConfig(updatedConfig);
-                      setApiConfig(updatedConfig);
-                    }
-                  }}
+                  onChange={(e) => handleOllamaUrlChange(e.target.value)}
                   className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                   placeholder="http://localhost:11434"
                 />
@@ -363,21 +375,25 @@ const AssistantSettings: React.FC<AssistantSettingsProps> = ({
                   <input
                     type="password"
                     value={apiConfig?.openai_api_key || ''}
-                    onChange={async (e) => {
-                      if (apiConfig) {
-                        const updatedConfig: APIConfig = {
-                          ...apiConfig,
-                          openai_api_key: e.target.value,
-                          ollama_base_url: apiConfig.ollama_base_url || 'http://localhost:11434',
-                          comfyui_base_url: apiConfig.comfyui_base_url || ''
-                        };
-                        await db.updateAPIConfig(updatedConfig);
-                        setApiConfig(updatedConfig);
-                      }
-                    }}
+                    onChange={(e) => handleOpenAIKeyChange(e.target.value)}
                     className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
                     placeholder="sk-..."
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Base URL
+                  </label>
+                  <input
+                    type="url"
+                    value={apiConfig?.openai_base_url || 'https://api.openai.com/v1'}
+                    onChange={(e) => handleOpenAIBaseUrlChange(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm"
+                    placeholder="https://api.openai.com/v1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Default: https://api.openai.com/v1. Change this if you're using a different OpenAI-compatible API endpoint.
+                  </p>
                 </div>
               </div>
             )}

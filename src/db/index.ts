@@ -58,6 +58,7 @@ export interface APIConfig {
   ollama_base_url: string;
   comfyui_base_url: string;
   openai_api_key ?: string;
+  openai_base_url ?: string;
   openrouter_api_key ?: string;
   api_type ?: string;
   n8n_base_url?: string;  // URL of the n8n instance
