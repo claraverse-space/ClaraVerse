@@ -1,56 +1,96 @@
 import React, { useState, useEffect } from 'react';
-import { X, Download, Box, FileJson, FileText, ChevronLeft, Check } from 'lucide-react';
+import { X, Download, Box, FileJson, FileText, ChevronLeft, Check, Copy, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface WorkflowModalProps {
   workflow: {
+    id: string;
     category: string;
     name: string;
     description: string;
     nodeCount: number;
     tags: string[];
+    jsonLink: string;
     nodeNames: string[];
     readmeLink: string;
-    jsonLink: string;
+    downloads?: number;
   };
   onClose: () => void;
+  onDownload: () => void;
 }
 
 type ViewMode = 'details' | 'json' | 'docs';
 
-const toRawGitHubUrl = (url: string): string =>
-  url
+const toRawGitHubUrl = (url: string): string => {
+  if (!url || typeof url !== 'string') return '';
+  
+  // If it's already a raw URL or not a GitHub URL, return as is
+  if (url.includes('raw.githubusercontent.com') || !url.includes('github.com')) {
+    return url;
+  }
+  
+  return url
     .replace('https://github.com/', 'https://raw.githubusercontent.com/')
     .replace('/blob/', '/');
+};
 
-const WorkflowModal: React.FC<WorkflowModalProps> = ({ workflow, onClose }) => {
+const WorkflowModal: React.FC<WorkflowModalProps> = ({ workflow, onClose, onDownload }) => {
   const [jsonContent, setJsonContent] = useState<string>('');
   const [docsContent, setDocsContent] = useState<string>('');
   const [loading, setLoading] = useState({ json: true, docs: true });
   const [showDocs, setShowDocs] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchContent = async () => {
     try {
-      const [jsonResponse, docsResponse] = await Promise.all([
-        fetch(toRawGitHubUrl(workflow.jsonLink)),
-        fetch(toRawGitHubUrl(workflow.readmeLink))
-      ]);
-
-      if (!jsonResponse.ok) throw new Error(`JSON HTTP ${jsonResponse.status}`);
-      if (!docsResponse.ok) throw new Error(`Docs HTTP ${docsResponse.status}`);
-
-      const [jsonText, docsText] = await Promise.all([
-        jsonResponse.text(),
-        docsResponse.text()
-      ]);
+      setLoading({ json: true, docs: true });
+      setError(null);
+      
+      // Check if jsonLink is already a JSON string/object instead of a URL
+      let jsonText = '';
+      let docsText = '';
+      
+      if (workflow.jsonLink && (workflow.jsonLink.startsWith('http') || workflow.jsonLink.startsWith('https'))) {
+        // It's a URL, fetch it
+        const jsonResponse = await fetch(toRawGitHubUrl(workflow.jsonLink));
+        if (!jsonResponse.ok) throw new Error(`JSON HTTP ${jsonResponse.status}`);
+        jsonText = await jsonResponse.text();
+      } else if (typeof workflow.jsonLink === 'string' && (
+        workflow.jsonLink.startsWith('{') || workflow.jsonLink.startsWith('[')
+      )) {
+        // It's already a JSON string
+        jsonText = workflow.jsonLink;
+      } else {
+        // Try to stringify it if it's an object
+        try {
+          jsonText = JSON.stringify(workflow.jsonLink, null, 2);
+        } catch (e) {
+          throw new Error('Invalid JSON format in workflow data');
+        }
+      }
+      
+      // Fetch documentation if available
+      if (workflow.readmeLink) {
+        try {
+          const docsResponse = await fetch(toRawGitHubUrl(workflow.readmeLink));
+          if (docsResponse.ok) {
+            docsText = await docsResponse.text();
+          } else {
+            console.warn('Documentation not available:', docsResponse.status);
+          }
+        } catch (e) {
+          console.warn('Failed to fetch documentation:', e);
+        }
+      }
 
       setJsonContent(jsonText);
       setDocsContent(docsText);
     } catch (err) {
       console.error('Failed to fetch content:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load workflow content');
     } finally {
       setLoading({ json: false, docs: false });
     }
@@ -60,40 +100,72 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({ workflow, onClose }) => {
     fetchContent();
   }, [workflow.jsonLink, workflow.readmeLink]);
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="relative w-[95vw] h-[90vh] bg-white dark:bg-black rounded-xl shadow-xl overflow-hidden">
-        {/* Header */}
-        <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-6 bg-white dark:bg-black border-b border-gray-100/10 dark:border-gray-800/50 z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-pink-500/10 dark:bg-pink-500/20 rounded-lg">
-              <Box className="w-6 h-6 text-pink-500 dark:text-pink-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                {workflow.name}
-              </h2>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="px-2 py-1 bg-pink-500 dark:bg-black border border-transparent dark:border-pink-500/50 text-white text-xs rounded-full font-medium">
-                  {workflow.category}
-                </span>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {workflow.nodeCount} Nodes
-                </span>
-              </div>
-            </div>
+  const handleCopy = async () => {
+    try {
+      // If jsonLink is a JSON string, we want to copy that directly
+      const jsonToCopy = typeof workflow.jsonLink === 'string' 
+        ? workflow.jsonLink 
+        : JSON.stringify(workflow.jsonLink, null, 2);
+      
+      // Use electron clipboard API
+      if (window.electron?.clipboard) {
+        window.electron.clipboard.writeText(jsonToCopy);
+      } else {
+        // Fallback to navigator clipboard if electron is not available
+        await navigator.clipboard.writeText(jsonToCopy);
+      }
+      
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  // Add this to display error messages if needed
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-black w-full max-w-lg rounded-xl shadow-2xl p-6">
+          <div className="flex items-center gap-3 text-red-500 mb-4">
+            <AlertCircle className="w-6 h-6" />
+            <h2 className="text-xl font-medium">Error Loading Workflow</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowDocs(!showDocs)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-transparent dark:bg-transparent text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800"
-            >
-              <FileText className="w-4 h-4" />
-              
-            </button>
+          <p className="text-gray-600 dark:text-gray-300 mb-6">{error}</p>
+          <div className="flex justify-end">
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
+              className="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md text-gray-800 dark:text-gray-200"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-black w-full max-w-4xl max-h-[90vh] rounded-xl shadow-2xl flex flex-col relative">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100/10 dark:border-gray-800/50">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-2xl font-medium text-gray-900 dark:text-white mb-2">
+                {workflow.name}
+              </h2>
+              <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                <span>{workflow.nodeCount} Nodes</span>
+                <div className="flex items-center gap-1">
+                  <Download className="w-4 h-4" />
+                  <span>{workflow.downloads || 0} Downloads</span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
               <X className="w-5 h-5" />
             </button>
@@ -202,64 +274,16 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({ workflow, onClose }) => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-6 bg-white dark:bg-black border-t border-gray-100/10 dark:border-gray-800/50">
-          <button
-            onClick={async () => {
-              const rawUrl = toRawGitHubUrl(workflow.jsonLink);
-              try {
-                const response = await fetch(rawUrl);
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${workflow.name.toLowerCase().replace(/\s+/g, '_')}.json`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-              } catch (error) {
-                console.error('Failed to download workflow:', error);
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800"
-          >
-            <Download className="w-4 h-4" />
-            Download JSON
-          </button>
-          <div className="flex flex-col items-end gap-2">
+        {/* Footer Actions */}
+        <div className="absolute bottom-0 inset-x-0 p-4 border-t border-gray-100/10 dark:border-gray-800/50 bg-white dark:bg-black">
+          <div className="flex items-center justify-end gap-3">
             <button
-              onClick={async () => {
-                const rawUrl = toRawGitHubUrl(workflow.jsonLink);
-                try {
-                  window.electron.clipboard.writeText(rawUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
-                } catch (error) {
-                  console.error('Failed to copy URL:', error);
-                }
-              }}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
-                copied 
-                  ? 'bg-green-500 dark:bg-green-600 text-white' 
-                  : 'bg-pink-500 dark:bg-black border border-transparent dark:border-pink-500/50 text-white hover:bg-pink-600 dark:hover:bg-gray-900'
-              }`}
+              onClick={onDownload}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg"
             >
-              {copied ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4 h-4" />
-                  Copy Import URL
-                </>
-              )}
+              <Download className="w-4 h-4" />
+              Download Workflow
             </button>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              💡 Quick Tip: Use "Import from URL" in Clara's n8n after copying the link
-            </p>
           </div>
         </div>
       </div>
