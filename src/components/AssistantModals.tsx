@@ -11,6 +11,7 @@ interface ModelConfig {
   visionModel: string;
   toolModel: string;
   ragModel: string;
+  mode: string;
 }
 
 interface AssistantModalsProps {
@@ -88,7 +89,7 @@ const AssistantModals: React.FC<AssistantModalsProps> = ({
       onSave={(config) => {
         handleModelConfigSave({
           ...config,
-          mode: 'auto',
+          mode: modelSelectionConfig.mode,
         });
         setShowModelConfig(false);
       }}

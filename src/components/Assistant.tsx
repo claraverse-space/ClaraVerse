@@ -106,9 +106,10 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       return JSON.parse(storedConfig);
     }
     
+    // Default config now sets mode to 'auto'
     return {
       type: apiType as 'ollama' | 'openai',
-      mode: 'manual',
+      mode: 'auto',
       visionModel: '',
       toolModel: '',
       ragModel: ''

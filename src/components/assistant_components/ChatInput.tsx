@@ -119,6 +119,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Add state for mode selection
   const [showModeSelect, setShowModeSelect] = useState(false);
 
+  // Notice for manual mode
+  const [showManualNotice, setShowManualNotice] = useState(false);
+  const prevMode = useRef(modelConfig.mode);
+
   // Get API endpoint on component mount
   useEffect(() => {
     const getApiEndpoint = async () => {
@@ -510,9 +514,23 @@ const ChatInput: React.FC<ChatInputProps> = ({
     // eslint-disable-next-line
   }, [showToolDropdown]);
 
+  useEffect(() => {
+    if (modelConfig.mode === 'manual' && prevMode.current !== 'manual') {
+      setShowManualNotice(true);
+      setTimeout(() => setShowManualNotice(false), 3000);
+    }
+    prevMode.current = modelConfig.mode;
+  }, [modelConfig.mode]);
+
   return (
     <div className="border-t dark:border-gray-800 bg-transparent transition-colors duration-100">
       <div className="max-w-4xl mx-auto">
+        {/* Manual mode notice */}
+        {showManualNotice && (
+          <div className="mb-2 max-w-3xl mx-auto px-4 py-2 rounded-lg bg-red-100 text-red-700 text-center font-medium shadow-md animate-fade-in-out">
+            Manual Mode turned on – Auto Mode is preferred for best results.
+          </div>
+        )}
         <div className="p-6 flex justify-center">
           <div className="max-w-3xl w-full">
             {/* Main Input Container */}
@@ -829,7 +847,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
                   <div className="relative">
                     <button
                       onClick={() => setShowModeSelect(!showModeSelect)}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors"
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors
+                        ${modelConfig.mode === 'manual' ? 'border-2 border-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.2)] animate-pulse' : ''}`}
                     >
                       {modelConfig.mode === 'auto' ? (
                         <>
