@@ -63,15 +63,29 @@ async function initializeApp() {
     
     if (error.message.includes('Docker is not running')) {
       const downloadLink = error.message.split('\n')[1];
-      dialog.showMessageBox(null, {
-        type: 'info',
-        title: 'Docker Required',
-        message: 'Docker Desktop is required but not installed.',
-        detail: 'Please download and install Docker Desktop, then restart Clara.',
-        buttons: ['Download Docker Desktop', 'Close'],
-        defaultId: 0,
-        cancelId: 1
-      }).then(({ response }) => {
+      let options;
+      if (process.platform === 'linux') {
+        options = {
+          type: 'info',
+          title: 'Docker Required',
+          message: 'Docker Engine is required but not installed.',
+          detail: 'Please install Docker Engine by following the instructions at the provided link, then restart Clara.',
+          buttons: ['Open Docker Docs', 'Close'],
+          defaultId: 0,
+          cancelId: 1
+        };
+      } else {
+        options = {
+          type: 'info',
+          title: 'Docker Required',
+          message: 'Docker Desktop is required but not installed.',
+          detail: 'Please download and install Docker Desktop, then restart Clara.',
+          buttons: ['Download Docker Desktop', 'Close'],
+          defaultId: 0,
+          cancelId: 1
+        };
+      }
+      dialog.showMessageBox(null, options).then(({ response }) => {
         if (response === 0) {
           require('electron').shell.openExternal(downloadLink);
         }

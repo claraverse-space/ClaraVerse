@@ -24,22 +24,37 @@ def get_ollama_host():
     Get the Ollama host based on environment.
     If OLLAMA_HOST is set, use that.
     Otherwise try localhost first, then fall back to host.docker.internal if localhost fails.
+    If that fails too, try localhost again as a final fallback.
     """
     # Check if OLLAMA_HOST environment variable is set
     ollama_host = os.getenv('OLLAMA_HOST')
     if ollama_host:
         return ollama_host
         
-    # Try localhost first
-    try:
-        response = requests.get('http://localhost:11434/api/tags', timeout=2)
-        if response.status_code == 200:
-            return 'localhost'
-    except (requests.RequestException, requests.Timeout):
-        logger.info("Could not connect to Ollama on localhost, trying host.docker.internal")
+    def try_connection(host):
+        try:
+            response = requests.get(f'http://{host}:11434/api/tags', timeout=2)
+            return response.status_code == 200
+        except (requests.RequestException, requests.Timeout):
+            return False
     
-    # Fall back to host.docker.internal
-    return 'host.docker.internal'
+    # Try localhost first
+    if try_connection('localhost'):
+        return 'localhost'
+    
+    # Try host.docker.internal
+    logger.info("Could not connect to Ollama on localhost, trying host.docker.internal")
+    if try_connection('host.docker.internal'):
+        return 'host.docker.internal'
+    
+    # If both failed, try localhost one more time as final fallback
+    logger.info("Could not connect to host.docker.internal, trying localhost again")
+    if try_connection('localhost'):
+        return 'localhost'
+    
+    # If all attempts failed, return localhost as default
+    logger.warning("All connection attempts failed, defaulting to localhost")
+    return 'localhost'
 
 class DocumentAI:
     """

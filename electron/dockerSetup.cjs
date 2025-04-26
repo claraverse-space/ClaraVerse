@@ -216,6 +216,15 @@ class DockerSetup extends EventEmitter {
 
   async startContainer(config) {
     try {
+      // Special handling for Ollama - if it's already running on the system, skip container creation
+      if (config.name === 'clara_ollama') {
+        const isRunning = await this.isOllamaRunning();
+        if (isRunning) {
+          console.log('Ollama is already running on the system, skipping container creation');
+          return;
+        }
+      }
+
       // Check if container exists and is running
       try {
         const existingContainer = await this.docker.getContainer(config.name);
@@ -436,8 +445,24 @@ class DockerSetup extends EventEmitter {
   async setup(statusCallback, forceUpdateCheck = false) {
     try {
       if (!await this.isDockerRunning()) {
-        const dockerDownloadLink = 'https://desktop.docker.com/mac/main/arm64/Docker.dmg';
-        const errorMessage = `Docker is not running. Please download Docker Desktop from:\n${dockerDownloadLink}\n\nAfter installing and starting Docker Desktop, please restart Clara.`;
+        let dockerDownloadLink;
+        let installMessage;
+        switch (process.platform) {
+          case 'darwin':
+            dockerDownloadLink = 'https://desktop.docker.com/mac/main/arm64/Docker.dmg';
+            installMessage = 'download Docker Desktop';
+            break;
+          case 'win32':
+            dockerDownloadLink = 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe';
+            installMessage = 'download Docker Desktop';
+            break;
+          case 'linux':
+          default:
+            dockerDownloadLink = 'https://docs.docker.com/engine/install/';
+            installMessage = 'install Docker Engine';
+            break;
+        }
+        const errorMessage = `Docker is not running. Please ${installMessage} from:\n${dockerDownloadLink}\n\nAfter installing and starting Docker, please restart Clara.`;
         statusCallback(errorMessage, 'error');
         throw new Error(errorMessage);
       }
@@ -569,16 +594,38 @@ class DockerSetup extends EventEmitter {
 
   async isOllamaRunning() {
     try {
+      // First check if Ollama is running on the system
       const response = await new Promise((resolve, reject) => {
-        http.get('http://localhost:11434/api/tags', (res) => {
+        const req = http.get('http://localhost:11434/api/tags', (res) => {
           if (res.statusCode === 200) {
             resolve(true);
           } else {
             reject(new Error(`HTTP status ${res.statusCode}`));
           }
-        }).on('error', () => resolve(false));
+        });
+        
+        req.on('error', () => resolve(false));
+        
+        // Add timeout to avoid hanging
+        req.setTimeout(2000, () => {
+          req.destroy();
+          resolve(false);
+        });
       });
-      return response;
+
+      if (response) {
+        console.log('Found Ollama running on system');
+        return true;
+      }
+
+      // If not running on system, check container
+      try {
+        const container = await this.docker.getContainer('clara_ollama');
+        const info = await container.inspect();
+        return info.State.Running;
+      } catch (error) {
+        return false;
+      }
     } catch (error) {
       return false;
     }
