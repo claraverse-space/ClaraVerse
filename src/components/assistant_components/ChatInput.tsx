@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check, Settings } from 'lucide-react';
+import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check, Settings, Bot, ChevronDown, Zap, Hand } from 'lucide-react';
 // @ts-ignore
 import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
@@ -42,6 +42,7 @@ interface ChatInputProps {
   onModelSelect?: (modelName: string) => void;
   useStructuredToolCalling?: boolean;
   onToggleStructuredToolCalling?: () => void;
+  selectedModel?: string;
 }
 
 const defaultModelConfig: ModelConfig = {
@@ -77,6 +78,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onModelSelect,
   useStructuredToolCalling = false,
   onToggleStructuredToolCalling,
+  selectedModel = '',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tempDocInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +112,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   // Add state for selected tool
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+
+  // Add state for model selection
+  const [showModelSelect, setShowModelSelect] = useState(false);
+
+  // Add state for mode selection
+  const [showModeSelect, setShowModeSelect] = useState(false);
 
   // Get API endpoint on component mount
   useEffect(() => {
@@ -783,6 +791,90 @@ const ChatInput: React.FC<ChatInputProps> = ({
                       </button>
                     </div>
                   )}
+
+                  {/* Model Selection - Only show in manual mode */}
+                  {modelConfig.mode === 'manual' && models.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowModelSelect(!showModelSelect)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors"
+                      >
+                        <Bot className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                        <span className="text-gray-700 dark:text-gray-300">{selectedModel || 'Select Model'}</span>
+                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                      </button>
+
+                      {showModelSelect && (
+                        <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                          {models.map((model) => (
+                            <button
+                              key={model.name}
+                              onClick={() => {
+                                onModelSelect?.(model.name);
+                                setShowModelSelect(false);
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 ${
+                                selectedModel === model.name ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
+                              }`}
+                            >
+                              {model.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode Selection */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowModeSelect(!showModeSelect)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors"
+                    >
+                      {modelConfig.mode === 'auto' ? (
+                        <>
+                          <Zap className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                          <span className="text-gray-700 dark:text-gray-300">Auto</span>
+                        </>
+                      ) : (
+                        <>
+                          <Hand className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                          <span className="text-gray-700 dark:text-gray-300">Manual</span>
+                        </>
+                      )}
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    </button>
+
+                    {showModeSelect && (
+                      <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                        <button
+                          onClick={() => {
+                            onModelConfigSave({ ...modelConfig, mode: 'auto' });
+                            setShowModeSelect(false);
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
+                            modelConfig.mode === 'auto' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          <Zap className="w-4 h-4" />
+                          Auto Mode
+                        </button>
+                        <button
+                          onClick={() => {
+                            onModelConfigSave({ ...modelConfig, mode: 'manual' });
+                            setShowModeSelect(false);
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
+                            modelConfig.mode === 'manual' ? 'bg-sakura-50 dark:bg-sakura-900/20 text-sakura-600 dark:text-sakura-300' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          <Hand className="w-4 h-4" />
+                          Manual Mode
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {isProcessing ? (
                     <button
                       onClick={handleStopStreaming}
