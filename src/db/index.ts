@@ -20,6 +20,7 @@ export interface Message {
   timestamp: number;
   tokens?: number;
   images?: string[];
+  name?: string;
   tool?: {
     name: string;
     result: string;
@@ -323,28 +324,36 @@ class LocalStorageDB {
     content: string, 
     role: Message['role'], 
     tokens: number,
-    images?: string[]
+    images?: string[],
+    name?: string
   ): Promise<string> {
+    const messages = await this.getItem<Message[]>('messages') || [];
     const newMessage: Message = {
       id: this.generateId(),
       chat_id: chatId,
       content,
       role,
-      timestamp: new Date().getTime(),
+      timestamp: Date.now(),
       tokens,
       images
     };
     
-    if (this.useIndexedDB) {
-      await indexedDBService.put('messages', newMessage);
-    } else {
-      const messages = await this.getItem<Message[]>('messages') || [];
-      messages.push(newMessage);
-      await this.setItem('messages', messages);
+    // Only add name property if it's provided
+    if (name) {
+      newMessage.name = name;
     }
     
-    await this._updateUsage('tokens', tokens);
-    await this._updateUsage('messages', 1);
+    messages.push(newMessage);
+    await this.setItem('messages', messages);
+    
+    // Update chat timestamp
+    await this.updateChat(chatId, { updated_at: new Date().toISOString() });
+    
+    // Track token usage
+    if (tokens > 0) {
+      await this.updateUsage('tokens', tokens);
+    }
+    
     return newMessage.id;
   }
 

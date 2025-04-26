@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X, Square, File, AlertCircle, Wrench, Code, Check, Settings } from 'lucide-react';
+// @ts-ignore
 import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
 import ModelConfigModal from './ModelConfigModal';
@@ -39,6 +40,8 @@ interface ChatInputProps {
   modelConfig: ModelSelectionConfig;
   onModelConfigSave: (config: ModelSelectionConfig) => void;
   onModelSelect?: (modelName: string) => void;
+  useStructuredToolCalling?: boolean;
+  onToggleStructuredToolCalling?: () => void;
 }
 
 const defaultModelConfig: ModelConfig = {
@@ -72,6 +75,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   modelConfig,
   onModelConfigSave,
   onModelSelect,
+  useStructuredToolCalling = false,
+  onToggleStructuredToolCalling,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tempDocInputRef = useRef<HTMLInputElement>(null);
@@ -100,6 +105,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Add state for model configuration
   const [showModelConfig, setShowModelConfig] = useState(false);
 
+  // Add state for tool dropdown
+  const [showToolDropdown, setShowToolDropdown] = useState(false);
+
+  // Add state for selected tool
+  const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+
   // Get API endpoint on component mount
   useEffect(() => {
     const getApiEndpoint = async () => {
@@ -114,8 +125,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
         // Fallback to Electron if available
         if (window.electron) {
           try {
-            const backendStatus = await window.electron.checkPythonBackend();
-            if (backendStatus.port) {
+            // @ts-ignore
+            const backendStatus = await window.electron.checkPythonBackend?.();
+            if (backendStatus && backendStatus.port) {
               setApiEndpoint(`http://localhost:${backendStatus.port}`);
               return;
             }
@@ -266,18 +278,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
         // Append transcribed text to current input
         if (result?.transcription?.text) {
           const transcribedText = result.transcription.text.trim();
-          setInput(prev => {
-            const newText = prev ? `${prev} ${transcribedText}` : transcribedText;
-            // Focus and resize textarea after appending text
-            setTimeout(() => {
-              if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-                textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-                textareaRef.current.focus();
-              }
-            }, 0);
-            return newText;
-          });
+          const newText = input ? `${input} ${transcribedText}` : transcribedText;
+          setInput(newText);
+          // Focus and resize textarea after appending text
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.style.height = 'auto';
+              textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+              textareaRef.current.focus();
+            }
+          }, 0);
         }
       } catch (err) {
         console.error("Error transcribing audio:", err);
@@ -341,34 +351,29 @@ const ChatInput: React.FC<ChatInputProps> = ({
           
           if (wasKeyboardRecording) {
             // For keyboard recording, set input and automatically send
-            setInput(prev => {
-              const newText = prev ? `${prev} ${transcribedText}` : transcribedText;
-              
-              // Send the message after setting the input
-              // We need to use setTimeout to ensure React has updated the state
-              setTimeout(() => {
-                if (newText.trim()) {
-                  console.log('Auto-sending message after keyboard recording');
-                  handleSend(); // Use original handleSend to avoid height reset before sending
-                }
-              }, 100);
-              
-              return newText;
-            });
+            const newText = input ? `${input} ${transcribedText}` : transcribedText;
+            setInput(newText);
+            
+            // Send the message after setting the input
+            // We need to use setTimeout to ensure React has updated the state
+            setTimeout(() => {
+              if (newText.trim()) {
+                console.log('Auto-sending message after keyboard recording');
+                handleSend(); // Use original handleSend to avoid height reset before sending
+              }
+            }, 100);
           } else {
             // For manual recording, just set the input without sending
-            setInput(prev => {
-              const newText = prev ? `${prev} ${transcribedText}` : transcribedText;
-              // Focus and resize textarea after appending text
-              setTimeout(() => {
-                if (textareaRef.current) {
-                  textareaRef.current.style.height = 'auto';
-                  textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-                  textareaRef.current.focus();
-                }
-              }, 0);
-              return newText;
-            });
+            const newText = input ? `${input} ${transcribedText}` : transcribedText;
+            setInput(newText);
+            // Focus and resize textarea after appending text
+            setTimeout(() => {
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+                textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+                textareaRef.current.focus();
+              }
+            }, 0);
           }
         }
       } catch (err) {
@@ -489,296 +494,342 @@ const ChatInput: React.FC<ChatInputProps> = ({
     };
   }, []);
 
+  // Set structured tool calling ON by default
+  useEffect(() => {
+    if (showToolDropdown && !useStructuredToolCalling && onToggleStructuredToolCalling) {
+      onToggleStructuredToolCalling();
+    }
+    // eslint-disable-next-line
+  }, [showToolDropdown]);
+
   return (
-    <div className="p-6 flex justify-center">
-      <div className="max-w-3xl w-full">
-        {/* Main Input Container */}
-        <div className="glassmorphic rounded-xl p-4">
-          {/* Images Preview */}
-          {images.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {images.map((image) => (
-                <div 
-                  key={image.id} 
-                  className="relative group w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
-                >
-                  <img 
-                    src={image.preview} 
-                    alt="Uploaded" 
-                    className="w-full h-full object-cover"
+    <div className="border-t dark:border-gray-800 bg-transparent transition-colors duration-100">
+      <div className="max-w-4xl mx-auto">
+        <div className="p-6 flex justify-center">
+          <div className="max-w-3xl w-full">
+            {/* Main Input Container */}
+            <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg">
+              {/* Images Preview */}
+              {images.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {images.map((image) => (
+                    <div 
+                      key={image.id} 
+                      className="relative group w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                    >
+                      <img 
+                        src={image.preview} 
+                        alt="Uploaded" 
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        onClick={() => onRemoveImage(image.id)}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Temporary Documents Preview */}
+              {temporaryDocs.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  {temporaryDocs.map((doc) => (
+                    <div 
+                      key={doc.id} 
+                      className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      <File className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{doc.name}</span>
+                      <button
+                        onClick={() => onRemoveTemporaryDoc?.(doc.id)}
+                        className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"
+                      >
+                        <X className="w-3 h-3 text-red-500" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Document Upload Loading Indicator */}
+              {isUploadingDocs && (
+                <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-medium">Uploading document(s)...</span>
+                </div>
+              )}
+
+              {/* Recording Indicator - modified to show keyboard recording */}
+              {isRecording && (
+                <div className="flex items-center gap-2 mb-2 py-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                  <span className="text-sm font-medium">
+                    {isKeyboardRecording ? "Release Ctrl to send" : `Recording: ${formatTime(recordingTime)}`}
+                  </span>
+                </div>
+              )}
+
+              {/* Input Field */}
+              <div className="mb-4">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask me anything..."
+                  className="w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                  style={{
+                    height: 'auto',
+                    minHeight: '24px',
+                    maxHeight: '250px',
+                    overflowY: 'auto'
+                  }}
+                  disabled={isProcessing && !input}
+                />
+              </div>
+
+              {/* Bottom Actions */}
+              <div className="flex justify-between items-center">
+                {/* Left Side Actions */}
+                <div className="flex items-center gap-2">
+                  {/* Hide the New Chat button by adding the hidden class */}
+                  <button
+                    onClick={onNewChat}
+                    className="hidden group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                    title="New Chat"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                      New Chat
+                    </div>
+                  </button>
+                  <button 
+                    className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                    onClick={handleImageClick}
+                    disabled={isProcessing}
+                    title="Add Image"
+                  >
+                    <ImageIcon className="w-5 h-5" />
+                    <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                      Add Image
+                    </div>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={onImageUpload}
+                    className="hidden"
                   />
                   <button
-                    onClick={() => onRemoveImage(image.id)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => tempDocInputRef.current?.click()}
+                    disabled={isUploadingDocs}
+                    className={`group p-2 rounded-lg transition-colors relative
+                      ${isUploadingDocs 
+                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-wait' 
+                        : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
+                      }`}
+                    title={isUploadingDocs ? "Uploading..." : "Add Temporary Document"}
                   >
-                    <X className="w-3 h-3" />
+                    {isUploadingDocs ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <File className="w-5 h-5" />
+                    )}
+                    <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                      {isUploadingDocs ? "Uploading..." : "Add Document"}
+                    </div>
                   </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Temporary Documents Preview */}
-          {temporaryDocs.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-              {temporaryDocs.map((doc) => (
-                <div 
-                  key={doc.id} 
-                  className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
-                >
-                  <File className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{doc.name}</span>
+                  <input
+                    ref={tempDocInputRef}
+                    type="file"
+                    accept=".pdf,.txt,.md,.csv"
+                    multiple
+                    onChange={handleDocUpload}
+                    disabled={isUploadingDocs}
+                    className="hidden"
+                  />
+                  {/* Tool Icon Button */}
+                  {tools.length > 0 && (
+                    <div className="relative group">
+                      <button
+                        className={`p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors ${useAllTools ? 'bg-indigo-100 dark:bg-indigo-900/50' : ''}`}
+                        title="Select Tool"
+                        onClick={() => {
+                          setShowToolDropdown((prev) => !prev);
+                        }}
+                      >
+                        <Wrench className="w-5 h-5" />
+                        <span className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                          Select Tool
+                        </span>
+                      </button>
+                      {/* Tool Dropdown (opens upwards) */}
+                      {showToolDropdown && (
+                        <div className="absolute left-0 bottom-12 w-52 rounded-xl z-20 shadow-xl border border-white/5 dark:border-white/5 bg-white/70 dark:bg-gray-900/60 backdrop-blur-md flex flex-col overflow-hidden">
+                          {/* Structured Tool Calling Toggle Icon (inside dropdown) */}
+                          {onToggleStructuredToolCalling && (
+                            <button
+                              onClick={onToggleStructuredToolCalling}
+                              className={`flex items-center gap-2 px-4 py-2 text-sm rounded-none hover:bg-white/30 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200 transition-colors ${useStructuredToolCalling ? 'bg-blue-100/60 dark:bg-blue-900/40' : ''}`}
+                              style={{backdropFilter: 'blur(8px)'}}
+                              title="Toggle structured tool calling for Ollama models"
+                            >
+                              <Code className="w-4 h-4" />
+                              <span>Structured Tool Calling</span>
+                              {useStructuredToolCalling && (
+                                <Check className="w-3 h-3 text-blue-500" />
+                              )}
+                            </button>
+                          )}
+                          <button
+                            className={`block w-full text-left px-4 py-2 text-sm hover:bg-white/30 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200 ${!useAllTools ? 'font-bold' : ''}`}
+                            style={{backdropFilter: 'blur(8px)'}}
+                            onClick={() => {
+                              onToolSelect?.(null);
+                              onUseAllToolsChange?.(false);
+                              setShowToolDropdown(false);
+                            }}
+                          >
+                            No Tool
+                          </button>
+                          <button
+                            className={`block w-full text-left px-4 py-2 text-sm hover:bg-white/30 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200 ${useAllTools ? 'font-bold' : ''}`}
+                            style={{backdropFilter: 'blur(8px)'}}
+                            onClick={() => {
+                              onToolSelect?.(null);
+                              onUseAllToolsChange?.(true);
+                              setShowToolDropdown(false);
+                            }}
+                          >
+                            All Tools
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* RAG Toggle Icon */}
+                  {onToggleRag && (
+                    <button
+                      onClick={() => onToggleRag(!ragEnabled)}
+                      className={`p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors ${ragEnabled ? 'bg-green-100 dark:bg-green-900/50' : ''}`}
+                      title={ragEnabled ? 'RAG Enabled' : 'RAG Disabled'}
+                    >
+                      <Database className="w-5 h-5" />
+                      {ragEnabled && (
+                        <Check className="w-3 h-3 absolute top-1 right-1 text-green-500" />
+                      )}
+                    </button>
+                  )}
+                  {/* Voice Recording Button - with additional hint text */}
                   <button
-                    onClick={() => onRemoveTemporaryDoc?.(doc.id)}
-                    className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"
+                    onClick={toggleRecording}
+                    disabled={isTranscribing || isProcessing}
+                    className={`group p-2 rounded-lg transition-colors relative ${
+                      isRecording
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : isTranscribing
+                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-wait'
+                        : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
+                    }`}
+                    title={isRecording ? "Stop Recording" : "Start Voice Recording (or hold Ctrl key)"}
                   >
-                    <X className="w-3 h-3 text-red-500" />
+                    {isRecording ? (
+                      <StopCircle className="w-5 h-5" />
+                    ) : isTranscribing ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Mic className="w-5 h-5" />
+                    )}
+                    <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                      {isRecording ? "Stop Recording" : isTranscribing ? "Transcribing..." : "Voice Input (hold Ctrl)"}
+                    </div>
                   </button>
+                  {/* Model Config Button */}
+                  {models.length > 0 && typeof onModelConfigSave === 'function' && (
+                    <button
+                      onClick={() => setShowModelConfig(true)}
+                      className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
+                      title="Model Configuration"
+                    >
+                      <Settings className="w-5 h-5" />
+                      <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                        Model Configuration
+                      </div>
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Document Upload Loading Indicator */}
-          {isUploadingDocs && (
-            <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm font-medium">Uploading document(s)...</span>
-            </div>
-          )}
-
-          {/* Recording Indicator - modified to show keyboard recording */}
-          {isRecording && (
-            <div className="flex items-center gap-2 mb-2 py-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-              <span className="text-sm font-medium">
-                {isKeyboardRecording ? "Release Ctrl to send" : `Recording: ${formatTime(recordingTime)}`}
-              </span>
-            </div>
-          )}
-
-          {/* Input Field */}
-          <div className="mb-4">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask me anything..."
-              className="w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
-              style={{
-                height: 'auto',
-                minHeight: '24px',
-                maxHeight: '250px',
-                overflowY: 'auto'
-              }}
-              disabled={isProcessing && !input}
-            />
-          </div>
-
-          {/* Bottom Actions */}
-          <div className="flex justify-between items-center">
-            {/* Left Side Actions */}
-            <div className="flex items-center gap-2">
-              {/* Tool Toggle Button */}
-              <button
-                onClick={() => {
-                  const newValue = !useAllTools;
-                  onUseAllToolsChange?.(newValue);
-                  if (newValue) {
-                    onToolSelect?.(null); // Clear any selected tool
-                  }
-                }}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
-                  useAllTools 
-                    ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-                title={useAllTools ? "Clara will decide which tools to use" : "Click to let Clara decide which tools to use"}
-              >
-                <Wrench className="w-4 h-4" />
-                <span className="text-sm">Tools</span>
-              </button>
-
-              {/* Hide the New Chat button by adding the hidden class */}
-              <button
-                onClick={onNewChat}
-                className="hidden group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                title="New Chat"
-              >
-                <Plus className="w-5 h-5" />
-                <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                  New Chat
+                {/* Right Side Actions */}
+                <div className="flex items-center gap-2">
+                  {/* Show indicator when using temporary docs */}
+                  {temporaryDocs && temporaryDocs.length > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-sakura-500 text-white rounded-lg">
+                      <Database className="w-4 h-4" />
+                      <span className="text-sm">Using {temporaryDocs.length} Docs</span>
+                      <button 
+                        className="ml-1 p-1 rounded-full hover:bg-sakura-600 transition-colors"
+                        title="Document context will be added to your query"
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                  {isProcessing ? (
+                    <button
+                      onClick={handleStopStreaming}
+                      className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1 group relative"
+                      title="Stop generating"
+                    >
+                      <Square className="w-4 h-4" fill="white" />
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <div className="absolute right-1/2 translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                        Stop Generating
+                      </div>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSendWithReset}
+                      disabled={!input.trim() || isRecording || isTranscribing || isUploadingDocs}
+                      className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors group relative"
+                      title="Send Message"
+                    >
+                      <Send className="w-5 h-5" />
+                      <div className="absolute right-1/2 translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                        Send Message
+                      </div>
+                    </button>
+                  )}
                 </div>
-              </button>
-              <button 
-                className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                onClick={handleImageClick}
-                disabled={isProcessing}
-                title="Add Image"
-              >
-                <ImageIcon className="w-5 h-5" />
-                <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                  Add Image
-                </div>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={onImageUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => tempDocInputRef.current?.click()}
-                disabled={isUploadingDocs}
-                className={`group p-2 rounded-lg transition-colors relative
-                  ${isUploadingDocs 
-                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-wait' 
-                    : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
-                  }`}
-                title={isUploadingDocs ? "Uploading..." : "Add Temporary Document"}
-              >
-                {isUploadingDocs ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <File className="w-5 h-5" />
-                )}
-                <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                  {isUploadingDocs ? "Uploading..." : "Add Document"}
-                </div>
-              </button>
-              <input
-                ref={tempDocInputRef}
-                type="file"
-                accept=".pdf,.txt,.md,.csv"
-                multiple
-                onChange={handleDocUpload}
-                disabled={isUploadingDocs}
-                className="hidden"
-              />
-              {/* Voice Recording Button - with additional hint text */}
-              <button
-                onClick={toggleRecording}
-                disabled={isTranscribing || isProcessing}
-                className={`group p-2 rounded-lg transition-colors relative ${
-                  isRecording
-                    ? 'bg-red-500 text-white hover:bg-red-600'
-                    : isTranscribing
-                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-wait'
-                    : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
-                }`}
-                title={isRecording ? "Stop Recording" : "Start Voice Recording (or hold Ctrl key)"}
-              >
-                {isRecording ? (
-                  <StopCircle className="w-5 h-5" />
-                ) : isTranscribing ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Mic className="w-5 h-5" />
-                )}
-                <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                  {isRecording ? "Stop Recording" : isTranscribing ? "Transcribing..." : "Voice Input (hold Ctrl)"}
-                </div>
-              </button>
-
-              {/* Model Config Button */}
-              {models.length > 0 && onModelConfigSave && (
-                <button
-                  onClick={() => setShowModelConfig(true)}
-                  className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                  title="Model Configuration"
-                >
-                  <Settings className="w-5 h-5" />
-                  <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    Model Configuration
-                  </div>
-                </button>
-              )}
-            </div>
-
-            {/* Right Side Actions */}
-            <div className="flex items-center gap-2">
-              {/* Only show RAG toggle if there are no temporary docs */}
-              {(!temporaryDocs || temporaryDocs.length === 0) && (
-                <button
-                  onClick={() => onToggleRag?.(!ragEnabled)}
-                  className={`group p-2 rounded-lg transition-colors ${
-                    ragEnabled 
-                      ? 'bg-sakura-500 text-white hover:bg-sakura-600' 
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                  title={ragEnabled ? 'RAG Enabled' : 'RAG Disabled'}
-                >
-                  <Database className="w-5 h-5" />
-                  <div className="absolute right-1/2 translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    {ragEnabled ? 'Knowledge Base Enabled' : 'Knowledge Base Disabled'}
-                  </div>
-                </button>
-              )}
-              {/* Show indicator when using temporary docs */}
-              {temporaryDocs && temporaryDocs.length > 0 && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-sakura-500 text-white rounded-lg">
-                  <Database className="w-4 h-4" />
-                  <span className="text-sm">Using {temporaryDocs.length} Docs</span>
-                  <button 
-                    className="ml-1 p-1 rounded-full hover:bg-sakura-600 transition-colors"
-                    title="Document context will be added to your query"
-                  >
-                    <AlertCircle className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-              {isProcessing ? (
-                <button
-                  onClick={handleStopStreaming}
-                  className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-1 group relative"
-                  title="Stop generating"
-                >
-                  <Square className="w-4 h-4" fill="white" />
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <div className="absolute right-1/2 translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    Stop Generating
-                  </div>
-                </button>
-              ) : (
-                <button
-                  onClick={handleSendWithReset}
-                  disabled={!input.trim() || isRecording || isTranscribing || isUploadingDocs}
-                  className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors group relative"
-                  title="Send Message"
-                >
-                  <Send className="w-5 h-5" />
-                  <div className="absolute right-1/2 translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    Send Message
-                  </div>
-                </button>
-              )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Model Config Modal */}
-      {showModelConfig && (
-        <ModelConfigModal
-          isOpen={showModelConfig}
-          onClose={() => setShowModelConfig(false)}
-          models={models}
-          currentConfig={modelConfig}
-          onSave={(config) => {
-            if (onModelConfigSave) {
-              onModelConfigSave(config);
-            }
-            setShowModelConfig(false);
-          }}
-        />
-      )}
+        {/* Model Config Modal */}
+        {showModelConfig && (
+          <ModelConfigModal
+            isOpen={showModelConfig}
+            onClose={() => setShowModelConfig(false)}
+            models={models}
+            currentConfig={modelConfig as ModelSelectionConfig}
+            onSave={(config) => {
+              if (typeof onModelConfigSave === 'function') {
+                onModelConfigSave(config as ModelSelectionConfig);
+              }
+              setShowModelConfig(false);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 };

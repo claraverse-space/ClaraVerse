@@ -18,17 +18,6 @@ import remarkGfm from 'remark-gfm';
 import type { Message } from '../../db';
 import { db } from '../../db';
 
-interface ChatMessageProps {
-  message: Message;
-  showTokens: boolean;
-  onRetry?: (messageId: string) => void;
-  onEdit?: (messageId: string, content: string) => void;
-  canEdit?: boolean;
-  canRetry?: boolean;
-  onSendEdit?: (messageId: string, content: string) => void;
-  isStreaming?: boolean;
-}
-
 // Custom hook to get the window width
 const useWindowWidth = () => {
   const [width, setWidth] = useState(window.innerWidth);
@@ -123,6 +112,39 @@ const ImageGallery: React.FC<{ images: string[] }> = ({ images }) => {
   );
 };
 
+// Safely access electron clipboard API with TypeScript-friendly approach
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  try {
+    // Try to use Electron's clipboard API first
+    if (typeof window !== 'undefined' && window.electron && window.electron.clipboard) {
+      window.electron.clipboard.writeText(text);
+      return true;
+    }
+    
+    // Try browser clipboard API
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    console.error('Error using modern clipboard APIs:', error);
+    
+    // Fallback to legacy method
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed'; // Avoid scrolling
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (fallbackError) {
+      console.error('All clipboard methods failed:', fallbackError);
+      return false;
+    }
+  }
+};
+
 const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   showTokens,
@@ -149,22 +171,26 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     loadUserName();
   }, []);
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
+  const handleCopyCode = async (code: string) => {
+    const success = await copyToClipboard(code);
+    if (success) {
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 2000);
+    }
   };
 
-  const handleCopyMessage = () => {
+  const handleCopyMessage = async () => {
     // For assistant messages, strip out <think> blocks from the copied text
     const contentToCopy =
       message.role === 'assistant' && message.content.includes('<think>')
         ? message.content.split('</think>').pop()?.trim() || message.content
         : message.content;
 
-    navigator.clipboard.writeText(contentToCopy);
-    setCopiedMessage(true);
-    setTimeout(() => setCopiedMessage(false), 2000);
+    const success = await copyToClipboard(contentToCopy);
+    if (success) {
+      setCopiedMessage(true);
+      setTimeout(() => setCopiedMessage(false), 2000);
+    }
   };
 
   const handleRetry = () => {
@@ -374,9 +400,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         {/* Footer (timestamp, tokens) - Only show for assistant */}
         {isAssistant && (
           <div className="flex items-center justify-between mt-4 text-xs">
-            <div className="flex items-center gap-2">
-              {/* <span className="opacity-70">{new Date(message.timestamp).toLocaleTimeString()}</span> */}
+            <div>
               {showTokens && <span className="opacity-70">{message.tokens} tokens</span>}
+            </div>
+            <div className="ml-auto">
               {!isStreaming && (
                 <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
                   <button
