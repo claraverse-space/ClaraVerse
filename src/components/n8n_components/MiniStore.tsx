@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Copy, Check, Loader2 } from 'lucide-react';
+import { fetchWorkflows } from './utils/workflowsDB';
 
 interface Workflow {
+  id?: string;
   category: string;
   name: string;
   description: string;
   nodeCount: number;
   tags: string[];
   jsonLink: string;
+  nodeNames: string[];
+  readmeLink: string;
+  likes?: number;
+  downloads?: number;
+  is_prebuilt?: boolean;
 }
 
 interface MiniStoreProps {
@@ -25,13 +32,23 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [copiedLinks, setCopiedLinks] = useState<Record<string, boolean>>({});
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    fetch('/workflows/n8n_workflows_full.json')
-      .then(response => response.json())
-      .then((data: Workflow[]) => setWorkflows(data))
-      .catch(error => console.error('Error loading workflows:', error));
+    const loadWorkflows = async () => {
+      try {
+        setIsLoading(true);
+        const data = await fetchWorkflows();
+        setWorkflows(data);
+      } catch (error) {
+        console.error('Failed to load workflows:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadWorkflows();
   }, []);
 
   // Add debounced search with loading state
@@ -63,14 +80,20 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
   }).slice(0, 10); // Limit to 10 results for better performance
 
   const handleCopyLink = async (jsonLink: string, workflowName: string, event?: React.MouseEvent) => {
-    // Prevent event from bubbling if it's from the copy button
     if (event) {
       event.stopPropagation();
     }
-    
     try {
       const rawUrl = toRawGitHubUrl(jsonLink);
-      window.electron.clipboard.writeText(rawUrl);
+      
+      // Use electron clipboard API
+      if (window.electron?.clipboard) {
+        window.electron.clipboard.writeText(rawUrl);
+      } else {
+        // Fallback to navigator clipboard if electron is not available
+        await navigator.clipboard.writeText(rawUrl);
+      }
+      
       setCopiedLinks(prev => ({ ...prev, [workflowName]: true }));
       setTimeout(() => {
         setCopiedLinks(prev => ({ ...prev, [workflowName]: false }));
@@ -79,6 +102,19 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
       console.error('Failed to copy link:', err);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
+        <div className="h-full flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading workflows...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">

@@ -1,16 +1,23 @@
 // Store.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Store as StoreIcon, Search, Database, Globe2, FileText, Zap, MessageSquare, GitBranch, BarChart2, Boxes, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Store as StoreIcon, Search, Database, Globe2, FileText, Zap, MessageSquare, GitBranch, BarChart2, Boxes, ChevronDown, Loader2, Download } from 'lucide-react';
 import WorkflowCard from './WorkflowCard';
 import WorkflowModal from './WorkflowModal';
+import { fetchWorkflows } from './utils/workflowsDB';
+import { supabase } from '../../supabaseClient';
 
-interface Workflow {
+export interface Workflow {
+  id: string;
   category: string;
   name: string;
   description: string;
   nodeCount: number;
   tags: string[];
   jsonLink: string;
+  nodeNames: string[];
+  readmeLink: string;
+  downloads?: number;
+  is_prebuilt?: boolean;
 }
 
 interface StoreProps {
@@ -76,6 +83,20 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
+// Utility function to convert GitHub URLs to raw format
+const toRawGitHubUrl = (url: string): string => {
+  if (!url || typeof url !== 'string') return '';
+  
+  // If it's already a raw URL or not a GitHub URL, return as is
+  if (url.includes('raw.githubusercontent.com') || !url.includes('github.com')) {
+    return url;
+  }
+  
+  return url
+    .replace('https://github.com/', 'https://raw.githubusercontent.com/')
+    .replace('/blob/', '/');
+};
+
 const Store: React.FC<StoreProps> = ({ onBack }) => {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [displayedWorkflows, setDisplayedWorkflows] = useState<Workflow[]>([]);
@@ -83,9 +104,11 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const lastWorkflowElementRef = useCallback((node: HTMLDivElement) => {
     if (loading) return;
     if (observer.current) observer.current.disconnect();
@@ -98,10 +121,56 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
   }, [loading, hasMore]);
 
   useEffect(() => {
-    fetch('/workflows/n8n_workflows_full.json')
-      .then(response => response.json())
-      .then((data: Workflow[]) => setWorkflows(data))
-      .catch(error => console.error('Error loading workflows:', error));
+    const loadWorkflows = async () => {
+      try {
+        setLoading(true);
+        
+        // Try to fetch from Supabase first
+        const { data: supabaseData, error } = await supabase
+          .from('shared_workflows')
+          .select('*')
+          .eq('is_prebuilt', true);
+
+        if (error || !supabaseData) {
+          console.warn('Falling back to local workflows:', error?.message);
+          // Fallback to local workflows if Supabase fails
+          const localData = await fetchWorkflows();
+          setWorkflows(localData);
+        } else {
+          // Transform Supabase data to match Workflow interface
+          const transformedData = supabaseData.map(item => {
+            // Parse workflow_json if it's a string
+            const workflowJson = typeof item.workflow_json === 'string' 
+              ? JSON.parse(item.workflow_json)
+              : item.workflow_json;
+
+            // Extract nodes from workflow JSON
+            const nodes = workflowJson?.nodes || [];
+            
+            return {
+              id: item.id,
+              category: item.category || workflowJson?.category || 'uncategorized',
+              name: item.title || workflowJson?.name,
+              description: item.description || workflowJson?.description,
+              nodeCount: nodes.length,
+              tags: item.tags || workflowJson?.tags || [],
+              jsonLink: typeof workflowJson === 'string' ? workflowJson : JSON.stringify(workflowJson),
+              nodeNames: nodes.map((n: any) => n.type || n.name),
+              readmeLink: item.readme_url || '',
+              downloads: item.downloads || 0,
+              is_prebuilt: item.is_prebuilt
+            };
+          });
+          setWorkflows(transformedData);
+        }
+      } catch (error) {
+        console.error('Failed to load workflows:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadWorkflows();
   }, []);
 
   useEffect(() => {
@@ -149,8 +218,73 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
 
   const categories = Array.from(new Set(workflows.map(w => w.category)));
 
+  const handleDownloadWorkflow = async (workflow: Workflow) => {
+    try {
+      // Increment download count in Supabase
+      const { error } = await supabase
+        .from('shared_workflows')
+        .update({ downloads: (workflow.downloads || 0) + 1 })
+        .eq('id', workflow.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setWorkflows(prev => prev.map(w => 
+        w.id === workflow.id ? { ...w, downloads: (w.downloads || 0) + 1 } : w
+      ));
+
+      // Download logic here...
+      const jsonUrl = toRawGitHubUrl(workflow.jsonLink);
+      window.open(jsonUrl, '_blank');
+    } catch (error) {
+      console.error('Failed to download workflow:', error);
+    }
+  };
+
+  const handleCopy = async (workflow: Workflow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      let jsonToCopy;
+      
+      if (workflow.jsonLink.startsWith('http') || workflow.jsonLink.startsWith('https')) {
+        // It's a URL, format it as a raw URL if needed
+        jsonToCopy = toRawGitHubUrl(workflow.jsonLink);
+      } else if (typeof workflow.jsonLink === 'string') {
+        // It's already a JSON string
+        jsonToCopy = workflow.jsonLink;
+      } else {
+        // Try to stringify it if it's an object
+        jsonToCopy = JSON.stringify(workflow.jsonLink, null, 2);
+      }
+      
+      // Use electron clipboard API if available
+      if (window.electron?.clipboard) {
+        window.electron.clipboard.writeText(jsonToCopy);
+      } else {
+        // Fallback to navigator clipboard if electron is not available
+        await navigator.clipboard.writeText(jsonToCopy);
+      }
+      
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  if (loading && workflows.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 animate-spin text-pink-500" />
+          <p className="text-lg text-gray-600 dark:text-gray-300">Loading ClaraVerse Store...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header/Toolbar */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200/50 dark:border-gray-700/50 bg-white/80 dark:bg-black/50 backdrop-blur-sm">
         <div className="flex items-center gap-4">
@@ -209,40 +343,36 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Workflows Grid */}
-      <div className="flex-1 p-6 overflow-auto bg-gradient-to-br from-gray-50/50 to-white/50 dark:from-black/50 dark:to-gray-900/50 backdrop-blur-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {displayedWorkflows.map((workflow, index) => (
             <div
-              key={workflow.name}
-              ref={index === displayedWorkflows.length - 1 ? lastWorkflowElementRef : undefined}
+              key={workflow.id}
+              ref={index === displayedWorkflows.length - 1 ? lastWorkflowElementRef : null}
             >
               <WorkflowCard
                 workflow={workflow}
                 onClick={() => setSelectedWorkflow(workflow)}
+                onDownload={() => handleDownloadWorkflow(workflow)}
+                onCopy={(e) => handleCopy(workflow, e)}
               />
             </div>
           ))}
         </div>
 
         {loading && (
-          <div className="text-center py-4 text-gray-500 dark:text-gray-400">
-            Loading more workflows...
-          </div>
-        )}
-
-        {displayedWorkflows.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
-            No workflows found matching your criteria
+          <div className="flex justify-center items-center mt-8">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
           </div>
         )}
       </div>
 
-      {/* Workflow Details Modal */}
       {selectedWorkflow && (
         <WorkflowModal
           workflow={selectedWorkflow}
           onClose={() => setSelectedWorkflow(null)}
+          onDownload={() => handleDownloadWorkflow(selectedWorkflow)}
+          onCopy={(e) => handleCopy(selectedWorkflow, e)}
         />
       )}
     </div>

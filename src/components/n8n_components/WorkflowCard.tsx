@@ -2,17 +2,23 @@ import React, { useState } from 'react';
 import { Box, Copy, Check, Download, Database, Globe2, FileText, Zap, MessageSquare, GitBranch, BarChart2, Boxes } from 'lucide-react';
 
 interface Workflow {
+  id: string;
   category: string;
   name: string;
   description: string;
   nodeCount: number;
   tags: string[];
   jsonLink: string;
+  nodeNames: string[];
+  readmeLink: string;
+  downloads?: number;
 }
 
 interface WorkflowCardProps {
   workflow: Workflow;
   onClick: () => void;
+  onDownload: () => void;
+  onCopy: (e: React.MouseEvent) => void;
 }
 
 // Category icon and display name mapping with colors
@@ -73,20 +79,47 @@ const getCategoryConfig = (category: string): { icon: React.ReactNode; color: st
 };
 
 // Helper to convert GitHub URL to raw.githubusercontent.com URL
-const toRawGitHubUrl = (url: string): string =>
-  url
+const toRawGitHubUrl = (url: string): string => {
+  if (!url || typeof url !== 'string') return '';
+  
+  // If it's already a raw URL or not a GitHub URL, return as is
+  if (url.includes('raw.githubusercontent.com') || !url.includes('github.com')) {
+    return url;
+  }
+  
+  return url
     .replace('https://github.com/', 'https://raw.githubusercontent.com/')
     .replace('/blob/', '/');
+};
 
-const WorkflowCard: React.FC<WorkflowCardProps> = ({ workflow, onClick }) => {
+const WorkflowCard: React.FC<WorkflowCardProps> = ({ workflow, onClick, onDownload, onCopy }) => {
   const [copied, setCopied] = useState(false);
   const { icon, color, textColor, bgColor } = getCategoryConfig(workflow.category);
 
-  const handleCopy = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const rawUrl = toRawGitHubUrl(workflow.jsonLink);
-      window.electron.clipboard.writeText(rawUrl);
+      let jsonToCopy;
+      
+      if (workflow.jsonLink.startsWith('http') || workflow.jsonLink.startsWith('https')) {
+        // It's a URL, format it as a raw URL if needed
+        jsonToCopy = toRawGitHubUrl(workflow.jsonLink);
+      } else if (typeof workflow.jsonLink === 'string') {
+        // It's already a JSON string
+        jsonToCopy = workflow.jsonLink;
+      } else {
+        // Try to stringify it if it's an object
+        jsonToCopy = JSON.stringify(workflow.jsonLink, null, 2);
+      }
+      
+      // Use electron clipboard API
+      if (window.electron?.clipboard) {
+        window.electron.clipboard.writeText(jsonToCopy);
+      } else {
+        // Fallback to navigator clipboard if electron is not available
+        await navigator.clipboard.writeText(jsonToCopy);
+      }
+      
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -94,25 +127,9 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({ workflow, onClick }) => {
     }
   };
 
-  const handleDownload = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const rawUrl = toRawGitHubUrl(workflow.jsonLink);
-      const res = await fetch(rawUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      const blob = new Blob([text], { type: 'application/json' });
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `${workflow.name.replace(/\s+/g, '_')}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.error('Download failed:', err);
-    }
+    onDownload();
   };
 
   return (
@@ -133,14 +150,18 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({ workflow, onClick }) => {
           </div>
         </div>
 
-        {/* Title & Node Count */}
+        {/* Title & Stats */}
         <div className="mb-3">
           <h3 className="font-medium text-gray-900 dark:text-white line-clamp-2 min-h-[48px]">
             {workflow.name}
           </h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {workflow.nodeCount} Nodes
-          </span>
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span>{workflow.nodeCount} Nodes</span>
+            <div className="flex items-center gap-1">
+              <Download className="w-3 h-3" />
+              <span>{workflow.downloads || 0}</span>
+            </div>
+          </div>
         </div>
 
         {/* Description */}
@@ -167,7 +188,7 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({ workflow, onClick }) => {
           )}
         </div>
 
-        {/* Copy & Download Buttons */}
+        {/* Action Buttons */}
         <div className="absolute inset-x-0 bottom-0 h-12 bg-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-end gap-2 p-3">
           <button
             onClick={handleDownload}

@@ -3,12 +3,11 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import Store from './n8n_components/Store';
 import MiniStore from './n8n_components/MiniStore';
-import { Plus, Trash2, Edit2, Check, X, Code, Play, AlertCircle, ChevronDown, Wand2, Book, Lightbulb, ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon } from 'lucide-react';
+import { Plus, Trash2, Check, X,  AlertCircle,  ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon, WifiOff } from 'lucide-react';
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
 import { db } from '../db';
-
-// --- Consolidated Type Definitions ---
+import { prefetchAndStoreWorkflows } from './n8n_components/utils/workflowsDB';
 
 // Define the expected structure for service ports
 interface ServicePorts {
@@ -18,16 +17,13 @@ interface ServicePorts {
 }
 
 declare global {
-  // Declare window.electron once with the correct type
   interface Window {
     electron: ElectronAPI;
   }
   
-  // Define Electron Webview HTML Attributes correctly
   interface WebViewHTMLAttributes<T> extends React.HTMLAttributes<T> {
     src?: string;
-    allowpopups?: string; // Note: HTML standard is allowPopups (camelCase), but Electron might use lowercase
-    // Add other webview specific attributes if needed
+    allowpopups?: string; 
   }
 
   namespace JSX {
@@ -36,14 +32,11 @@ declare global {
     }
   }
 
-  // Define Electron DidFailLoadEvent type (simplified)
   interface DidFailLoadEvent {
     errorCode: number;
     errorDescription: string;
-    // other properties might exist
   }
 }
-// --- End of Type Definitions ---
 
 interface N8NProps {
   onPageChange?: (page: string) => void;
@@ -73,6 +66,24 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [showStore, setShowStore] = useState(false);
   const [showNewFeatureTag, setShowNewFeatureTag] = useState(false);
   const [showMiniStore, setShowMiniStore] = useState(false);
+
+  useEffect(() => {
+    const prefetchWorkflows = async () => {
+      try {
+        console.log('Starting initial workflow prefetch');
+        const data = await prefetchAndStoreWorkflows();
+        console.log(`Successfully prefetched ${data?.length || 0} workflows`);
+      } catch (error) {
+        console.error('Failed to prefetch workflows:', error);
+        setError(`Failed to fetch workflows. Offline mode may be used: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setTimeout(() => {
+          setError(null);
+        }, 5000);
+      }
+    };
+
+    prefetchWorkflows();
+  }, []); // Run once when component mounts
 
   // Add effect to load tools when tools list is opened
   useEffect(() => {
@@ -159,17 +170,21 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
         setError(`Failed to load n8n view: ${failEvent.errorDescription} (Code: ${failEvent.errorCode})`);
         setIsLoading(false);
         
-        // Add retry logic
+        // Add retry logic with increasing delay
         setTimeout(() => {
           if (webview) {
             console.log('Retrying n8n connection...');
             webview.reload();
           }
-        }, 2000); // Retry after 2 seconds
+        }, 5000); // Retry after 5 seconds
       }
     };
 
     const handleDomReady = () => {
+      // Clear any existing error when the page loads successfully
+      setError(null);
+      setIsLoading(false);
+      
       // Inject custom styles to fix any UI issues
       webview.insertCSS(`
         body { overflow: auto !important; }
@@ -187,27 +202,11 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
     console.log('Setting n8n URL:', n8nUrl);
     webview.src = n8nUrl;
 
-    // Add periodic health check
-    const healthCheck = setInterval(async () => {
-      try {
-        const response = await fetch(`http://localhost:${n8nPort}/healthz`);
-        if (!response.ok) {
-          throw new Error(`Health check failed: ${response.status}`);
-        }
-      } catch (err) {
-        console.warn('N8N health check failed:', err);
-        if (webview) {
-          webview.reload();
-        }
-      }
-    }, 30000); // Check every 30 seconds
-
     return () => {
       webview.removeEventListener('did-start-loading', handleLoadStart);
       webview.removeEventListener('did-stop-loading', handleLoadStop);
       webview.removeEventListener('did-fail-load', handleDidFailLoad);
       webview.removeEventListener('dom-ready', handleDomReady);
-      clearInterval(healthCheck);
     };
   }, [n8nPort]);
 
