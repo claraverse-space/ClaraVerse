@@ -736,18 +736,11 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       <div className="flex-1 flex flex-col">
         <AssistantHeader
           connectionStatus={connectionStatus}
-          selectedModel={selectedModel}
-          models={models}
-          showModelSelect={showModelSelect}
-          setShowModelSelect={setShowModelSelect}
-          setSelectedModel={handleModelSelect}
           onPageChange={onPageChange}
           onNavigateHome={handleNavigateHome}
           onOpenSettings={() => setShowSettings(true)}
           onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
           onOpenTools={() => setShowToolModal(true)}
-          modelSelectionMode={modelSelectionConfig.mode}
-          onModeChange={handleModeChange}
         />
 
         <ChatWindow
@@ -791,6 +784,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           onModelSelect={handleModelSelect}
           useStructuredToolCalling={useStructuredToolCalling}
           onToggleStructuredToolCalling={handleToggleStructuredToolCalling}
+          selectedModel={selectedModel}
         />
 
         {showImageWarning && images.length > 0 && (
