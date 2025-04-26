@@ -1,10 +1,8 @@
-# ClaraVerse Sustainable Use License
+ClaraVerse Sustainable Use License
 
 Version 1.0
 
----
-
-## Important Third-Party Software Notice
+Important Third-Party Software Notice
 
 ClaraVerse includes integrations and embedded usage of n8n (https://n8n.io/),  
 an open-source workflow automation tool licensed under the [Sustainable Use License](https://github.com/n8n-io/n8n/blob/master/LICENSE.md) by n8n GmbH.
@@ -12,23 +10,17 @@ an open-source workflow automation tool licensed under the [Sustainable Use Lice
 We fully respect n8n's licensing terms.  
 By using ClaraVerse, you also agree to respect n8n’s Sustainable Use License separately in addition to ClaraVerse's license.
 
----
-
-## Acceptance
+Acceptance
 
 By using ClaraVerse, you agree to all the terms and conditions below.
 
----
-
-## Copyright License
+Copyright License
 
 The licensor grants you a non-exclusive, royalty-free, worldwide, non-sublicensable, non-transferable license  
 to use, copy, modify, and distribute the software —  
 but only under the limitations described below.
 
----
-
-## Limitations
+Limitations
 
 - You may use or modify ClaraVerse only for your own internal use, personal projects, or non-commercial activities.
 - Commercial usage (e.g., SaaS offerings, resale, bundling ClaraVerse inside paid products) is not allowed without prior written permission.
@@ -36,49 +28,30 @@ but only under the limitations described below.
 - You must not remove, alter, or hide any copyright, license, or attribution notices inside ClaraVerse.
 - Any use of the "ClaraVerse" name, branding, or logos must comply with applicable trademark laws.
 
----
-
-## Patents
+Patents
 
 The licensor grants you a license under any patent claims covering ClaraVerse —  
 but only if you do not initiate patent claims against ClaraVerse or its contributors.
 
 Filing a patent claim against ClaraVerse immediately terminates your license.
 
----
-
-## Notices
+Notices
 
 - If you distribute ClaraVerse (modified or not), you must attach a clear copy of this license.
 - If you modify ClaraVerse, you must clearly state that your version is modified.
 - You must separately comply with the n8n Sustainable Use License for any embedded n8n code or functionality.
 
----
-
-## No Other Rights
+No Other Rights
 
 This license only grants the rights explicitly listed.  
 No additional rights (e.g., rights to use ClaraVerse trademarks, designs, UI assets) are granted.
 
----
-
-## Termination
-
-Your rights under this license automatically terminate if you breach any of the terms.
-
-If you fix the violation within 30 days of being notified, your license can be reinstated.  
-Otherwise, your license will permanently terminate.
-
----
-
-## Disclaimer of Warranty
+Disclaimer of Warranty
 
 ClaraVerse is provided "as is" without warranty of any kind.  
 The licensor is not responsible for any damages, losses, or liabilities arising out of your use of the software.
 
----
-
-# ⚡ Final Short Summary
+Dev Notes: 
 
 You can use ClaraVerse for yourself, build cool stuff, and modify it —  
 but don't sell it, don't rebrand and resell it,  
@@ -86,4 +59,4 @@ and respect the n8n licensing terms too.
 If you want to use it commercially, get in touch first. 
 
 
----
+
