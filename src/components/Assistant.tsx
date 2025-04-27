@@ -292,6 +292,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     findImageSupportedModel,
     searchDocuments,
     useStructuredToolCalling,
+    isStreaming,
   });
 
   useEffect(() => {

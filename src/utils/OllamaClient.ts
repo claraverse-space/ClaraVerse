@@ -426,8 +426,9 @@ export class OllamaClient {
 
         for (const line of lines) {
           if (!line.trim() || line === 'data: [DONE]') continue;
-          
           try {
+            // Debug: log each streaming line
+            console.log('Ollama stream line:', line);
             let data: APIResponse;
             if (this.config.type === 'ollama') {
               data = JSON.parse(line);
@@ -489,7 +490,8 @@ export class OllamaClient {
             }
             yield data;
           } catch (e) {
-            console.warn('Failed to parse streaming response:', e);
+            console.warn('Failed to parse streaming response line:', line, e);
+            // Do not throw or yield the error, just skip this line
           }
         }
       }
