@@ -31,6 +31,7 @@ interface UseAssistantChatProps {
   findImageSupportedModel: any;
   searchDocuments: any;
   useStructuredToolCalling?: boolean;
+  isStreaming: boolean;
 }
 
 export function useAssistantChat({
@@ -58,6 +59,7 @@ export function useAssistantChat({
   findImageSupportedModel,
   searchDocuments,
   useStructuredToolCalling = false,
+  isStreaming,
 }: UseAssistantChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -122,7 +124,7 @@ export function useAssistantChat({
     }
     const userMessage: Message = {
       id: uuidv4(),
-      chat_id: currentChatId,
+      chat_id: currentChatId || '',
       content: input,
       role: 'user' as ChatRole,
       timestamp: Date.now(),
@@ -141,7 +143,7 @@ export function useAssistantChat({
     setImages([]);
     const assistantMessage: Message = {
       id: uuidv4(),
-      chat_id: currentChatId,
+      chat_id: currentChatId || '',
       content: '',
       role: 'assistant' as ChatRole,
       timestamp: Date.now(),
@@ -158,9 +160,13 @@ export function useAssistantChat({
       if (selectedTool || useAllTools) {
         chatOptions.tools = useAllTools ? tools.filter((tool) => tool !== null) : selectedTool ? [selectedTool] : [];
       }
+      // Enable streaming for Ollama (normal chat and RAG only)
+      if (client.getConfig().type === 'ollama' && !(selectedTool || useAllTools)) {
+        chatOptions.stream = true;
+      }
       if (images.length > 0) {
         try {
-          if (client.isStreaming) {
+          if (isStreaming) {
             let responseContent = '';
             let responseTokens = 0;
             for await (const chunk of client.streamGenerateWithImages(
@@ -279,8 +285,7 @@ export function useAssistantChat({
               content: msg.content,
               role: msg.role,
               timestamp: Date.now(),
-              tokens: 0,
-              name: msg.name
+              tokens: 0
             };
             
             // Only update UI for the first and last messages
@@ -294,8 +299,7 @@ export function useAssistantChat({
               dbMessage.content,
               dbMessage.role,
               0,
-              undefined,
-              dbMessage.name
+              undefined
             );
           }
           
@@ -383,8 +387,10 @@ export function useAssistantChat({
           // Original Ollama implementation
           let responseContent = '';
           let responseTokens = 0;
-          if (client.isStreaming) {
+          if (isStreaming) {
             for await (const chunk of client.streamChat(actualModelToUse, formattedMessages, chatOptions)) {
+              // Debug: log each chunk
+              console.log('Ollama streaming chunk:', chunk);
               if (chunk.message?.content) {
                 responseContent += chunk.message.content;
                 responseTokens = chunk.eval_count || responseTokens;
@@ -497,7 +503,7 @@ export function useAssistantChat({
       setMessages((prev) => [...prev.slice(0, messageIndex + 1), assistantMessage]);
       let responseContent = '';
       let responseTokens = 0;
-      if (client.isStreaming) {
+      if (isStreaming) {
         for await (const chunk of client.streamChat(modelToUse, formattedMessages)) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
@@ -581,7 +587,7 @@ export function useAssistantChat({
       const modelToUse = getAppropriateModel(modelSelectionConfig, selectedModel, context);
       let responseContent = '';
       let responseTokens = 0;
-      if (client.isStreaming) {
+      if (isStreaming) {
         for await (const chunk of client.streamChat(modelToUse, formattedMessages)) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
@@ -651,7 +657,7 @@ export function useAssistantChat({
       const modelToUse = getAppropriateModel(modelSelectionConfig, selectedModel, context);
       let responseContent = '';
       let responseTokens = 0;
-      if (client.isStreaming) {
+      if (isStreaming) {
         for await (const chunk of client.streamChat(modelToUse, formattedMessages)) {
           if (chunk.message?.content) {
             responseContent += chunk.message.content;
