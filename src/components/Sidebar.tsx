@@ -14,7 +14,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Grid, label: 'Agents', id: 'apps' },
-    { icon: Layout, label: 'UI Builder', id: 'ui-builder' },
+    // { icon: Layout, label: 'UI Builder', id: 'ui-builder' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     { icon: Network, label: 'Workflows', id: 'n8n' },
     { icon: Settings, label: 'Settings', id: 'settings' },

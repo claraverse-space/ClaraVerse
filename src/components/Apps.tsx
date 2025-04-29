@@ -27,10 +27,12 @@ import {
   Copy,
   Edit,
   Check,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { appStore, AppData } from '../services/AppStore';
 import { useTheme } from '../hooks/useTheme';
+import { uiBuilderService, UIBuilderProject } from '../services/UIBuilderService';
 
 interface AppsProps {
   onPageChange: (page: string) => void;
@@ -47,11 +49,13 @@ interface CommunityApp {
 
 const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
   const { isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'myApps' | 'community'>('myApps'); // Add state for tabs
+  const [activeTab, setActiveTab] = useState<'myApps' | 'community' | 'uiApps'>('myApps'); // Add uiApps tab
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [apps, setApps] = useState<AppData[]>([]);
+  const [uiProjects, setUiProjects] = useState<UIBuilderProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingUiProjects, setIsLoadingUiProjects] = useState(true);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [communityApps, setCommunityApps] = useState<CommunityApp[]>([]);
@@ -72,6 +76,13 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
     loadApps();
   }, []);
 
+  // Add effect to load UI projects when the tab is selected
+  useEffect(() => {
+    if (activeTab === 'uiApps') {
+      loadUiProjects();
+    }
+  }, [activeTab]);
+
   const loadApps = async () => {
     setIsLoading(true);
     try {
@@ -81,6 +92,22 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
       console.error('Error loading apps:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Load UI Builder projects
+  const loadUiProjects = async () => {
+    setIsLoadingUiProjects(true);
+    try {
+      const projects = await uiBuilderService.getAllProjects();
+      // Sort by most recently updated
+      setUiProjects(projects.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      );
+    } catch (error) {
+      console.error('Error loading UI Builder projects:', error);
+    } finally {
+      setIsLoadingUiProjects(false);
     }
   };
 
@@ -274,6 +301,262 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
     </>
   );
 
+  // Open an existing UI Builder project
+  const handleOpenUiProject = (projectId: string) => {
+    localStorage.setItem('current_ui_project', projectId);
+    onPageChange('ui-project-viewer');
+  };
+
+  // Edit an existing UI Builder project
+  const handleEditUiProject = (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    localStorage.setItem('current_ui_project', projectId);
+    onPageChange('ui-builder');
+    setMenuOpen(null);
+  };
+
+  // Delete UI Builder project
+  const handleDeleteUiProject = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault(); 
+    
+    const confirmMessage = 'WARNING: This action is irreversible. The UI project will be permanently deleted.\n\nAre you absolutely sure you want to delete this project?';
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        const projectToDelete = uiProjects.find(project => project.id === id);
+        const projectName = projectToDelete?.name || 'Project';
+        
+        await uiBuilderService.deleteProject(id);
+        
+        // Show success message
+        setDeleteSuccess(`"${projectName}" has been permanently deleted.`);
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          setDeleteSuccess(null);
+        }, 3000);
+        
+        // Reload the projects list
+        await loadUiProjects();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Failed to delete project. Please try again.');
+      }
+    }
+    setMenuOpen(null);
+  };
+
+  // Add UI Builder apps section:
+  const renderUiBuilderContent = () => {
+    // Filter projects based on search
+    const filteredProjects = searchQuery
+      ? uiProjects.filter(project => 
+          project.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          (project.description && project.description.toLowerCase().includes(searchQuery.toLowerCase()))
+        )
+      : uiProjects;
+
+    // Sort projects based on selected sort option
+    const sortedProjects = [...filteredProjects].sort((a, b) => {
+      if (sortBy === 'newest') {
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      } else if (sortBy === 'oldest') {
+        return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      } else {
+        return a.name.localeCompare(b.name);
+      }
+    });
+
+    return (
+      <>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+            My Apps
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Create and manage your UI Based apps
+          </p>
+        </div>
+
+        {/* Show success notification */}
+        {deleteSuccess && (
+          <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 flex items-center justify-between">
+            <div className="flex items-center">
+              <Check className="w-5 h-5 text-green-500 mr-2" />
+              <span className="text-green-700 dark:text-green-300">{deleteSuccess}</span>
+            </div>
+            <button 
+              onClick={() => setDeleteSuccess(null)}
+              className="text-green-500 hover:text-green-700 dark:hover:text-green-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        
+        {/* Search and Controls */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-8">
+          {/* Search Bar */}
+          <div className="relative flex-grow max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search UI projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
+            />
+          </div>
+          
+          {/* Controls */}
+          <div className="flex items-center gap-3">
+            {/* Sort Options */}
+            <div className="relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="alphabetical">A-Z</option>
+              </select>
+              <SlidersHorizontal className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
+            
+            {/* Create New UI Project Button */}
+            <button 
+              onClick={() => {
+                localStorage.removeItem('current_ui_project');
+                localStorage.setItem('create_new_ui_project', 'true');
+                onPageChange('ui-builder');
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create First UI Project</span>
+            </button>
+          </div>
+        </div>
+        
+        {/* Loading state */}
+        {isLoadingUiProjects && (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-sakura-500"></div>
+          </div>
+        )}
+        
+        {/* UI Projects Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {!isLoadingUiProjects && sortedProjects.length > 0 ? (
+            sortedProjects.map(project => (
+              <div 
+                key={project.id} 
+                className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
+                onClick={() => handleOpenUiProject(project.id)}
+              >
+                {/* Preview area - show rendered HTML/CSS */}
+                <div className="h-40 overflow-hidden bg-white relative">
+                  <div 
+                    className="absolute inset-0 p-1"
+                    dangerouslySetInnerHTML={{ 
+                      __html: `
+                        <style>${project.cssCode}</style>
+                        <div class="transform scale-50 origin-top-left w-[200%] h-[200%] overflow-hidden">
+                          ${project.htmlCode}
+                        </div>
+                      `
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-gray-900 opacity-20"></div>
+                </div>
+                
+                <div className="p-5">
+                  <div className="flex justify-between items-start">
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{project.name}</h3>
+                    <div className="relative">
+                      <button 
+                        className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                        onClick={(e) => toggleMenu(project.id, e)}
+                      >
+                        <MoreVertical className="h-5 w-5" />
+                      </button>
+                      
+                      {menuOpen === project.id && (
+                        <div className="absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700">
+                          <button
+                            className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                            onClick={(e) => handleEditUiProject(project.id, e)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" /> Edit
+                          </button>
+                          <button
+                            className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-900/30"
+                            onClick={(e) => handleDeleteUiProject(project.id, e)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                    {project.description || 'No description'}
+                  </p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Updated: {new Date(project.updatedAt).toLocaleDateString()}
+                    </span>
+                    <button 
+                      className="text-sakura-500 hover:text-sakura-600 text-sm font-medium"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent the card's onClick from triggering
+                        handleOpenUiProject(project.id);
+                      }}
+                    >
+                      Open Project
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : !isLoadingUiProjects && (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-full bg-sakura-100 dark:bg-sakura-100/10 flex items-center justify-center mb-4">
+                <Layout className="w-8 h-8 text-sakura-500" />
+              </div>
+              <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No UI projects found</h3>
+              <p className="text-gray-600 dark:text-gray-400 max-w-sm mb-6">
+                {searchQuery ? "No projects match your search criteria." : "Create your first UI project to get started with the UI Builder."}
+              </p>
+              {searchQuery ? (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
+                >
+                  Clear search
+                </button>
+              ) : (
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('current_ui_project');
+                    localStorage.setItem('create_new_ui_project', 'true');
+                    onPageChange('ui-builder');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Create First UI Project</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto flex flex-col">
       {/* Tabs */}
@@ -287,6 +570,16 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           }`}
         >
           My Agents
+        </button>
+        <button
+          onClick={() => setActiveTab('uiApps')}
+          className={`px-6 py-3 text-sm font-medium ${
+            activeTab === 'uiApps'
+              ? 'border-b-2 border-sakura-500 text-sakura-600 dark:text-sakura-400'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          My Apps
         </button>
         <button
           onClick={() => setActiveTab('community')}
@@ -478,8 +771,10 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
             )}
           </div>
         </>
-      ) : (
+      ) : activeTab === 'community' ? (
         renderCommunityContent()
+      ) : (
+        renderUiBuilderContent()
       )}
     </div>
   );
