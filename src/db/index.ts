@@ -13,6 +13,11 @@ export interface Chat {
 }
 
 export interface Message {
+  content: string;
+  sender: 'user' | 'ai';
+}
+
+export interface ChatMessage {
   id: string;
   chat_id: string;
   content: string;
@@ -92,6 +97,21 @@ export interface Tool {
   isEnabled: boolean;
 }
 
+export interface UIBuilderDesign {
+  id: string;
+  name: string;
+  description?: string;
+  htmlCode: string;
+  cssCode: string;
+  jsCode: string;
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+  isArchived?: boolean;
+  isDeleted?: boolean;
+  version: number;
+}
+
 const DB_PREFIX = 'clara_db_';
 
 const DEFAULT_SYSTEM_PROMPT = `You are Clara, a helpful and friendly AI assistant. Your responses should be:
@@ -102,7 +122,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are Clara, a helpful and friendly AI assistan
 
 If asked about your capabilities, explain that you can help with general questions, coding, analysis, and text-based tasks. If you're unsure about something, be honest and say so.`;
 
-class LocalStorageDB {
+export class LocalStorageDB {
   private useIndexedDB = true; // Flag to control storage method
   private initialized = false;
 
@@ -319,16 +339,9 @@ class LocalStorageDB {
   }
 
   // Message methods
-  async addMessage(
-    chatId: string, 
-    content: string, 
-    role: Message['role'], 
-    tokens: number,
-    images?: string[],
-    name?: string
-  ): Promise<string> {
-    const messages = await this.getItem<Message[]>('messages') || [];
-    const newMessage: Message = {
+  async addMessage(chatId: string, content: string, role: ChatRole, tokens?: number, images?: string[]): Promise<ChatMessage> {
+    const messages = await this.getMessages(chatId);
+    const newMessage: ChatMessage = {
       id: this.generateId(),
       chat_id: chatId,
       content,
@@ -338,23 +351,20 @@ class LocalStorageDB {
       images
     };
     
-    // Only add name property if it's provided
-    if (name) {
-      newMessage.name = name;
-    }
-    
     messages.push(newMessage);
-    await this.setItem('messages', messages);
-    
-    // Update chat timestamp
-    await this.updateChat(chatId, { updated_at: new Date().toISOString() });
-    
-    // Track token usage
-    if (tokens > 0) {
-      await this.updateUsage('tokens', tokens);
-    }
-    
-    return newMessage.id;
+    await this.saveMessages(chatId, messages);
+    return newMessage;
+  }
+
+  async getMessages(chatId: string): Promise<ChatMessage[]> {
+    const key = `${DB_PREFIX}messages_${chatId}`;
+    const messages = localStorage.getItem(key);
+    return messages ? JSON.parse(messages) : [];
+  }
+
+  async saveMessages(chatId: string, messages: ChatMessage[]): Promise<void> {
+    const key = `${DB_PREFIX}messages_${chatId}`;
+    localStorage.setItem(key, JSON.stringify(messages));
   }
 
   async getChatMessages(chatId: string): Promise<Message[]> {
@@ -815,6 +825,40 @@ class LocalStorageDB {
       const filtered = tools.filter(t => t.id !== id);
       await this.setItem('tools', filtered);
     }
+  }
+
+  // Design methods
+  async getAllDesigns(): Promise<UIBuilderDesign[]> {
+    const designs = localStorage.getItem('designs');
+    return designs ? JSON.parse(designs) : [];
+  }
+
+  async getDesignById(id: string): Promise<UIBuilderDesign | null> {
+    const designs = await this.getAllDesigns();
+    return designs.find(design => design.id === id) || null;
+  }
+
+  async updateDesign(design: UIBuilderDesign): Promise<void> {
+    const designs = await this.getAllDesigns();
+    const index = designs.findIndex(d => d.id === design.id);
+    
+    if (index !== -1) {
+      designs[index] = design;
+    } else {
+      designs.push(design);
+    }
+    
+    localStorage.setItem('designs', JSON.stringify(designs));
+  }
+
+  async deleteDesign(id: string): Promise<void> {
+    const designs = await this.getAllDesigns();
+    const filteredDesigns = designs.filter(design => design.id !== id);
+    localStorage.setItem('designs', JSON.stringify(filteredDesigns));
+  }
+
+  async clearDesigns(): Promise<void> {
+    localStorage.removeItem('designs');
   }
 
   // Clear all data

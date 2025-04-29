@@ -51,28 +51,38 @@ interface APIResponse {
 }
 
 interface ToolParameter {
+  name: string;
   type: string;
-  description?: string;
-  properties?: Record<string, ToolParameter>;
+  description: string;
+  required?: boolean;
 }
 
-interface OpenAITool {
+interface BaseTool {
+  name: string;
+  description: string;
+  parameters: ToolParameter[];
+}
+
+interface OpenAITool extends BaseTool {
+  type: 'function';
+}
+
+interface OllamaTool extends BaseTool {
   type: 'function';
   function: {
     name: string;
     description: string;
-    parameters: any;
+    parameters: {
+      type: 'object';
+      properties: Record<string, unknown>;
+      required: string[];
+    };
   };
-}
-
-interface OllamaTool {
-  name: string;
-  description: string;
-  parameters: any;
 }
 
 export class OllamaClient {
   private abortController: AbortController | null = null;
+  private static readonly OLLAMA_MAX_TOKENS = 8000; // Ollama's token limit
   private config: OpenAIConfig;
 
   constructor(baseUrl: string, config?: Partial<OpenAIConfig>) {
@@ -93,64 +103,34 @@ export class OllamaClient {
   /**
    * Helper for making API requests.
    */
-  private async request<T>(
-    endpoint: string,
-    method: "GET" | "POST" | "DELETE" = "POST",
-    body?: any
-  ): Promise<T> {
-    const isOllamaEndpoint = endpoint.startsWith('/api/');
-    const url = `${this.config.baseUrl}${endpoint}`;
+  private async request(endpoint: string, method: string, body?: any): Promise<any> {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json'
     };
 
-    if (this.config.apiKey && !isOllamaEndpoint) {
+    if (this.config.type === 'openai' && this.config.apiKey) {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
 
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        mode: 'cors',
-        body: body ? JSON.stringify(body) : undefined,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Format error message including the API response
-        const errorMessage = {
-          status: response.status,
-          statusText: response.statusText,
-          apiError: data.error || data,
-        };
-        throw new Error(JSON.stringify(errorMessage, null, 2));
-      }
-
-      return data;
-    } catch (error) {
-      if (error instanceof Error) {
-        // If it's already a formatted error, re-throw it
-        if (error.message.includes('"status":')) {
-          throw error;
-        }
-        // Format connection errors
-        if (error.message.includes('Failed to fetch')) {
-          throw new Error(JSON.stringify({
-            status: 503,
-            statusText: 'Connection Error',
-            message: `Unable to connect to ${this.config.baseUrl}. Please check if the server is running and the URL is correct.`
-          }, null, 2));
-        }
-        throw error;
-      }
-      throw new Error(JSON.stringify({
-        status: 500,
-        statusText: 'Unknown Error',
-        message: 'An unknown error occurred while connecting to the API server'
-      }, null, 2));
+    // If using Ollama, ensure max_tokens doesn't exceed the limit
+    if (this.config.type === 'ollama' && body) {
+      body = {
+        ...body,
+        max_tokens: Math.min(body.max_tokens || OllamaClient.OLLAMA_MAX_TOKENS, OllamaClient.OLLAMA_MAX_TOKENS)
+      };
     }
+
+    const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
   }
 
   /**
@@ -899,20 +879,33 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
     return result;
   }
 
-  private formatTool(tool: OpenAITool | OllamaTool) {
+  private formatTool(tool: BaseTool): OpenAITool | OllamaTool {
     if (this.config.type === 'openai') {
-      // Tool is already in OpenAI format
-      return tool;
+      return {
+        type: 'function',
+        ...tool
+      };
     } else {
-      // Convert OpenAI format to Ollama format if needed
-      if ('function' in tool) {
-        return {
-          name: tool.function.name,
-          description: tool.function.description,
-          parameters: tool.function.parameters
-        };
-      }
-      return tool;
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: 'object',
+            properties: tool.parameters.reduce((acc: Record<string, unknown>, param: ToolParameter) => ({
+              ...acc,
+              [param.name]: {
+                type: param.type.toLowerCase(),
+                description: param.description
+              }
+            }), {}),
+            required: tool.parameters
+              .filter((p: ToolParameter) => p.required)
+              .map((p: ToolParameter) => p.name)
+          }
+        }
+      };
     }
   }
 

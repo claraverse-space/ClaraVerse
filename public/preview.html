@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview</title>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+        }
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        #console-output {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            overflow-y: auto;
+            z-index: 9999;
+            display: block;
+            border-top: 1px solid #333;
+        }
+        #console-output.hidden {
+            display: none;
+        }
+        #console-output .log {
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        #console-output .error {
+            color: #ff5555;
+        }
+        #console-output .warn {
+            color: #ffdd55;
+        }
+        #console-output .info {
+            color: #55aaff;
+        }
+        #console-toggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            z-index: 10000;
+            font-size: 12px;
+        }
+        .preview-error {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(220, 38, 38, 0.9);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            z-index: 9999;
+        }
+        #debug-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 9998;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-status">Ready</div>
+    <button id="console-toggle" onclick="toggleConsole()">Show Console</button>
+    <div id="console-output" class="hidden"></div>
+    
+    <!-- We'll replace the content entirely with user code -->
+    <div id="content-container"></div>
+    
+    <script>
+        // Create a custom console logger
+        (function() {
+            const originalConsole = {
+                log: console.log,
+                error: console.error,
+                warn: console.warn,
+                info: console.info
+            };
+            
+            function createLogElement(type, args) {
+                const logElement = document.createElement('div');
+                logElement.className = `log ${type}`;
+                logElement.textContent = Array.from(args).map(arg => {
+                    if (typeof arg === 'object') {
+                        try {
+                            return JSON.stringify(arg);
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    }
+                    return String(arg);
+                }).join(' ');
+                return logElement;
+            }
+            
+            // Override console methods
+            console.log = function() {
+                originalConsole.log.apply(console, arguments);
+                const consoleOutput = document.getElementById('console-output');
+                consoleOutput.appendChild(createLogElement('log', arguments));
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            };
+            
+            console.error = function() {
+                originalConsole.error.apply(console, arguments);
+                const consoleOutput = document.getElementById('console-output');
+                consoleOutput.appendChild(createLogElement('error', arguments));
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                consoleOutput.classList.remove('hidden');
+            };
+            
+            console.warn = function() {
+                originalConsole.warn.apply(console, arguments);
+                const consoleOutput = document.getElementById('console-output');
+                consoleOutput.appendChild(createLogElement('warn', arguments));
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            };
+            
+            console.info = function() {
+                originalConsole.info.apply(console, arguments);
+                const consoleOutput = document.getElementById('console-output');
+                consoleOutput.appendChild(createLogElement('info', arguments));
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            };
+        })();
+
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('debug-status');
+            status.textContent = message;
+            status.className = '';
+            status.classList.add(type);
+        }
+        
+        function toggleConsole() {
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.classList.toggle('hidden');
+            const toggleBtn = document.getElementById('console-toggle');
+            toggleBtn.textContent = consoleOutput.classList.contains('hidden') ? 'Show Console' : 'Hide Console';
+        }
+
+        // Function to create a full HTML document from components
+        function createFullDocument(html, css, js) {
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview</title>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <style>
+${css}
+    </style>
+</head>
+<body>
+${html}
+<script>
+${js}
+<\/script>
+</body>
+</html>`;
+        }
+
+        let runCount = 0;
+        let currentHtml = '';
+        let currentCss = '';
+        let currentJs = '';
+
+        // Function to handle updates from the parent
+        function updatePreview(html, css, js) {
+            runCount++;
+            const runId = runCount;
+            
+            try {
+                updateStatus(`Creating preview (Run #${runId})...`);
+                console.info(`🔄 Starting code injection (Run #${runId})`);
+                
+                // Store the current values
+                currentHtml = html;
+                currentCss = css;
+                currentJs = js;
+                
+                // Create the iframe that will contain the user's code
+                const contentContainer = document.getElementById('content-container');
+                contentContainer.innerHTML = '';
+                
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '100%';
+                iframe.style.border = 'none';
+                iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups');
+                contentContainer.appendChild(iframe);
+                
+                // Create the full document
+                const fullDocument = createFullDocument(html, css, js);
+                
+                // Wait for iframe to load then write to it
+                iframe.onload = function() {
+                    try {
+                        // Write the content to the iframe
+                        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        iframeDoc.open();
+                        iframeDoc.write(fullDocument);
+                        iframeDoc.close();
+                        
+                        // Establish error handling for the iframe
+                        iframe.contentWindow.onerror = function(msg, url, lineNo, columnNo, error) {
+                            console.error(`🛑 Error in preview: ${msg} (Line: ${lineNo}, Column: ${columnNo})`);
+                            showError(msg, lineNo, columnNo);
+                            return true; // Prevents the error from bubbling up
+                        };
+                        
+                        updateStatus(`Preview loaded successfully (Run #${runId})`, 'info');
+                        console.info(`✅ Preview loaded (Run #${runId})`);
+                    } catch (error) {
+                        console.error(`🛑 Failed to write to iframe: ${error.message}`);
+                        showError(error.message, 0, 0);
+                    }
+                };
+                
+                // Set a blank initial src to trigger the load event
+                iframe.src = 'about:blank';
+                
+            } catch (error) {
+                console.error(`🛑 Preview error: ${error.message}`);
+                updateStatus(`Error: ${error.message}`, 'error');
+                showError(error.message, 0, 0);
+            }
+        }
+        
+        // Function to display errors
+        function showError(message, line, column) {
+            let errorEl = document.querySelector('.preview-error');
+            if (!errorEl) {
+                errorEl = document.createElement('div');
+                errorEl.className = 'preview-error';
+                document.body.appendChild(errorEl);
+            }
+            
+            errorEl.textContent = `Error${line ? ` on line ${line}` : ''}: ${message}`;
+            
+            // Send error to parent
+            window.parent.postMessage({
+                type: 'preview-error',
+                error: { message, line, column }
+            }, '*');
+        }
+
+        // Listen for messages from the parent window
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'update-preview') {
+                console.info('📨 Received update-preview message');
+                const { html, css, js } = event.data;
+                updatePreview(html, css, js);
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.info('🚀 Preview environment ready');
+            updateStatus('Ready - Waiting for code');
+            
+            // Prepare container for content
+            const container = document.getElementById('content-container');
+            container.style.position = 'absolute';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '100%';
+            container.style.height = '100%';
+            
+            // Tell the parent that we're ready
+            window.parent.postMessage({ type: 'preview-ready' }, '*');
+        });
+    </script>
+</body>
+</html> 

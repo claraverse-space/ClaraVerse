@@ -6,9 +6,11 @@ import UserProfileButton from './common/UserProfileButton';
 interface TopbarProps {
   userName?: string;
   onPageChange?: (page: string) => void;
+  projectTitle?: string;
+  showProjectTitle?: boolean;
 }
 
-const Topbar = ({ userName, onPageChange }: TopbarProps) => {
+const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false }: TopbarProps) => {
   const { isDark, toggleTheme } = useTheme();
 
   return (
@@ -16,6 +18,15 @@ const Topbar = ({ userName, onPageChange }: TopbarProps) => {
       <div className="flex-1">
         {/* Search input removed */}
       </div>
+      
+      {/* Center section - Project Title */}
+      {showProjectTitle && projectTitle && (
+        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <h1 className="text-lg font-semibold text-gray-800 dark:text-white">
+            {projectTitle}
+          </h1>
+        </div>
+      )}
       
       <div className="flex items-center gap-4">
         <button 
