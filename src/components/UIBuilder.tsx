@@ -192,7 +192,7 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
   const [currentDesign, setCurrentDesign] = useState<UIBuilderDesign | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showProjectManager, setShowProjectManager] = useState(false);
 
@@ -265,121 +265,180 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
     };
   }, []);
 
-  // Add helper functions to get the code from the state
-  const getHtmlCode = () => htmlCode;
-  const getCssCode = () => cssCode;
-  const getJsCode = () => jsCode;
+  // Auto-save functionality
+  useEffect(() => {
+    if (!currentDesign) return;
 
-  // Save current design to database and server
-  const saveDesign = async () => {
     // Clear any existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
     }
-    
-    // Get project ID from localStorage
-    const projectId = localStorage.getItem('current_ui_project_id');
-    
-    // Don't save if already saving
-    if (isSaving) return;
-    
-    setIsSaving(true);
-    setSaveStatus('idle');
-    
-    try {
-      const updatedHtml = getHtmlCode();
-      const updatedCss = getCssCode();
-      const updatedJs = getJsCode();
-      
-      // Save to IndexedDB
-      if (currentDesign) {
-        const updatedDesign = {
+
+    // Set new timeout for auto-save
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const updatedDesign: UIBuilderDesign = {
           ...currentDesign,
-          htmlCode: updatedHtml,
-          cssCode: updatedCss,
-          jsCode: updatedJs,
-          updatedAt: new Date().toISOString()
+          htmlCode,
+          cssCode,
+          jsCode,
+          messages,
+          updatedAt: new Date().toISOString(),
+          version: currentDesign.version + 1
         };
-        
+
         await db.updateDesign(updatedDesign);
         setCurrentDesign(updatedDesign);
-      } else if (projectId) {
-        // If no design in state but we have a projectId, create one
-        const newDesign = {
-          id: projectId,
-          name: localStorage.getItem('current_ui_project_name') || 'Untitled Project',
-          htmlCode: updatedHtml,
-          cssCode: updatedCss,
-          jsCode: updatedJs,
-          messages: [],
+        setSaveStatus('success');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        setSaveStatus('error');
+      }
+    }, 3000); // Auto-save after 3 seconds of no changes
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [htmlCode, cssCode, jsCode, messages, currentDesign]);
+
+  // Save current design
+  const saveDesign = async () => {
+    setIsSaving(true);
+    setSaveStatus('idle');
+
+    try {
+      let designToSave: UIBuilderDesign;
+      
+      // Check for project ID from localStorage
+      const currentProjectId = localStorage.getItem('current_ui_project');
+      
+      if (currentDesign) {
+        // Update existing design
+        designToSave = {
+          ...currentDesign,
+          htmlCode,
+          cssCode,
+          jsCode,
+          messages,
+          updatedAt: new Date().toISOString(),
+          version: currentDesign.version + 1
+        };
+      } else if (currentProjectId) {
+        // If we have a current project ID but no design loaded, try to load it first
+        try {
+          const project = await uiBuilderService.getProjectById(currentProjectId);
+          if (project) {
+            designToSave = {
+              id: project.id,
+              name: project.name,
+              description: project.description || '',
+              htmlCode,
+              cssCode,
+              jsCode,
+              messages,
+              createdAt: project.createdAt,
+              updatedAt: new Date().toISOString(),
+              version: project.version + 1
+            };
+          } else {
+            // Project not found, create new
+            designToSave = {
+              id: uuidv4(),
+              name: 'Untitled Design',
+              htmlCode,
+              cssCode,
+              jsCode,
+              messages,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: 1
+            };
+          }
+        } catch (err) {
+          console.error('Failed to load existing project:', err);
+          // Create new if loading fails
+          designToSave = {
+            id: uuidv4(),
+            name: 'Untitled Design',
+            htmlCode,
+            cssCode,
+            jsCode,
+            messages,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            version: 1
+          };
+        }
+      } else {
+        // Create new design
+        designToSave = {
+          id: uuidv4(),
+          name: 'Untitled Design',
+          htmlCode,
+          cssCode,
+          jsCode,
+          messages,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           version: 1
         };
-        
-        await db.updateDesign(newDesign);
-        setCurrentDesign(newDesign);
       }
+
+      // Update the local design state
+      await db.updateDesign(designToSave);
+      setCurrentDesign(designToSave);
       
-      // Save to UIBuilderService if we have a projectId
-      if (projectId) {
-        await uiBuilderService.updateProject(
-          {
-            id: projectId,
-            name: localStorage.getItem('current_ui_project_name') || 'Untitled Project',
-            description: '',
-            htmlCode: updatedHtml,
-            cssCode: updatedCss,
-            jsCode: updatedJs,
-            messages: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            version: 1
+      // Also update the UIBuilderProject in the service if this is a project
+      if (currentProjectId || (currentDesign && currentDesign.id)) {
+        const projectId = currentProjectId || (currentDesign?.id || '');
+        if (projectId) {
+          // Check if project exists
+          const existingProject = await uiBuilderService.getProjectById(projectId);
+          
+          if (existingProject) {
+            // Update existing project
+            await uiBuilderService.updateProject({
+              ...existingProject,
+              htmlCode,
+              cssCode,
+              jsCode,
+              messages,
+              updatedAt: new Date().toISOString(),
+              version: existingProject.version + 1
+            });
+          } else if (designToSave) {
+            // Create new project from design - fix the createProject parameters
+            await uiBuilderService.createProject({
+              name: designToSave.name,
+              description: designToSave.description || '',
+              htmlCode: designToSave.htmlCode,
+              cssCode: designToSave.cssCode,
+              jsCode: designToSave.jsCode,
+              messages: designToSave.messages,
+              isArchived: false,
+              isDeleted: false,
+              tags: [],
+              category: 'ui',
+              isPublic: false
+            });
+            // Save project ID to localStorage
+            localStorage.setItem('current_ui_project', designToSave.id);
           }
-        );
+        }
       }
       
       setSaveStatus('success');
-      // Reset success status after 2 seconds
-      setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
-      console.error('Error saving design:', error);
+      console.error('Failed to save design:', error);
       setSaveStatus('error');
-      // Reset error status after 2 seconds
-      setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
     } finally {
       setIsSaving(false);
     }
   };
-
-  // Auto-save when code changes
-  useEffect(() => {
-    // Skip if there's no current design or project ID
-    const projectId = localStorage.getItem('current_ui_project_id');
-    if (!currentDesign && !projectId) return;
-    
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    // Set a new timeout
-    saveTimeoutRef.current = setTimeout(() => {
-      saveDesign();
-    }, 3000); // Auto-save after 3 seconds of inactivity
-    
-    // Clean up on unmount
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [htmlCode, cssCode, jsCode]);
 
   // Define updatePreview function
   const updatePreview = useCallback(() => {
@@ -744,6 +803,12 @@ Respond with modified code based on the user's request. Keep all existing functi
 
   const handleSelectProject = async (project: UIBuilderProject) => {
     try {
+      // First, save the current project if any
+      if (currentDesign) {
+        await saveDesign();
+      }
+      
+      // Then load the selected project
       setHtmlCode(project.htmlCode);
       setCssCode(project.cssCode);
       setJsCode(project.jsCode);
@@ -753,7 +818,7 @@ Respond with modified code based on the user's request. Keep all existing functi
       const designFromProject: UIBuilderDesign = {
         id: project.id,
         name: project.name,
-        description: project.description,
+        description: project.description || '',
         htmlCode: project.htmlCode,
         cssCode: project.cssCode,
         jsCode: project.jsCode,
@@ -764,6 +829,10 @@ Respond with modified code based on the user's request. Keep all existing functi
       };
       
       setCurrentDesign(designFromProject);
+      
+      // Save current project ID to localStorage
+      localStorage.setItem('current_ui_project', project.id);
+      
       setShowProjectManager(false);
       
       // Update the preview
@@ -995,6 +1064,32 @@ Respond with modified code based on the user's request. Keep all existing functi
     }, 100);
   };
 
+  // Add an auto-save effect
+  useEffect(() => {
+    const autoSaveChanges = () => {
+      // Check if we have a current design or current project ID
+      const shouldSave = currentDesign || localStorage.getItem('current_ui_project');
+      if (shouldSave) {
+        saveDesign();
+      }
+    };
+    
+    // Set up auto-save with debounce
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      autoSaveChanges();
+    }, 3000); // Auto-save after 3 seconds of inactivity
+    
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [htmlCode, cssCode, jsCode]); // Add only code changes as dependencies
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-900">
       <Sidebar activePage="ui-builder" onPageChange={onPageChange} />
@@ -1188,24 +1283,22 @@ Respond with modified code based on the user's request. Keep all existing functi
                   </button>
                 </div>
                 
-                <button
-                  className="p-2 rounded-full bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                <button 
+                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
                   onClick={updatePreview}
-                  title="Refresh Preview"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh</span>
                 </button>
-                
-                <button
-                  className="p-2 rounded-full bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                <button 
                   onClick={handleNewProject}
-                  title="New Project"
+                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
                 >
-                  <FolderPlus className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5" />
+                  <span>New Project</span>
                 </button>
-                
                 <button
-                  className={`p-2 rounded-full transition-colors ${
+                  className={`flex items-center justify-center p-2 rounded-md transition-colors ${
                     isSaving
                       ? 'bg-gray-400 cursor-not-allowed text-white'
                       : saveStatus === 'success'
@@ -1216,7 +1309,7 @@ Respond with modified code based on the user's request. Keep all existing functi
                   }`}
                   onClick={saveDesign}
                   disabled={isSaving}
-                  title={isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Error!' : 'Save Project'}
+                  title={isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : 'Save Project'}
                 >
                   {isSaving ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1226,13 +1319,12 @@ Respond with modified code based on the user's request. Keep all existing functi
                     <Save className="w-4 h-4" />
                   )}
                 </button>
-                
                 <button
-                  className="p-2 rounded-full bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
+                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
                   onClick={() => setShowExportModal(true)}
-                  title="Export Project"
                 >
-                  <Download className="w-4 h-4" />
+                  <FolderPlus className="w-3.5 h-3.5" />
+                  <span>Export</span>
                 </button>
               </div>
             </div>
