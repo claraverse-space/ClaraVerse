@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 4; // Increment version to trigger upgrade
+const DB_VERSION = 5; // Increment version to trigger upgrade for new stores
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -43,7 +43,7 @@ export class IndexedDBService {
           messageStore.createIndex('chat_id_index', 'chat_id', { unique: false });
         } else {
           // Ensure indices exist on existing store
-          const messageStore = event.target?.transaction?.objectStore('messages');
+          const messageStore = transaction.objectStore('messages');
           if (messageStore && !messageStore.indexNames.contains('id_index')) {
             messageStore.createIndex('id_index', 'id', { unique: true });
           }
@@ -74,6 +74,19 @@ export class IndexedDBService {
         if (!db.objectStoreNames.contains('apps')) {
           db.createObjectStore('apps', { keyPath: 'id' });
         }
+        // Add designs store
+        if (!db.objectStoreNames.contains('designs')) {
+          const designStore = db.createObjectStore('designs', { keyPath: 'id' });
+          designStore.createIndex('name_index', 'name', { unique: false });
+          designStore.createIndex('created_at_index', 'createdAt', { unique: false });
+        }
+        // Add design versions store
+        if (!db.objectStoreNames.contains('design_versions')) {
+          const versionStore = db.createObjectStore('design_versions', { keyPath: 'id' });
+          versionStore.createIndex('design_id_index', 'designId', { unique: false });
+          versionStore.createIndex('version_number_index', 'versionNumber', { unique: false });
+          versionStore.createIndex('created_at_index', 'createdAt', { unique: false });
+        }
       };
     });
   }
@@ -81,14 +94,14 @@ export class IndexedDBService {
   async getAll<T>(storeName: string): Promise<T[]> {
     try {
       const db = await this.initDB();
-      return new Promise<T[]>((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readonly');
         const store = transaction.objectStore(storeName);
         const request = store.getAll();
 
         request.onsuccess = (event) => {
-          const result = (event.target as IDBRequest<T[]>).result;
-          resolve(result || []);
+          const result = ((event.target as IDBRequest).result as T[]);
+          resolve(result);
         };
         request.onerror = (event) => {
           const error = (event.target as IDBRequest).error;
@@ -97,21 +110,21 @@ export class IndexedDBService {
       });
     } catch (error) {
       console.error(`Error in getAll(${storeName}):`, error);
-      return [];
+      throw error;
     }
   }
 
-  async get<T>(storeName: string, key: string | number): Promise<T | null> {
+  async get<T>(storeName: string, key: string | number): Promise<T | undefined> {
     try {
       const db = await this.initDB();
-      return new Promise<T | null>((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readonly');
         const store = transaction.objectStore(storeName);
         const request = store.get(key);
 
         request.onsuccess = (event) => {
-          const result = (event.target as IDBRequest<T>).result;
-          resolve(result || null);
+          const result = ((event.target as IDBRequest).result as T | undefined);
+          resolve(result);
         };
         request.onerror = (event) => {
           const error = (event.target as IDBRequest).error;
@@ -120,7 +133,7 @@ export class IndexedDBService {
       });
     } catch (error) {
       console.error(`Error in get(${storeName}, ${key}):`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -133,8 +146,14 @@ export class IndexedDBService {
         const index = store.index(indexName);
         const request = index.get(value);
 
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          const result = ((event.target as IDBRequest).result as T);
+          resolve(result);
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in getByIndex(${storeName}, ${indexName}):`, error);
@@ -150,8 +169,14 @@ export class IndexedDBService {
         const store = transaction.objectStore(storeName);
         const request = store.put(value);
 
-        request.onsuccess = () => resolve(value);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          const result = ((event.target as IDBRequest).result as T);
+          resolve(value);
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in put(${storeName}):`, error);
@@ -167,8 +192,13 @@ export class IndexedDBService {
         const store = transaction.objectStore(storeName);
         const request = store.delete(key);
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          resolve();
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in delete(${storeName}, ${key}):`, error);
@@ -184,8 +214,13 @@ export class IndexedDBService {
         const store = transaction.objectStore(storeName);
         const request = store.clear();
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        request.onsuccess = (event) => {
+          resolve();
+        };
+        request.onerror = (event) => {
+          const error = (event.target as IDBRequest).error;
+          reject(error);
+        };
       });
     } catch (error) {
       console.error(`Error in clear(${storeName}):`, error);
@@ -205,34 +240,105 @@ export class IndexedDBService {
           const index = store.index('id_index');
           const request = index.get(messageId);
           
-          request.onsuccess = () => {
-            if (request.result) {
-              resolve(request.result);
+          request.onsuccess = (event) => {
+            const result = ((event.target as IDBRequest).result as T);
+            if (result) {
+              resolve(result);
             } else {
               // Fallback to full scan if index lookup fails
               const getAllRequest = store.getAll();
-              getAllRequest.onsuccess = () => {
-                const message = getAllRequest.result.find(msg => msg.id === messageId);
+              getAllRequest.onsuccess = (event) => {
+                const results = ((event.target as IDBRequest).result as T[]);
+                const message = results.find((msg: any) => msg.id === messageId);
                 resolve(message);
               };
-              getAllRequest.onerror = () => reject(getAllRequest.error);
+              getAllRequest.onerror = (event) => {
+                const error = (event.target as IDBRequest).error;
+                reject(error);
+              };
             }
           };
-          request.onerror = () => reject(request.error);
+          request.onerror = (event) => {
+            const error = (event.target as IDBRequest).error;
+            reject(error);
+          };
         } else {
           // If index doesn't exist, do a full scan
           const request = store.getAll();
-          request.onsuccess = () => {
-            const message = request.result.find(msg => msg.id === messageId);
+          request.onsuccess = (event) => {
+            const results = ((event.target as IDBRequest).result as T[]);
+            const message = results.find((msg: any) => msg.id === messageId);
             resolve(message);
           };
-          request.onerror = () => reject(request.error);
+          request.onerror = (event) => {
+            const error = (event.target as IDBRequest).error;
+            reject(error);
+          };
         }
       });
     } catch (error) {
       console.error('Error finding message:', error);
       return undefined;
     }
+  }
+
+  async clearApps(): Promise<void> {
+    return this.clear('apps');
+  }
+
+  // Design methods
+  async getAllDesigns(): Promise<any[]> {
+    return this.getAll('designs');
+  }
+
+  async getDesignById(id: string): Promise<any> {
+    return this.get('designs', id);
+  }
+
+  async addDesign(design: any): Promise<any> {
+    return this.put('designs', design);
+  }
+
+  async updateDesign(design: any): Promise<any> {
+    return this.put('designs', design);
+  }
+
+  async deleteDesign(id: string): Promise<void> {
+    return this.delete('designs', id);
+  }
+
+  async clearDesigns(): Promise<void> {
+    return this.clear('designs');
+  }
+
+  // Design version methods
+  async getAllDesignVersions(): Promise<any[]> {
+    return this.getAll('design_versions');
+  }
+
+  async getDesignVersionById(id: string): Promise<any> {
+    return this.get('design_versions', id);
+  }
+
+  async getDesignVersionsByDesignId(designId: string): Promise<any[]> {
+    const result = await this.getByIndex('design_versions', 'design_id_index', designId);
+    return result ? [result] : [];
+  }
+
+  async addDesignVersion(version: any): Promise<any> {
+    return this.put('design_versions', version);
+  }
+
+  async updateDesignVersion(version: any): Promise<any> {
+    return this.put('design_versions', version);
+  }
+
+  async deleteDesignVersion(id: string): Promise<void> {
+    return this.delete('design_versions', id);
+  }
+
+  async clearDesignVersions(): Promise<void> {
+    return this.clear('design_versions');
   }
 }
 

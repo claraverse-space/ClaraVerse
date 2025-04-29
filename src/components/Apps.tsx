@@ -286,7 +286,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
               : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          My Apps
+          My Agents
         </button>
         <button
           onClick={() => setActiveTab('community')}
@@ -306,10 +306,10 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           {/* My Apps Content */}
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-              My Apps
+              My Agents
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              Create and manage your Clara-powered applications
+              Create and manage your Clara-powered agents
             </p>
           </div>
           
@@ -375,7 +375,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                 className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                <span>Create App</span>
+                <span>Create Agents</span>
               </button>
             </div>
           </div>
@@ -442,7 +442,7 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                           Updated: {new Date(app.updatedAt).toLocaleDateString()}
                         </span>
                         <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
-                          Run App
+                          Open Agent
                         </button>
                       </div>
                     </div>
