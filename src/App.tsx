@@ -14,6 +14,7 @@ import Gallery from './components/Gallery';
 import Help from './components/Help';
 import N8N from './components/N8N';
 import UIBuilder from './components/UIBuilder';
+import UIProjectViewer from './components/UIProjectViewer';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
@@ -93,6 +94,10 @@ function App() {
 
     if (activePage === 'ui-builder') {
       return <UIBuilder onPageChange={setActivePage} />;
+    }
+
+    if (activePage === 'ui-project-viewer') {
+      return <UIProjectViewer onPageChange={setActivePage} />;
     }
 
     return (
