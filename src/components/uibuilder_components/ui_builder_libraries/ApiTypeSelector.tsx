@@ -5,11 +5,13 @@ import { db } from '../../../db';
 interface ApiTypeSelectorProps {
   onApiTypeChange: (apiType: 'ollama' | 'openai') => void;
   currentApiType: string;
+  onPageChange: (page: string) => void;
 }
 
 const ApiTypeSelector: React.FC<ApiTypeSelectorProps> = ({ 
   onApiTypeChange,
-  currentApiType = 'ollama'
+  currentApiType = 'ollama',
+  onPageChange
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [apiConfig, setApiConfig] = useState<{
@@ -74,8 +76,8 @@ const ApiTypeSelector: React.FC<ApiTypeSelectorProps> = ({
   };
 
   const openSettingsPage = () => {
-    // Navigate to settings page
-    window.location.href = '/settings';
+    // Use the onPageChange prop to navigate
+    onPageChange('settings');
   };
 
   return (

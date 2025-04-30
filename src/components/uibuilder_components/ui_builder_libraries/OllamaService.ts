@@ -7,16 +7,26 @@ class OllamaService {
   private baseUrl: string;
 
   constructor(connection: OllamaConnection) {
-    const protocol = connection.secure ? 'https' : 'http';
-    this.baseUrl = `${protocol}://${connection.host}:${connection.port}`;
+    // Check if connection.host already contains a full URL
+    if (connection.host.startsWith('http://') || connection.host.startsWith('https://')) {
+      this.baseUrl = connection.host;
+    } else {
+      const protocol = connection.secure ? 'https' : 'http';
+      this.baseUrl = `${protocol}://${connection.host}:${connection.port}`;
+    }
   }
 
   /**
    * Set a new connection for the Ollama service
    */
   setConnection(connection: OllamaConnection) {
-    const protocol = connection.secure ? 'https' : 'http';
-    this.baseUrl = `${protocol}://${connection.host}:${connection.port}`;
+    // Check if connection.host already contains a full URL
+    if (connection.host.startsWith('http://') || connection.host.startsWith('https://')) {
+      this.baseUrl = connection.host;
+    } else {
+      const protocol = connection.secure ? 'https' : 'http';
+      this.baseUrl = `${protocol}://${connection.host}:${connection.port}`;
+    }
   }
 
   /**
@@ -24,7 +34,12 @@ class OllamaService {
    */
   async getModels(): Promise<OllamaModelList> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`);
+      // Ensure we have the /api/ path
+      const apiUrl = this.baseUrl.endsWith('/') 
+        ? `${this.baseUrl}api/tags` 
+        : `${this.baseUrl}/api/tags`;
+      
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch models: ${response.statusText}`);
@@ -42,7 +57,12 @@ class OllamaService {
    */
   async generateCompletion(options: OllamaGenerationOptions): Promise<OllamaResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
+      // Ensure we have the /api/ path
+      const apiUrl = this.baseUrl.endsWith('/') 
+        ? `${this.baseUrl}api/generate` 
+        : `${this.baseUrl}/api/generate`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,7 +98,12 @@ class OllamaService {
       // Ensure streaming is enabled
       options.stream = true;
       
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
+      // Ensure we have the /api/ path
+      const apiUrl = this.baseUrl.endsWith('/') 
+        ? `${this.baseUrl}api/generate` 
+        : `${this.baseUrl}/api/generate`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +181,12 @@ class OllamaService {
    */
   async checkConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/version`, {
+      // Ensure we have the /api/ path
+      const apiUrl = this.baseUrl.endsWith('/') 
+        ? `${this.baseUrl}api/version` 
+        : `${this.baseUrl}/api/version`;
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
       });
       return response.ok;

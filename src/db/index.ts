@@ -357,35 +357,68 @@ export class LocalStorageDB {
   }
 
   async getMessages(chatId: string): Promise<ChatMessage[]> {
-    const key = `${DB_PREFIX}messages_${chatId}`;
-    const messages = localStorage.getItem(key);
-    return messages ? JSON.parse(messages) : [];
-  }
-
-  async saveMessages(chatId: string, messages: ChatMessage[]): Promise<void> {
-    const key = `${DB_PREFIX}messages_${chatId}`;
-    localStorage.setItem(key, JSON.stringify(messages));
-  }
-
-  async getChatMessages(chatId: string): Promise<Message[]> {
     if (this.useIndexedDB) {
-      const allMessages = await indexedDBService.getAll<Message>('messages');
-      return allMessages
-        .filter(message => message.chat_id === chatId)
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      try {
+        const allMessages = await indexedDBService.getAll<ChatMessage>('messages');
+        return allMessages.filter(msg => msg.chat_id === chatId);
+      } catch (error) {
+        console.error(`Error getting messages from IndexedDB for chat ${chatId}:`, error);
+        // Fall back to localStorage
+        const key = `${DB_PREFIX}messages_${chatId}`;
+        const messages = localStorage.getItem(key);
+        return messages ? JSON.parse(messages) : [];
+      }
     } else {
-      const messages = await this.getItem<Message[]>('messages') || [];
-      return messages
-        .filter(message => message.chat_id === chatId)
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const key = `${DB_PREFIX}messages_${chatId}`;
+      const messages = localStorage.getItem(key);
+      return messages ? JSON.parse(messages) : [];
     }
   }
 
-  async updateMessage(messageId: string, update: Partial<Message>): Promise<void> {
+  async saveMessages(chatId: string, messages: ChatMessage[]): Promise<void> {
+    if (this.useIndexedDB) {
+      try {
+        // First delete existing messages for this chat
+        const existingMessages = await this.getMessages(chatId);
+        for (const msg of existingMessages) {
+          await indexedDBService.delete('messages', msg.id);
+        }
+        
+        // Then add all messages for this chat
+        for (const message of messages) {
+          await indexedDBService.put('messages', message);
+        }
+      } catch (error) {
+        console.error(`Error saving messages to IndexedDB for chat ${chatId}:`, error);
+        // Fall back to localStorage
+        const key = `${DB_PREFIX}messages_${chatId}`;
+        localStorage.setItem(key, JSON.stringify(messages));
+      }
+    } else {
+      const key = `${DB_PREFIX}messages_${chatId}`;
+      localStorage.setItem(key, JSON.stringify(messages));
+    }
+  }
+
+  async getChatMessages(chatId: string): Promise<ChatMessage[]> {
+    if (this.useIndexedDB) {
+      const allMessages = await indexedDBService.getAll<ChatMessage>('messages');
+      return allMessages
+        .filter(message => message.chat_id === chatId)
+        .sort((a, b) => a.timestamp - b.timestamp);
+    } else {
+      const messages = await this.getItem<ChatMessage[]>('messages') || [];
+      return messages
+        .filter(message => message.chat_id === chatId)
+        .sort((a, b) => a.timestamp - b.timestamp);
+    }
+  }
+
+  async updateMessage(messageId: string, update: Partial<ChatMessage>): Promise<void> {
     if (this.useIndexedDB) {
       try {
         // Simpler approach: First try direct get, then delete and add new
-        const allMessages = await indexedDBService.getAll<Message>('messages');
+        const allMessages = await indexedDBService.getAll<ChatMessage>('messages');
         const existingMessage = allMessages.find(msg => msg.id === messageId);
         
         if (!existingMessage) {
@@ -396,7 +429,7 @@ export class LocalStorageDB {
         const updatedMessage = {
           ...existingMessage,
           ...update,
-          timestamp: new Date().getTime()
+          timestamp: Date.now()
         };
 
         // Delete and re-add as a reliable update strategy
@@ -414,7 +447,7 @@ export class LocalStorageDB {
         throw error;
       }
     } else {
-      const messages = await this.getItem<Message[]>('messages') || [];
+      const messages = await this.getItem<ChatMessage[]>('messages') || [];
       const index = messages.findIndex(msg => msg.id === messageId);
       
       if (index === -1) {
@@ -424,7 +457,7 @@ export class LocalStorageDB {
       messages[index] = {
         ...messages[index],
         ...update,
-        timestamp: new Date().getTime()
+        timestamp: Date.now()
       };
       
       await this.setItem('messages', messages);
@@ -440,7 +473,7 @@ export class LocalStorageDB {
         throw error;
       }
     } else {
-      const messages = await this.getItem<Message[]>('messages') || [];
+      const messages = await this.getItem<ChatMessage[]>('messages') || [];
       const filteredMessages = messages.filter(msg => msg.id !== messageId);
       await this.setItem('messages', filteredMessages);
     }
