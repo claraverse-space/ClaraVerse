@@ -148,6 +148,22 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
         // Update OpenAI service with the loaded config
         openAIService.setBaseUrl(config.openai_base_url || 'https://api.openai.com/v1');
         openAIService.setApiKey(config.openai_api_key || '');
+        
+        // Update Ollama settings store with the loaded config
+        if (config.ollama_base_url) {
+          try {
+            // Just use the full URL as-is
+            ollamaSettingsStore.updateConnection({
+              host: config.ollama_base_url,
+              port: 11434, // This will be ignored if host is a full URL
+              secure: config.ollama_base_url.startsWith('https://')
+            });
+            
+            console.log(`Updated Ollama connection to URL: ${config.ollama_base_url}`);
+          } catch (err) {
+            console.error('Failed to update Ollama connection:', err);
+          }
+        }
       }
     };
 
@@ -871,6 +887,26 @@ Respond with modified code based on the user's request. Keep all existing functi
           api_type: type
         });
         console.log('UIBuilder: Updated config with new API type');
+        
+        // Update the OpenAI and Ollama service instances with current config
+        if (type === 'openai' && config.openai_base_url) {
+          openAIService.setBaseUrl(config.openai_base_url);
+          openAIService.setApiKey(config.openai_api_key || '');
+          console.log('UIBuilder: Updated OpenAI service with URL:', config.openai_base_url);
+        } else if (type === 'ollama' && config.ollama_base_url) {
+          try {
+            // Just use the full URL as-is
+            ollamaSettingsStore.updateConnection({
+              host: config.ollama_base_url,
+              port: 11434, // This will be ignored if host is a full URL
+              secure: config.ollama_base_url.startsWith('https://')
+            });
+            
+            console.log(`UIBuilder: Updated Ollama connection to URL: ${config.ollama_base_url}`);
+          } catch (err) {
+            console.error('Failed to update Ollama connection:', err);
+          }
+        }
       }
 
       // Reset selected model when switching API types
@@ -1111,6 +1147,7 @@ Respond with modified code based on the user's request. Keep all existing functi
               <ApiTypeSelector 
                 onApiTypeChange={handleApiTypeChange}
                 currentApiType={apiType}
+                onPageChange={onPageChange}
               />
             </div>
             
