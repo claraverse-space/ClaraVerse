@@ -46,6 +46,68 @@ interface ContainerInfo {
   };
 }
 
+interface FormData {
+  name: string;
+  image: string;
+  ports: Array<{ host: string; container: string }>;
+  volumes: Array<{ host: string; container: string }>;
+  envVars: Array<{ key: string; value: string }>;
+}
+
+interface QuickInstallData {
+  name: string;
+  hostPort: string;
+  template: string;
+  customImage: string;
+  customContainerPort: string;
+}
+
+// Add common container templates
+const containerTemplates = [
+  {
+    id: 'custom',
+    name: 'Custom Container',
+    image: '',
+    defaultPort: '',
+    description: 'Use your own image and port'
+  },
+  {
+    id: 'nginx',
+    name: 'Nginx Web Server',
+    image: 'nginx:latest',
+    defaultPort: '80',
+    description: 'Popular web server and reverse proxy'
+  },
+  {
+    id: 'mongodb',
+    name: 'MongoDB Database',
+    image: 'mongo:latest',
+    defaultPort: '27017',
+    description: 'NoSQL database'
+  },
+  {
+    id: 'redis',
+    name: 'Redis',
+    image: 'redis:latest',
+    defaultPort: '6379',
+    description: 'In-memory data store'
+  },
+  {
+    id: 'postgres',
+    name: 'PostgreSQL',
+    image: 'postgres:latest',
+    defaultPort: '5432',
+    description: 'SQL database'
+  },
+  {
+    id: 'mysql',
+    name: 'MySQL',
+    image: 'mysql:latest',
+    defaultPort: '3306',
+    description: 'SQL database'
+  }
+];
+
 const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +116,23 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
   const [view, setView] = useState<'list' | 'stats' | 'logs' | 'create'>('list');
   const [apiAvailable, setApiAvailable] = useState(true);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  
+  // Add form state at the top level
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    image: '',
+    ports: [{ host: '', container: '' }],
+    volumes: [{ host: '', container: '' }],
+    envVars: [{ key: '', value: '' }]
+  });
+  const [quickInstallData, setQuickInstallData] = useState<QuickInstallData>({
+    name: '',
+    hostPort: '',
+    template: '',
+    customImage: '',
+    customContainerPort: ''
+  });
+  const [createMode, setCreateMode] = useState<'quick' | 'advanced'>('quick');
 
   // Debug function to check what APIs are available
   const checkApiAvailability = () => {
@@ -169,6 +248,85 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
     } catch (err) {
       console.error('Failed to get container stats:', err);
     }
+  };
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handlePortChange = (index: number, field: 'host' | 'container', value: string) => {
+    const newPorts = [...formData.ports];
+    newPorts[index][field] = value;
+    setFormData({ ...formData, ports: newPorts });
+  };
+
+  const handleVolumeChange = (index: number, field: 'host' | 'container', value: string) => {
+    const newVolumes = [...formData.volumes];
+    newVolumes[index][field] = value;
+    setFormData({ ...formData, volumes: newVolumes });
+  };
+
+  const handleEnvVarChange = (index: number, field: 'key' | 'value', value: string) => {
+    const newEnvVars = [...formData.envVars];
+    newEnvVars[index][field] = value;
+    setFormData({ ...formData, envVars: newEnvVars });
+  };
+
+  const addPort = () => {
+    setFormData({
+      ...formData,
+      ports: [...formData.ports, { host: '', container: '' }]
+    });
+  };
+
+  const addVolume = () => {
+    setFormData({
+      ...formData,
+      volumes: [...formData.volumes, { host: '', container: '' }]
+    });
+  };
+
+  const addEnvVar = () => {
+    setFormData({
+      ...formData,
+      envVars: [...formData.envVars, { key: '', value: '' }]
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Process form data into container config
+    const containerConfig = {
+      name: formData.name,
+      image: formData.image,
+      ports: formData.ports.filter(p => p.host && p.container),
+      volumes: formData.volumes.filter(v => v.host && v.container),
+      env: formData.envVars.filter(e => e.key).reduce((acc, curr) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {} as Record<string, string>)
+    };
+    handleCreateContainer(containerConfig);
+  };
+
+  const handleQuickInstall = (e: React.FormEvent) => {
+    e.preventDefault();
+    const selectedTemplate = containerTemplates.find(t => t.id === quickInstallData.template);
+    if (!selectedTemplate) return;
+
+    const containerConfig = {
+      name: quickInstallData.name,
+      image: selectedTemplate.id === 'custom' ? quickInstallData.customImage : selectedTemplate.image,
+      ports: [{
+        host: quickInstallData.hostPort,
+        container: selectedTemplate.id === 'custom' ? quickInstallData.customContainerPort : selectedTemplate.defaultPort
+      }],
+      volumes: [],
+      env: {}
+    };
+
+    handleCreateContainer(containerConfig);
   };
 
   const renderContainerList = () => {
@@ -442,6 +600,123 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
     );
   };
 
+  const renderQuickInstallForm = () => {
+    const isCustomTemplate = quickInstallData.template === 'custom';
+    const selectedTemplate = containerTemplates.find(t => t.id === quickInstallData.template);
+
+    return (
+      <form onSubmit={handleQuickInstall} className="glassmorphic p-6 rounded-lg">
+        <div className="grid grid-cols-1 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Select Container Type
+            </label>
+            <select
+              value={quickInstallData.template}
+              onChange={(e) => setQuickInstallData({ 
+                ...quickInstallData, 
+                template: e.target.value,
+                customImage: '',
+                customContainerPort: ''
+              })}
+              className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+              required
+            >
+              <option value="">Select a template</option>
+              {containerTemplates.map(template => (
+                <option key={template.id} value={template.id}>
+                  {template.name} - {template.description}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Container Name
+            </label>
+            <input
+              type="text"
+              value={quickInstallData.name}
+              onChange={(e) => setQuickInstallData({ ...quickInstallData, name: e.target.value })}
+              className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+              placeholder="my-container"
+              required
+            />
+          </div>
+
+          {isCustomTemplate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Container Image
+              </label>
+              <input
+                type="text"
+                value={quickInstallData.customImage}
+                onChange={(e) => setQuickInstallData({ ...quickInstallData, customImage: e.target.value })}
+                className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                placeholder="e.g., ubuntu:latest"
+                required={isCustomTemplate}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Host Port
+              </label>
+              <input
+                type="text"
+                value={quickInstallData.hostPort}
+                onChange={(e) => setQuickInstallData({ ...quickInstallData, hostPort: e.target.value })}
+                className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                placeholder="e.g., 8080"
+                required
+              />
+            </div>
+
+            {isCustomTemplate ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Container Port
+                </label>
+                <input
+                  type="text"
+                  value={quickInstallData.customContainerPort}
+                  onChange={(e) => setQuickInstallData({ ...quickInstallData, customContainerPort: e.target.value })}
+                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                  placeholder="e.g., 80"
+                  required={isCustomTemplate}
+                />
+              </div>
+            ) : (
+              quickInstallData.template && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Container Port (Auto)
+                  </label>
+                  <div className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400">
+                    {selectedTemplate?.defaultPort}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <button 
+              type="submit"
+              className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:ring-offset-2 transition-colors"
+            >
+              Create Container
+            </button>
+          </div>
+        </div>
+      </form>
+    );
+  };
+
   const renderCreateContainer = () => {
     if (!apiAvailable) {
       return (
@@ -465,74 +740,6 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
       );
     }
 
-    const [formData, setFormData] = useState({
-      name: '',
-      image: '',
-      ports: [{ host: '', container: '' }],
-      volumes: [{ host: '', container: '' }],
-      envVars: [{ key: '', value: '' }]
-    });
-
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const { name, value } = e.target;
-      setFormData({ ...formData, [name]: value });
-    };
-
-    const handlePortChange = (index: number, field: 'host' | 'container', value: string) => {
-      const newPorts = [...formData.ports];
-      newPorts[index][field] = value;
-      setFormData({ ...formData, ports: newPorts });
-    };
-
-    const handleVolumeChange = (index: number, field: 'host' | 'container', value: string) => {
-      const newVolumes = [...formData.volumes];
-      newVolumes[index][field] = value;
-      setFormData({ ...formData, volumes: newVolumes });
-    };
-
-    const handleEnvVarChange = (index: number, field: 'key' | 'value', value: string) => {
-      const newEnvVars = [...formData.envVars];
-      newEnvVars[index][field] = value;
-      setFormData({ ...formData, envVars: newEnvVars });
-    };
-
-    const addPort = () => {
-      setFormData({
-        ...formData,
-        ports: [...formData.ports, { host: '', container: '' }]
-      });
-    };
-
-    const addVolume = () => {
-      setFormData({
-        ...formData,
-        volumes: [...formData.volumes, { host: '', container: '' }]
-      });
-    };
-
-    const addEnvVar = () => {
-      setFormData({
-        ...formData,
-        envVars: [...formData.envVars, { key: '', value: '' }]
-      });
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      // Process form data into container config
-      const containerConfig = {
-        name: formData.name,
-        image: formData.image,
-        ports: formData.ports.filter(p => p.host && p.container),
-        volumes: formData.volumes.filter(v => v.host && v.container),
-        env: formData.envVars.filter(e => e.key).reduce((acc, curr) => {
-          acc[curr.key] = curr.value;
-          return acc;
-        }, {} as Record<string, string>)
-      };
-      handleCreateContainer(containerConfig);
-    };
-
     return (
       <div className="mt-6">
         <div className="flex justify-between mb-4">
@@ -544,150 +751,177 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
             <ArrowLeft className="w-4 h-4" /> Cancel
           </button>
         </div>
-        
-        <form onSubmit={handleSubmit} className="glassmorphic p-6 rounded-lg">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Container Name
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleFormChange}
-                className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                placeholder="my-container"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Image
-              </label>
-              <input
-                type="text"
-                name="image"
-                value={formData.image}
-                onChange={handleFormChange}
-                className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                placeholder="nginx:latest"
-                required
-              />
-            </div>
-          </div>
-          
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Port Mapping
-              </label>
-              <button 
-                type="button" 
-                onClick={addPort}
-                className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
-            {formData.ports.map((port, index) => (
-              <div key={index} className="flex gap-4 mb-2">
-                <input
-                  type="text"
-                  value={port.host}
-                  onChange={(e) => handlePortChange(index, 'host', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Host Port (e.g. 8080)"
-                />
-                <span className="flex items-center text-gray-700 dark:text-gray-300">:</span>
-                <input
-                  type="text"
-                  value={port.container}
-                  onChange={(e) => handlePortChange(index, 'container', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Container Port (e.g. 80)"
-                />
-              </div>
-            ))}
-          </div>
-          
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Volumes
-              </label>
-              <button 
-                type="button" 
-                onClick={addVolume}
-                className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
-            {formData.volumes.map((volume, index) => (
-              <div key={index} className="flex gap-4 mb-2">
-                <input
-                  type="text"
-                  value={volume.host}
-                  onChange={(e) => handleVolumeChange(index, 'host', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Host Path"
-                />
-                <span className="flex items-center text-gray-700 dark:text-gray-300">:</span>
-                <input
-                  type="text"
-                  value={volume.container}
-                  onChange={(e) => handleVolumeChange(index, 'container', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Container Path"
-                />
-              </div>
-            ))}
-          </div>
-          
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Environment Variables
-              </label>
-              <button 
-                type="button" 
-                onClick={addEnvVar}
-                className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
-            {formData.envVars.map((env, index) => (
-              <div key={index} className="flex gap-4 mb-2">
-                <input
-                  type="text"
-                  value={env.key}
-                  onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Key (e.g. PORT)"
-                />
-                <span className="flex items-center text-gray-700 dark:text-gray-300">=</span>
-                <input
-                  type="text"
-                  value={env.value}
-                  onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                  className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
-                  placeholder="Value"
-                />
-              </div>
-            ))}
-          </div>
-          
-          <div className="flex justify-end">
-            <button 
-              type="submit" 
-              className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:ring-offset-2 transition-colors"
+
+        <div className="mb-6">
+          <div className="flex gap-4 mb-6">
+            <button
+              onClick={() => setCreateMode('quick')}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                createMode === 'quick'
+                  ? 'bg-sakura-500 text-white'
+                  : 'glassmorphic text-gray-700 dark:text-gray-200'
+              }`}
             >
-              Create Container
+              Quick Install
+            </button>
+            <button
+              onClick={() => setCreateMode('advanced')}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                createMode === 'advanced'
+                  ? 'bg-sakura-500 text-white'
+                  : 'glassmorphic text-gray-700 dark:text-gray-200'
+              }`}
+            >
+              Advanced
             </button>
           </div>
-        </form>
+
+          {createMode === 'quick' ? renderQuickInstallForm() : (
+            <form onSubmit={handleSubmit} className="glassmorphic p-6 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Container Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleFormChange}
+                    className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                    placeholder="my-container"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Image
+                  </label>
+                  <input
+                    type="text"
+                    name="image"
+                    value={formData.image}
+                    onChange={handleFormChange}
+                    className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                    placeholder="nginx:latest"
+                    required
+                  />
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Port Mapping
+                  </label>
+                  <button 
+                    type="button" 
+                    onClick={addPort}
+                    className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                {formData.ports.map((port, index) => (
+                  <div key={index} className="flex gap-4 mb-2">
+                    <input
+                      type="text"
+                      value={port.host}
+                      onChange={(e) => handlePortChange(index, 'host', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Host Port (e.g. 8080)"
+                    />
+                    <span className="flex items-center text-gray-700 dark:text-gray-300">:</span>
+                    <input
+                      type="text"
+                      value={port.container}
+                      onChange={(e) => handlePortChange(index, 'container', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Container Port (e.g. 80)"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Volumes
+                  </label>
+                  <button 
+                    type="button" 
+                    onClick={addVolume}
+                    className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                {formData.volumes.map((volume, index) => (
+                  <div key={index} className="flex gap-4 mb-2">
+                    <input
+                      type="text"
+                      value={volume.host}
+                      onChange={(e) => handleVolumeChange(index, 'host', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Host Path"
+                    />
+                    <span className="flex items-center text-gray-700 dark:text-gray-300">:</span>
+                    <input
+                      type="text"
+                      value={volume.container}
+                      onChange={(e) => handleVolumeChange(index, 'container', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Container Path"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Environment Variables
+                  </label>
+                  <button 
+                    type="button" 
+                    onClick={addEnvVar}
+                    className="text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                {formData.envVars.map((env, index) => (
+                  <div key={index} className="flex gap-4 mb-2">
+                    <input
+                      type="text"
+                      value={env.key}
+                      onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Key (e.g. PORT)"
+                    />
+                    <span className="flex items-center text-gray-700 dark:text-gray-300">=</span>
+                    <input
+                      type="text"
+                      value={env.value}
+                      onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
+                      className="w-full px-4 py-2 border border-sakura-200 dark:border-sakura-700 rounded-lg focus:ring-sakura-500 focus:border-sakura-500 bg-white/50 dark:bg-gray-800/50 dark:text-white"
+                      placeholder="Value"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex justify-end">
+                <button 
+                  type="submit" 
+                  className="px-6 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:ring-offset-2 transition-colors"
+                >
+                  Create Container
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     );
   };
