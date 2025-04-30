@@ -52,6 +52,21 @@ contextBridge.exposeInMainWorld(
   }
 );
 
+// Add Docker container management API
+contextBridge.exposeInMainWorld(
+  'electronAPI', {
+    getContainers: () => ipcRenderer.invoke('get-containers'),
+    containerAction: (containerId: string, action: string) => 
+      ipcRenderer.invoke('container-action', { containerId, action }),
+    createContainer: (containerConfig: any) => 
+      ipcRenderer.invoke('create-container', containerConfig),
+    getContainerStats: (containerId: string) => 
+      ipcRenderer.invoke('get-container-stats', containerId),
+    getContainerLogs: (containerId: string) => 
+      ipcRenderer.invoke('get-container-logs', containerId)
+  }
+);
+
 contextBridge.exposeInMainWorld(
   'api', {
     onSetupStatus: (callback: (status: { status: string, type: string }) => void) => {

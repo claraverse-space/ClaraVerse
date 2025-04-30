@@ -75,6 +75,19 @@ contextBridge.exposeInMainWorld('electron', {
   }
 });
 
+// Add Docker container management API
+contextBridge.exposeInMainWorld('electronAPI', {
+  getContainers: () => ipcRenderer.invoke('get-containers'),
+  containerAction: (containerId, action) => 
+    ipcRenderer.invoke('container-action', { containerId, action }),
+  createContainer: (containerConfig) => 
+    ipcRenderer.invoke('create-container', containerConfig),
+  getContainerStats: (containerId) => 
+    ipcRenderer.invoke('get-container-stats', containerId),
+  getContainerLogs: (containerId) => 
+    ipcRenderer.invoke('get-container-logs', containerId)
+});
+
 // Notify main process when preload script has loaded
 window.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('app-ready', 'Preload script has loaded');
