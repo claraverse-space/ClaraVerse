@@ -10,12 +10,12 @@ const isElectron = !!(window && window.process && window.process.type);
 
 // Define a preload script for the webview to inject before page load
 const preloadScript = `
-  // Inject Tailwind CSS
+  // Inject Tailwind CSS silently
   const tailwindScript = document.createElement('script');
   tailwindScript.src = 'https://cdn.tailwindcss.com';
   document.head.appendChild(tailwindScript);
   
-  // Error handling and logging
+  // Error handling and logging - only for actual errors
   window.onerror = function(message, source, lineno, colno, error) {
     const errorDiv = document.createElement('div');
     errorDiv.style.position = 'fixed';
@@ -29,29 +29,18 @@ const preloadScript = `
     errorDiv.style.zIndex = '9999';
     errorDiv.textContent = \`ERROR: \${message} (line \${lineno}, col \${colno})\`;
     document.body.appendChild(errorDiv);
-    console.error("PREVIEW ERROR:", message, error);
     return false;
   };
   
-  // Intercept fetch to log network activity
+  // Silent fetch interception - only log actual errors
   const originalFetch = window.fetch;
   window.fetch = function(...args) {
-    console.log('Fetch request:', args);
     return originalFetch.apply(this, args)
-      .then(response => {
-        console.log('Fetch response:', response);
-        return response;
-      })
       .catch(error => {
         console.error('Fetch error:', error);
         throw error;
       });
   };
-  
-  // Log when DOM is ready
-  document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded');
-  });
 `;
 
 const UIProjectViewer: React.FC<UIProjectViewerProps> = ({ onPageChange }) => {
@@ -469,6 +458,25 @@ ${jsContent}`;
               )}
             </button>
             
+            {/* DevTools button - only shown in Electron mode */}
+            {isElectron && (
+              <button 
+                onClick={handleOpenDevTools}
+                className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+                title="Open DevTools"
+                onMouseEnter={() => handleShowTooltip('devtools')}
+                onMouseLeave={() => handleHideTooltip('devtools')}
+              >
+                <Terminal size={18} />
+                {tooltips.devtools && (
+                  <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
+                    Open DevTools
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
+                  </div>
+                )}
+              </button>
+            )}
+            
             {/* Fullscreen button */}
             <button 
               onClick={toggleFullscreen}
@@ -522,109 +530,11 @@ ${jsContent}`;
             ref={iframeRef}
             src="/preview.html"
             className="w-full h-full border-none bg-white"
-            sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+            sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
             title="Preview"
-            srcDoc={`
-              <!DOCTYPE html>
-              <html>
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <script src="https://cdn.tailwindcss.com"></script>
-                  <style>
-                    body {
-                      margin: 0;
-                      padding: 0;
-                      overflow: auto;
-                      width: 100%;
-                      height: 100%;
-                    }
-                    ${project?.cssCode || ''}
-                  </style>
-                  <script>
-                    // Error handling
-                    window.onerror = function(message, source, lineno, colno, error) {
-                      window.parent.postMessage({
-                        type: 'preview-error',
-                        error: { message, line: lineno, column: colno }
-                      }, '*');
-                      return false;
-                    };
-                    
-                    // Listen for content updates
-                    window.addEventListener('message', function(event) {
-                      if (event.data && event.data.type === 'update-preview') {
-                        document.body.innerHTML = event.data.html || '';
-                        
-                        // Update styles
-                        const styleTag = document.querySelector('style');
-                        if (styleTag) {
-                          styleTag.textContent = event.data.css || '';
-                        }
-                        
-                        // Execute JavaScript
-                        try {
-                          if (event.data.js) {
-                            const scriptTag = document.createElement('script');
-                            scriptTag.textContent = event.data.js;
-                            document.body.appendChild(scriptTag);
-                          }
-                        } catch (error) {
-                          console.error('Error executing JavaScript:', error);
-                          window.parent.postMessage({
-                            type: 'preview-error',
-                            error: { message: error.message, line: error.lineNumber || 0, column: error.columnNumber || 0 }
-                          }, '*');
-                        }
-                      }
-                    });
-                  </script>
-                </head>
-                <body>
-                  ${project?.htmlCode || ''}
-                  <script>
-                    // Execute the JavaScript with safety wrappers
-                    try {
-                      ${project?.jsCode || ''}
-                    } catch (error) {
-                      console.error('Error executing JavaScript:', error);
-                      window.parent.postMessage({
-                        type: 'preview-error',
-                        error: { message: error.message, line: error.lineNumber || 0, column: error.columnNumber || 0 }
-                      }, '*');
-                    }
-                  </script>
-                </body>
-              </html>
-            `}
           />
         )}
       </div>
-      
-      {/* Floating DevTools Button - only shown in Electron mode */}
-      {isElectron && (
-        <div 
-          className="absolute bottom-10 right-10 z-10 opacity-30 hover:opacity-100 transition-opacity duration-300"
-          onMouseEnter={() => handleShowTooltip('devtools')}
-          onMouseLeave={() => handleHideTooltip('devtools')}
-        >
-          <button 
-            onClick={handleOpenDevTools}
-            className="bg-gradient-to-r from-purple-500 to-blue-500 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110"
-            aria-label="Open Developer Tools"
-          >
-            <Terminal size={20} />
-          </button>
-          
-          {/* Tooltip */}
-          {tooltips.devtools && (
-            <div className="absolute -top-10 right-0 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-              Open DevTools
-              <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-800 rotate-45"></div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
