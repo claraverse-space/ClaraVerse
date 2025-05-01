@@ -570,99 +570,80 @@ Original prompt: {input}
 Respond with a single enhanced prompt that expands on the user's request while maintaining their core intention. Keep the tone friendly and conversational while being technically precise.`;
     }
     
-    return mode === 'design' ? `You are a UI design assistant specializing in modern web development. You help create and modify HTML, CSS, and JavaScript code based on user requests.
-
-Available Frameworks and Libraries:
-1. CSS Frameworks:
-   - Tailwind CSS (v3) - Primary framework, prefer using Tailwind utility classes
-   - Font Awesome (v6) - For icons, use 'fas', 'far', 'fab' classes
-   - Custom CSS - For animations and custom styles not possible with Tailwind
-
-2. JavaScript Capabilities:
-   - Vanilla JavaScript with modern ES6+ features
-   - DOM manipulation and event handling
-   - Animations and transitions
-   - Async/await and Promises
-
-Best Practices to Follow:
-1. HTML Structure:
-   - Use semantic HTML5 elements (nav, header, main, footer, etc.)
-   - Maintain proper heading hierarchy (h1 -> h6)
-   - Include proper meta tags and viewport settings
-   - Use aria-labels and roles for accessibility
-
-2. Tailwind CSS Usage:
-   - Prefer Tailwind utility classes over custom CSS
-   - Use @apply in custom CSS only when necessary
-   - Follow mobile-first responsive design:
-     * Default: Mobile (<640px)
-     * sm: 640px and up
-     * md: 768px and up
-     * lg: 1024px and up
-     * xl: 1280px and up
-   - Use Tailwind's color palette (e.g., blue-500, gray-700)
-   - Utilize Tailwind's built-in animations and transitions
-
-3. JavaScript Guidelines:
-   - Use 'DOMContentLoaded' event listener
-   - Implement proper event delegation
-   - Handle errors gracefully
-   - Clean up event listeners and intervals
-   - Use const/let appropriately
-   - Implement smooth animations
-
-4. Common Components to Consider:
-   - Navigation bars
-   - Hero sections
-   - Cards and grids
-   - Forms and inputs
-   - Modals and dialogs
-   - Buttons and CTAs
-   - Lists and tables
-   - Footers
-
-5. Performance Considerations:
-   - Minimize DOM manipulations
-   - Use CSS transforms for animations
-   - Debounce event handlers when needed
-   - Optimize images and assets
-   - Use proper loading strategies
-
-Here is the current code:
-
-HTML:
-${htmlCode}
-
-CSS:
-${cssCode}
-
-JavaScript:
-${jsCode}
-
-Respond with modified code based on the user's request. Keep all existing functionality and just modify what the user is asking for. Always respond with valid JSON in the following format:
-{
-  "html": "...",
-  "css": "...",
-  "js": "..."
-}`
+    // For design mode, system prompt should focus on rules and context only
+    return mode === 'design' ? `You are a UI design assistant specializing in modern web development. You help create and modify HTML, CSS, and JavaScript code based on user requests.\n\nAvailable Frameworks and Libraries:\n1. CSS Frameworks:\n   - Tailwind CSS (v3) - Primary framework, prefer using Tailwind utility classes\n   - Font Awesome (v6) - For icons, use 'fas', 'far', 'fab' classes\n   - Custom CSS - For animations and custom styles not possible with Tailwind\n\n2. JavaScript Capabilities:\n   - Vanilla JavaScript with modern ES6+ features\n   - DOM manipulation and event handling\n   - Animations and transitions\n   - Async/await and Promises\n\nBest Practices to Follow:\n1. HTML Structure:\n   - Use semantic HTML5 elements (nav, header, main, footer, etc.)\n   - Maintain proper heading hierarchy (h1 -> h6)\n   - Include proper meta tags and viewport settings\n   - Use aria-labels and roles for accessibility\n\n2. Tailwind CSS Usage:\n   - Prefer Tailwind utility classes over custom CSS\n   - Use @apply in custom CSS only when necessary\n   - Follow mobile-first responsive design:\n     * Default: Mobile (<640px)\n     * sm: 640px and up\n     * md: 768px and up\n     * lg: 1024px and up\n     * xl: 1280px and up\n   - Use Tailwind's color palette (e.g., blue-500, gray-700)\n   - Utilize Tailwind's built-in animations and transitions\n\n3. JavaScript Guidelines:\n   - Use 'DOMContentLoaded' event listener\n   - Implement proper event delegation\n   - Handle errors gracefully\n   - Clean up event listeners and intervals\n   - Use const/let appropriately\n   - Implement smooth animations\n\n4. Common Components to Consider:\n   - Navigation bars\n   - Hero sections\n   - Cards and grids\n   - Forms and inputs\n   - Modals and dialogs\n   - Buttons and CTAs\n   - Lists and tables\n   - Footers\n\n5. Performance Considerations:\n   - Minimize DOM manipulations\n   - Use CSS transforms for animations\n   - Debounce event handlers when needed\n   - Optimize images and assets\n   - Use proper loading strategies\n\nAlways respond with valid JSON in the following format:\n{\n  "html": "...",\n  "css": "...",\n  "js": "..."\n}`
     : "You are Clara, a helpful and knowledgeable AI assistant. Provide clear, concise, and accurate responses to the user's questions.";
   };
+
+  // Helper function to build the design mode prompt
+  const buildDesignPrompt = (userPrompt: string, htmlCode: string, cssCode: string, jsCode: string, messages: Message[]) => {
+    // Optionally, you can include the previous design as JSON or as a chat history
+    const designJson = JSON.stringify({ html: htmlCode, css: cssCode, js: jsCode }, null, 2);
+    // Optionally, include chat history if needed (not included here for brevity)
+    return `Previous design (JSON):\n${designJson}\n\nHere is what you have to do to the above code:\n${userPrompt}`;
+  };
+
+  // Add state for live streaming stats
+  const [streamStats, setStreamStats] = useState<{ charCount: number; lineCount: number }>({ charCount: 0, lineCount: 0 });
+
+  // Add state for processing status
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper function to simulate progress during processing
+  const simulateProgress = () => {
+    setProcessingProgress(0);
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    
+    // Start a new interval to increment the progress
+    progressIntervalRef.current = setInterval(() => {
+      setProcessingProgress(prev => {
+        if (prev >= 95) {
+          // Max out at 95% until we get real data
+          return 95;
+        }
+        // Move faster at first, then slower as we approach 95%
+        const increment = Math.max(0.5, (95 - prev) / 20);
+        return prev + increment;
+      });
+    }, 100); // Update every 100ms
+  };
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Generate completion for chat or design mode
   const generateCompletion = async () => {
     const hasModel = apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel;
     if (!hasModel || !chatInput.trim() || isGenerating) return;
     
+    // Immediately show processing state
+    setIsProcessing(true);
+    simulateProgress();
+    
     // Add user message to the chat
     setMessages(prev => [...prev, { content: chatInput, sender: 'user' }]);
     setIsGenerating(true);
-    
+    setStreamStats({ charCount: 0, lineCount: 0 });
+
     try {
       let systemPrompt = '';
-      
+      let prompt = chatInput;
+
       if (chatMode === 'design') {
-        // Design mode - provide the current HTML, CSS, and JS as context
+        // Design mode - provide the current HTML, CSS, and JS as context in the prompt
         systemPrompt = getSystemPrompt(chatMode);
+        prompt = buildDesignPrompt(chatInput, htmlCode, cssCode, jsCode, messages);
       } else {
         // Normal chat mode
         systemPrompt = getSystemPrompt(chatMode);
@@ -676,7 +657,7 @@ Respond with modified code based on the user's request. Keep all existing functi
         await ollamaService.generateCompletionStream(
           {
             model: selectedOllamaModel.name,
-            prompt: chatInput,
+            prompt,
             system: systemPrompt,
             options: {
               temperature: 0.7,
@@ -697,6 +678,7 @@ Respond with modified code based on the user's request. Keep all existing functi
         // Use OpenAI service
         if (!apiConfig.openai_api_key) {
           setIsGenerating(false);
+          setIsProcessing(false);
           setMessages(prev => [
             ...prev,
             { content: "Error: OpenAI API key is not configured. Please set it in Settings.", sender: 'ai' }
@@ -709,15 +691,15 @@ Respond with modified code based on the user's request. Keep all existing functi
         openAIService.setBaseUrl(apiConfig.openai_base_url || 'https://api.openai.com/v1');
         
         // Prepare messages for OpenAI format
-        const messages = [
+        const openaiMessages = [
           { role: 'system' as const, content: systemPrompt },
-          { role: 'user' as const, content: chatInput }
+          { role: 'user' as const, content: prompt }
         ];
         
         await openAIService.generateCompletionStream(
           {
             model: selectedOpenAIModel.id,
-            messages: messages,
+            messages: openaiMessages,
             temperature: 0.7,
             stream: true,
             response_format: chatMode === 'design' ? { type: 'json_object' } : undefined,
@@ -736,6 +718,10 @@ Respond with modified code based on the user's request. Keep all existing functi
     } catch (error) {
       console.error('Failed to generate completion:', error);
       setIsGenerating(false);
+      setIsProcessing(false);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
       setMessages(prev => [
         ...prev, 
         { content: `Error: ${error instanceof Error ? error.message : 'An error occurred.'}`, sender: 'ai' }
@@ -747,6 +733,12 @@ Respond with modified code based on the user's request. Keep all existing functi
 
   // Helper function to update AI message as streaming progresses
   const updateAIMessage = (content: string) => {
+    // Once streaming starts, we have real data, so progress to 100%
+    if (content.length > 0 && processingProgress < 100) {
+      setProcessingProgress(100);
+      // We keep isProcessing true until finalizeResponse
+    }
+    
     setMessages(prev => {
       // Check if we already have an AI message that we need to update
       const lastMessage = prev[prev.length - 1];
@@ -763,11 +755,25 @@ Respond with modified code based on the user's request. Keep all existing functi
         return [...prev, { content: content, sender: 'ai' }];
       }
     });
+    
+    // Update streaming stats with each new chunk
+    const lineCount = content.split('\n').length;
+    setStreamStats({ 
+      charCount: content.length, 
+      lineCount: lineCount 
+    });
   };
 
   // Helper function to finalize response handling
   const finalizeResponse = (content: string) => {
     setIsGenerating(false);
+    setIsProcessing(false);
+    setStreamStats({ charCount: 0, lineCount: 0 });
+    
+    // Clear any progress interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
     
     // If in design mode, try to parse the JSON response and update the code
     if (chatMode === 'design') {
@@ -794,6 +800,7 @@ Respond with modified code based on the user's request. Keep all existing functi
   const handleGenerationError = (error: Error) => {
     console.error('Generation error:', error);
     setIsGenerating(false);
+    setIsProcessing(false);
     setMessages(prev => [
       ...prev, 
       { content: `Error: ${error.message || 'An error occurred while generating the response.'}`, sender: 'ai' }
@@ -966,7 +973,7 @@ Respond with modified code based on the user's request. Keep all existing functi
 
   // Add enhance prompt function
   const enhancePrompt = async () => {
-    if (!chatInput.trim() || isEnhancing || isGenerating) return;
+    if (!chatInput.trim() || isEnhancing || isGenerating || isProcessing) return;
     
     setIsEnhancing(true);
     try {
@@ -1126,6 +1133,9 @@ Respond with modified code based on the user's request. Keep all existing functi
     };
   }, [htmlCode, cssCode, jsCode]); // Add only code changes as dependencies
 
+  // Find the index of the last AI message in the full messages array
+  const lastStreamingMessageIndex = messages.length - 1;
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-900">
       <Sidebar activePage="ui-builder" onPageChange={onPageChange} />
@@ -1160,6 +1170,18 @@ Respond with modified code based on the user's request. Keep all existing functi
                 selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
                 onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
                 apiType={apiType}
+                onRestoreCheckpoint={({ html, css, js }) => {
+                  setHtmlCode(html);
+                  setCssCode(css);
+                  setJsCode(js);
+                  setActiveTab('preview');
+                  setTimeout(() => updatePreview(), 100);
+                }}
+                isGenerating={isGenerating}
+                isProcessing={isProcessing}
+                processingProgress={processingProgress}
+                streamStats={streamStats}
+                lastStreamingMessageIndex={lastStreamingMessageIndex}
               />
             </div>
             
@@ -1180,13 +1202,12 @@ Respond with modified code based on the user's request. Keep all existing functi
                 <div className="absolute right-3 bottom-3 flex items-center gap-2">
                   <button
                     onClick={enhancePrompt}
-                    disabled={!chatInput.trim() || isEnhancing || isGenerating}
+                    disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
                     className={`p-2 rounded-lg transition-colors ${
-                      chatInput.trim() && !isEnhancing && !isGenerating
+                      chatInput.trim() && !isEnhancing && !isGenerating && !isProcessing
                         ? 'bg-purple-500/80 hover:bg-purple-600/90 text-white'
                         : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
                     }`}
-                    title="Enhance prompt"
                   >
                     {isEnhancing ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1201,15 +1222,16 @@ Respond with modified code based on the user's request. Keep all existing functi
                       (apiType === 'openai' && (!selectedOpenAIModel || !apiConfig.openai_api_key)) || 
                       !chatInput.trim() || 
                       isGenerating ||
-                      isEnhancing
+                      isEnhancing ||
+                      isProcessing
                     }
                     className={`p-2 rounded-lg transition-colors ${
-                      chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing
+                      chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing && !isProcessing
                         ? 'bg-blue-500/80 hover:bg-blue-600/90 text-white'
                         : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
                     }`}
                   >
-                    {isGenerating ? (
+                    {isGenerating || isProcessing ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
                       <ArrowRight className="w-4 h-4" />
@@ -1239,60 +1261,64 @@ Respond with modified code based on the user's request. Keep all existing functi
                   <TabsTrigger 
                     value="html" 
                     onClick={() => setActiveTab('html')}
-                    className={`px-3 py-1.5 flex items-center rounded-md transition-all duration-200 ${
+                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
                       activeTab === 'html' 
                         ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
                         : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
                     }`}
+                    aria-label="HTML"
                   >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded mr-2 ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
                       <Code className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-xs font-medium">HTML</span>
+                    <span className="text-xs font-medium ml-1 sm:inline hidden">HTML</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="css" 
                     onClick={() => setActiveTab('css')}
-                    className={`px-3 py-1.5 flex items-center rounded-md transition-all duration-200 ${
+                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
                       activeTab === 'css' 
                         ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
                         : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
                     }`}
+                    aria-label="CSS"
                   >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded mr-2 ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
                       <Code className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-xs font-medium">CSS</span>
+                    <span className="text-xs font-medium ml-1 sm:inline hidden">CSS</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="js" 
                     onClick={() => setActiveTab('js')}
-                    className={`px-3 py-1.5 flex items-center rounded-md transition-all duration-200 ${
+                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
                       activeTab === 'js' 
                         ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
                         : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
                     }`}
+                    aria-label="JavaScript"
                   >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded mr-2 ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
                       <Code className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-xs font-medium">JavaScript</span>
+                    <span className="text-xs font-medium ml-1 sm:inline hidden">JS</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="preview" 
                     onClick={() => {
                       setActiveTab('preview');
                     }}
-                    className={`px-3 py-1.5 flex items-center rounded-md transition-all duration-200 ${
+                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
                       activeTab === 'preview' 
                         ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
                         : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
                     }`}
+                    aria-label="Preview"
                   >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded mr-2 ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
                       <Eye className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-xs font-medium">Preview</span>
+                    <span className="text-xs font-medium ml-1 sm:inline hidden">Preview</span>
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -1300,42 +1326,43 @@ Respond with modified code based on the user's request. Keep all existing functi
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onPageChange('apps')}
-                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                  title="Back to Apps"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Back to Apps</span>
+                  <ArrowLeft className="w-4 h-4" />
                 </button>
                 
-                <div className="px-3 py-1.5 bg-gray-100/80 dark:bg-gray-800/80 rounded-lg flex items-center">
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Project:</span>
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {currentDesign?.name || "Untitled Project"}
-                  </span>
+                <div className="h-9 px-2 bg-gray-100/80 dark:bg-gray-800/80 rounded-md flex items-center">
                   <button
                     onClick={() => setShowProjectManager(true)}
-                    className="ml-2 p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                    className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 px-1.5 py-1 rounded"
                     title="Open Project Manager"
                   >
-                    <Folder className="w-3.5 h-3.5" />
+                    <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 max-w-[100px] truncate sm:inline hidden">
+                      {currentDesign?.name || "Untitled Project"}
+                    </span>
                   </button>
                 </div>
                 
                 <button 
-                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
                   onClick={updatePreview}
+                  title="Refresh Preview"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Refresh</span>
+                  <RefreshCw className="w-4 h-4" />
                 </button>
+                
                 <button 
                   onClick={handleNewProject}
-                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                  title="New Project"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>New Project</span>
+                  <Download className="w-4 h-4" />
                 </button>
+                
                 <button
-                  className={`flex items-center justify-center p-2 rounded-md transition-colors ${
+                  className={`w-9 h-9 flex items-center justify-center rounded-md transition-colors ${
                     isSaving
                       ? 'bg-gray-400 cursor-not-allowed text-white'
                       : saveStatus === 'success'
@@ -1356,12 +1383,13 @@ Respond with modified code based on the user's request. Keep all existing functi
                     <Save className="w-4 h-4" />
                   )}
                 </button>
+                
                 <button
-                  className="flex items-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
+                  className="w-9 h-9 flex items-center justify-center rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
                   onClick={() => setShowExportModal(true)}
+                  title="Export Project"
                 >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  <span>Export</span>
+                  <FolderPlus className="w-4 h-4" />
                 </button>
               </div>
             </div>

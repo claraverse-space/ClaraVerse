@@ -1,4 +1,5 @@
-import { Message } from '../../../db';
+import { Message } from '../../../db/index';
+export type { Message };
 
 export interface UIBuilderDesign {
   id: string;
