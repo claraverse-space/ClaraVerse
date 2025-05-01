@@ -198,8 +198,6 @@ const AssistantSidebar = ({
         className={`glassmorphic h-full flex flex-col gap-6 transition-all duration-300 ease-in-out ${
           isExpanded ? 'w-64 sidebar-expanded' : 'w-20'
         }`}
-        onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={() => setIsExpanded(false)}
       >
         <div className={`flex items-center py-4 ${
           isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
@@ -322,15 +320,17 @@ const AssistantSidebar = ({
           ))}
         </div>
 
-        <div 
-          className={`absolute top-1/2 -right-3 transform -translate-y-1/2 transition-transform duration-300 ${
+        {/* Expand/Collapse Button */}
+        <button
+          aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className={`absolute top-1/2 -right-3 transform -translate-y-1/2 transition-transform duration-300 z-10 ${
             isExpanded ? 'rotate-180' : ''
-          }`}
+          } bg-sakura-500 rounded-full p-1 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sakura-400`}
+          tabIndex={0}
         >
-          <div className="bg-sakura-500 rounded-full p-1 shadow-lg cursor-pointer">
-            <ChevronRight className="w-4 h-4 text-white" />
-          </div>
-        </div>
+          <ChevronRight className="w-4 h-4 text-white" />
+        </button>
       </div>
 
       <WhatsNewModal 
