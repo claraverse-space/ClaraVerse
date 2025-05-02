@@ -24,3 +24,9 @@ requests
 numpy
 
 faster-whisper
+
+diffusers[torch]
+torch
+transformers
+safetensors
+accelerate
