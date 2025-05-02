@@ -32,7 +32,7 @@ COPY . .
 RUN mkdir -p /app/data
 
 # Set environment variables
-ENV HOST="0.0.0.0" \
+ENV HOST="127.0.0.1" \
     PORT=5000 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
