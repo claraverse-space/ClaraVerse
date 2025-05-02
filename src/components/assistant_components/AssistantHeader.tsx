@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Home, Bot, AlertCircle, Sun, Moon, Database, RefreshCw, Loader2, Settings, Wrench } from 'lucide-react';
+import { Home, Bot, AlertCircle, Sun, Moon, Monitor, Database, RefreshCw, Loader2, Settings, Wrench, Clock } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { db } from '../../db';
 import UserProfileButton from '../common/UserProfileButton';
@@ -21,8 +21,10 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   onOpenKnowledgeBase,
   onOpenTools,
 }) => {
-  const { isDark, toggleTheme } = useTheme();
+  const { theme, setTheme, isDark } = useTheme();
   const [userName, setUserName] = useState<string>('');
+  const [now, setNow] = useState(new Date());
+  const [timezone, setTimezone] = useState<string>(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
   useEffect(() => {
     const loadUserName = async () => {
@@ -30,9 +32,24 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
       if (personalInfo?.name) {
         setUserName(personalInfo.name);
       }
+      if (personalInfo?.timezone) {
+        setTimezone(personalInfo.timezone);
+      }
     };
     loadUserName();
+    let timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: timezone });
+  const dateString = now.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: timezone });
+  const dayString = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone });
+
+  const cycleTheme = () => {
+    if (theme === 'light') setTheme('dark');
+    else if (theme === 'dark') setTheme('system');
+    else setTheme('light');
+  };
 
   return (
     <div className="h-16 glassmorphic flex items-center justify-between px-6 relative z-20">
@@ -47,12 +64,17 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
         </button>
       </div>
 
-      {/* Center section - empty now */}
-      <div className="flex-1 flex items-center justify-center gap-2">
+      {/* Center section - Clock */}
+      <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center min-w-[120px]">
+        <div className="text-xs font-mono text-gray-700 dark:text-gray-200 flex flex-row items-center gap-2 min-w-[90px]">
+          <Clock className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 mr-1" />
+          <span className="font-semibold tracking-widest text-xs text-gray-700 dark:text-gray-200" style={{letterSpacing: '0.08em'}}>{timeString}</span>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">· {dateString} · {dayString}</span>
+        </div>
       </div>
 
       {/* Right section with actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-6">
         {/* Connection Status */}
         <div className="flex items-center gap-2">
           {connectionStatus === 'checking' ? (
@@ -92,15 +114,17 @@ const AssistantHeader: React.FC<AssistantHeaderProps> = ({
 
         {/* Theme Toggle */}
         <button
-          onClick={toggleTheme}
+          onClick={cycleTheme}
           className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5"
-          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          title={
+            theme === 'light' ? 'Switch to Dark Mode' :
+            theme === 'dark' ? 'Switch to System Mode' :
+            'Switch to Light Mode'
+          }
         >
-          {isDark ? (
-            <Sun className="w-4 h-4 text-gray-700 dark:text-gray-300" />
-          ) : (
-            <Moon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
-          )}
+          {theme === 'light' && <Sun className="w-4 h-4 text-gray-700 dark:text-gray-300" />}
+          {theme === 'dark' && <Moon className="w-4 h-4 text-gray-700 dark:text-gray-300" />}
+          {theme === 'system' && <Monitor className="w-4 h-4 text-gray-700 dark:text-gray-300" />}
         </button>
 
         {/* User Profile */}

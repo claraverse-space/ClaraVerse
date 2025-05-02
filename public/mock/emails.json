@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Meeting with Product Team",
+    "importance": "high",
+    "content": "We need to discuss the upcoming product roadmap and feature priorities for Q3. Please bring your team's sprint plan."
+  },
+  {
+    "title": "Project Alpha Status Update",
+    "importance": "high",
+    "content": "Critical issues have been identified in the latest deployment. Engineering team is working on a fix. ETA for resolution is 4 hours."
+  },
+  {
+    "title": "Reminder: Submit Expense Reports",
+    "importance": "medium",
+    "content": "This is a friendly reminder to submit any outstanding expense reports by the end of this week. Late submissions may be processed in the next payment cycle."
+  },
+  {
+    "title": "Quarterly Review Scheduled",
+    "importance": "medium",
+    "content": "Your quarterly performance review has been scheduled for next Monday at 2pm. Please complete your self-assessment before the meeting."
+  },
+  {
+    "title": "Office Building Maintenance",
+    "importance": "medium",
+    "content": "The east wing of the building will undergo maintenance this weekend. Please ensure you don't leave any valuables at your desk."
+  },
+  {
+    "title": "Office Party Next Friday",
+    "importance": "low",
+    "content": "Join us for our summer office party next Friday at 4pm. Food and refreshments will be provided. Please RSVP by Wednesday."
+  },
+  {
+    "title": "New Training Courses Available",
+    "importance": "low",
+    "content": "Several new courses have been added to our learning platform. Check out new modules on React, TypeScript, and Swift development."
+  },
+  {
+    "title": "Welcome to the New Team Members",
+    "importance": "low",
+    "content": "Please join me in welcoming Sarah and Michael to our development team. They'll be starting next Monday."
+  }
+] 
