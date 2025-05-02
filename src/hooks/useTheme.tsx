@@ -1,24 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
 export const useTheme = () => {
-  const [isDark, setIsDark] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    // Only use dark theme if explicitly set in localStorage
-    return savedTheme === 'dark';
-    // Removed the system preference check to ensure light theme by default
+  const [theme, setThemeState] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+    return 'system';
   });
 
+  const setTheme = useCallback((mode: ThemeMode) => {
+    setThemeState(mode);
+    localStorage.setItem('theme', mode);
+  }, []);
+
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+    const applyTheme = (mode: ThemeMode) => {
+      if (mode === 'system') {
+        const sys = getSystemTheme();
+        if (sys === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } else if (mode === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    applyTheme(theme);
+    if (theme === 'system') {
+      const listener = (e: MediaQueryListEvent) => {
+        applyTheme('system');
+      };
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      mql.addEventListener('change', listener);
+      return () => mql.removeEventListener('change', listener);
     }
-  }, [isDark]);
+  }, [theme]);
 
-  const toggleTheme = () => setIsDark(!isDark);
+  const isDark = theme === 'dark' || (theme === 'system' && getSystemTheme() === 'dark');
 
-  return { isDark, toggleTheme };
+  return { theme, setTheme, isDark };
 };

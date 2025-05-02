@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Save, User, Globe, Server, Key, Lock } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig } from '../db';
-// import { useTheme } from '../hooks/useTheme';
+import { useTheme, ThemeMode } from '../hooks/useTheme';
 
 const Settings = () => {
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
@@ -24,6 +24,9 @@ const Settings = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showApiKey, setShowApiKey] = useState(false);
 
+  const { setTheme } = useTheme();
+  const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const loadSettings = async () => {
       const savedPersonalInfo = await db.getPersonalInfo();
@@ -31,36 +34,64 @@ const Settings = () => {
 
       if (savedPersonalInfo) {
         setPersonalInfo(savedPersonalInfo);
+        setTheme(savedPersonalInfo.theme_preference as ThemeMode);
       }
       
       if (savedApiConfig) {
         setApiConfig({
           ...savedApiConfig,
           openai_base_url: savedApiConfig.openai_base_url || 'https://api.openai.com/v1',
-          preferred_server: savedApiConfig.preferred_server || 'ollama'
         });
       }
     };
 
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSave = async () => {
+  // Auto-save effect for personalInfo and apiConfig
+  useEffect(() => {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
     setIsSaving(true);
     setSaveStatus('idle');
+    saveTimeout.current = setTimeout(async () => {
+      try {
+        await db.updatePersonalInfo(personalInfo);
+        await db.updateAPIConfig(apiConfig);
+        setSaveStatus('success');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (error) {
+        setSaveStatus('error');
+      } finally {
+        setIsSaving(false);
+      }
+    }, 600); // debounce 600ms
+    return () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    };
+  }, [personalInfo, apiConfig]);
 
-    try {
-      await db.updatePersonalInfo(personalInfo);
-      await db.updateAPIConfig(apiConfig);
-      setSaveStatus('success');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      setSaveStatus('error');
-    } finally {
-      setIsSaving(false);
-    }
+  // When theme_preference changes, update the theme immediately
+  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as ThemeMode;
+    setPersonalInfo(prev => ({ ...prev, theme_preference: value }));
+    setTheme(value);
   };
+
+  // Timezone options helper
+  let timezoneOptions: string[] = [];
+  try {
+    // @ts-ignore
+    timezoneOptions = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+  } catch {
+    timezoneOptions = [];
+  }
+  if (!timezoneOptions.length) {
+    timezoneOptions = [
+      'UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'Asia/Kolkata',
+      'Europe/Paris', 'Europe/Berlin', 'America/Los_Angeles', 'Australia/Sydney'
+    ];
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -283,10 +314,7 @@ const Settings = () => {
             </label>
             <select
               value={personalInfo.theme_preference}
-              onChange={(e) => setPersonalInfo(prev => ({ 
-                ...prev, 
-                theme_preference: e.target.value as PersonalInfo['theme_preference']
-              }))}
+              onChange={handleThemeChange}
               className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
             >
               <option value="light">Light</option>
@@ -304,7 +332,7 @@ const Settings = () => {
               onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
               className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
             >
-              {Intl.supportedValuesOf('timeZone').map(tz => (
+              {timezoneOptions.map((tz: string) => (
                 <option key={tz} value={tz}>{tz}</option>
               ))}
             </select>
@@ -314,22 +342,18 @@ const Settings = () => {
 
       {/* Save Button */}
       <div className="flex justify-end gap-4">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-white transition-colors ${
-            isSaving
-              ? 'bg-gray-400 cursor-not-allowed'
-              : saveStatus === 'success'
-              ? 'bg-green-500'
-              : saveStatus === 'error'
-              ? 'bg-red-500'
-              : 'bg-sakura-500 hover:bg-sakura-600'
-          }`}
-        >
+        <span className={`flex items-center gap-2 px-6 py-2 rounded-lg text-white transition-colors ${
+          isSaving
+            ? 'bg-gray-400'
+            : saveStatus === 'success'
+            ? 'bg-green-500'
+            : saveStatus === 'error'
+            ? 'bg-red-500'
+            : 'bg-sakura-500'
+        }`}>
           <Save className="w-4 h-4" />
-          {isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Error!' : 'Save Changes'}
-        </button>
+          {isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Error!' : 'Auto Save'}
+        </span>
       </div>
     </div>
   );

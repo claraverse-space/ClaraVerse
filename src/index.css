@@ -326,3 +326,13 @@ textarea {
 .glassmorphic:hover .sidebar-icon {
   opacity: 1;
 }
+
+/* Hide scrollbar but maintain functionality */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
