@@ -98,9 +98,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
   // Add state for document upload loading
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
 
-  // Add state for keyboard recording
-  const [isKeyboardRecording, setIsKeyboardRecording] = useState(false);
-
   // Add state for microphone permission
   const [permissionState, setPermissionState] = useState<'unknown' | 'granted' | 'denied'>('unknown');
 
@@ -326,9 +323,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
     // Stop all audio tracks
     mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     
-    // Store a reference to whether this was a keyboard-triggered recording
-    const wasKeyboardRecording = isKeyboardRecording;
-    
     // Wait for final data and process
     mediaRecorderRef.current.onstop = async () => {
       try {
@@ -393,7 +387,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
         alert("Failed to transcribe audio. Please try again.");
       } finally {
         setIsTranscribing(false);
-        setIsKeyboardRecording(false);
       }
     };
   };
@@ -456,43 +449,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [tools]);
 
-  // Handle keyboard recording (Ctrl key)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only trigger if Ctrl key is pressed and we're not already recording
-      if (e.key === 'Control' && !isRecording && !isTranscribing && !isKeyboardRecording && !isProcessing) {
-        console.log('Ctrl key pressed, starting keyboard recording');
-        e.preventDefault();
-        setIsKeyboardRecording(true);
-        startRecording();
-      }
-    };
-    
-    const handleKeyUp = async (e: KeyboardEvent) => {
-      // Only react to Ctrl key release if we're in a keyboard recording session
-      if (e.key === 'Control' && isKeyboardRecording && isRecording) {
-        console.log('Ctrl key released, stopping keyboard recording');
-        e.preventDefault();
-        setIsKeyboardRecording(false);
-        
-        // Stop recording and send automatically
-        if (mediaRecorderRef.current) {
-          await stopRecordingAndSend();
-        }
-      }
-    };
-    
-    // Add event listeners
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [isRecording, isTranscribing, isKeyboardRecording, isProcessing, handleSend]);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -513,6 +469,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
     // eslint-disable-next-line
   }, [showToolDropdown]);
+
+  // Set structured tool calling ON by default on component mount
+  useEffect(() => {
+    if (!useStructuredToolCalling && onToggleStructuredToolCalling) {
+      onToggleStructuredToolCalling();
+    }
+    // eslint-disable-next-line
+  }, []);
 
   useEffect(() => {
     if (modelConfig.mode === 'manual' && prevMode.current !== 'manual') {
@@ -593,7 +557,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 <div className="flex items-center gap-2 mb-2 py-1 px-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
                   <span className="text-sm font-medium">
-                    {isKeyboardRecording ? "Release Ctrl to send" : `Recording: ${formatTime(recordingTime)}`}
+                    Recording: {formatTime(recordingTime)}
                   </span>
                 </div>
               )}
@@ -755,7 +719,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                       )}
                     </button>
                   )}
-                  {/* Voice Recording Button - with additional hint text */}
+                  {/* Voice Recording Button - with updated title */}
                   <button
                     onClick={toggleRecording}
                     disabled={isTranscribing || isProcessing}
@@ -766,7 +730,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                         ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-wait'
                         : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
                     }`}
-                    title={isRecording ? "Stop Recording" : "Start Voice Recording (or hold Ctrl key)"}
+                    title={isRecording ? "Stop Recording" : "Start Voice Recording"}
                   >
                     {isRecording ? (
                       <StopCircle className="w-5 h-5" />
@@ -776,7 +740,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                       <Mic className="w-5 h-5" />
                     )}
                     <div className="absolute left-1/2 -translate-x-1/2 -top-8 px-2 py-0.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                      {isRecording ? "Stop Recording" : isTranscribing ? "Transcribing..." : "Voice Input (hold Ctrl)"}
+                      {isRecording ? "Stop Recording" : isTranscribing ? "Transcribing..." : "Voice Input"}
                     </div>
                   </button>
                   {/* Model Config Button */}
