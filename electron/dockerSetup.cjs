@@ -470,8 +470,16 @@ class DockerSetup extends EventEmitter {
       statusCallback('Creating Docker network...');
       await this.createNetwork();
 
+      // Check if Ollama is running on the system
+      const ollamaRunning = await this.isOllamaRunning();
+
       // Check and pull images if needed
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip pulling Ollama image if Ollama is already running
+        if (name === 'ollama' && ollamaRunning) {
+          statusCallback('Ollama is already running on the system, skipping image pull and container creation.');
+          continue;
+        }
         const shouldUpdate = await this.shouldPullImage(config.image, forceUpdateCheck);
         if (shouldUpdate) {
           statusCallback(`Pulling ${name} image...`);
@@ -484,6 +492,10 @@ class DockerSetup extends EventEmitter {
 
       // Start containers in sequence
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip starting Ollama container if Ollama is already running
+        if (name === 'ollama' && ollamaRunning) {
+          continue;
+        }
         statusCallback(`Starting ${name} service...`);
         await this.startContainer(config);
       }
