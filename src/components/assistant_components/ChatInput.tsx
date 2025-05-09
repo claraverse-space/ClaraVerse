@@ -4,6 +4,7 @@ import { Image as ImageIcon,  StopCircle, Database, Send,  Mic, Loader2, Plus, X
 import api from '../../services/api'; // Import the API service
 import type { Tool } from '../../db';
 import ModelConfigModal from './ModelConfigModal';
+import { readPdfContent } from '../../utils/documentUtils';
 
 interface ModelConfig {
   visionModel: string;
@@ -407,7 +408,48 @@ const ChatInput: React.FC<ChatInputProps> = ({
     
     setIsUploadingDocs(true);
     try {
-      await onTemporaryDocUpload(event);
+      // Process each file
+      for (const file of event.target.files) {
+        if (file.type === 'application/pdf') {
+          try {
+            // Extract text content from PDF
+            const pdfContent = await readPdfContent(file);
+            
+            // Create a new text file using the global File constructor
+            const textFile = new window.File(
+              [pdfContent],
+              file.name.replace('.pdf', '.txt'),
+              { type: 'text/plain', lastModified: Date.now() }
+            );
+            
+            // Create a synthetic event with the text file
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(textFile);
+            
+            // Create a custom event that matches React's event type
+            const customEvent = {
+              target: {
+                files: dataTransfer.files
+              },
+              preventDefault: () => {},
+              stopPropagation: () => {}
+            } as React.ChangeEvent<HTMLInputElement>;
+            
+            // Pass the processed file to the original upload handler
+            await onTemporaryDocUpload(customEvent);
+          } catch (pdfError) {
+            console.error('Error processing PDF:', pdfError);
+            // If PDF processing fails, try to upload the original file
+            await onTemporaryDocUpload(event);
+          }
+        } else {
+          // For non-PDF files, use the original upload handler directly
+          await onTemporaryDocUpload(event);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing document:', error);
+      alert('Failed to process document. Please try again.');
     } finally {
       setIsUploadingDocs(false);
     }
