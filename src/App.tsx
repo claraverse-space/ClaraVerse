@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -19,6 +20,7 @@ import Servers from './components/Servers';
 import NodeRegistryDebug from './debug/NodeRegistryDebug';
 import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
+import { InterpreterProvider } from './contexts/InterpreterContext';
 
 function App() {
   const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
@@ -141,13 +143,15 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100">
-      {showOnboarding ? (
-        <Onboarding onComplete={handleOnboardingComplete} />
-      ) : (
-        renderContent()
-      )}
-    </div>
+    <InterpreterProvider onPageChange={setActivePage}>
+      <div className="min-h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100">
+        {showOnboarding ? (
+          <Onboarding onComplete={handleOnboardingComplete} />
+        ) : (
+          renderContent()
+        )}
+      </div>
+    </InterpreterProvider>
   );
 }
 

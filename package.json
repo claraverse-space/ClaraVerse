@@ -1,7 +1,7 @@
 {
   "name": "clara-ollama",
   "private": true,
-  "version": "1.2.43",
+  "version": "1.2.5",
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for LLMs. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
     "name": "badboysm890",
@@ -135,7 +135,15 @@
     "productName": "Clara",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "!clara_interpreter",
+      "!clara_interpreter/**/*",
+      "!**/clara_interpreter",
+      "!**/clara_interpreter/**/*",
+      "!**/**/venv/**/*",
+      "!**/venv/**/*",
+      "!venv",
+      "!venv/**/*"
     ],
     "extraResources": [
       {
@@ -181,7 +189,14 @@
       ],
       "darkModeSupport": true,
       "artifactName": "${productName}-${version}-universal.${ext}",
-      "type": "distribution"
+      "type": "distribution",
+      "files": [
+        "!clara_interpreter/**/*",
+        "!**/**/venv/**/*",
+        "!**/venv/**/*",
+        "!venv",
+        "!venv/**/*"
+      ]
     },
     "win": {
       "target": [
@@ -199,7 +214,14 @@
           ]
         }
       ],
-      "extraFiles": []
+      "extraFiles": [],
+      "files": [
+        "!clara_interpreter/**/*",
+        "!**/**/venv/**/*",
+        "!**/venv/**/*",
+        "!venv",
+        "!venv/**/*"
+      ]
     },
     "linux": {
       "target": [
@@ -213,7 +235,14 @@
         "Encoding": "UTF-8",
         "MimeType": "x-scheme-handler/clara"
       },
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "${productName}-${version}.${ext}",
+      "files": [
+        "!clara_interpreter/**/*",
+        "!**/**/venv/**/*",
+        "!**/venv/**/*",
+        "!venv",
+        "!venv/**/*"
+      ]
     },
     "nsis": {
       "oneClick": false,

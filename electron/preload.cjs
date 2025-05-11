@@ -26,8 +26,12 @@ const validChannels = [
   'python-status',
   'update-available',
   'update-downloaded',
-  'download-progress'
+  'download-progress',
+  'restartInterpreterContainer'
 ];
+
+// Add explicit logging for debugging
+console.log('Preload script initializing...');
 
 contextBridge.exposeInMainWorld('electron', {
   // System Info
@@ -71,6 +75,19 @@ contextBridge.exposeInMainWorld('electron', {
   removeAllListeners: (channel) => {
     if (validChannels.includes(channel)) {
       ipcRenderer.removeAllListeners(channel);
+    }
+  },
+  getWorkflowsPath: () => ipcRenderer.invoke('getWorkflowsPath'),
+  // Ensure this handler is properly exposed with explicit error handling
+  restartInterpreterContainer: async () => {
+    console.log('Invoking restartInterpreterContainer from preload...');
+    try {
+      const result = await ipcRenderer.invoke('restartInterpreterContainer');
+      console.log('restartInterpreterContainer result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error in restartInterpreterContainer:', error);
+      throw error;
     }
   }
 });

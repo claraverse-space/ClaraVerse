@@ -63,6 +63,39 @@ function registerDockerContainerHandlers() {
     }
   });
 
+  // Add handler for restarting interpreter container
+  ipcMain.handle('restartInterpreterContainer', async () => {
+    try {
+      if (!dockerSetup || !dockerSetup.docker) {
+        throw new Error('Docker setup not initialized');
+      }
+      
+      log.info('Restarting interpreter container...');
+      
+      // Check if container exists
+      try {
+        // Stop and remove the interpreter container
+        const container = await dockerSetup.docker.getContainer('clara_interpreter');
+        log.info('Stopping interpreter container...');
+        await container.stop();
+        log.info('Removing interpreter container...');
+        await container.remove();
+      } catch (containerError) {
+        log.error('Error handling existing container:', containerError);
+        // Continue even if container doesn't exist or can't be stopped/removed
+      }
+      
+      // Start a new container
+      log.info('Starting new interpreter container...');
+      await dockerSetup.startContainer(dockerSetup.containers.interpreter);
+      log.info('Interpreter container restarted successfully');
+      return { success: true };
+    } catch (error) {
+      log.error('Error restarting interpreter container:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Container actions (start, stop, restart, remove)
   ipcMain.handle('container-action', async (_event, { containerId, action }) => {
     try {
@@ -394,6 +427,41 @@ function createMainWindow() {
 // Initialize app when ready
 app.whenReady().then(initializeApp);
 
+// Register standalone handlers
+app.whenReady().then(() => {
+  // Add explicit restart handler outside the Docker container handlers function
+  ipcMain.handle('restartInterpreterContainer', async () => {
+    try {
+      if (!dockerSetup || !dockerSetup.docker) {
+        throw new Error('Docker setup not initialized');
+      }
+      
+      log.info('Restarting interpreter container (standalone handler)...');
+      
+      try {
+        // Stop and remove the interpreter container
+        const container = await dockerSetup.docker.getContainer('clara_interpreter');
+        log.info('Stopping interpreter container...');
+        await container.stop();
+        log.info('Removing interpreter container...');
+        await container.remove();
+      } catch (containerError) {
+        log.error('Error handling existing container:', containerError);
+        // Continue even if container doesn't exist or can't be stopped/removed
+      }
+      
+      // Start a new container
+      log.info('Starting new interpreter container...');
+      await dockerSetup.startContainer(dockerSetup.containers.interpreter);
+      log.info('Interpreter container restarted successfully');
+      return { success: true };
+    } catch (error) {
+      log.error('Error restarting interpreter container:', error);
+      return { success: false, error: error.message };
+    }
+  });
+});
+
 // Quit when all windows are closed
 app.on('window-all-closed', async () => {
   // Stop Docker containers
@@ -478,4 +546,8 @@ ipcMain.on('python-status', (event, status) => {
   if (mainWindow) {
     mainWindow.webContents.send('python-status', status);
   }
+});
+
+ipcMain.handle('getWorkflowsPath', async () => {
+  return path.join(app.getPath('home'), '.clara', 'workflows');
 });

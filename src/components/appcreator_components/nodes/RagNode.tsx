@@ -334,7 +334,7 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
 // Export metadata as a named export for NodeRegistry
 export const metadata = {
   id: 'rag',
-  name: 'RAG',
+  name: 'CSV',
   description: 'Retrieval-Augmented Generation: Query your documents for relevant information',
   icon: BookA,
   color: 'bg-indigo-500',

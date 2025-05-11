@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AssistantSidebar from './AssistantSidebar';
 import { AssistantHeader, ChatInput, ChatWindow, } from './assistant_components';
+import InterpreterChat from './assistant_components/InterpreterChat';
+import { useInterpreter } from '../contexts/InterpreterContext';
 
 import ImageWarning from './assistant_components/ImageWarning';
 
@@ -57,6 +59,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
 
 const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
+  const { isInterpreterMode } = useInterpreter();
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
@@ -727,37 +730,49 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
-      <AssistantSidebar
-        activeChat={activeChat}
-        onChatSelect={setActiveChat}
-        chats={chats}
-        onOpenSettings={() => setShowSettings(true)}
-        onNavigateHome={handleNavigateHome}
-      />
-
-      <div className="flex-1 flex flex-col">
-        <AssistantHeader
-          connectionStatus={connectionStatus}
-          onPageChange={onPageChange}
-          onNavigateHome={handleNavigateHome}
+      {/* Only show sidebar when not in interpreter mode */}
+      {!isInterpreterMode && (
+        <AssistantSidebar
+          activeChat={activeChat}
+          onChatSelect={setActiveChat}
+          chats={chats}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
-          onOpenTools={() => setShowToolModal(true)}
+          onNavigateHome={handleNavigateHome}
         />
+      )}
 
-        <ChatWindow
-          messages={assistantChat.messages}
-          showScrollButton={showScrollButton}
-          scrollToBottom={scrollToBottom}
-          messagesEndRef={messagesEndRef}
-          chatContainerRef={chatContainerRef}
-          onNewChat={() => handleNewChat()}
-          isStreaming={assistantChat.isProcessing}
-          showTokens={!assistantChat.isProcessing}
-          onRetryMessage={assistantChat.handleRetryMessage}
-          onEditMessage={assistantChat.handleEditMessage}
-          onSendEdit={assistantChat.handleSendEdit}
-        />
+      <div className={`flex-1 flex flex-col ${isInterpreterMode ? 'pl-0' : ''}`}>
+        {!isInterpreterMode ? (
+          <>
+            <AssistantHeader
+              connectionStatus={connectionStatus}
+              onPageChange={onPageChange}
+              onNavigateHome={handleNavigateHome}
+              onOpenSettings={() => setShowSettings(true)}
+              onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
+              onOpenTools={() => setShowToolModal(true)}
+            />
+
+            <ChatWindow
+              messages={assistantChat.messages}
+              showScrollButton={showScrollButton}
+              scrollToBottom={scrollToBottom}
+              messagesEndRef={messagesEndRef}
+              chatContainerRef={chatContainerRef}
+              onNewChat={() => handleNewChat()}
+              isStreaming={assistantChat.isProcessing}
+              showTokens={!assistantChat.isProcessing}
+              onRetryMessage={assistantChat.handleRetryMessage}
+              onEditMessage={assistantChat.handleEditMessage}
+              onSendEdit={assistantChat.handleSendEdit}
+            />
+          </>
+        ) : (
+          // Interpreter mode - completely different layout
+          <div className="flex-1 flex flex-col h-full">
+            <InterpreterChat />
+          </div>
+        )}
 
         <ChatInput
           input={assistantChat.input}

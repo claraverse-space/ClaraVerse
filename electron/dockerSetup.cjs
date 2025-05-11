@@ -38,6 +38,16 @@ class DockerSetup extends EventEmitter {
           `${this.appDataPath}:/root/.clara`
         ]
       },
+      interpreter: {
+        name: 'clara_interpreter',
+        image: 'clara17verse/clara-interpreter:latest',
+        port: 8000,
+        internalPort: 8000,
+        healthCheck: this.isInterpreterRunning.bind(this),
+        volumes: [
+          `${path.join(this.appDataPath, 'interpreter')}:/app/data`
+        ]
+      },
       n8n: {
         name: 'clara_n8n',
         image: 'n8nio/n8n',
@@ -83,7 +93,8 @@ class DockerSetup extends EventEmitter {
     this.ports = {
       python: 5001,
       n8n: 5678,
-      ollama: 11434
+      ollama: 11434,
+      interpreter: 8000
     };
 
     // Maximum retry attempts for service health checks
@@ -91,7 +102,7 @@ class DockerSetup extends EventEmitter {
     this.retryDelay = 5000; // 5 seconds
 
     // Clara container names
-    this.containerNames = ['clara_python', 'clara_n8n', 'clara_ollama'];
+    this.containerNames = ['clara_python', 'clara_n8n', 'clara_ollama', 'clara_interpreter'];
 
     // Create subdirectories for each service
     Object.keys(this.containers).forEach(service => {
@@ -480,13 +491,18 @@ class DockerSetup extends EventEmitter {
           statusCallback('Ollama is already running on the system, skipping image pull and container creation.');
           continue;
         }
-        const shouldUpdate = await this.shouldPullImage(config.image, forceUpdateCheck);
-        if (shouldUpdate) {
-          statusCallback(`Pulling ${name} image...`);
-          await this.pullImage(config.image, statusCallback);
-          this.updatePullTimestamp(config.image);
-        } else {
-          statusCallback(`Using cached ${name} image...`);
+
+        // Check if image exists locally
+        try {
+          await this.docker.getImage(config.image).inspect();
+          statusCallback(`Using existing ${name} image...`);
+        } catch (error) {
+          if (error.statusCode === 404) {
+            statusCallback(`Pulling ${name} image...`);
+            await this.pullImage(config.image, statusCallback);
+          } else {
+            throw error;
+          }
         }
       }
 
@@ -638,6 +654,41 @@ class DockerSetup extends EventEmitter {
       } catch (error) {
         return false;
       }
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async isInterpreterRunning() {
+    try {
+      const response = await new Promise((resolve, reject) => {
+        const req = http.get(`http://localhost:${this.ports.interpreter}/health`, (res) => {
+          if (res.statusCode === 200) {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+              try {
+                const jsonResponse = JSON.parse(data);
+                const isHealthy = jsonResponse.status === 'healthy';
+                resolve(isHealthy);
+              } catch (e) {
+                resolve(false);
+              }
+            });
+          } else {
+            resolve(false);
+          }
+        });
+        
+        req.on('error', () => resolve(false));
+        
+        req.setTimeout(5000, () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+
+      return response;
     } catch (error) {
       return false;
     }
