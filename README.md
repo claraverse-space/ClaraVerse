@@ -100,7 +100,7 @@ If you see a “damaged app” warning:
 
 ```bash
 git clone https://github.com/badboysm890/ClaraVerse.git
-cd clara-ollama
+cd ClaraVerse
 npm install
 npm run dev           # Start web version
 npm run electron:dev  # Start desktop app
