@@ -52,6 +52,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     message: '',
     visible: false,
   });
+  
   const [messageHistory, setMessageHistory] = useState<any[]>([]);
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);

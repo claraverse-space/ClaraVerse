@@ -1,8 +1,11 @@
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'user' | 'assistant' | 'system';
 
 export interface ChatMessage {
-  role: ChatRole;
+  id: string;
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  timestamp: number;
+  tokens?: number;
   images?: string[];
 }
 

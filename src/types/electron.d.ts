@@ -16,13 +16,14 @@ export interface ElectronAPI {
   getElectronVersion: () => string;
   getPlatform: () => string;
   getOsVersion: () => string;
-  getWorkflowsPath: () => string;
+  getWorkflowsPath: () => Promise<string>;
   getServicePorts: () => Promise<{ n8nPort: number }>;
   checkN8NHealth: () => Promise<boolean>;
   startN8N: () => Promise<void>;
   stopN8N: () => Promise<void>;
   getPythonPort: () => Promise<number>;
   checkPythonBackend: () => Promise<boolean>;
+  restartInterpreterContainer: () => Promise<{ success: boolean; error?: string }>;
   clipboard: {
     writeText: (text: string) => void;
     readText: () => string;
