@@ -5,8 +5,8 @@ Clara Ollama is now available as a Docker container. You can run it without inst
 ## Quick Start
 
 ```bash
-docker pull <your-username>/clara-ollama:latest
-docker run -p 8069:8069 <your-username>/clara-ollama:latest
+docker pull claraverse/clara-ollama:latest
+docker run -p 8069:8069 claraverse/clara-ollama:latest
 ```
 
 Then open http://localhost:8069 in your browser.
