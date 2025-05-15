@@ -36,6 +36,7 @@ import PrivacyWidget from './widget-components/PrivacyWidget';
 import WidgetContextMenu from './widget-components/WidgetContextMenu';
 import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
+import QuickChatWidget from './widget-components/QuickChatWidget';
 
 interface DashboardProps {
   onPageChange?: (page: string) => void;
@@ -228,6 +229,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const handleAddWidget = (type: string) => {
+    const widgetId = `${type}-${Date.now()}`;
     if (type === 'webhook') {
       // For webhook widgets, show the custom webhook modal
       setShowAddWidget(true);
@@ -236,7 +238,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
     // For other widget types, add them directly
     const newWidget: Widget = {
-      id: `${type}-${Date.now()}`,
+      id: widgetId,
       type,
       order: widgets.length
     };
@@ -319,6 +321,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             onRemove={handleRemoveWidget}
           />
         );
+      case 'quick-chat':
+        return (
+          <QuickChatWidget
+            key={widget.id}
+            id={widget.id}
+            onRemove={handleRemoveWidget}
+          />
+        );
+
       case 'email':
         return (
           <EmailWidget
@@ -409,6 +420,50 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const handleDragEnd = () => {
     setDraggedWidget(null);
     setDragOverWidget(null);
+  };
+
+  const handleAddWebhookWidget = (name: string, url: string) => {
+    const widgetId = `webhook-${Date.now()}`;
+    const newWidget: Widget = {
+      id: widgetId,
+      type: 'webhook',
+      name,
+      url,
+      order: widgets.length
+    };
+    setWidgets(prev => [...prev, newWidget]);
+    localStorage.setItem(`webhook_widget_${widgetId}`, JSON.stringify({ name, url }));
+    setShowAddWidget(false);
+  };
+
+  const handleAddEmailWidget = (name: string, url: string, refreshInterval: number) => {
+    const widgetId = `email-${Date.now()}`;
+    const newWidget: Widget = {
+      id: widgetId,
+      type: 'email',
+      name,
+      url,
+      refreshInterval,
+      order: widgets.length
+    };
+    setWidgets(prev => [...prev, newWidget]);
+    localStorage.setItem(`email_widget_${widgetId}`, JSON.stringify({ name, url, refreshInterval }));
+    setShowAddWidget(false);
+  };
+
+  const handleAddQuickChatWidget = (name: string, url: string, model: string) => {
+    const widgetId = `quick-chat-${Date.now()}`;
+    const newWidget: Widget = {
+      id: widgetId,
+      type: 'quick-chat',
+      name,
+      url,
+      model,
+      order: widgets.length
+    };
+    setWidgets(prev => [...prev, newWidget]);
+    localStorage.setItem(`quick_chat_widget_${widgetId}`, JSON.stringify({ ollamaUrl: url, model }));
+    setShowAddWidget(false);
   };
 
   const toggleRearrangeMode = () => {
@@ -517,21 +572,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           <AddWidgetModal
             onClose={() => setShowAddWidget(false)}
             onAddWidget={handleAddWidget}
-            onAddWebhookWidget={(name: string, url: string) => {
-              const newWidget: Widget = {
-                id: `webhook-${Date.now()}`,
-                type: 'webhook',
-                name,
-                url,
-                order: widgets.length
-              };
-              console.log('Adding new webhook widget:', newWidget);
-              setWidgets(prev => [...prev, newWidget]);
-              setShowAddWidget(false);
-            }}
+            onAddWebhookWidget={handleAddWebhookWidget}
+            onAddEmailWidget={handleAddEmailWidget}
+            onAddQuickChatWidget={handleAddQuickChatWidget}
             onAddEmailWidget={(name: string, url: string, refreshInterval: number) => {
+              const widgetId = `email-${Date.now()}`;
               const newWidget: Widget = {
-                id: `email-${Date.now()}`,
+                id: widgetId,
                 type: 'email',
                 name,
                 url,
@@ -540,6 +587,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               };
               console.log('Adding new email widget:', newWidget);
               setWidgets(prev => [...prev, newWidget]);
+              localStorage.setItem(`email_widget_${widgetId}`, JSON.stringify({ name, url, refreshInterval }));
+              setShowAddWidget(false);
+            }}
+            onAddQuickChatWidget={(name: string, url: string, model: string) => {
+              const widgetId = `quick-chat-${Date.now()}`;
+              const newWidget: Widget = {
+                id: widgetId,
+                type: 'quick-chat',
+                order: widgets.length
+              };
+              setWidgets(prev => [...prev, newWidget]);
+              localStorage.setItem(`quick_chat_widget_${widgetId}`, JSON.stringify({ ollamaUrl: url, model }));
               setShowAddWidget(false);
             }}
           />
