@@ -185,11 +185,37 @@ export class InterpreterClient {
         hasRag: messages.some(msg => msg.type === 'file')
       };
 
-      const defaultOptions = {
+      // Helper to test if a given api_base is reachable
+      async function isApiBaseReachable(apiBase: string): Promise<boolean> {
+        try {
+          const res = await fetch(`${apiBase}/status`, { method: 'GET', mode: 'cors' });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      }
+      
+      let api_base = options.api_base ?? 'http://host.docker.internal:11434';
+      
+      // If api_base is empty or unreachable, try fallbacks
+      if (!api_base || !(await isApiBaseReachable(api_base))) {
+        // Try host.docker.internal as primary fallback (common for Docker environments)
+        const dockerFallbackApiBase = 'http://host.docker.internal:11434';
+        if (await isApiBaseReachable(dockerFallbackApiBase)) {
+          api_base = dockerFallbackApiBase;
+        } else {
+          // Try localhost as secondary fallback
+          const localFallbackApiBase = 'http://localhost:11434';
+          if (await isApiBaseReachable(localFallbackApiBase)) {
+            api_base = localFallbackApiBase;
+          }
+        }
+      }      const defaultOptions = {
         auto_run: true,
         offline: true,
         model: options.model || this.getAppropriateModel('qwen3:30b-a3b', context),
-        api_base: options.api_base || 'https://login.badboysm890.in/ollama'
+        // Only include api_base if it's not empty
+        ...(api_base ? { api_base } : {})
       };
 
       this.abortController = new AbortController();
@@ -207,11 +233,14 @@ export class InterpreterClient {
             type: msg.type,
             format: msg.format || 'text',
             content: msg.content,
-            recipient: msg.recipient || 'user'
-          })),
+            recipient: msg.recipient || 'user'          })),
           conversation_id: this.currentConversationId,
-          ...defaultOptions,
-          ...options
+          // First apply original options but exclude api_base if it's empty
+          ...(Object.fromEntries(Object.entries(options).filter(([key, value]) => 
+              !(key === 'api_base' && !value)
+          ))),
+          // Then apply our defaults which will include api_base if we found a valid one
+          ...defaultOptions
         }),
         signal
       });
