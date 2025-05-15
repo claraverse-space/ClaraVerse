@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './common/Tabs';
-import { Code, Eye, MessageSquare, Send, Layout, Save, Play, RefreshCw, Wand2, ArrowRight, Check, Download, FolderPlus, Folder, ArrowLeft } from 'lucide-react';
+import { Code, Eye, MessageSquare, Send, Layout, Save, Play, RefreshCw, Wand2, ArrowRight, Check, Download, FolderPlus, Folder, ArrowLeft, Target } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { useTheme } from '../hooks/useTheme';
@@ -22,9 +22,7 @@ import PreviewPanel from './uibuilder_components/PreviewPanel';
 import ExportProjectModal from './uibuilder_components/ExportProjectModal';
 import ProjectManagerModal from './uibuilder_components/ProjectManagerModal';
 import { uiBuilderService, UIBuilderProject } from '../services/UIBuilderService';
-
-// Check if we're running in Electron
-const isElectron = !!(window && window.process && window.process.type);
+import ToastNotification from './gallery_components/ToastNotification';
 
 interface UIBuilderProps {
   onPageChange: (page: string) => void;
@@ -46,6 +44,20 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
     openai_base_url: 'https://api.openai.com/v1',
   });
   
+  // Resizing state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(33); // 33% initially
+  const [isResizingHorizontal, setIsResizingHorizontal] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [chatInput]);
+  
   // Initialize services
   const ollamaService = new OllamaService(ollamaSettingsStore.getConnection());
   const openAIService = new OpenAIService(
@@ -57,77 +69,142 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
   const [htmlCode, setHtmlCode] = useState(`<!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>My Custom UI</title>
+  <title>Clara Apps</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
-<body>
-  <div class="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8 flex items-center justify-center">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 relative overflow-hidden">
-      <div class="absolute -top-10 -right-10 w-40 h-40 bg-pink-500/10 rounded-full"></div>
-      <div class="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/10 rounded-full"></div>
-      
-      <div class="relative">
-        <i class="fas fa-heart text-5xl text-pink-500 mb-6 block animate-bounce"></i>
-        <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome!</h1>
-        <p class="text-gray-600 mb-8">
-          Start building your beautiful UI here. This example shows how to use Tailwind CSS and Font Awesome icons.
-        </p>
-        <button class="group bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-3 rounded-xl font-medium inline-flex items-center gap-2 hover:shadow-lg transition duration-300 hover:-translate-y-0.5">
-          <span>Get Started</span>
-          <i class="fas fa-arrow-right transition-transform group-hover:translate-x-1"></i>
-        </button>
+<body class="bg-gradient-to-br from-purple-50 to-pink-50 min-h-screen">
+  <!-- Navbar -->
+  <nav class="bg-white shadow-md py-4 px-8 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-cube text-purple-500 text-2xl"></i>
+      <span class="font-bold text-xl text-gray-800">Clara Apps</span>
+    </div>
+    <ul class="flex gap-6 text-gray-600 font-medium">
+      <li><a href="#features" class="hover:text-purple-500 transition">Features</a></li>
+      <li><a href="#form" class="hover:text-purple-500 transition">Contact</a></li>
+      <li><a href="#" class="hover:text-purple-500 transition">About</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="py-16 px-4 text-center">
+    <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Create Anything with Clara Apps</h1>
+    <p class="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">Unleash your creativity: build custom chat apps, connect to your n8n workflows, integrate with Ollama for AI, and design beautiful single-page sites—all in one place. Clara Apps empowers you to turn your ideas into reality, no limits.</p>
+    <div class="flex flex-wrap justify-center gap-3 mb-8">
+      <span class="inline-flex items-center bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-plug mr-2"></i>Connect Workflows</span>
+      <span class="inline-flex items-center bg-pink-100 text-pink-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-robot mr-2"></i>Ollama AI</span>
+      <span class="inline-flex items-center bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-comments mr-2"></i>Chat Apps</span>
+      <span class="inline-flex items-center bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Anything You Imagine</span>
+    </div>
+    <a href="#features" class="inline-block bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold shadow-lg hover:scale-105 transition">Get Started</a>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="py-12 px-4 max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-8 text-center">What Can You Build?</h2>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-plug text-3xl text-purple-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Connect n8n Workflows</h3>
+        <p class="text-gray-500 text-center">Integrate your automations and trigger actions directly from your custom UI.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-robot text-3xl text-pink-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Ollama AI Integration</h3>
+        <p class="text-gray-500 text-center">Leverage local AI models for chat, content generation, and more—right in your app.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-comments text-3xl text-blue-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Build Chat Apps</h3>
+        <p class="text-gray-500 text-center">Create your own chatbots, assistants, or collaborative chat experiences with ease.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-wand-magic-sparkles text-3xl text-green-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Design Anything</h3>
+        <p class="text-gray-500 text-center">Mix and match cards, forms, navbars, and more to build any single-page site you can imagine.</p>
       </div>
     </div>
-  </div>
+    <div class="mt-10 text-center">
+      <span class="inline-block bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-2 rounded-full font-semibold text-lg shadow-lg">Your ideas. Your workflows. Your AI. <span class="font-bold">No limits.</span></span>
+    </div>
+  </section>
+
+  <!-- Form Section -->
+  <section id="form" class="py-12 px-4 max-w-xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Contact Us</h2>
+    <form class="bg-white rounded-2xl shadow-lg p-8 flex flex-col gap-4">
+      <div>
+        <label class="block text-gray-700 mb-1" for="name">Name</label>
+        <input class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400" type="text" id="name" placeholder="Your Name" />
+      </div>
+      <div>
+        <label class="block text-gray-700 mb-1" for="email">Email</label>
+        <input class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400" type="email" id="email" placeholder="you@email.com" />
+      </div>
+      <div>
+        <label class="block text-gray-700 mb-1" for="message">Message</label>
+        <textarea class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400" id="message" rows="3" placeholder="How can we help?"></textarea>
+      </div>
+      <button type="submit" class="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-3 rounded-xl font-medium hover:shadow-lg transition">Send <i class="fa-solid fa-paper-plane ml-2"></i></button>
+    </form>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-6 text-center text-gray-400 text-sm">
+    <span>&copy; 2024 Clara Apps. All rights reserved.</span>
+  </footer>
 </body>
 </html>`);
 
-  const [cssCode, setCssCode] = useState(`/* Additional custom styles */
+  const [cssCode, setCssCode] = useState(`/* Custom animations and styles for Clara Apps example */
 @keyframes float {
   0% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
   100% { transform: translateY(0px); }
 }
 
-.fas.fa-heart {
+.fa-cube, .fa-bolt, .fa-layer-group, .fa-wand-magic-sparkles {
   animation: float 3s ease-in-out infinite;
 }
 
-/* Any custom styles can be added here */`);
+/* Add your custom styles here */
+
+/* Example: Card hover effect */
+.bg-white.rounded-2xl.shadow-lg:hover {
+  box-shadow: 0 8px 32px 0 rgba(236, 72, 153, 0.15), 0 1.5px 4px 0 rgba(139, 92, 246, 0.10);
+  transform: translateY(-4px) scale(1.03);
+  transition: all 0.2s;
+}
+
+/* Example: Button focus ring */
+button:focus {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}`);
 
   const [jsCode, setJsCode] = useState(`document.addEventListener('DOMContentLoaded', function() {
-  const button = document.querySelector('button');
-  
-  button.addEventListener('click', function() {
-    // Add a ripple effect
-    const ripple = document.createElement('div');
-    ripple.className = 'absolute inset-0 bg-white/20 rounded-xl';
-    this.appendChild(ripple);
-    
-    // Remove ripple after animation
-    setTimeout(() => {
-      ripple.remove();
-    }, 1000);
+  // Example: Animate nav links on click
+  document.querySelectorAll('nav a').forEach(link => {
+    link.addEventListener('click', function(e) {
+      this.classList.add('scale-110');
+      setTimeout(() => this.classList.remove('scale-110'), 200);
+    });
   });
+
+  // Example: Form submit handler
+  const form = document.querySelector('form');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      alert('Thank you for contacting Clara Apps!');
+      form.reset();
+    });
+  }
 });`);
 
   const [activeTab, setActiveTab] = useState<'html' | 'css' | 'js' | 'preview'>('html');
   const [previewError, setPreviewError] = useState<{message: string; line: number; column: number} | null>(null);
-  const previewIframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Resizing state
-  const [leftPanelWidth, setLeftPanelWidth] = useState(33); // 33% initially
-  const [isResizingHorizontal, setIsResizingHorizontal] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  }, [chatInput]);
 
   // Load API config and models when component mounts
   useEffect(() => {
@@ -211,6 +288,8 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showProjectManager, setShowProjectManager] = useState(false);
+  const [isTargetedEdit, setIsTargetedEdit] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: string; visible: boolean }>({ message: '', type: '', visible: false });
 
   // Load last active design on mount
   useEffect(() => {
@@ -456,44 +535,21 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
     }
   };
 
-  // Define updatePreview function
+  // Update preview function simplified
   const updatePreview = useCallback(() => {
-    if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-      previewIframeRef.current.contentWindow.postMessage({
-        type: 'update-preview',
-        html: htmlCode,
-        css: cssCode,
-        js: jsCode
-      }, '*');
-    }
+    // Preview is now handled directly by PreviewPanel
+    // No need for postMessage communication
   }, [htmlCode, cssCode, jsCode]);
 
   // Update preview when code changes
   useEffect(() => {
-    // Listen for error messages from the preview
-    const handlePreviewError = (event: MessageEvent) => {
-      if (event.data.type === 'preview-error') {
-        setPreviewError(event.data.error);
-      }
-    };
-
-    window.addEventListener('message', handlePreviewError);
-    
-    // Update preview when switching to preview tab or when code changes
     if (activeTab === 'preview') {
-      // Add a small delay to ensure iframe is ready
+      // Add a small delay to ensure components are ready
       const timeoutId = setTimeout(() => {
         updatePreview();
       }, 100);
-      return () => {
-        clearTimeout(timeoutId);
-        window.removeEventListener('message', handlePreviewError);
-      };
+      return () => clearTimeout(timeoutId);
     }
-
-    return () => {
-      window.removeEventListener('message', handlePreviewError);
-    };
   }, [activeTab, updatePreview]);
 
   // Handle horizontal resize start
@@ -533,6 +589,20 @@ const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
 
   // Helper function to get system prompt based on mode and purpose
   const getSystemPrompt = (mode: 'chat' | 'design', purpose: 'generate' | 'enhance' = 'generate') => {
+    if (isTargetedEdit && mode === 'design') {
+      return `You are a code editing assistant. You will be given the full HTML, CSS, and JS code of a project, and a user request for a change. Your job is to return ONLY a JSON object with the following structure:
+{
+  "target": "html" | "css" | "js",
+  "find": "<the exact code to be replaced>",
+  "replace": "<the new code to insert instead>"
+}
+- The 'find' string MUST match exactly and uniquely in the code. Use enough context (e.g., full lines, surrounding code) to ensure a unique match.
+- The 'replace' string should be a valid code fragment that will replace 'find'.
+- DO NOT return the whole file, only the minimal code to be replaced and the replacement.
+- Avoid ambiguous or partial matches. If you cannot find a unique match, return a JSON with an 'error' field, e.g. { "error": "No unique match found" }.
+- Your response must be a single JSON object, no extra text or explanation.
+- This is for a local LLM, so keep your response simple, robust, and clear.`;
+    }
     if (purpose === 'enhance') {
       return `You are an expert UI/UX prompt engineer. Your task is to enhance and expand the user's input to create a more detailed and specific prompt that will lead to better UI generation results.
 
@@ -577,6 +647,23 @@ Respond with a single enhanced prompt that expands on the user's request while m
 
   // Helper function to build the design mode prompt
   const buildDesignPrompt = (userPrompt: string, htmlCode: string, cssCode: string, jsCode: string, messages: Message[]) => {
+    if (isTargetedEdit) {
+      return `You are given the following code:
+HTML:\n${htmlCode}\n\nCSS:\n${cssCode}\n\nJS:\n${jsCode}\n\nThe user wants to make this change: ${userPrompt}
+
+Reply ONLY with a JSON object like this:
+{
+  "target": "html" | "css" | "js",
+  "find": "<the exact code to be replaced>",
+  "replace": "<the new code to insert instead>"
+}
+- The 'find' string MUST match exactly and uniquely in the code. Use enough context (e.g., full lines, surrounding code) to ensure a unique match.
+- The 'replace' string should be a valid code fragment that will replace 'find'.
+- DO NOT return the whole file, only the minimal code to be replaced and the replacement.
+- Avoid ambiguous or partial matches. If you cannot find a unique match, return a JSON with an 'error' field, e.g. { "error": "No unique match found" }.
+- Your response must be a single JSON object, no extra text or explanation.
+- This is for a local LLM, so keep your response simple, robust, and clear.`;
+    }
     // Optionally, you can include the previous design as JSON or as a chat history
     const designJson = JSON.stringify({ html: htmlCode, css: cssCode, js: jsCode }, null, 2);
     // Optionally, include chat history if needed (not included here for brevity)
@@ -769,10 +856,52 @@ Respond with a single enhanced prompt that expands on the user's request while m
     setIsGenerating(false);
     setIsProcessing(false);
     setStreamStats({ charCount: 0, lineCount: 0 });
-    
     // Clear any progress interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
+    }
+    // Targeted Edit Mode
+    if (isTargetedEdit && chatMode === 'design') {
+      let status: 'success' | 'fail' = 'fail';
+      let responseJson: any = null;
+      try {
+        responseJson = JSON.parse(content);
+        if (responseJson && responseJson.target && responseJson.find !== undefined && responseJson.replace !== undefined) {
+          if (responseJson.target === 'html') {
+            const prev = htmlCode;
+            if (prev.includes(responseJson.find)) {
+              const next = prev.replace(responseJson.find, responseJson.replace);
+              setHtmlCode(next);
+              status = 'success';
+              updatePreview();
+            }
+          } else if (responseJson.target === 'css') {
+            const prev = cssCode;
+            if (prev.includes(responseJson.find)) {
+              const next = prev.replace(responseJson.find, responseJson.replace);
+              setCssCode(next);
+              status = 'success';
+              updatePreview();
+            }
+          } else if (responseJson.target === 'js') {
+            const prev = jsCode;
+            if (prev.includes(responseJson.find)) {
+              const next = prev.replace(responseJson.find, responseJson.replace);
+              setJsCode(next);
+              status = 'success';
+              updatePreview();
+            }
+          }
+        }
+      } catch (error) {
+        // Parsing failed, status remains 'fail'
+      }
+      // Always show the AI response in chat, with status
+      setMessages((prev) => [
+        ...prev,
+        { content, sender: 'ai', status }
+      ]);
+      return;
     }
     
     // If in design mode, try to parse the JSON response and update the code
@@ -1037,60 +1166,140 @@ Respond with a single enhanced prompt that expands on the user's request while m
     const defaultHtmlTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>My Project</title>
+  <title>Clara Apps</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
-<body>
-  <div class="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8 flex items-center justify-center">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 relative overflow-hidden">
-      <div class="absolute -top-10 -right-10 w-40 h-40 bg-pink-500/10 rounded-full"></div>
-      <div class="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/10 rounded-full"></div>
-      
-      <div class="relative">
-        <i class="fas fa-rocket text-5xl text-purple-500 mb-6 block"></i>
-        <h1 class="text-3xl font-bold text-gray-800 mb-4">New Project</h1>
-        <p class="text-gray-600 mb-8">
-          Start building your beautiful UI here. Use Tailwind CSS and Font Awesome icons.
-        </p>
-        <button class="group bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-medium inline-flex items-center gap-2 hover:shadow-lg transition duration-300 hover:-translate-y-0.5">
-          <span>Get Started</span>
-          <i class="fas fa-arrow-right transition-transform group-hover:translate-x-1"></i>
-        </button>
+<body class="bg-gradient-to-br from-purple-50 to-pink-50 min-h-screen">
+  <!-- Navbar -->
+  <nav class="bg-white shadow-md py-4 px-8 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-cube text-purple-500 text-2xl"></i>
+      <span class="font-bold text-xl text-gray-800">Clara Apps</span>
+    </div>
+    <ul class="flex gap-6 text-gray-600 font-medium">
+      <li><a href="#features" class="hover:text-purple-500 transition">Features</a></li>
+      <li><a href="#form" class="hover:text-purple-500 transition">Contact</a></li>
+      <li><a href="#" class="hover:text-purple-500 transition">About</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="py-16 px-4 text-center">
+    <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Create Anything with Clara Apps</h1>
+    <p class="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">Unleash your creativity: build custom chat apps, connect to your n8n workflows, integrate with Ollama for AI, and design beautiful single-page sites—all in one place. Clara Apps empowers you to turn your ideas into reality, no limits.</p>
+    <div class="flex flex-wrap justify-center gap-3 mb-8">
+      <span class="inline-flex items-center bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-plug mr-2"></i>Connect Workflows</span>
+      <span class="inline-flex items-center bg-pink-100 text-pink-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-robot mr-2"></i>Ollama AI</span>
+      <span class="inline-flex items-center bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-comments mr-2"></i>Chat Apps</span>
+      <span class="inline-flex items-center bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Anything You Imagine</span>
+    </div>
+    <a href="#features" class="inline-block bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-3 rounded-xl font-semibold shadow-lg hover:scale-105 transition">Get Started</a>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="py-12 px-4 max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-8 text-center">What Can You Build?</h2>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-plug text-3xl text-purple-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Connect n8n Workflows</h3>
+        <p class="text-gray-500 text-center">Integrate your automations and trigger actions directly from your custom UI.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-robot text-3xl text-pink-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Ollama AI Integration</h3>
+        <p class="text-gray-500 text-center">Leverage local AI models for chat, content generation, and more—right in your app.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-comments text-3xl text-blue-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Build Chat Apps</h3>
+        <p class="text-gray-500 text-center">Create your own chatbots, assistants, or collaborative chat experiences with ease.</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center">
+        <i class="fa-solid fa-wand-magic-sparkles text-3xl text-green-500 mb-4"></i>
+        <h3 class="font-semibold text-lg mb-2">Design Anything</h3>
+        <p class="text-gray-500 text-center">Mix and match cards, forms, navbars, and more to build any single-page site you can imagine.</p>
       </div>
     </div>
-  </div>
+    <div class="mt-10 text-center">
+      <span class="inline-block bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-2 rounded-full font-semibold text-lg shadow-lg">Your ideas. Your workflows. Your AI. <span class="font-bold">No limits.</span></span>
+    </div>
+  </section>
+
+  <!-- Form Section -->
+  <section id="form" class="py-12 px-4 max-w-xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Contact Us</h2>
+    <form class="bg-white rounded-2xl shadow-lg p-8 flex flex-col gap-4">
+      <div>
+        <label class="block text-gray-700 mb-1" for="name">Name</label>
+        <input class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400" type="text" id="name" placeholder="Your Name" />
+      </div>
+      <div>
+        <label class="block text-gray-700 mb-1" for="email">Email</label>
+        <input class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400" type="email" id="email" placeholder="you@email.com" />
+      </div>
+      <div>
+        <label class="block text-gray-700 mb-1" for="message">Message</label>
+        <textarea class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400" id="message" rows="3" placeholder="How can we help?"></textarea>
+      </div>
+      <button type="submit" class="bg-gradient-to-r from-pink-500 to-purple-500 text-white px-6 py-3 rounded-xl font-medium hover:shadow-lg transition">Send <i class="fa-solid fa-paper-plane ml-2"></i></button>
+    </form>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-6 text-center text-gray-400 text-sm">
+    <span>&copy; 2024 Clara Apps. All rights reserved.</span>
+  </footer>
 </body>
 </html>`;
 
     // Default CSS template
-    const defaultCssTemplate = `/* Custom animations */
+    const defaultCssTemplate = `/* Custom animations and styles for Clara Apps example */
 @keyframes float {
   0% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
   100% { transform: translateY(0px); }
 }
 
-.fas.fa-rocket {
+.fa-cube, .fa-bolt, .fa-layer-group, .fa-wand-magic-sparkles {
   animation: float 3s ease-in-out infinite;
 }
 
-/* Add your custom styles here */`;
+/* Add your custom styles here */
+
+/* Example: Card hover effect */
+.bg-white.rounded-2xl.shadow-lg:hover {
+  box-shadow: 0 8px 32px 0 rgba(236, 72, 153, 0.15), 0 1.5px 4px 0 rgba(139, 92, 246, 0.10);
+  transform: translateY(-4px) scale(1.03);
+  transition: all 0.2s;
+}
+
+/* Example: Button focus ring */
+button:focus {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}`;
 
     // Default JS template
     const defaultJsTemplate = `document.addEventListener('DOMContentLoaded', function() {
-  const button = document.querySelector('button');
-  
-  button.addEventListener('click', function() {
-    // Add a ripple effect
-    const ripple = document.createElement('div');
-    ripple.className = 'absolute inset-0 bg-white/20 rounded-xl';
-    this.appendChild(ripple);
-    
-    // Remove ripple after animation
-    setTimeout(() => {
-      ripple.remove();
-    }, 1000);
+  // Example: Animate nav links on click
+  document.querySelectorAll('nav a').forEach(link => {
+    link.addEventListener('click', function(e) {
+      this.classList.add('scale-110');
+      setTimeout(() => this.classList.remove('scale-110'), 200);
+    });
   });
+
+  // Example: Form submit handler
+  const form = document.querySelector('form');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      alert('Thank you for contacting Clara Apps!');
+      form.reset();
+    });
+  }
 });`;
 
     // Reset the state
@@ -1170,10 +1379,46 @@ Respond with a single enhanced prompt that expands on the user's request while m
                 selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
                 onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
                 apiType={apiType}
-                onRestoreCheckpoint={({ html, css, js }) => {
-                  setHtmlCode(html);
-                  setCssCode(css);
-                  setJsCode(js);
+                onRestoreCheckpoint={({ html, css, js, find, replace }) => {
+                  // Targeted restore: only one of html/css/js is non-empty and both find/replace are present
+                  if (
+                    ((html !== '' && css === '' && js === '') || (html === '' && css !== '' && js === '') || (html === '' && css === '' && js !== '')) &&
+                    typeof find === 'string' && typeof replace === 'string'
+                  ) {
+                    let didRestore = false;
+                    if (html !== '') setHtmlCode(prev => {
+                      if (prev.includes(replace)) {
+                        didRestore = true;
+                        return prev.replace(replace, find);
+                      }
+                      return prev;
+                    });
+                    if (css !== '') setCssCode(prev => {
+                      if (prev.includes(replace)) {
+                        didRestore = true;
+                        return prev.replace(replace, find);
+                      }
+                      return prev;
+                    });
+                    if (js !== '') setJsCode(prev => {
+                      if (prev.includes(replace)) {
+                        didRestore = true;
+                        return prev.replace(replace, find);
+                      }
+                      return prev;
+                    });
+                    setToast({
+                      message: didRestore ? 'Checkpoint restored successfully.' : 'Could not find the edit to restore.',
+                      type: didRestore ? 'success' : 'error',
+                      visible: true
+                    });
+                    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500);
+                  } else {
+                    // Normal restore (full code)
+                    if (html !== '') setHtmlCode(html);
+                    if (css !== '') setCssCode(css);
+                    if (js !== '') setJsCode(js);
+                  }
                   setActiveTab('preview');
                   setTimeout(() => updatePreview(), 100);
                 }}
@@ -1200,6 +1445,14 @@ Respond with a single enhanced prompt that expands on the user's request while m
                   style={{ height: 'auto' }}
                 />
                 <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTargetedEdit(v => !v)}
+                    className={`p-2 rounded-full transition-colors ${isTargetedEdit ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400 hover:text-purple-500'}`}
+                    title="Targeted Edit: Only update a specific part of the code"
+                  >
+                    <Target className={`w-4 h-4 ${isTargetedEdit ? 'fill-purple-500' : ''}`} />
+                  </button>
                   <button
                     onClick={enhancePrompt}
                     disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
@@ -1491,30 +1744,19 @@ Respond with a single enhanced prompt that expands on the user's request while m
                   />
                 )}
                 {activeTab === 'preview' && (
-                  <div className="w-full h-full bg-[#e9e9e9] dark:bg-gray-800 relative overflow-hidden">
+                  <div className="w-full h-full relative overflow-hidden">
                     {previewError && (
-                      <div className="absolute top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-sm">
+                      <div className="absolute top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-sm z-50">
                         Error on line {previewError.line}: {previewError.message}
                       </div>
                     )}
-                    <div className="w-full h-full flex items-stretch">
-                      {isElectron ? (
-                        // Use our enhanced PreviewPanel component for Electron
-                        <PreviewPanel
-                          elements={[{ id: '1', type: 'div', props: {}, children: [] }]}
-                          htmlContent={htmlCode}
-                          cssContent={cssCode}
-                          jsContent={jsCode}
-                        />
-                      ) : (
-                      <iframe
-                        ref={previewIframeRef}
-                        src="/preview.html"
-                        className="w-full h-full border-none bg-white"
-                        sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
-                        title="Preview"
+                    <div className="absolute inset-0">
+                      <PreviewPanel
+                        elements={[{ id: '1', type: 'div', props: {}, children: [] }]}
+                        htmlContent={htmlCode}
+                        cssContent={cssCode}
+                        jsContent={jsCode}
                       />
-                      )}
                     </div>
                   </div>
                 )}
@@ -1541,6 +1783,7 @@ Respond with a single enhanced prompt that expands on the user's request while m
         onCreateNew={handleNewProject}
         currentProjectId={currentDesign?.id}
       />
+      {toast.visible && <ToastNotification message={toast.message} type={toast.type} />}
     </div>
   );
 };
