@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2 } from 'lucide-react';
+import axios from 'axios';
 
 interface WidgetOption {
   id: string;
@@ -16,9 +17,27 @@ interface AddWidgetModalProps {
   onAddWidget: (type: string) => void;
   onAddWebhookWidget?: (name: string, url: string) => void;
   onAddEmailWidget?: (name: string, url: string, refreshInterval: number) => void;
+  onAddQuickChatWidget?: (name: string, url: string, model: string) => void;
 }
 
 const AVAILABLE_WIDGETS: WidgetOption[] = [
+  {
+    id: 'quick-chat',
+    type: 'quick-chat',
+    name: 'Quick Chat',
+    description: 'Chat directly with Ollama AI',
+    icon: <MessageSquare className="w-5 h-5" />,
+    category: 'productivity',
+    preview: (
+      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-sakura-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Quick Chat</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Have quick conversations with Ollama AI...</p>
+      </div>
+    )
+  },
   {
     id: 'welcome',
     type: 'welcome',
@@ -106,12 +125,7 @@ const AVAILABLE_WIDGETS: WidgetOption[] = [
   }
 ];
 
-const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ 
-  onClose, 
-  onAddWidget, 
-  onAddWebhookWidget,
-  onAddEmailWidget
-}) => {
+const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, onAddWebhookWidget, onAddEmailWidget, onAddQuickChatWidget }) => {
   const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom'>('system');
   const [selectedWidget, setSelectedWidget] = React.useState<string | null>(null);
   
@@ -126,12 +140,56 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
   const [refreshInterval, setRefreshInterval] = useState(5);
   const [emailError, setEmailError] = useState<string | null>(null);
 
+  // Quick Chat widget form state
+  const [quickChatName, setQuickChatName] = useState('');
+  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState('');
+  const [quickChatError, setQuickChatError] = useState<string | null>(null);
+  const isQuickChatFormValid = quickChatName.trim() !== '' && ollamaUrl.trim() !== '';
+
   const filteredWidgets = AVAILABLE_WIDGETS.filter(widget => widget.category === selectedCategory);
   
   const isWebhookSelected = selectedWidget === 'webhook';
   const isEmailSelected = selectedWidget === 'email';
+  const isQuickChatSelected = selectedWidget === 'quick-chat';
   const isWebhookFormValid = webhookName.trim() !== '' && webhookUrl.trim() !== '';
   const isEmailFormValid = emailName.trim() !== '' && emailUrl.trim() !== '';
+
+  useEffect(() => {
+    const fetchModels = async () => {
+      if (!ollamaUrl) {
+        setAvailableModels([]);
+        setSelectedModel('');
+        return;
+      }
+
+      setLoadingModels(true);
+      setModelError('');
+
+      try {
+        const response = await axios.get(`${ollamaUrl}/api/tags`);
+        if (response.data.models) {
+          const modelNames = response.data.models.map((model: any) => model.name);
+          setAvailableModels(modelNames);
+          if (modelNames.length > 0) {
+            setSelectedModel(modelNames[0]);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching models:', err);
+        setModelError('Failed to fetch available models');
+        setAvailableModels([]);
+        setSelectedModel('');
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    fetchModels();
+  }, [ollamaUrl]);
 
   const handleAddWidget = () => {
     if (selectedWidget) {
@@ -149,6 +207,12 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
             return;
           }
           onAddEmailWidget(emailName, emailUrl, refreshInterval);
+        } else if (widget.id === 'quick-chat' && onAddQuickChatWidget) {
+          if (!isQuickChatFormValid) {
+            setQuickChatError('Please enter both name and URL');
+            return;
+          }
+          onAddQuickChatWidget(quickChatName, ollamaUrl, selectedModel);
         } else {
           onAddWidget(widget.type);
         }
@@ -277,6 +341,69 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
                 </div>
               )}
               
+              {/* Quick Chat Widget Configuration Form */}
+              {isQuickChatSelected && (
+                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-4">Quick Chat Configuration</h3>
+                  
+                  {quickChatError && (
+                    <div className="mb-4 text-red-500 text-sm">{quickChatError}</div>
+                  )}
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Widget Name</label>
+                      <input 
+                        type="text"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
+                        placeholder="My Quick Chat"
+                        value={quickChatName}
+                        onChange={(e) => setQuickChatName(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Ollama API URL</label>
+                      <input 
+                        type="text"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
+                        placeholder="http://localhost:11434"
+                        value={ollamaUrl}
+                        onChange={(e) => setOllamaUrl(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Enter the URL of your Ollama API endpoint</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                      {loadingModels ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading available models...
+                        </div>
+                      ) : modelError ? (
+                        <div className="text-sm text-red-500">{modelError}</div>
+                      ) : availableModels.length > 0 ? (
+                        <select
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                        >
+                          <option value="">Select a model</option>
+                          {availableModels.map(model => (
+                            <option key={model} value={model}>{model}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          Enter Ollama URL to load available models
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Email Widget Configuration Form */}
               {isEmailSelected && (
                 <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg">
@@ -333,10 +460,10 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
             <div className="p-4 border-t border-gray-200/10 dark:border-gray-700/10 flex justify-end">
               <button
                 className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors"
-                disabled={
-                  !selectedWidget || 
+                disabled={!selectedWidget || 
                   (isWebhookSelected && !isWebhookFormValid) ||
-                  (isEmailSelected && !isEmailFormValid)
+                  (isEmailSelected && !isEmailFormValid) ||
+                  (isQuickChatSelected && !isQuickChatFormValid)
                 }
                 onClick={handleAddWidget}
               >
@@ -350,4 +477,4 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
   );
 };
 
-export default AddWidgetModal; 
+export default AddWidgetModal;
