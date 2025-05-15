@@ -10,9 +10,9 @@ export interface ExecutionPlan {
   nodes: Node[];
   edges: Edge[];
   config: {
-    ollama?: {
-      baseUrl: string;
-    };
+    type: 'ollama' | 'openai';
+    baseUrl: string;
+    apiKey?: string;
   };
 }
 
@@ -32,8 +32,9 @@ export interface ExecutionContext {
   updateUi?: (type: string, nodeId: string, data: any) => void;
   updateNodeStatus?: (nodeId: string, status: 'running' | 'completed' | 'error') => void;
   apiConfig: {
-    type: 'ollama';
+    type: 'ollama' | 'openai';
     baseUrl: string;
+    apiKey?: string;
   };
 }
 
@@ -69,11 +70,25 @@ async function testOllamaConnection(url: string): Promise<boolean> {
 export function generateExecutionPlan(nodes: Node[], edges: Edge[]): ExecutionPlan {
   // Look for LLM nodes to extract the Ollama base URL
   const llmNodes = nodes.filter((node) => node.type === 'baseLlmNode');
-  const configuredUrl = llmNodes.length > 0 ? llmNodes[0].data.config?.ollamaUrl : null;
-
+  
   const config: any = {
-    ollama: { baseUrl: configuredUrl || DEFAULT_LOCALHOST_URL }
+    baseUrl: DEFAULT_LOCALHOST_URL,
+    type: 'ollama'
   };
+
+  // For now taking the first LLM node's URL, since we suppport one type of LLM node at a time
+  if (llmNodes.length > 0) {
+    const nodeConfig = llmNodes[0].data.config;
+
+    if (nodeConfig?.apiType == 'ollama') {
+      config.baseUrl = nodeConfig.ollamaUrl || DEFAULT_LOCALHOST_URL;
+      config.type = 'ollama';
+    } else if (nodeConfig?.apiType == 'openai') {
+      config.baseUrl = nodeConfig.openaiUrl || DEFAULT_LOCALHOST_URL;
+      config.type = 'openai';
+      config.apiKey = nodeConfig.apiKey;
+    }
+  } 
 
   return { nodes, edges, config };
 }
@@ -186,8 +201,8 @@ export async function executeFlow(
   let baseUrl: string;
   
   // Get configured URL or use default
-  if (plan.config.ollama?.baseUrl) {
-    baseUrl = plan.config.ollama.baseUrl;
+  if (plan.config.baseUrl) {
+    baseUrl = plan.config.baseUrl;
   } else {
     baseUrl = DEFAULT_LOCALHOST_URL;
   }
@@ -202,12 +217,13 @@ export async function executeFlow(
   }
 
   // Initialize the Ollama client using the determined baseUrl
-  const ollamaClient = new OllamaClient(baseUrl);
+  const ollamaClient = new OllamaClient(baseUrl, plan.config);
 
   // Create API config
   const apiConfig = {
-    type: 'ollama' as const,
+    type: plan.config.type || 'ollama',
     baseUrl: baseUrl,
+    apiKey: plan.config?.apiKey || ''
   };
 
   // Storage for node outputs.
