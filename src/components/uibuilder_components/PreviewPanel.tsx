@@ -181,41 +181,39 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ elements, htmlContent, cssC
   }
 
   return (
-    <div className="p-6 h-full relative">
-      <div className="w-full h-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        {previewError && (
-          <div className="absolute top-0 left-0 right-0 z-50 bg-red-500 text-white px-4 py-2 text-sm">
-            Error on line {previewError.line}: {previewError.message}
-          </div>
-        )}
-        <div className="bg-gray-50 dark:bg-gray-900 rounded border border-dashed border-gray-300 dark:border-gray-700 min-h-[300px] p-0 h-full w-full overflow-hidden">
-          {isElectron ? (
-            <webview
-              ref={webviewRef}
-              src="/preview.html"
-              style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
-              allowpopups={true}
-              nodeintegration={true}
-              webpreferences="contextIsolation=false, webSecurity=false, allowRunningInsecureContent=true, nodeIntegration=true"
-              disablewebsecurity={true}
-              partition="persist:preview"
-            />
-          ) : (
-            <iframe
-              ref={iframeRef}
-              src="/preview.html"
-              className="w-full h-full border-none bg-white"
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
-              title="Preview"
-            />
-          )}
+    <div className="h-full w-full relative">
+      {previewError && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-red-500 text-white px-4 py-2 text-sm">
+          Error on line {previewError.line}: {previewError.message}
         </div>
+      )}
+      <div className="h-full w-full overflow-hidden">
+        {isElectron ? (
+          <webview
+            ref={webviewRef}
+            src="/preview.html"
+            style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
+            allowpopups={true}
+            nodeintegration={true}
+            webpreferences="contextIsolation=false, webSecurity=false, allowRunningInsecureContent=true, nodeIntegration=true"
+            disablewebsecurity={true}
+            partition="persist:preview"
+          />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            src="/preview.html"
+            className="w-full h-full border-none bg-white"
+            sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
+            title="Preview"
+          />
+        )}
       </div>
       
       {/* Floating DevTools Button - only shown in Electron mode */}
       {isElectron && (
         <div 
-          className="absolute bottom-10 right-10 z-10"
+          className="absolute bottom-4 right-4 z-10"
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
         >
@@ -239,7 +237,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ elements, htmlContent, cssC
       
       {/* Update Preview Button - only shown if we have content */}
       {htmlContent && cssContent && jsContent && (
-        <div className="absolute bottom-10 left-10 z-10">
+        <div className="absolute bottom-4 left-4 z-10">
           <button 
             onClick={updatePreview}
             className="bg-gradient-to-r from-green-500 to-teal-500 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110"
