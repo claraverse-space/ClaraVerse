@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useInterpreter } from '../../contexts/InterpreterContext';
-import { User, Bot, Copy, Check, ArrowDown, RefreshCw, Square, Brain, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, Bot, Copy, Check, ArrowDown, RefreshCw, Square, Brain, ChevronDown, ChevronUp, ScrollText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -11,6 +11,7 @@ import { AssistantHeader } from '../assistant_components';
 import InterpreterSidebar from '../interpreter_components/InterpreterSidebar';
 import { FileInfo } from '../../utils/InterpreterClient';
 import ChatInput from '../assistant_components/ChatInput';
+import ToastNotification from '../gallery_components/ToastNotification';
 
 // Thinking block component to show/hide system thinking content
 const ThinkingBlock: React.FC<{ content: string }> = ({ content }) => {
@@ -199,6 +200,12 @@ const InterpreterChat: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [files, setFiles] = useState<FileInfo[]>([]);
   const chatInputRef = useRef<any>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: string; show: boolean }>({
+    message: '',
+    type: '',
+    show: false
+  });
 
   // Function to handle file selection from sidebar
   const handleFileSelect = (file: FileInfo) => {
@@ -207,9 +214,29 @@ const InterpreterChat: React.FC = () => {
     }
   };
 
-  // Simplify scroll behavior - always scroll during streaming
+  // Function to show toast notification
+  const showToast = (message: string, type: string) => {
+    setToast({ message, type, show: true });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 2000);
+  };
+
+  // Handle auto-scroll toggle with toast notification
+  const handleAutoScrollToggle = () => {
+    setAutoScroll(prev => {
+      const newState = !prev;
+      showToast(
+        newState ? "Auto-scroll enabled" : "Auto-scroll disabled",
+        newState ? "success" : "info"
+      );
+      return newState;
+    });
+  };
+
+  // Simplify scroll behavior - only scroll when auto-scroll is enabled
   useEffect(() => {
-    if (messages.length !== prevMessagesLength || isExecuting) {
+    if ((messages.length !== prevMessagesLength || isExecuting) && autoScroll) {
       setPrevMessagesLength(messages.length);
       setTimeout(() => {
         if (messagesEndRef.current) {
@@ -217,9 +244,8 @@ const InterpreterChat: React.FC = () => {
         }
       }, 50);
     }
-  }, [messages, prevMessagesLength, isExecuting]);
+  }, [messages, prevMessagesLength, isExecuting, autoScroll]);
 
-  // Remove auto-scroll state since we always want to scroll during streaming
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -245,14 +271,14 @@ const InterpreterChat: React.FC = () => {
     }
   }, []);
 
-  // Auto-scroll when execution state changes
+  // Auto-scroll when execution state changes and auto-scroll is enabled
   useEffect(() => {
-    if (isExecuting) {
+    if (isExecuting && autoScroll) {
       setTimeout(() => {
         scrollToBottom();
       }, 50);
     }
-  }, [isExecuting]);
+  }, [isExecuting, autoScroll]);
 
   // Empty state when no messages
   const renderEmptyState = () => (
@@ -344,26 +370,87 @@ const InterpreterChat: React.FC = () => {
       </div>
 
       {/* Fixed position buttons */}
-      {showScrollButton && (
+      <div className="fixed right-8 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-end">
+        {/* Auto-scroll toggle button */}
         <button
-          onClick={scrollToBottom}
-          className="fixed bottom-24 right-8 p-2 bg-sakura-500 text-white rounded-full shadow-lg hover:bg-sakura-600 transition-colors z-20"
-          aria-label="Scroll to bottom"
+          onClick={handleAutoScrollToggle}
+          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 z-20 cursor-pointer 
+            ${autoScroll 
+              ? 'bg-sakura-500 text-white hover:bg-sakura-600 hover:shadow-xl hover:scale-105' 
+              : 'bg-gray-300 text-gray-600 hover:bg-gray-400 hover:shadow-xl hover:scale-105'
+            }`}
+          aria-label="Toggle auto-scroll"
         >
-          <ArrowDown className="w-5 h-5" />
+          <ScrollText className="w-5 h-5" />
+          {/* Enhanced Tooltip */}
+          <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-2">
+              {autoScroll ? (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Auto-scroll is ON
+                  </span>
+                  <span className="text-gray-400 text-xs">(Click to disable)</span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                    Auto-scroll is OFF
+                  </span>
+                  <span className="text-gray-400 text-xs">(Click to enable)</span>
+                </>
+              )}
+            </div>
+            {/* Tooltip Arrow */}
+            <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
+          </div>
         </button>
-      )}
 
-      {isExecuting && (
-        <div className="fixed bottom-24 right-20 p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors z-20">
+        {/* Scroll to bottom button */}
+        {showScrollButton && (
+          <button
+            onClick={scrollToBottom}
+            className="group relative p-2 bg-sakura-500 text-white rounded-full shadow-lg hover:bg-sakura-600 hover:shadow-xl hover:scale-105 transition-all duration-200 z-20"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown className="w-5 h-5" />
+            {/* Tooltip */}
+            <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap">
+                Scroll to bottom
+              </div>
+              <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
+            </div>
+          </button>
+        )}
+
+        {/* Stop execution button */}
+        {isExecuting && (
           <button
             onClick={stopExecution}
-            className="flex items-center justify-center"
+            className="group relative p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 hover:shadow-xl hover:scale-105 transition-all duration-200 z-20"
             aria-label="Stop execution"
           >
             <Square className="w-5 h-5" />
+            {/* Tooltip */}
+            <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap">
+                Stop execution
+              </div>
+              <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
+            </div>
           </button>
-        </div>
+        )}
+      </div>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <ToastNotification 
+          message={toast.message} 
+          type={toast.type} 
+        />
       )}
 
       {/* Interpreter Sidebar */}
