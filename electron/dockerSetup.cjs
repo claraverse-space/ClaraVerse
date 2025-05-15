@@ -16,12 +16,8 @@ class DockerSetup extends EventEmitter {
     // Docker binary paths - using Docker CLI path for both docker and compose commands
     this.dockerPath = '/usr/local/bin/docker';
     
-    // Initialize Docker client
-    this.docker = new Docker({
-      socketPath: process.platform === 'win32' 
-        ? '//./pipe/docker_engine'
-        : '/var/run/docker.sock'
-    });
+    // Initialize Docker client with the first working socket
+    this.docker = this.initializeDockerClient();
 
     // Path for storing pull timestamps
     this.pullTimestampsPath = path.join(this.appDataPath, 'pull_timestamps.json');
@@ -157,11 +153,114 @@ class DockerSetup extends EventEmitter {
     }
   }
 
+  async findWorkingDockerSocket() {
+    // List of possible Docker socket locations
+    const possibleSockets = [
+      // Docker Desktop locations
+      path.join(os.homedir(), '.docker', 'desktop', 'docker.sock'),
+      path.join(os.homedir(), '.docker', 'docker.sock'),
+      // Traditional Linux socket locations
+      '/var/run/docker.sock',
+      '/run/docker.sock',
+      // WSL2 socket location
+      '/mnt/wsl/docker-desktop/docker.sock',
+      // Colima socket location (for macOS/Linux)
+      path.join(os.homedir(), '.colima', 'docker.sock'),
+      // Rancher Desktop socket location
+      path.join(os.homedir(), '.rd', 'docker.sock')
+    ];
+
+    // Windows pipe
+    if (process.platform === 'win32') {
+      return '//./pipe/docker_engine';
+    }
+
+    // Check environment variable first
+    if (process.env.DOCKER_HOST) {
+      const match = process.env.DOCKER_HOST.match(/unix:\/\/(.*)/);
+      if (match && match[1]) {
+        try {
+          const docker = new Docker({ socketPath: match[1] });
+          await docker.ping();
+          console.log('Using Docker socket from DOCKER_HOST:', match[1]);
+          return match[1];
+        } catch (error) {
+          console.log('DOCKER_HOST socket not working:', error.message);
+        }
+      }
+    }
+
+    // Try each socket location
+    for (const socketPath of possibleSockets) {
+      try {
+        if (fs.existsSync(socketPath)) {
+          const docker = new Docker({ socketPath });
+          await docker.ping();
+          console.log('Found working Docker socket at:', socketPath);
+          return socketPath;
+        }
+      } catch (error) {
+        console.log('Socket not working at:', socketPath, error.message);
+        continue;
+      }
+    }
+
+    throw new Error('No working Docker socket found');
+  }
+
+  initializeDockerClient() {
+    try {
+      // For Windows, always use the named pipe
+      if (process.platform === 'win32') {
+        return new Docker({ socketPath: '//./pipe/docker_engine' });
+      }
+
+      // For other platforms, try to find a working socket synchronously
+      const socketPaths = [
+        process.env.DOCKER_HOST ? process.env.DOCKER_HOST.replace('unix://', '') : null,
+        path.join(os.homedir(), '.docker', 'desktop', 'docker.sock'),
+        path.join(os.homedir(), '.docker', 'docker.sock'),
+        '/var/run/docker.sock',
+        '/run/docker.sock',
+        '/mnt/wsl/docker-desktop/docker.sock',
+        path.join(os.homedir(), '.colima', 'docker.sock'),
+        path.join(os.homedir(), '.rd', 'docker.sock')
+      ].filter(Boolean);
+
+      for (const socketPath of socketPaths) {
+        if (fs.existsSync(socketPath)) {
+          try {
+            return new Docker({ socketPath });
+          } catch (error) {
+            console.log(`Failed to initialize Docker with socket ${socketPath}:`, error.message);
+          }
+        }
+      }
+
+      // If no socket works, fall back to default
+      return new Docker({ socketPath: '/var/run/docker.sock' });
+    } catch (error) {
+      console.error('Error initializing Docker client:', error);
+      // Return a default client - the isDockerRunning check will handle the error case
+      return new Docker({ socketPath: '/var/run/docker.sock' });
+    }
+  }
+
   async isDockerRunning() {
     try {
-      await this.docker.ping();
-      return true;
+      // If current client isn't working, try to find a working socket
+      try {
+        await this.docker.ping();
+        return true;
+      } catch (error) {
+        // Current socket not working, try to find a working one
+        const workingSocket = await this.findWorkingDockerSocket();
+        this.docker = new Docker({ socketPath: workingSocket });
+        await this.docker.ping();
+        return true;
+      }
     } catch (error) {
+      console.error('Docker is not running or not accessible:', error.message);
       return false;
     }
   }
