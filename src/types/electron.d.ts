@@ -24,6 +24,7 @@ export interface ElectronAPI {
   getPythonPort: () => Promise<number>;
   checkPythonBackend: () => Promise<boolean>;
   restartInterpreterContainer: () => Promise<{ success: boolean; error?: string }>;
+  checkForUpdates: () => Promise<void>;
   clipboard: {
     writeText: (text: string) => void;
     readText: () => string;
