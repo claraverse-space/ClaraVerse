@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Trash2, FileText, FolderOpen, X, ChevronRight, ChevronLeft, Files, Plus, ChevronDown, RefreshCw, Eye } from 'lucide-react';
+import { Download, Trash2, FileText, FolderOpen, X, ChevronRight, Files, Plus, ChevronDown, RefreshCw, Eye } from 'lucide-react';
 import { useInterpreter } from '../../contexts/InterpreterContext';
 import { FileInfo } from '../../utils/InterpreterClient';
 import logo from '../../assets/logo.png';

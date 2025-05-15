@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, Move } from 'lucide-react';
+import { Plus, Trash2, Move, RefreshCw } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
@@ -31,6 +31,13 @@ const WidgetContextMenu: React.FC<ContextMenuProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [onClose]);
+
+  const handleCheckForUpdates = () => {
+    if (window.electron && window.electron.checkForUpdates) {
+      window.electron.checkForUpdates();
+    }
+    onClose();
+  };
 
   return (
     <div
@@ -66,6 +73,17 @@ const WidgetContextMenu: React.FC<ContextMenuProps> = ({
           Rearrange Widgets
         </button>
       )}
+      <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+      <button
+        className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCheckForUpdates();
+        }}
+      >
+        <RefreshCw className="w-4 h-4" />
+        Check for Updates
+      </button>
       {showRemove && onRemoveWidget && (
         <button
           className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"

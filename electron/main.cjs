@@ -3,8 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const DockerSetup = require('./dockerSetup.cjs');
-const { setupAutoUpdater } = require('./updateService.cjs');
+const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
+const { createAppMenu } = require('./menu.cjs');
 
 // Configure the main process logger
 log.transports.file.level = 'info';
@@ -362,6 +363,9 @@ function createMainWindow() {
     backgroundColor: '#f5f5f5'
   });
 
+  // Create and set the application menu
+  createAppMenu(mainWindow);
+
   // Set security policies for webview, using the dynamic n8n port
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     const url = webContents.getURL();
@@ -482,6 +486,14 @@ app.on('activate', () => {
 
 // Handle IPC messages
 ipcMain.handle('get-app-path', () => app.getPath('userData'));
+ipcMain.handle('getWorkflowsPath', () => {
+  return path.join(app.getAppPath(), 'workflows', 'n8n_workflows_full.json');
+});
+
+// Add handler for checking updates
+ipcMain.handle('check-for-updates', () => {
+  return checkForUpdates();
+});
 
 // Handle microphone permission request
 ipcMain.handle('request-microphone-permission', async () => {
@@ -546,8 +558,4 @@ ipcMain.on('python-status', (event, status) => {
   if (mainWindow) {
     mainWindow.webContents.send('python-status', status);
   }
-});
-
-ipcMain.handle('getWorkflowsPath', async () => {
-  return path.join(app.getPath('home'), '.clara', 'workflows');
 });

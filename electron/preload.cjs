@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('electron', {
   getPythonPort: () => ipcRenderer.invoke('get-python-port'),
   checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
 
+  // Updates
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  
   // Clipboard
   clipboard: {
     writeText: (text) => clipboard.writeText(text),
