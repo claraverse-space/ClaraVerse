@@ -31,9 +31,25 @@
 
 # ✨ Key Features
 
+## 🔄 Quick Look widgets
+<p align="center"><img src="/public/screenshots/desktop_widgets.png" alt="Workflow" width="800"/></p>
+<p align="center">Use the Built-in N8N for automating have custom widgets.</p>
+
+## 🧠 AI Assistant
+<p align="center"><img src="/public/screenshots/assistant-screenshot.png" alt="Assistant" width="800"/></p>
+<p align="center">Chat with local Ollama models — including image understanding.</p>
+
+## 🧠 AI Interpreter 
+<p align="center"><img src="/public/screenshots/clara_interpreter.png" alt="Assistant" width="800"/></p>
+<p align="center">Make your local models do things for you, Eg- Conversion of docs, Basic Model Training and much more like chat gpt - Powered by OpenInterpreter.</p>
+
 ## 🔄 Workflow Automation
 <p align="center"><img src="/public/screenshots/n8n_ScreenShot.png" alt="Workflow" width="800"/></p>
 <p align="center">Built-in N8N for automating anything with drag & drop workflows.</p>
+
+## 🔄 Workflow Automation made easy with 1000+ templates
+<p align="center"><img src="/public/screenshots/Workflows" alt="Workflow" width="800"/></p>
+<p align="center">Store with lots of workflows in your disposal with sources where it is from and you can add yours too.</p>
 
 ## 🤖 AI-Powered Process Builder
 <p align="center"><img src="/public/screenshots/Appstore.png" alt="Process Builder" width="800"/></p>
@@ -42,10 +58,6 @@
 ## 🏗️ Intelligent Agent Builder
 <p align="center"><img src="/public/screenshots/app-builder-screenshot.png" alt="Agent Builder" width="800"/></p>
 <p align="center">No-code node editor to build, test, and deploy agents as apps.</p>
-
-## 🧠 AI Assistant
-<p align="center"><img src="/public/screenshots/assistant-screenshot.png" alt="Assistant" width="800"/></p>
-<p align="center">Chat with local Ollama models — including image understanding.</p>
 
 ## 🎨 Image Generation
 <p align="center"><img src="/public/screenshots/image-gen-screenshot.png" alt="Image Gen" width="800"/></p>
