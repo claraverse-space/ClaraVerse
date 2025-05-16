@@ -7,6 +7,7 @@ import ModelConfigModal from './ModelConfigModal';
 import { readPdfContent } from '../../utils/documentUtils';
 import { useInterpreter } from '../../contexts/InterpreterContext';
 import { FileInfo } from '../../utils/InterpreterClient';
+import ToastNotification from '../gallery_components/ToastNotification';
 
 interface ModelConfig {
   visionModel: string;
@@ -175,6 +176,21 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
   
   // Add state for selected files from file manager
   const [selectedManagerFiles, setSelectedManagerFiles] = useState<Array<{id: string; name: string; path: string}>>([]);
+
+  // Add toast state
+  const [toast, setToast] = useState<{ message: string; type: string; show: boolean }>({
+    message: '',
+    type: '',
+    show: false
+  });
+
+  // Add showToast function
+  const showToast = (message: string, type: string) => {
+    setToast({ message, type, show: true });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 2000);
+  };
 
   // Get API endpoint on component mount
   useEffect(() => {
@@ -888,19 +904,18 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
                     {isInterpreterMode && (
                       <button
                         onClick={async () => {
-                          // Clear conversation history
-                          if (interpreterClient) {
-                            interpreterClient.clearConversation();
-                          }
-                          // Clear input and files
-                          setInput('');
-                          setSelectedManagerFiles([]);
-                          setInterpreterFiles([]);
-                          
-                          // Restart the interpreter container
                           try {
-                            console.log('Attempting to restart interpreter container...');
-                            // Use type assertion to work around TypeScript error
+                            // Clear conversation history
+                            if (interpreterClient) {
+                              await interpreterClient.clearConversation();
+                              showToast('Chat cleared successfully', 'success');
+                            }
+                            // Clear input and files
+                            setInput('');
+                            setSelectedManagerFiles([]);
+                            setInterpreterFiles([]);
+                            
+                            // Restart the interpreter container
                             if (window.electron && 'restartInterpreterContainer' in window.electron) {
                               const electronWithRestart = window.electron as unknown as { 
                                 restartInterpreterContainer: () => Promise<{ success: boolean; error?: string }> 
@@ -909,19 +924,15 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
                               const result = await electronWithRestart.restartInterpreterContainer();
                               if (result.success) {
                                 console.log('Interpreter container restarted successfully');
-                                // Show success message to user
-                                alert('Interpreter restarted successfully. Please start a new conversation.');
+                                showToast('Interpreter restarted successfully', 'success');
                               } else {
                                 console.error('Failed to restart interpreter container:', result.error);
-                                alert(`Failed to restart interpreter: ${result.error || 'Unknown error'}`);
+                                showToast(`Failed to restart interpreter: ${result.error || 'Unknown error'}`, 'error');
                               }
-                            } else {
-                              console.error('restartInterpreterContainer function not available from Electron');
-                              alert('Could not restart interpreter - function not available. Please restart Clara.');
                             }
                           } catch (error) {
-                            console.error('Error restarting interpreter container:', error);
-                            alert('Error restarting interpreter. Please restart Clara manually.');
+                            console.error('Error handling new chat:', error);
+                            showToast('Error clearing chat. Please try again.', 'error');
                           }
                         }}
                         className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
@@ -1290,6 +1301,14 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
                 }
                 setShowModelConfig(false);
               }}
+            />
+          )}
+
+          {/* Toast notification */}
+          {toast.show && (
+            <ToastNotification
+              message={toast.message}
+              type={toast.type}
             />
           )}
         </div>
