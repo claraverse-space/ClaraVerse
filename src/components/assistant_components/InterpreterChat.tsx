@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useInterpreter } from '../../contexts/InterpreterContext';
-import { User, Bot, Copy, Check, ArrowDown, RefreshCw, Square, Brain, ChevronDown, ChevronUp, ScrollText } from 'lucide-react';
+import { User, Bot, Copy, Check, ArrowDown, RefreshCw, Square, Brain, ChevronDown, ChevronUp, ScrollText, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -10,177 +10,198 @@ import { InterpreterMessage } from '../../utils/InterpreterClient';
 import { AssistantHeader } from '../assistant_components';
 import InterpreterSidebar from '../interpreter_components/InterpreterSidebar';
 import { FileInfo } from '../../utils/InterpreterClient';
-import ChatInput from '../assistant_components/ChatInput';
 import ToastNotification from '../gallery_components/ToastNotification';
 
-// Thinking block component to show/hide system thinking content
-const ThinkingBlock: React.FC<{ content: string }> = ({ content }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+// Message type mapping for tile display
+const messageTypeMap: { [key: string]: string } = {
+  'code': 'Code Output',
+  'console': 'Console Output',
+  'image': 'Image Output',
+  'error': 'Error Message',
+  'text': 'Response'
+};
 
-  // Regex to capture thinking content
-  const thinkingMatch = content.match(/<think>([\s\S]*?)<\/think>/);
-  const thinkingContent = thinkingMatch ? thinkingMatch[1].trim() : '';
+// Tile component for each message type
+const MessageTile: React.FC<{
+  message: InterpreterMessage;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  autoScroll: boolean;
+}> = ({ message, isExpanded, onToggleExpand, autoScroll }) => {
+  const tileRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [expandedThink, setExpandedThink] = useState<{ [key: string]: boolean }>({});
 
-  if (!thinkingContent) return null;
+  // Handle auto-scrolling when content changes
+  useEffect(() => {
+    if (autoScroll && tileRef.current) {
+      tileRef.current.scrollTop = tileRef.current.scrollHeight;
+    }
+  }, [message.content, autoScroll]);
+
+  useEffect(() => {
+    if (tileRef.current) {
+      setIsOverflowing(
+        tileRef.current.scrollHeight > tileRef.current.clientHeight ||
+        tileRef.current.scrollWidth > tileRef.current.clientWidth
+      );
+    }
+  }, [message]);
+
+  const renderContent = () => {
+    switch (message.type) {
+      case 'code':
+        return (
+          <SyntaxHighlighter
+            language={message.format as string || 'text'}
+            style={oneDark}
+            customStyle={{ margin: 0, borderRadius: '0.5rem' }}
+          >
+            {typeof message.content === 'string' ? message.content : message.content.code}
+          </SyntaxHighlighter>
+        );
+      case 'console':
+        return (
+          <pre className="whitespace-pre-wrap font-mono text-sm p-4 rounded bg-black/20 backdrop-blur-sm text-gray-800 dark:text-gray-100 font-[Menlo,Monaco,'Courier_New',monospace]" style={{ fontFamily: "Menlo, Monaco, 'Courier New', monospace" }}>
+            {message.content as string}
+          </pre>
+        );
+      case 'image':
+        return (
+          <img
+            src={`data:image/${message.format?.includes('png') ? 'png' : 'jpeg'};base64,${message.content}`}
+            alt="Generated content"
+            className="max-w-full h-auto rounded-md"
+          />
+        );
+      default:
+        const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+        const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+        let lastIndex = 0;
+        const parts: React.ReactNode[] = [];
+        let match;
+        let partIdx = 0;
+
+        // Check if the entire content is a think block
+        const isFullThinkBlock = content.trim().startsWith('<think>') && content.trim().endsWith('</think>');
+        
+        if (isFullThinkBlock) {
+          const thinkContent = content.replace(/<\/?think>/g, '').trim();
+          return (
+            <div>
+              <button
+                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline"
+                onClick={() => setExpandedThink(exp => ({ ...exp, 'full': !exp['full'] }))}
+              >
+                {expandedThink['full'] ? 'Hide thinking...' : 'Show thinking...'}
+              </button>
+              {expandedThink['full'] && (
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-2">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {thinkContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // Process content with multiple think blocks
+        while ((match = thinkRegex.exec(content)) !== null) {
+          // Text before the think block
+          if (match.index > lastIndex) {
+            parts.push(
+              <ReactMarkdown key={`text-${partIdx}`} remarkPlugins={[remarkGfm]}>
+                {content.slice(lastIndex, match.index)}
+              </ReactMarkdown>
+            );
+            partIdx++;
+          }
+          
+          // The think block itself
+          const thinkIndex = partIdx;
+          parts.push(
+            <span key={`think-${partIdx}`} style={{ display: 'inline-block', marginLeft: 4, marginRight: 4 }}>
+              <button
+                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline"
+                onClick={() => setExpandedThink(exp => ({ ...exp, [thinkIndex]: !exp[thinkIndex] }))}
+              >
+                {expandedThink[thinkIndex] ? 'Hide thinking...' : 'Show thinking...'}
+              </button>
+              {expandedThink[thinkIndex] && (
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-2">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {match[1].trim()}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </span>
+          );
+          partIdx++;
+          lastIndex = match.index + match[0].length;
+        }
+
+        // Any text after the last think block
+        if (lastIndex < content.length) {
+          parts.push(
+            <ReactMarkdown key={`text-${partIdx}`} remarkPlugins={[remarkGfm]}>
+              {content.slice(lastIndex)}
+            </ReactMarkdown>
+          );
+        }
+
+        return <div className="prose dark:prose-invert max-w-none">{parts}</div>;
+    }
+  };
 
   return (
-    <div className="mb-2">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-      >
-        <Brain className="w-4 h-4" />
-        <span>Thinking Process</span>
-        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-
-      {isExpanded && (
-        <div className="mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm text-gray-600 dark:text-gray-300">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{thinkingContent}</ReactMarkdown>
+    <div
+      className={`relative rounded-xl overflow-hidden transition-all duration-300 ease-in-out
+        ${isExpanded ? 'col-span-2 row-span-2' : 'col-span-1 row-span-1'}
+        bg-white/10 dark:bg-gray-800/10 backdrop-blur-md
+        border border-white/20 dark:border-gray-700/20
+        shadow-lg hover:shadow-xl`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-white/10 dark:border-gray-700/10">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-sakura-500"></div>
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            {messageTypeMap[message.type] || 'Output'}
+          </span>
         </div>
+        <button
+          onClick={onToggleExpand}
+          className="p-1 hover:bg-white/10 dark:hover:bg-gray-700/10 rounded-full transition-colors"
+        >
+          {isExpanded ? (
+            <Minimize2 className="w-4 h-4 text-gray-700 dark:text-gray-200" />
+          ) : (
+            <Maximize2 className="w-4 h-4 text-gray-700 dark:text-gray-200" />
+          )}
+        </button>
+      </div>
+
+      {/* Content */}
+      <div
+        ref={tileRef}
+        className={`p-4 overflow-auto text-gray-800 dark:text-gray-100 ${isExpanded ? 'max-h-[calc(100vh-300px)]' : 'max-h-[300px]'}`}
+      >
+        {renderContent()}
+      </div>
+
+      {/* Scroll indicator */}
+      {isOverflowing && !isExpanded && (
+        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white/30 dark:from-gray-800/30 to-transparent pointer-events-none" />
       )}
     </div>
   );
 };
 
-// Code block component with copy functionality
-const CodeBlock: React.FC<{ language: string; value: string }> = ({ language, value }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
-  return (
-    <div className="relative group">
-      <div className="absolute right-2 top-2 z-10">
-        <button
-          onClick={handleCopy}
-          className="p-1.5 bg-gray-700 text-gray-300 hover:bg-gray-600 rounded-md transition-colors"
-          aria-label="Copy code"
-        >
-          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-        </button>
-      </div>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        customStyle={{ margin: 0 }}
-      >
-        {value}
-      </SyntaxHighlighter>
-    </div>
-  );
-};
-
-// Single message component
-const InterpreterMessageItem: React.FC<{ message: InterpreterMessage }> = ({ message }) => {
-  const isUser = message.role === 'user';
-  const isAssistant = message.role === 'assistant';
-  const isSystem = message.role === 'system' || message.role === 'computer';
-  
-  // Filter out thinking content from display, but keep it for ThinkingBlock
-  let displayContent = '';
-  let hasThinking = false;
-  
-  if (typeof message.content === 'string') {
-    hasThinking = message.content.includes('<think>');
-    displayContent = message.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-  } else if (message.content && typeof message.content === 'object') {
-    displayContent = JSON.stringify(message.content);
-  }
-
-  const markdownComponents: Components = {
-    code({ className, children, ...props }: any) {
-      const match = /language-(\w+)/.exec(className || '');
-      const isInlineCode = !match;
-      
-      if (!isInlineCode && match) {
-        return (
-          <CodeBlock 
-            language={match[1]}
-            value={String(children).replace(/\n$/, '')}
-          />
-        );
-      }
-      
-      return (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
-    }
-  };
-
-  return (
-    <div className={`mb-6 ${isUser ? 'pl-10' : 'pr-10'}`}>
-      <div className="flex items-start gap-4">
-        {/* Avatar for non-user messages */}
-        {!isUser && (
-          <div className="flex-shrink-0 mt-1">
-            <div className="w-8 h-8 rounded-full bg-sakura-100 dark:bg-sakura-100/10 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-sakura-500" />
-            </div>
-          </div>
-        )}
-
-        {/* Message content */}
-        <div className={`flex-1 ${isUser ? 'flex justify-end' : ''}`}>
-          <div className={`
-            px-4 py-3 rounded-lg
-            ${isUser ? 'bg-sakura-500 text-white' : isSystem ? 'bg-gray-700 text-white' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 shadow-sm'}
-            max-w-[800px] w-full break-words
-          `}>
-            {hasThinking && <ThinkingBlock content={message.content as string} />}
-            
-            {message.type === 'code' ? (
-              <CodeBlock 
-                language={message.format as string || 'text'} 
-                value={typeof message.content === 'string' ? message.content : message.content.code}
-              />
-            ) : message.type === 'console' ? (
-              <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded">
-                {message.content as string}
-              </pre>
-            ) : message.type === 'image' && message.format?.includes('base64') ? (
-              <img 
-                src={`data:image/${message.format.includes('png') ? 'png' : 'jpeg'};base64,${message.content}`} 
-                alt="Generated content" 
-                className="max-w-full rounded-md"
-              />
-            ) : (
-              <div className="prose dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {displayContent}
-                </ReactMarkdown>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Avatar for user messages */}
-        {isUser && (
-          <div className="flex-shrink-0 mt-1">
-            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-              <User className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 const InterpreterChat: React.FC = () => {
-  const { 
-    messages, 
-    isExecuting, 
+  const {
+    messages,
+    isExecuting,
     stopExecution,
     sendMessage,
     onPageChange,
@@ -190,31 +211,79 @@ const InterpreterChat: React.FC = () => {
     onOpenTools,
     interpreterClient
   } = useInterpreter();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [prevMessagesLength, setPrevMessagesLength] = useState(0);
-  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('connected');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [newFiles, setNewFiles] = useState<FileInfo[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [files, setFiles] = useState<FileInfo[]>([]);
-  const chatInputRef = useRef<any>(null);
+
+  const [expandedTiles, setExpandedTiles] = useState<{ [key: number]: boolean }>({});
   const [autoScroll, setAutoScroll] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: string; show: boolean }>({
     message: '',
     type: '',
     show: false
   });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [newFiles, setNewFiles] = useState<FileInfo[]>([]);
+  const [initialFiles, setInitialFiles] = useState<Set<string>>(new Set());
+  const [isFirstMessageLoading, setIsFirstMessageLoading] = useState(false);
 
-  // Function to handle file selection from sidebar
-  const handleFileSelect = (file: FileInfo) => {
-    if (chatInputRef.current?.handleFileSelect) {
-      chatInputRef.current.handleFileSelect(file);
+  // Track first message loading state
+  useEffect(() => {
+    if (isExecuting && messages.length === 1) {
+      setIsFirstMessageLoading(true);
+    } else if (!isExecuting || messages.length > 1) {
+      setIsFirstMessageLoading(false);
+    }
+  }, [isExecuting, messages.length]);
+
+  // Track execution state changes
+  useEffect(() => {
+    const handleExecutionStateChange = async () => {
+      if (isExecuting) {
+        // Auto-close sidebar when execution starts
+        setIsSidebarOpen(false);
+      } else {
+        // When execution stops, check for new files and only open sidebar if there are new ones
+        await refreshNewFiles();
+        const currentFiles = await interpreterClient?.listFiles();
+        if (currentFiles) {
+          const newFilesList = currentFiles.filter(file => !initialFiles.has(file.id));
+          if (newFilesList.length > 0) {
+            setIsSidebarOpen(true);
+          }
+        }
+      }
+    };
+
+    handleExecutionStateChange();
+  }, [isExecuting, interpreterClient, initialFiles]);
+
+  // Initialize initial files on component mount
+  useEffect(() => {
+    const loadInitialFiles = async () => {
+      try {
+        const files = await interpreterClient?.listFiles();
+        if (files) {
+          setInitialFiles(new Set(files.map(file => file.id)));
+        }
+      } catch (error) {
+        console.error('Error loading initial files:', error);
+      }
+    };
+    loadInitialFiles();
+  }, [interpreterClient]);
+
+  // Function to refresh and check for new files
+  const refreshNewFiles = async () => {
+    try {
+      const currentFiles = await interpreterClient?.listFiles();
+      if (currentFiles) {
+        const newFilesList = currentFiles.filter(file => !initialFiles.has(file.id));
+        setNewFiles(newFilesList);
+      }
+    } catch (error) {
+      console.error('Error refreshing files:', error);
     }
   };
 
-  // Function to show toast notification
+  // Show toast notification
   const showToast = (message: string, type: string) => {
     setToast({ message, type, show: true });
     setTimeout(() => {
@@ -222,7 +291,7 @@ const InterpreterChat: React.FC = () => {
     }, 2000);
   };
 
-  // Handle auto-scroll toggle with toast notification
+  // Handle auto-scroll toggle
   const handleAutoScrollToggle = () => {
     setAutoScroll(prev => {
       const newState = !prev;
@@ -234,101 +303,13 @@ const InterpreterChat: React.FC = () => {
     });
   };
 
-  // Simplify scroll behavior - only scroll when auto-scroll is enabled
-  useEffect(() => {
-    if ((messages.length !== prevMessagesLength || isExecuting) && autoScroll) {
-      setPrevMessagesLength(messages.length);
-      setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 50);
-    }
-  }, [messages, prevMessagesLength, isExecuting, autoScroll]);
-
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  // Show/hide scroll button and track scroll position
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!chatContainerRef.current) return;
-      
-      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-      const bottomThreshold = 100;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < bottomThreshold;
-      
-      setShowScrollButton(!isNearBottom);
-    };
-
-    const container = chatContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
-    }
-  }, []);
-
-  // Auto-scroll when execution state changes and auto-scroll is enabled
-  useEffect(() => {
-    if (isExecuting && autoScroll) {
-      setTimeout(() => {
-        scrollToBottom();
-      }, 50);
-    }
-  }, [isExecuting, autoScroll]);
-
-  // Empty state when no messages
-  const renderEmptyState = () => (
-    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-      <div className="w-16 h-16 rounded-full bg-sakura-100 dark:bg-sakura-100/10 flex items-center justify-center mb-4">
-        <Bot className="w-8 h-8 text-sakura-500" />
-      </div>
-      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-        Start Using the Code Interpreter
-      </h2>
-      <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md">
-        Ask the interpreter to analyze data, create visualizations, or run custom code to help you.
-      </p>
-    </div>
-  );
-
-  const handleSend = async () => {
-    if (!inputValue.trim()) return;
-
-    try {
-      // Get all selected files from the chatInputRef
-      const selectedFiles = chatInputRef.current?.selectedManagerFiles || [];
-      
-      // Create message with file paths if there are selected files
-      let messageToSend = inputValue;
-      if (selectedFiles.length > 0) {
-        const filePaths = selectedFiles.map((file: any) => file.path).join('\n');
-        messageToSend = `${filePaths}\n\n${inputValue}`;
-      }
-
-      // Send message and get response
-      await sendMessage(messageToSend);
-      setInputValue('');
-      
-      // Check for new files
-      const currentFiles = await interpreterClient.listFiles();
-      const previousFileIds = new Set(files.map((f: FileInfo) => f.id));
-      const detectedNewFiles = currentFiles.filter(file => !previousFileIds.has(file.id));
-      
-      setFiles(currentFiles);
-      setNewFiles(detectedNewFiles);
-    } catch (error) {
-      console.error('Error sending message:', error);
-    }
-  };
+  // Filter out empty messages and group by type
+  const validMessages = messages.filter(msg => msg.content && msg.content !== '');
 
   return (
-    <div className="flex flex-col h-screen fixed inset-0">
-      <AssistantHeader 
-        connectionStatus={connectionStatus}
+    <div className="flex flex-col h-screen fixed inset-0 bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-900/10">
+      <AssistantHeader
+        connectionStatus="connected"
         onPageChange={onPageChange}
         onNavigateHome={onNavigateHome}
         onOpenSettings={onOpenSettings}
@@ -336,139 +317,111 @@ const InterpreterChat: React.FC = () => {
         onOpenTools={() => setIsSidebarOpen(!isSidebarOpen)}
       />
 
-      {/* Chat Container - Fixed height, scrollable */}
-      <div 
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto scroll-smooth bg-white dark:bg-black"
-        style={{ 
-          height: "calc(100vh - 160px)",
-          overflow: "hidden auto",
-          paddingBottom: "200px"
-        }}
-      >
-        <div className="w-[75%] max-w-[1200px] mx-auto py-4">
-          {messages.length === 0 ? (
-            renderEmptyState()
-          ) : (
-            <>
-              {messages.map((message, index) => (
-                <InterpreterMessageItem 
+      <div className="flex-1 flex overflow-hidden">
+        {/* Main content area */}
+        <div className="flex-1 flex flex-col p-4 overflow-hidden">
+          {/* Loading message */}
+          {isFirstMessageLoading && (
+            <div className="mb-4 mx-auto max-w-3xl w-full">
+              <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-xl p-4 border border-white/20 dark:border-gray-700/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-sakura-100 dark:bg-sakura-900/40 flex items-center justify-center">
+                    <Bot className="w-5 h-5 text-sakura-500" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-800 dark:text-gray-100">Clara is starting, please wait...</span>
+                    <div className="w-2 h-2 rounded-full bg-sakura-500 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* User input display at top */}
+          {validMessages.length > 0 && validMessages[0].role === 'user' && (
+            <div className="mb-4 mx-auto max-w-3xl w-full">
+              <div className="bg-white/20 dark:bg-gray-800/20 backdrop-blur-sm rounded-xl p-4 border border-white/20 dark:border-gray-700/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200/50 dark:bg-gray-700/50 flex items-center justify-center">
+                    <User className="w-5 h-5 text-gray-700 dark:text-gray-200" />
+                  </div>
+                  <div className="flex-1 text-gray-800 dark:text-gray-100">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {validMessages[0].content as string}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tiled message grid */}
+          <div className="flex-1 overflow-auto">
+            <div className="grid grid-cols-2 gap-4 p-4 auto-rows-min">
+              {validMessages.slice(1).map((message, index) => (
+                <MessageTile
                   key={`${message.role}-${message.type}-${index}`}
                   message={message}
+                  isExpanded={expandedTiles[index] || false}
+                  onToggleExpand={() => setExpandedTiles(prev => ({
+                    ...prev,
+                    [index]: !prev[index]
+                  }))}
+                  autoScroll={autoScroll}
                 />
               ))}
-              {isExecuting && (
-                <div className="flex items-center gap-2 text-sakura-500 mt-2 px-4 ml-12">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Interpreter is working...</span>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Fixed position buttons */}
-      <div className="fixed right-8 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-end">
-        {/* Auto-scroll toggle button */}
-        <button
-          onClick={handleAutoScrollToggle}
-          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 z-20 cursor-pointer 
-            ${autoScroll 
-              ? 'bg-sakura-500 text-white hover:bg-sakura-600 hover:shadow-xl hover:scale-105' 
-              : 'bg-gray-300 text-gray-600 hover:bg-gray-400 hover:shadow-xl hover:scale-105'
-            }`}
-          aria-label="Toggle auto-scroll"
-        >
-          <ScrollText className="w-5 h-5" />
-          {/* Enhanced Tooltip */}
-          <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-2">
-              {autoScroll ? (
-                <>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    Auto-scroll is ON
-                  </span>
-                  <span className="text-gray-400 text-xs">(Click to disable)</span>
-                </>
-              ) : (
-                <>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
-                    Auto-scroll is OFF
-                  </span>
-                  <span className="text-gray-400 text-xs">(Click to enable)</span>
-                </>
-              )}
             </div>
-            {/* Tooltip Arrow */}
-            <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
           </div>
-        </button>
 
-        {/* Scroll to bottom button */}
-        {showScrollButton && (
-          <button
-            onClick={scrollToBottom}
-            className="group relative p-2 bg-sakura-500 text-white rounded-full shadow-lg hover:bg-sakura-600 hover:shadow-xl hover:scale-105 transition-all duration-200 z-20"
-            aria-label="Scroll to bottom"
-          >
-            <ArrowDown className="w-5 h-5" />
-            {/* Tooltip */}
-            <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap">
-                Scroll to bottom
+          {/* Fixed position buttons */}
+          <div className="fixed right-8 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-end">
+            {/* Auto-scroll toggle button */}
+            <button
+              onClick={handleAutoScrollToggle}
+              className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 z-20 cursor-pointer
+                ${autoScroll
+                  ? 'bg-sakura-500 text-white hover:bg-sakura-600 hover:shadow-xl hover:scale-105'
+                  : 'bg-gray-300/50 backdrop-blur-sm text-gray-700 dark:text-gray-200 hover:bg-gray-400/50 hover:shadow-xl hover:scale-105'
+                }`}
+              aria-label="Toggle auto-scroll"
+            >
+              <ScrollText className="w-5 h-5" />
+              {/* Enhanced Tooltip */}
+              <div className="absolute right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <div className="bg-gray-900/90 backdrop-blur-sm text-white px-3 py-1.5 rounded text-sm whitespace-nowrap">
+                  {autoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled"}
+                </div>
               </div>
-              <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
-            </div>
-          </button>
-        )}
+            </button>
 
-        {/* Stop execution button */}
-        {isExecuting && (
-          <button
-            onClick={stopExecution}
-            className="group relative p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 hover:shadow-xl hover:scale-105 transition-all duration-200 z-20"
-            aria-label="Stop execution"
-          >
-            <Square className="w-5 h-5" />
-            {/* Tooltip */}
-            <div className="absolute top-0 right-full mr-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <div className="bg-gray-900 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap">
-                Stop execution
-              </div>
-              <div className="absolute left-full top-1/2 -translate-y-1/2 w-2 h-2 -ml-1 rotate-45 bg-gray-900"></div>
-            </div>
-          </button>
-        )}
+            {/* Stop execution button */}
+            {isExecuting && (
+              <button
+                onClick={stopExecution}
+                className="p-2 rounded-full bg-red-500/50 backdrop-blur-sm text-white hover:bg-red-600/50 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+                aria-label="Stop execution"
+              >
+                <Square className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <InterpreterSidebar
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+          newFiles={newFiles}
+        />
       </div>
 
-      {/* Toast Notification */}
+      {/* Toast notification */}
       {toast.show && (
-        <ToastNotification 
-          message={toast.message} 
-          type={toast.type} 
+        <ToastNotification
+          message={toast.message}
+          type={toast.type}
         />
       )}
-
-      {/* Interpreter Sidebar */}
-      <InterpreterSidebar 
-        isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-        newFiles={newFiles}
-        onFileSelect={handleFileSelect}
-      />
-
-      {/* Chat Input */}
-      <ChatInput
-        ref={chatInputRef}
-        input={inputValue}
-        setInput={setInputValue}
-        handleSend={handleSend}
-        isProcessing={isExecuting}
-      />
     </div>
   );
 };
