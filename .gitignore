@@ -63,5 +63,5 @@ python-env
 # any files in tools
 tools/*
 
-/clara_interpreter
+/clara_interpreter_dockerstuff
 

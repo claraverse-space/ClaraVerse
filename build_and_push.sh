@@ -4,13 +4,18 @@ set -e
 # Configuration
 IMAGE_NAME="clara17verse/clara-interpreter"
 TAG="latest"
-DOCKERFILE_PATH="./Dockerfile"  # Path to your Dockerfile
+DOCKERFILE_PATH="./clara_interpreter_dockerstuff/Dockerfile"  # Updated path to Dockerfile
 
 # Login to Docker Hub - uncomment and run manually if not logged in
 # docker login -u clara17verse
 
-# Create and use a new builder that supports multi-arch builds
-docker buildx create --name multiarch-builder --use
+# Clean up any existing builder instances
+docker buildx ls | grep -q multiarch-builder && docker buildx rm multiarch-builder || true
+docker context rm multiarch-context 2>/dev/null || true
+
+# Create a new context and builder
+docker context create multiarch-context 2>/dev/null || true
+docker buildx create --name multiarch-builder --driver docker-container --driver-opt network=host --use multiarch-context
 
 # Build for multiple platforms and push to Docker Hub
 echo "Building and pushing multi-architecture image: ${IMAGE_NAME}:${TAG}"
@@ -27,5 +32,6 @@ docker buildx imagetools inspect ${IMAGE_NAME}:${TAG}
 
 # Clean up
 docker buildx rm multiarch-builder
+docker context rm multiarch-context
 
 echo "Build and push completed successfully!" 
