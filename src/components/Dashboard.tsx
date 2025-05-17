@@ -23,7 +23,8 @@ import {
   Cpu,
   Move,
   Check,
-  Plus
+  Plus,
+  AppWindow
 } from 'lucide-react';
 import { db } from '../db';
 import axios from 'axios';
@@ -37,6 +38,7 @@ import WidgetContextMenu from './widget-components/WidgetContextMenu';
 import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
 import QuickChatWidget from './widget-components/QuickChatWidget';
+import AppWidget from './widget-components/AppWidget';
 
 interface DashboardProps {
   onPageChange?: (page: string) => void;
@@ -55,6 +57,10 @@ interface Widget {
   url?: string;
   order: number;
   refreshInterval?: number;
+  appId?: string;
+  appName?: string;
+  appDescription?: string;
+  appIcon?: string;
 }
 
 interface ContextMenuState {
@@ -228,11 +234,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
-  const handleAddWidget = (type: string) => {
+  const handleAddWidget = (type: string, data?: any) => {
     const widgetId = `${type}-${Date.now()}`;
     if (type === 'webhook') {
       // For webhook widgets, show the custom webhook modal
       setShowAddWidget(true);
+      return;
+    }
+
+    // For app widgets, use the provided data
+    if (type === 'app' && data) {
+      const newWidget: Widget = {
+        id: widgetId,
+        type: 'app',
+        appId: data.appId,
+        appName: data.appName,
+        appDescription: data.appDescription,
+        appIcon: data.appIcon,
+        order: widgets.length
+      };
+      console.log('Adding new app widget:', newWidget);
+      setWidgets(prev => [...prev, newWidget]);
       return;
     }
 
@@ -337,6 +359,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             id={widget.id}
             name={widget.name || ''}
             url={widget.url || ''}
+            onRemove={handleRemoveWidget}
+          />
+        );
+      case 'app':
+        return (
+          <AppWidget
+            key={widget.id}
+            id={widget.id}
+            appId={widget.appId || ''}
+            name={widget.appName || ''}
+            description={widget.appDescription || ''}
+            icon={widget.appIcon}
             onRemove={handleRemoveWidget}
           />
         );

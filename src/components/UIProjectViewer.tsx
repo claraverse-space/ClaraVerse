@@ -517,7 +517,7 @@ ${jsContent}`;
         {isElectron ? (
           <webview
             ref={webviewRef}
-            src="/preview.html"
+            src={window.electron?.isDev ? './preview.html' : '../preview.html'}
             style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
             allowpopups={true}
             nodeintegration={true}
@@ -528,7 +528,7 @@ ${jsContent}`;
         ) : (
           <iframe
             ref={iframeRef}
-            src="/preview.html"
+            src="./preview.html"
             className="w-full h-full border-none bg-white"
             sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
             title="Preview"

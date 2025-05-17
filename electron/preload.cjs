@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { app } = require('electron');
 
 // Function to safely get app version
 function getAppVersion() {
@@ -36,8 +37,10 @@ console.log('Preload script initializing...');
 contextBridge.exposeInMainWorld('electron', {
   // System Info
   getAppPath: () => ipcRenderer.invoke('get-app-path'),
-  getAppVersion: getAppVersion,
+  getAppVersion: () => app.getVersion(),
+  getElectronVersion: () => process.versions.electron,
   getPlatform: () => process.platform,
+  isDev: process.env.NODE_ENV === 'development',
   
   // Permissions
   requestMicrophonePermission: () => ipcRenderer.invoke('request-microphone-permission'),

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2 } from 'lucide-react';
+import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2, AppWindow } from 'lucide-react';
 import axios from 'axios';
+import { appStore, AppData as AppStoreData } from '../../services/AppStore';
 
 interface WidgetOption {
   id: string;
@@ -8,16 +9,30 @@ interface WidgetOption {
   name: string;
   description: string;
   icon: React.ReactNode;
-  category: 'system' | 'data' | 'productivity' | 'custom';
+  category: 'system' | 'data' | 'productivity' | 'custom' | 'apps';
   preview: React.ReactNode;
+}
+
+interface AppWidget extends WidgetOption {
+  appId: string;
+  appName: string;
+  appDescription: string;
+  appIcon?: string;
 }
 
 interface AddWidgetModalProps {
   onClose: () => void;
-  onAddWidget: (type: string) => void;
+  onAddWidget: (type: string, data?: any) => void;
   onAddWebhookWidget?: (name: string, url: string) => void;
   onAddEmailWidget?: (name: string, url: string, refreshInterval: number) => void;
   onAddQuickChatWidget?: (name: string, url: string, model: string) => void;
+}
+
+interface AppData {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
 }
 
 const AVAILABLE_WIDGETS: WidgetOption[] = [
@@ -126,7 +141,7 @@ const AVAILABLE_WIDGETS: WidgetOption[] = [
 ];
 
 const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, onAddWebhookWidget, onAddEmailWidget, onAddQuickChatWidget }) => {
-  const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom'>('system');
+  const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom' | 'apps'>('system');
   const [selectedWidget, setSelectedWidget] = React.useState<string | null>(null);
   
   // Webhook form state
@@ -150,7 +165,13 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
   const [quickChatError, setQuickChatError] = useState<string | null>(null);
   const isQuickChatFormValid = quickChatName.trim() !== '' && ollamaUrl.trim() !== '';
 
-  const filteredWidgets = AVAILABLE_WIDGETS.filter(widget => widget.category === selectedCategory);
+  const [userApps, setUserApps] = useState<AppWidget[]>([]);
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [appsError, setAppsError] = useState<string | null>(null);
+
+  // Combine static widgets with user's apps
+  const allWidgets = [...AVAILABLE_WIDGETS, ...(selectedCategory === 'apps' ? userApps : [])];
+  const filteredWidgets = allWidgets.filter(widget => widget.category === selectedCategory);
   
   const isWebhookSelected = selectedWidget === 'webhook';
   const isEmailSelected = selectedWidget === 'email';
@@ -191,8 +212,73 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
     fetchModels();
   }, [ollamaUrl]);
 
+  useEffect(() => {
+    const fetchUserApps = async () => {
+      if (selectedCategory !== 'apps') return;
+      
+      setLoadingApps(true);
+      setAppsError(null);
+      
+      try {
+        // Get apps from AppStore
+        const appsData = await appStore.listApps();
+        console.log('Loaded apps from AppStore:', appsData);
+        
+        const apps = appsData.map((app: AppStoreData) => ({
+          id: `app-${app.id}`,
+          type: 'app',
+          name: app.name,
+          description: app.description,
+          icon: <AppWindow className="w-5 h-5" />,
+          category: 'apps' as const,
+          appId: app.id,
+          appName: app.name,
+          appDescription: app.description,
+          appIcon: app.icon,
+          preview: (
+            <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AppWindow className="w-4 h-4 text-sakura-500" />
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</h3>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">{app.description}</p>
+            </div>
+          )
+        }));
+
+        console.log('Processed apps:', apps); // Debug log
+        setUserApps(apps);
+      } catch (error) {
+        console.error('Error fetching user apps:', error);
+        setAppsError('Failed to load your apps');
+      } finally {
+        setLoadingApps(false);
+      }
+    };
+
+    fetchUserApps();
+  }, [selectedCategory]);
+
   const handleAddWidget = () => {
     if (selectedWidget) {
+      // For app widgets
+      if (selectedWidget.startsWith('app-')) {
+        const appWidget = userApps.find(app => app.id === selectedWidget);
+        if (appWidget && onAddWidget) {
+          const widgetData = {
+            type: 'app',
+            appId: appWidget.appId,
+            appName: appWidget.appName,
+            appDescription: appWidget.appDescription,
+            appIcon: appWidget.appIcon
+          };
+          onAddWidget('app', widgetData);
+          onClose();
+          return;
+        }
+      }
+
+      // For other widget types
       const widget = AVAILABLE_WIDGETS.find(w => w.id === selectedWidget);
       if (widget) {
         if (widget.id === 'webhook' && onAddWebhookWidget) {
@@ -262,6 +348,17 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                 <Briefcase className="w-4 h-4" />
                 Productivity
               </button>
+              <button
+                className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                  selectedCategory === 'apps'
+                    ? 'bg-sakura-500/10 text-sakura-500'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                }`}
+                onClick={() => setSelectedCategory('apps')}
+              >
+                <Bot className="w-4 h-4" />
+                Apps & Agents
+              </button>
             </div>
           </div>
 
@@ -280,30 +377,41 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
 
             {/* Widget Grid */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-2 gap-4">
-                {filteredWidgets.map(widget => (
-                  <div
-                    key={widget.id}
-                    className={`p-4 rounded-xl cursor-pointer transition-all bg-gray-500/5 dark:bg-gray-300/5 hover:bg-gray-500/10 dark:hover:bg-gray-300/10 ${
-                      selectedWidget === widget.id
-                        ? 'ring-1 ring-sakura-500'
-                        : ''
-                    }`}
-                    onClick={() => setSelectedWidget(widget.id)}
-                  >
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="p-2 bg-gray-500/10 dark:bg-gray-300/10 rounded-lg">
-                        {widget.icon}
+              {loadingApps && selectedCategory === 'apps' ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 animate-spin text-sakura-500" />
+                  <span className="ml-2 text-gray-600 dark:text-gray-400">Loading your apps...</span>
+                </div>
+              ) : appsError && selectedCategory === 'apps' ? (
+                <div className="text-center text-red-500 p-4">
+                  {appsError}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 auto-rows-max max-h-[calc(100vh-20rem)] overflow-y-auto p-1">
+                  {filteredWidgets.map(widget => (
+                    <div
+                      key={widget.id}
+                      className={`p-3 rounded-xl cursor-pointer transition-all bg-gray-500/5 dark:bg-gray-300/5 hover:bg-gray-500/10 dark:hover:bg-gray-300/10 h-[160px] flex flex-col ${
+                        selectedWidget === widget.id
+                          ? 'ring-1 ring-sakura-500'
+                          : ''
+                      }`}
+                      onClick={() => setSelectedWidget(widget.id)}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="p-1.5 bg-gray-500/10 dark:bg-gray-300/10 rounded-lg">
+                          {widget.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{widget.name}</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{widget.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-medium text-gray-900 dark:text-white">{widget.name}</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{widget.description}</p>
-                      </div>
+                      <div className="flex-1 overflow-hidden">{widget.preview}</div>
                     </div>
-                    <div className="mt-2">{widget.preview}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
               
               {/* Webhook Configuration Form */}
               {isWebhookSelected && (
