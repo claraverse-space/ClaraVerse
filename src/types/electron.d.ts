@@ -37,6 +37,7 @@ export interface ElectronAPI {
   receive: (channel: string, callback: (data: any) => void) => void;
   removeListener: (channel: string) => void;
   requestMicrophonePermission?: () => Promise<boolean>;
+  isDev: boolean;
 }
 
 declare global {

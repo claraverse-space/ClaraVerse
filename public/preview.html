@@ -138,7 +138,6 @@
                 const consoleOutput = document.getElementById('console-output');
                 consoleOutput.appendChild(createLogElement('error', arguments));
                 consoleOutput.scrollTop = consoleOutput.scrollHeight;
-                consoleOutput.classList.remove('hidden');
             };
             
             console.warn = function() {

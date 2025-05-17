@@ -191,7 +191,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ elements, htmlContent, cssC
         {isElectron ? (
           <webview
             ref={webviewRef}
-            src="/preview.html"
+            src="./preview.html"
             style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
             allowpopups={true}
             nodeintegration={true}
@@ -202,7 +202,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ elements, htmlContent, cssC
         ) : (
           <iframe
             ref={iframeRef}
-            src="/preview.html"
+            src="./preview.html"
             className="w-full h-full border-none bg-white"
             sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"
             title="Preview"
