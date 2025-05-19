@@ -2,12 +2,12 @@
   <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
   <img src="/public/header.png" alt="Clara Banner" />
-  <p><strong>Privacy-First AI Assistant & Agent Builder</strong></p>
-  <p>Chat with AI, create intelligent agents, and turn them into fully functional apps—powered entirely by open-source models running on your own device.</p>
+  <p><strong>Your Local AI Superstack — Private, Extendable, Yours.</strong></p>
+  <p>Chat with LLMs, build intelligent agents, automate workflows, and generate images — all powered by open-source models running fully offline.</p>
   <br/>
   <a href="https://clara-ollama.netlify.app/"><img src="https://img.shields.io/badge/Clara-1.2.41-FFD700.svg" alt="Clara Version Badge"></a>
   <br/><br/>
-  <a href="https://clara.badboysm890.in/" target="_blank"><strong>🌐 Try Clara Online</strong></a> | 
+  <a href="https://clara.badboysm890.in/" target="_blank"><strong>🌐 Try Clara Online</strong></a> • 
   <a href="https://github.com/badboysm890/ClaraVerse/releases" target="_blank"><strong>⬇️ Download Desktop App</strong></a>
   <br/><br/>
   <a href="https://www.producthunt.com/posts/clara-433c5291-7639-4271-b246-8df30cbc449f" target="_blank">
@@ -17,123 +17,163 @@
 
 ---
 
-> 🛠️ **Note**: Clara originally required separate installation of Ollama, N8N, and backend. After feedback from users, we've made it super simple. **Now it needs only Docker Desktop — everything else is auto-configured.**
+> 🛠️ **Heads-up**: You *used* to install Ollama, N8N, and a backend separately. Not anymore.
+> **Now it’s one-liner Docker magic.** Just install Docker Desktop — we take care of the rest.
 
 ---
 
-## 🔒 Enterprise-Ready Security
+## 🔐 Privacy-First by Default
 
-- ✅ **On-Premise Execution** – All AI models & workflows run on your local setup
-- 🔐 **Zero Data Leakage** – No cloud APIs, no tracking, fully local
-- 🧠 **Full Control** – Powered by open-source; own every part of your stack
-
----
-
-# ✨ Key Features
-
-## 🔄 Customise Clara - Its not just a Ollama wrapper its more
-<p align="center"><img src="/public/screenshots/desktop_widgets.png" alt="Workflow" width="800"/></p>
-<p align="center">Use the Built-in N8N for automating have custom widgets.</p>
-
-## 🧠 Chat with Clara
-<p align="center"><img src="/public/screenshots/assistant-screenshot.png" alt="Assistant" width="800"/></p>
-<p align="center">Chat with local Ollama models — including image understanding.</p>
-
-## 🧠 Make Clara do things a Junior Dev Can do for you....
-<p align="center"><img src="/public/screenshots/clara_interpreter.png" alt="Assistant" width="800"/></p>
-<p align="center">Make your local models do things for you, Eg- Conversion of docs, Basic Model Training and much more like chat gpt - Powered by OpenInterpreter.</p>
-
-## 🔄 N8N Guy Huh ? We got your Automation covered
-<p align="center"><img src="/public/screenshots/n8n_ScreenShot.png" alt="Workflow" width="800"/></p>
-<p align="center">Built-in N8N for automating anything with drag & drop workflows.</p>
-
-## 🔄 Workflow Automation made easy with 1000+ templates
-<p align="center"><img src="/public/screenshots/Workflows" alt="Workflow" width="800"/></p>
-<p align="center">Store with lots of workflows in your disposal with sources where it is from and you can add yours too.</p>
-
-## 🤖 Redundant work ? Use clara's Agent builder to make it easy with Templates
-<p align="center"><img src="/public/screenshots/Appstore.png" alt="Process Builder" width="800"/></p>
-<p align="center">Combine automation and AI agents into complete processes.</p>
-
-## 🏗️ Intelligent Agent Builder
-<p align="center"><img src="/public/screenshots/app-builder-screenshot.png" alt="Agent Builder" width="800"/></p>
-<p align="center">No-code node editor to build, test, and deploy agents as apps.</p>
-
-## 🎨 Image Generation - Meh It can do it too...
-<p align="center"><img src="/public/screenshots/image-gen-screenshot.png" alt="Image Gen" width="800"/></p>
-<p align="center">Generate stunning images with Stable Diffusion + ComfyUI.</p>
-
-## 🖼️ Image Gallery
-<p align="center"><img src="/public/screenshots/gallery-screenshot.png" alt="Gallery" width="800"/></p>
-<p align="center">Easily manage your image creations in one place.</p>
+* 💻 **Runs 100% Locally** — Every model, every workflow
+* 🧠 **No Cloud. No API Keys. No Phoning Home**
+* 🛠️ **Open Source & Self-Hosted** — You own the stack
 
 ---
 
-## 🚀 Installation (Docker-Based)
+# 🚀 Feature Showcase
 
-> ✅ **Only Requirement:** [Install Docker Desktop](https://www.docker.com/products/docker-desktop)
+### 🧱 Widgets for Days
 
-### How It Works
+> *"Is this just an Ollama wrapper?"*
+> Nope. Clara lets you build your own dashboard with modular widgets and persistent state.
 
-1. Launch Clara (Desktop/Web)
-2. Clara detects Docker and boots:
-   - Ollama
-   - N8N
-   - Clara Backend
-3. You're ready to roll! 🛠️
-
-### Services Launched
-
-- Ollama for model inference
-- N8N for workflow automation
-- Clara’s assistant, UI, image tools
+<p align="center"><img src="/public/screenshots/desktop_widgets.png" width="800"/></p>
 
 ---
 
-## 📥 Download Desktop App
+### 💬 Talk to LLMs Like a Boss
 
-- 💻 [Windows Installer (.exe)](https://github.com/badboysm890/ClaraVerse/releases)
-- 🍏 [macOS Installer (.dmg)](https://github.com/badboysm890/ClaraVerse/releases)
-- 🐧 [Linux AppImage (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases)
+> Ollama + Vision models. Local. Context-aware. No cloud bills.
 
----
-
-## 🍎 macOS Users
-
-If you see a “damaged app” warning:
-
-1. Right-click the `.app` and choose **Open**
-2. Allow in *System Preferences → Security & Privacy*
-3. Safe to use. Just unsigned.
+<p align="center"><img src="/public/screenshots/assistant-screenshot.png" width="800"/></p>
 
 ---
 
-## 👩‍💻 Developer Setup
+### 🧑‍💻 Clara ≠ Chatbot. It’s Your Local Dev Intern
+
+> Write code, convert docs, summarize stuff, even train models — powered by OpenInterpreter.
+
+<p align="center"><img src="/public/screenshots/clara_interpreter.png" width="800"/></p>
+
+---
+
+### 🔄 Built-in N8N Automation
+
+> Drag-and-drop automation inside Clara. Stop switching tools.
+
+<p align="center"><img src="/public/screenshots/n8n_ScreenShot.png" width="800"/></p>
+
+---
+
+### 🧩 1000+ Workflow Templates
+
+> A massive library of ready-to-run automations with source references.
+
+<p align="center"><img src="/public/screenshots/Workflows" width="800"/></p>
+
+---
+
+### ⚙️ Agent Builder w/ Templates
+
+> Repetitive tasks? Deploy agents with predefined logic.
+
+<p align="center"><img src="/public/screenshots/Appstore.png" width="800"/></p>
+
+---
+
+### 🏗️ Visual App Builder
+
+> No-code, node-based editor to connect tools, prompts, models, and APIs into full apps.
+
+<p align="center"><img src="/public/screenshots/app-builder-screenshot.png" width="800"/></p>
+
+---
+
+### 🎨 Image Generation w/ ComfyUI
+
+> Local Stable Diffusion pipeline. Create stunning visuals from your own prompts.
+
+<p align="center"><img src="/public/screenshots/image-gen-screenshot.png" width="800"/></p>
+
+---
+
+### 🖼️ Image Gallery Management
+
+> Organize all generations like a pro.
+
+<p align="center"><img src="/public/screenshots/gallery-screenshot.png" width="800"/></p>
+
+---
+
+# 🧪 Install & Run (Docker)
+
+> ✅ **Only Prerequisite**: [Docker Desktop](https://www.docker.com/products/docker-desktop)
+
+### 1. Fire up Clara
+
+Desktop or web — your choice.
+
+### 2. Clara auto-spins:
+
+* 🧠 Ollama (for LLMs)
+* 🛠️ N8N (for automation)
+* 💡 Clara’s Assistant + UI + Tools
+
+---
+
+## 💻 Download Desktop App
+
+* 🪟 [Windows (.exe)](https://github.com/badboysm890/ClaraVerse/releases)
+* 🍎 [macOS (.dmg)](https://github.com/badboysm890/ClaraVerse/releases)
+* 🐧 [Linux (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases)
+
+---
+
+## 🍏 macOS Unsigned App Fix
+
+> Getting the “App is damaged” warning?
+
+```bash
+# Just right-click the app and hit "Open"  
+# Then go to System Preferences > Security and allow it manually
+```
+
+Totally safe. It’s unsigned, not unsafe.
+
+---
+
+## 👨‍💻 Dev Setup
 
 ```bash
 git clone https://github.com/badboysm890/ClaraVerse.git
 cd ClaraVerse
 npm install
-npm run dev           # Start web version
-npm run electron:dev  # Start desktop app
+npm run dev           # For web
+npm run electron:dev  # For desktop
 ```
 
-### Build for Production
+### ⚒️ Build
 
 ```bash
-npm run build              # Web build
-npm run electron:build     # Desktop build
+npm run build              # Web
+npm run electron:build     # Desktop
 ```
 
 ---
 
-## ⭐ GitHub Star History
+## 📈 GitHub Star Growth
 
-
-[![Star History Chart](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse&type=Date)](https://www.star-history.com/#badboysm890/ClaraVerse&Date)
+[![Star History](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse\&type=Date)](https://www.star-history.com/#badboysm890/ClaraVerse&Date)
 
 ---
 
-## 🤝 Support & Contact
+## 💬 Support / Feedback / Memes
 
-Need help? Reach out via 📧 **praveensm890@gmail.com**
+Ping me → **[praveensm890@gmail.com](mailto:praveensm890@gmail.com)**
+Got issues or PRs? [Raise them on GitHub](https://github.com/badboysm890/ClaraVerse)
+
+---
+
+Wanna launch your own AI SaaS without vendor lock-in?
+**Clara's your rocket 🚀.**
+
