@@ -122,15 +122,15 @@ Organize your generations with tags, thumbnails, and metadata.
 
 ## 🤜 Clara vs The Rest
 
-| Feature                       | Clara         | OpenWebUI   | LibreChat  |
+| Feature                      | Clara         | OpenWebUI   | LibreChat  |
 |------------------------------|---------------|-------------|------------|
-| 💻 Fully Local Stack         | ✅ Yes         | ❌ Partial  | ❌ Partial |
+| 💻 Fully Local Stack         | ✅ Yes         | ✅ Yes      | ✅ Yes     |
 | 🧩 Visual App Builder        | ✅ Built-in    | ❌          | ❌         |
 | 🔁 Native N8N Automation     | ✅ Integrated  | ❌          | ❌         |
 | 🧠 OpenInterpreter Support   | ✅ Yes         | ❌          | ❌         |
 | 📂 File Manager & Widgets    | ✅ Fully Local | ❌          | ✅ Basic   |
 | 🧱 Agent Templates & Builder | ✅ Yes         | ❌          | ❌         |
-| 🖼️ Image Generation w/ SD    | ✅ ComfyUI     | ❌          | ❌         |
+| 🖼️ Image Generation w/ SD    | ✅ ComfyUI     | ✅ Basic    | ❌         |
 
 ---
 
