@@ -69,7 +69,7 @@
 
 > A massive library of ready-to-run automations with source references.
 
-<p align="center"><img src="/public/screenshots/Workflows" width="800"/></p>
+<p align="center"><img src="/public/screenshots/Workflows.png" width="800"/></p>
 
 ---
 
