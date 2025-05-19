@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2, AppWindow } from 'lucide-react';
+import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2, AppWindow, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import { appStore, AppData as AppStoreData } from '../../services/AppStore';
 
@@ -25,7 +25,8 @@ interface AddWidgetModalProps {
   onAddWidget: (type: string, data?: any) => void;
   onAddWebhookWidget?: (name: string, url: string) => void;
   onAddEmailWidget?: (name: string, url: string, refreshInterval: number) => void;
-  onAddQuickChatWidget?: (name: string, url: string, model: string) => void;
+  onAddQuickChatWidget?: (name: string, url: string, model: string, systemPrompt?: string, prePrompt?: string) => void;
+  onResetDefault?: () => void;
 }
 
 interface AppData {
@@ -140,7 +141,7 @@ const AVAILABLE_WIDGETS: WidgetOption[] = [
   }
 ];
 
-const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, onAddWebhookWidget, onAddEmailWidget, onAddQuickChatWidget }) => {
+const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, onAddWebhookWidget, onAddEmailWidget, onAddQuickChatWidget, onResetDefault }) => {
   const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom' | 'apps'>('system');
   const [selectedWidget, setSelectedWidget] = React.useState<string | null>(null);
   
@@ -163,6 +164,8 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState('');
   const [quickChatError, setQuickChatError] = useState<string | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [prePrompt, setPrePrompt] = useState('');
   const isQuickChatFormValid = quickChatName.trim() !== '' && ollamaUrl.trim() !== '';
 
   const [userApps, setUserApps] = useState<AppWidget[]>([]);
@@ -298,7 +301,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
             setQuickChatError('Please enter both name and URL');
             return;
           }
-          onAddQuickChatWidget(quickChatName, ollamaUrl, selectedModel);
+          onAddQuickChatWidget(quickChatName, ollamaUrl, selectedModel, systemPrompt, prePrompt);
         } else {
           onAddWidget(widget.type);
         }
@@ -309,55 +312,103 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="glassmorphic rounded-2xl shadow-lg w-full max-w-4xl max-h-[80vh] overflow-hidden">
+      <div 
+        className="glassmorphic rounded-2xl shadow-lg w-full max-w-4xl max-h-[80vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex h-full">
           {/* Sidebar */}
-          <div className="w-48 border-r border-gray-200/10 dark:border-gray-700/10 p-4">
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Categories</h2>
-            <div className="space-y-2">
+          <div className="w-48 flex flex-col h-full border-r border-gray-200/10 dark:border-gray-700/10">
+            <div className="p-4 border-b border-gray-200/10 dark:border-gray-700/10">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Add Widget</h2>
+            </div>
+            
+            {/* Categories */}
+            <div className="flex-1 p-4 overflow-y-auto">
+              <h3 className="text-sm font-semibold mb-4 text-gray-900 dark:text-white">Categories</h3>
+              <div className="space-y-2">
+                <button
+                  className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                    selectedCategory === 'system'
+                      ? 'bg-sakura-500/10 text-sakura-500'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                  }`}
+                  onClick={() => setSelectedCategory('system')}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  System Widgets
+                </button>
+                <button
+                  className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                    selectedCategory === 'data'
+                      ? 'bg-sakura-500/10 text-sakura-500'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                  }`}
+                  onClick={() => setSelectedCategory('data')}
+                >
+                  <Webhook className="w-4 h-4" />
+                  Data Widgets
+                </button>
+                <button
+                  className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                    selectedCategory === 'productivity'
+                      ? 'bg-sakura-500/10 text-sakura-500'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                  }`}
+                  onClick={() => setSelectedCategory('productivity')}
+                >
+                  <Briefcase className="w-4 h-4" />
+                  Productivity
+                </button>
+                <button
+                  className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                    selectedCategory === 'apps'
+                      ? 'bg-sakura-500/10 text-sakura-500'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                  }`}
+                  onClick={() => setSelectedCategory('apps')}
+                >
+                  <Bot className="w-4 h-4" />
+                  Apps & Agents
+                </button>
+              </div>
+            </div>
+            
+            {/* Action Buttons in Sidebar */}
+            <div className="p-4 border-t border-gray-200/10 dark:border-gray-700/10 space-y-2">
+              {onResetDefault && (
+                <button
+                  className="w-full px-3 py-2 border border-sakura-500 text-sakura-500 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-900/10 transition-colors flex items-center justify-center gap-2 text-sm"
+                  onClick={onResetDefault}
+                  type="button"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Reset to Default
+                </button>
+              )}
               <button
-                className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                  selectedCategory === 'system'
-                    ? 'bg-sakura-500/10 text-sakura-500'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
+                className={`w-full px-3 py-2 rounded-lg text-white transition-colors text-sm flex items-center justify-center gap-2 ${
+                  selectedWidget && 
+                  !((isWebhookSelected && !isWebhookFormValid) ||
+                    (isEmailSelected && !isEmailFormValid) ||
+                    (isQuickChatSelected && !isQuickChatFormValid))
+                    ? 'bg-sakura-500 hover:bg-sakura-600 cursor-pointer' 
+                    : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
                 }`}
-                onClick={() => setSelectedCategory('system')}
+                disabled={!selectedWidget || 
+                  (isWebhookSelected && !isWebhookFormValid) ||
+                  (isEmailSelected && !isEmailFormValid) ||
+                  (isQuickChatSelected && !isQuickChatFormValid)
+                }
+                onClick={handleAddWidget}
               >
-                <LayoutGrid className="w-4 h-4" />
-                System Widgets
+                Add Widget
               </button>
               <button
-                className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                  selectedCategory === 'data'
-                    ? 'bg-sakura-500/10 text-sakura-500'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
-                }`}
-                onClick={() => setSelectedCategory('data')}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm"
+                onClick={onClose}
               >
-                <Webhook className="w-4 h-4" />
-                Data Widgets
-              </button>
-              <button
-                className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                  selectedCategory === 'productivity'
-                    ? 'bg-sakura-500/10 text-sakura-500'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
-                }`}
-                onClick={() => setSelectedCategory('productivity')}
-              >
-                <Briefcase className="w-4 h-4" />
-                Productivity
-              </button>
-              <button
-                className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                  selectedCategory === 'apps'
-                    ? 'bg-sakura-500/10 text-sakura-500'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
-                }`}
-                onClick={() => setSelectedCategory('apps')}
-              >
-                <Bot className="w-4 h-4" />
-                Apps & Agents
+                Cancel
               </button>
             </div>
           </div>
@@ -366,12 +417,17 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
           <div className="flex-1 flex flex-col h-full">
             {/* Header */}
             <div className="p-4 border-b border-gray-200/10 dark:border-gray-700/10 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Add Widget</h2>
-              <button
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {selectedWidget === 'webhook' ? 'Configure Webhook Widget' : 
+                 selectedWidget === 'email' ? 'Configure Email Widget' :
+                 selectedWidget === 'quick-chat' ? 'Configure Quick Chat Widget' :
+                 'Select Widget'}
+              </h2>
+              <button 
+                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 onClick={onClose}
               >
-                <XCircle className="w-6 h-6" />
+                <XCircle className="w-5 h-5" />
               </button>
             </div>
 
@@ -415,7 +471,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
               
               {/* Webhook Configuration Form */}
               {isWebhookSelected && (
-                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg">
+                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Webhook Configuration</h3>
                   
                   {webhookError && (
@@ -451,7 +507,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
               
               {/* Quick Chat Widget Configuration Form */}
               {isQuickChatSelected && (
-                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg">
+                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Quick Chat Configuration</h3>
                   
                   {quickChatError && (
@@ -508,13 +564,39 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                         </div>
                       )}
                     </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+                        System Prompt (optional)
+                      </label>
+                      <textarea
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg h-24 resize-none"
+                        placeholder="Enter a system prompt to set the AI's behavior"
+                        value={systemPrompt}
+                        onChange={(e) => setSystemPrompt(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">This won't be visible in the chat but will influence how the AI responds</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+                        Pre-Prompt (optional)
+                      </label>
+                      <textarea
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg h-24 resize-none"
+                        placeholder="This text will be prepended to each of your messages"
+                        value={prePrompt}
+                        onChange={(e) => setPrePrompt(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">This text will be added before each of your messages</p>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* Email Widget Configuration Form */}
               {isEmailSelected && (
-                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg">
+                <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Email Widget Configuration</h3>
                   
                   {emailError && (
@@ -562,21 +644,6 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-200/10 dark:border-gray-700/10 flex justify-end">
-              <button
-                className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors"
-                disabled={!selectedWidget || 
-                  (isWebhookSelected && !isWebhookFormValid) ||
-                  (isEmailSelected && !isEmailFormValid) ||
-                  (isQuickChatSelected && !isQuickChatFormValid)
-                }
-                onClick={handleAddWidget}
-              >
-                Add Selected Widget
-              </button>
             </div>
           </div>
         </div>

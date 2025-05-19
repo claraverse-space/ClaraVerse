@@ -10,16 +10,18 @@ interface SidebarProps {
 const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const menuItems = [
+  const mainMenuItems = [
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: BrainCircuit, label: 'Agents', id: 'apps' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     { icon: Network, label: 'Workflows', id: 'n8n' },
+  ];
+
+  const bottomMenuItems = [
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: Server, label: 'Servers', id: 'servers' },
     { icon: HelpCircle, label: 'Help', id: 'help' },
-    
   ];
 
   return (
@@ -48,9 +50,36 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
         </button>
       </div>
       
-      <nav className="flex-1">
+      <nav className="flex-1 flex flex-col justify-between">
         <ul className="space-y-2 px-2">
-          {menuItems.map((item) => (
+          {mainMenuItems.map((item) => (
+            <li key={item.id}>
+              <button 
+                onClick={() => onPageChange(item.id)}
+                data-page={item.id}
+                className={`w-full flex items-center rounded-lg transition-colors ${
+                  isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
+                } ${
+                  activePage === item.id
+                    ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
+                } py-2`}
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <span 
+                  className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${
+                    isExpanded ? 'opacity-100 w-auto ml-3' : 'opacity-0 w-0'
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        
+        <ul className="space-y-2 px-2 mb-4">
+          {bottomMenuItems.map((item) => (
             <li key={item.id}>
               <button 
                 onClick={() => onPageChange(item.id)}
