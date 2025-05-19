@@ -138,11 +138,6 @@ Organize your generations with tags, thumbnails, and metadata.
 
 > ✅ **Only Prerequisite**: [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
-```bash
-# One-liner to run everything (Clara + Ollama + N8N)
-docker run -d --name clara --pull always -p 8000:8000 ghcr.io/badboysm890/claraverse:latest
-```
-
 ---
 
 ## 💻 Download Desktop App
