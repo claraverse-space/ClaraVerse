@@ -31,19 +31,19 @@
 
 # ✨ Key Features
 
-## 🔄 Quick Look widgets
+## 🔄 Customise Clara - Its not just a Ollama wrapper its more
 <p align="center"><img src="/public/screenshots/desktop_widgets.png" alt="Workflow" width="800"/></p>
 <p align="center">Use the Built-in N8N for automating have custom widgets.</p>
 
-## 🧠 AI Assistant
+## 🧠 Chat with Clara
 <p align="center"><img src="/public/screenshots/assistant-screenshot.png" alt="Assistant" width="800"/></p>
 <p align="center">Chat with local Ollama models — including image understanding.</p>
 
-## 🧠 AI Interpreter 
+## 🧠 Make Clara do things a Junior Dev Can do for you....
 <p align="center"><img src="/public/screenshots/clara_interpreter.png" alt="Assistant" width="800"/></p>
 <p align="center">Make your local models do things for you, Eg- Conversion of docs, Basic Model Training and much more like chat gpt - Powered by OpenInterpreter.</p>
 
-## 🔄 Workflow Automation
+## 🔄 N8N Guy Huh ? We got your Automation covered
 <p align="center"><img src="/public/screenshots/n8n_ScreenShot.png" alt="Workflow" width="800"/></p>
 <p align="center">Built-in N8N for automating anything with drag & drop workflows.</p>
 
@@ -51,7 +51,7 @@
 <p align="center"><img src="/public/screenshots/Workflows" alt="Workflow" width="800"/></p>
 <p align="center">Store with lots of workflows in your disposal with sources where it is from and you can add yours too.</p>
 
-## 🤖 AI-Powered Process Builder
+## 🤖 Redundant work ? Use clara's Agent builder to make it easy with Templates
 <p align="center"><img src="/public/screenshots/Appstore.png" alt="Process Builder" width="800"/></p>
 <p align="center">Combine automation and AI agents into complete processes.</p>
 
@@ -59,7 +59,7 @@
 <p align="center"><img src="/public/screenshots/app-builder-screenshot.png" alt="Agent Builder" width="800"/></p>
 <p align="center">No-code node editor to build, test, and deploy agents as apps.</p>
 
-## 🎨 Image Generation
+## 🎨 Image Generation - Meh It can do it too...
 <p align="center"><img src="/public/screenshots/image-gen-screenshot.png" alt="Image Gen" width="800"/></p>
 <p align="center">Generate stunning images with Stable Diffusion + ComfyUI.</p>
 
