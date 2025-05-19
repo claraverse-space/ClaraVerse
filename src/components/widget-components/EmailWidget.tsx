@@ -204,32 +204,32 @@ const EmailWidget: React.FC<EmailWidgetProps> = ({ id, name, url, onRemove }) =>
   };
   
   return (
-    <div className="glassmorphic rounded-2xl p-6 animate-fadeIn relative group shadow-lg">
+    <div className="glassmorphic rounded-2xl p-3 sm:p-4 lg:p-6 animate-fadeIn relative group shadow-lg h-full">
       <button
-        className="absolute top-4 right-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors opacity-0 group-hover:opacity-100"
+        className="absolute top-2 right-2 sm:top-4 sm:right-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors opacity-0 group-hover:opacity-100"
         onClick={() => onRemove(id)}
         aria-label="Remove widget"
       >
-        <XCircle className="w-5 h-5" />
+        <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
       
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-gray-500/5 dark:bg-gray-300/5 rounded-full flex-shrink-0">
-            <Mail className="w-5 h-5 text-sakura-500" />
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="p-1.5 sm:p-2 bg-gray-500/5 dark:bg-gray-300/5 rounded-full flex-shrink-0">
+            <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-sakura-500" />
           </div>
           <div>
-            <h3 className="font-medium text-gray-900 dark:text-white">{name}</h3>
+            <h3 className="font-medium text-gray-900 dark:text-white text-sm sm:text-base">{name}</h3>
             <p className="text-xs text-gray-600 dark:text-gray-400">
               {getStatusText()}
             </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button 
-            className={`p-1.5 rounded-full transition-colors ${
+            className={`p-1 sm:p-1.5 rounded-full transition-colors ${
               autoRefresh 
                 ? 'bg-sakura-500/10 text-sakura-500' 
                 : 'bg-gray-500/5 dark:bg-gray-300/5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -237,122 +237,95 @@ const EmailWidget: React.FC<EmailWidgetProps> = ({ id, name, url, onRemove }) =>
             onClick={toggleAutoRefresh}
             title={autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
           >
-            <Clock className="w-4 h-4" />
+            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
           
           <button 
-            className="p-1.5 bg-gray-500/5 dark:bg-gray-300/5 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            className="p-1 sm:p-1.5 bg-gray-500/5 dark:bg-gray-300/5 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             onClick={handleRefresh}
             disabled={loading}
             title="Refresh now"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+          
+          {autoRefresh && (
+            <select
+              value={refreshInterval}
+              onChange={handleIntervalChange}
+              className="text-xs sm:text-sm bg-gray-500/5 dark:bg-gray-300/5 rounded-lg py-1 px-1.5 sm:px-2 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+            >
+              <option value="1">1m</option>
+              <option value="5">5m</option>
+              <option value="15">15m</option>
+              <option value="30">30m</option>
+              <option value="60">1h</option>
+            </select>
+          )}
         </div>
       </div>
-      
-      {/* Controls */}
-      {autoRefresh && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-xs text-gray-600 dark:text-gray-400">Refresh every:</span>
-          <select
-            value={refreshInterval}
-            onChange={handleIntervalChange}
-            className="text-xs bg-gray-500/5 dark:bg-gray-300/5 rounded-md px-2 py-1 text-gray-700 dark:text-gray-300"
-          >
-            <option value="1">1 minute</option>
-            <option value="5">5 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">1 hour</option>
-          </select>
-        </div>
-      )}
-      
-      {/* Error State */}
+
+      {/* Error message */}
       {error && (
-        <div className="mb-4 p-3 bg-red-500/10 dark:bg-red-400/10 rounded-lg text-red-600 dark:text-red-400 text-sm">
+        <div className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-3 mb-3 sm:mb-4 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-xs sm:text-sm">
+          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
           {error}
         </div>
       )}
-      
-      {/* Loading State */}
-      {loading && emails.length === 0 && (
-        <div className="flex items-center justify-center p-6">
-          <RefreshCw className="w-6 h-6 text-sakura-500 animate-spin" />
-        </div>
-      )}
-      
-      {/* Empty State */}
-      {!loading && emails.length === 0 && !error && (
-        <div className="text-center p-6 text-gray-500 dark:text-gray-400">
-          <Mail className="w-8 h-8 mb-2 mx-auto opacity-40" />
-          <p>No emails found</p>
-        </div>
-      )}
-      
-      {/* Email List */}
-      {displayEmails.length > 0 && (
-        <div className="space-y-4 mt-2">
-          {displayEmails.map((email, index) => (
-            <div
-              key={index}
-              className="p-4 glassmorphic rounded-xl transition-all hover:bg-white/60 dark:hover:bg-gray-800/60 shadow-md flex flex-col gap-2"
-              style={{ border: 'none', boxShadow: '0 2px 16px 0 rgba(0,0,0,0.04)' }}
-            >
-              <div className="flex items-center gap-3 mb-1">
-                <span className={`flex items-center gap-1 text-lg font-medium text-gray-900 dark:text-white`}>
-                  <span className={`flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-800`}>
-                    {email.importance === 'high' && <AlertCircle className="w-5 h-5 text-red-500" />}
-                    {email.importance === 'medium' && <AlertCircle className="w-5 h-5 text-amber-500" />}
-                    {email.importance === 'low' && <AlertCircle className="w-5 h-5 text-blue-500" />}
-                  </span>
-                  {email.title}
-                </span>
-              </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                {email.content}
-              </p>
-              {typeof email.suggestedReply === 'string' && email.suggestedReply && (
-                <div className="bg-sakura-50 dark:bg-sakura-900/10 rounded-lg px-4 py-3 flex flex-col gap-2 mt-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase tracking-wider text-sakura-600 dark:text-sakura-400 font-medium">
-                      Suggested Reply
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-700 dark:text-gray-200 flex-1 select-text">
-                      {email.suggestedReply}
-                    </span>
-                    <button
-                      className="ml-2 px-3 py-1 rounded-md bg-sakura-500 hover:bg-sakura-600 text-white text-xs font-medium transition-colors shadow"
-                      onClick={() => handleCopy(email.suggestedReply as string)}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              )}
+
+      {/* Email list */}
+      <div className="space-y-2 sm:space-y-3">
+        {displayEmails.map((email, index) => (
+          <div 
+            key={index}
+            className="bg-white/50 dark:bg-gray-800/50 rounded-lg sm:rounded-xl p-2 sm:p-3"
+          >
+            <div className="flex items-start justify-between gap-2 mb-1.5 sm:mb-2">
+              <h4 className="font-medium text-gray-900 dark:text-white text-sm sm:text-base line-clamp-1">
+                {email.title}
+              </h4>
+              <span className={`
+                px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0
+                ${email.importance === 'high' ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
+                  email.importance === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400' :
+                  'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'}
+              `}>
+                {email.importance}
+              </span>
             </div>
-          ))}
-        </div>
-      )}
-      
-      {/* Show More/Less */}
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1.5 sm:mb-2 line-clamp-2">
+              {email.content}
+            </p>
+            {email.suggestedReply && (
+              <div className="flex items-center justify-between gap-2 pt-1.5 sm:pt-2">
+                <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 italic line-clamp-1">
+                  {email.suggestedReply}
+                </p>
+                <button
+                  onClick={() => handleCopy(email.suggestedReply!)}
+                  className="text-xs sm:text-sm text-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400 font-medium flex-shrink-0"
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Show more/less button */}
       {hasMoreEmails && (
         <button
-          className="mt-3 w-full py-2 flex items-center justify-center gap-1 text-sm text-sakura-500 hover:text-sakura-600 transition-colors"
           onClick={toggleExpanded}
+          className="flex items-center gap-1 sm:gap-1.5 mt-2 sm:mt-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors mx-auto"
         >
           {expanded ? (
             <>
-              <ChevronUp className="w-4 h-4" />
-              Show Less
+              Show less <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </>
           ) : (
             <>
-              <ChevronDown className="w-4 h-4" />
-              Show More ({sortedEmails.length - 5} more)
+              Show more <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </>
           )}
         </button>

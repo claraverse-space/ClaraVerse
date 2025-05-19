@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, Move, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Move, RefreshCw, Image } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
@@ -8,6 +8,7 @@ interface ContextMenuProps {
   onAddWidget?: () => void;
   onRemoveWidget?: () => void;
   onRearrangeWidgets?: () => void;
+  onSetWallpaper?: () => void;
   showRemove?: boolean;
 }
 
@@ -18,6 +19,7 @@ const WidgetContextMenu: React.FC<ContextMenuProps> = ({
   onAddWidget,
   onRemoveWidget,
   onRearrangeWidgets,
+  onSetWallpaper,
   showRemove = false,
 }) => {
   React.useEffect(() => {
@@ -41,7 +43,7 @@ const WidgetContextMenu: React.FC<ContextMenuProps> = ({
 
   return (
     <div
-      className="context-menu fixed bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+      className="context-menu fixed bg-white dark:bg-gray-800 rounded-lg shadow-lg py-1 z-50"
       style={{
         left: `${x}px`,
         top: `${y}px`,
@@ -73,7 +75,20 @@ const WidgetContextMenu: React.FC<ContextMenuProps> = ({
           Rearrange Widgets
         </button>
       )}
-      <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+      {onSetWallpaper && (
+        <button
+          className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSetWallpaper();
+            onClose();
+          }}
+        >
+          <Image className="w-4 h-4" />
+          Set Wallpaper
+        </button>
+      )}
+      <div className="my-1"></div>
       <button
         className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
         onClick={(e) => {

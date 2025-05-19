@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import { db } from '../db';
 
 // Define the electronAPI interface to fix TypeScript errors
 declare global {
@@ -116,6 +117,7 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
   const [view, setView] = useState<'list' | 'stats' | 'logs' | 'create'>('list');
   const [apiAvailable, setApiAvailable] = useState(true);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
   
   // Add form state at the top level
   const [formData, setFormData] = useState<FormData>({
@@ -172,6 +174,19 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
     
     // Call to electron API to get containers
     fetchContainers();
+    
+    // Load wallpaper from IndexedDB
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
   }, []);
 
   const fetchContainers = async () => {
@@ -927,62 +942,78 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
   };
 
   return (
-    <div className="flex h-screen">
-      <Sidebar activePage="servers" onPageChange={onPageChange ?? (() => {})} />
-      
-      <div className="flex-1 flex flex-col">
-        <Topbar userName="User" onPageChange={onPageChange ?? (() => {})} />
+    <>
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+      <div className="flex h-screen relative z-10">
+        <Sidebar activePage="servers" onPageChange={onPageChange ?? (() => {})} />
         
-        <main className="flex-1 p-6 overflow-auto">
-          <header className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Docker Container Management</h1>
-            <div className="flex justify-between items-center">
-              <p className="text-gray-600 dark:text-gray-300">
-                {!apiAvailable 
-                  ? "Docker API is unavailable. This feature requires Docker and proper API configuration." 
-                  : "Manage your Docker containers from one place"}
-              </p>
-              <button
-                onClick={checkApiAvailability}
-                className="text-sm text-sakura-500 hover:text-sakura-700 dark:text-sakura-400 dark:hover:text-sakura-300 transition-colors"
-                title="Check API Status"
-              >
-                Check API
-              </button>
-            </div>
-          </header>
-
-          {error && (
-            <div className="mb-4 p-3 bg-sakura-50 text-sakura-700 dark:bg-sakura-900/50 dark:text-sakura-300 rounded-lg">
-              <strong>Error:</strong> {error}
-            </div>
-          )}
-
-          {!apiAvailable && !loading && (
-            <div className="mb-4 p-4 border border-sakura-300 bg-sakura-50/50 dark:bg-sakura-900/30 dark:border-sakura-700 rounded-lg glassmorphic">
-              <h3 className="text-lg font-semibold text-sakura-800 dark:text-sakura-400 mb-2">Docker API Connection Issue</h3>
-              <p className="mb-2 text-sakura-700 dark:text-sakura-300">
-                The application is having trouble connecting to the Docker API. This could be due to:
-              </p>
-              <ul className="list-disc list-inside mb-3 text-sakura-700 dark:text-sakura-300">
-                <li>Docker is not running</li>
-                <li>The Electron preload script is not correctly configured</li>
-                <li>You don't have permission to access the Docker socket</li>
-                <li>The Docker API is not exposed</li>
-              </ul>
-              <div className="mt-3">
-                <strong className="text-sakura-800 dark:text-sakura-400">Debug Info:</strong>
-                <pre className="mt-1 p-3 bg-sakura-100/70 dark:bg-sakura-900/50 rounded-lg overflow-auto text-xs">{debugInfo || 'No debug info available'}</pre>
+        <div className="flex-1 flex flex-col">
+          <Topbar userName="User" onPageChange={onPageChange ?? (() => {})} />
+          
+          <main className="flex-1 p-6 overflow-auto">
+            <header className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Docker Container Management</h1>
+              <div className="flex justify-between items-center">
+                <p className="text-gray-600 dark:text-gray-300">
+                  {!apiAvailable 
+                    ? "Docker API is unavailable. This feature requires Docker and proper API configuration." 
+                    : "Manage your Docker containers from one place"}
+                </p>
+                <button
+                  onClick={checkApiAvailability}
+                  className="text-sm text-sakura-500 hover:text-sakura-700 dark:text-sakura-400 dark:hover:text-sakura-300 transition-colors"
+                  title="Check API Status"
+                >
+                  Check API
+                </button>
               </div>
-            </div>
-          )}
+            </header>
 
-          {view === 'list' && renderContainerList()}
-          {view === 'stats' && renderContainerStats()}
-          {view === 'create' && renderCreateContainer()}
-        </main>
+            {error && (
+              <div className="mb-4 p-3 bg-sakura-50 text-sakura-700 dark:bg-sakura-900/50 dark:text-sakura-300 rounded-lg">
+                <strong>Error:</strong> {error}
+              </div>
+            )}
+
+            {!apiAvailable && !loading && (
+              <div className="mb-4 p-4 border border-sakura-300 bg-sakura-50/50 dark:bg-sakura-900/30 dark:border-sakura-700 rounded-lg glassmorphic">
+                <h3 className="text-lg font-semibold text-sakura-800 dark:text-sakura-400 mb-2">Docker API Connection Issue</h3>
+                <p className="mb-2 text-sakura-700 dark:text-sakura-300">
+                  The application is having trouble connecting to the Docker API. This could be due to:
+                </p>
+                <ul className="list-disc list-inside mb-3 text-sakura-700 dark:text-sakura-300">
+                  <li>Docker is not running</li>
+                  <li>The Electron preload script is not correctly configured</li>
+                  <li>You don't have permission to access the Docker socket</li>
+                  <li>The Docker API is not exposed</li>
+                </ul>
+                <div className="mt-3">
+                  <strong className="text-sakura-800 dark:text-sakura-400">Debug Info:</strong>
+                  <pre className="mt-1 p-3 bg-sakura-100/70 dark:bg-sakura-900/50 rounded-lg overflow-auto text-xs">{debugInfo || 'No debug info available'}</pre>
+                </div>
+              </div>
+            )}
+
+            {view === 'list' && renderContainerList()}
+            {view === 'stats' && renderContainerStats()}
+            {view === 'create' && renderCreateContainer()}
+          </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

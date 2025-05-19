@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppWindow, X, Send, Loader2, RefreshCw } from 'lucide-react';
+import { AppWindow, X, Send, Loader2, RefreshCw, Bot, Play, Code, Settings } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { appStore } from '../../services/AppStore';
 import { executeFlow, generateExecutionPlan } from '../../ExecutionEngine';
@@ -145,171 +145,104 @@ const AppWidget: React.FC<AppWidgetProps> = ({
   };
 
   return (
-    <div className="relative group">
-      {/* Remove button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove(id);
-        }}
-        className="absolute top-4 right-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors opacity-0 group-hover:opacity-100 z-10"
-      >
-        <X className="w-5 h-5" />
-      </button>
-
-      {/* Main widget container */}
-      <div 
-        className={`
-          glassmorphic transition-all relative overflow-hidden rounded-2xl animate-fadeIn
-          ${isExpanded ? 'h-[500px]' : 'h-[300px]'}
-          ${!isExpanded ? 'hover:ring-2 hover:ring-sakura-200 dark:hover:ring-sakura-800' : ''}
-        `}
-        onClick={() => !isExpanded && setIsExpanded(true)}
-        onBlur={(e) => {
-          // Only collapse if we're not clicking inside the widget
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-            setIsExpanded(false);
-          }
-        }}
-        tabIndex={0} // Make the container focusable
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200/10 dark:border-gray-700/10">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-sakura-100 dark:bg-sakura-100/10 rounded-lg">
-              <AppWindow className="w-5 h-5 text-sakura-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                {name}
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                {description}
-              </p>
-            </div>
-            {isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsExpanded(false);
-                }}
-                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50"
-              >
-                <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-              </button>
-            )}
+    <div className="relative w-full h-full flex flex-col glassmorphic rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex-none p-2 sm:p-3 lg:p-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 flex items-center justify-center rounded-lg bg-sakura-100 dark:bg-sakura-900/30">
+            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-sakura-500" />
           </div>
+          <h3 className="font-medium text-gray-900 dark:text-white truncate text-sm sm:text-base">
+            {name}
+          </h3>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(id);
+          }}
+          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 dark:text-gray-400" />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-grow p-2 sm:p-3 lg:p-4 flex flex-col min-h-0">
+        <div className="flex-none mb-2 sm:mb-3">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+            {description}
+          </p>
         </div>
 
-        {/* Chat interface - always visible but with different heights */}
-        <div className="flex flex-col h-[calc(100%-76px)]"> {/* Adjust height to account for header */}
-          {/* Chat messages */}
-          <div 
-            className="flex-1 overflow-y-auto p-4 space-y-4"
-            style={{ 
-              height: isExpanded ? 'calc(100% - 64px)' : 'calc(100% - 48px)'
-            }}
-          >
-            {messageHistory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 dark:text-gray-400">
-                <AppWindow className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm">Start a conversation with this app</p>
-              </div>
-            ) : (
-              messageHistory.map(message => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[85%] p-3 rounded-xl text-sm
-                      ${message.type === 'user'
-                        ? 'bg-sakura-500/10 text-sakura-600 dark:text-sakura-400'
-                        : 'glassmorphic'
-                      }
-                    `}
-                  >
-                    {message.isImage ? (
-                      <img 
-                        src={message.content} 
-                        alt="Generated" 
-                        className="max-w-full rounded-lg"
-                        style={{ maxHeight: '200px' }}
-                      />
-                    ) : message.type === 'user' ? (
-                      <div className="whitespace-pre-wrap">{message.content}</div>
-                    ) : (
-                      <div className="prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="glassmorphic p-3 rounded-xl flex items-center gap-2 text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin text-sakura-500" />
-                  <span>Thinking...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input area */}
-          <div className={`
-            p-4 border-t border-gray-200/10 dark:border-gray-700/10 
-            bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm
-            ${isExpanded ? '' : 'py-2'}
-          `}>
-            <div className="flex gap-2">
-              <textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
-                className={`
-                  flex-1 p-2 rounded-xl border border-gray-200 dark:border-gray-700 
-                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white 
-                  resize-none focus:outline-none focus:ring-2 focus:ring-sakura-500
-                  ${isExpanded ? '' : 'text-sm py-1'}
-                `}
-                rows={1}
-                style={{ 
-                  minHeight: isExpanded ? '40px' : '32px',
-                  maxHeight: isExpanded ? '120px' : '32px'
-                }}
-              />
-              <button
-                onClick={handleRunApp}
-                disabled={isLoading || !inputValue.trim()}
-                className={`
-                  rounded-xl transition-all flex items-center justify-center
-                  ${isExpanded ? 'p-2 w-[40px]' : 'p-1.5 w-[32px]'}
-                  ${isLoading || !inputValue.trim()
-                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                    : 'bg-sakura-500 text-white hover:bg-sakura-600'
-                  }
-                `}
+        {/* Chat Messages */}
+        <div className="flex-grow overflow-y-auto mb-2 sm:mb-3 space-y-2 sm:space-y-3">
+          {messageHistory.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[85%] rounded-lg p-2 sm:p-3 ${
+                  message.type === 'user'
+                    ? 'bg-sakura-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                }`}
               >
-                {isLoading ? (
-                  <Loader2 className={`animate-spin ${isExpanded ? 'w-5 h-5' : 'w-4 h-4'}`} />
+                {message.isImage ? (
+                  <img src={message.content} alt="Generated" className="rounded" />
                 ) : (
-                  <Send className={isExpanded ? 'w-5 h-5' : 'w-4 h-4'} />
+                  <div className="text-xs sm:text-sm">
+                    <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
-          </div>
+          ))}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Error message */}
+        {/* Error Message */}
         {error && (
-          <div className="absolute bottom-4 left-4 right-4 p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+          <div className="flex-none mb-2 sm:mb-3 p-2 sm:p-3 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-xs sm:text-sm">
             {error}
           </div>
         )}
+
+        {/* Input Area */}
+        <div className="flex-none relative">
+          <textarea
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message..."
+            className="w-full min-h-[2.5rem] max-h-32 p-2 pr-10 text-xs sm:text-sm rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleRunApp}
+            disabled={isLoading || !inputValue.trim()}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+
+        {/* Actions */}
+        <div className="flex-none mt-2 sm:mt-3 grid grid-cols-2 gap-2">
+          <button className="flex items-center justify-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-sakura-500 hover:bg-sakura-600 text-white transition-colors text-xs sm:text-sm">
+            <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+            <span className="truncate">Run</span>
+          </button>
+          <button className="flex items-center justify-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors text-xs sm:text-sm">
+            <Code className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+            <span className="truncate">Edit</span>
+          </button>
+        </div>
       </div>
     </div>
   );

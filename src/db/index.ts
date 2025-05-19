@@ -946,6 +946,24 @@ export class LocalStorageDB {
   async updateUsage(type: Usage['type'], value: number): Promise<void> {
     await this._updateUsage(type, value);
   }
+
+  // Wallpaper methods
+  async setWallpaper(wallpaperData: string): Promise<void> {
+    if (this.useIndexedDB) {
+      await indexedDBService.put('settings', { key: 'wallpaper', value: wallpaperData });
+    } else {
+      await this.setItem('wallpaper', wallpaperData);
+    }
+  }
+
+  async getWallpaper(): Promise<string | null> {
+    if (this.useIndexedDB) {
+      const record = await indexedDBService.get<{key: string, value: string}>('settings', 'wallpaper');
+      return record ? record.value : null;
+    } else {
+      return await this.getItem<string>('wallpaper');
+    }
+  }
 }
 
 export const db = new LocalStorageDB();

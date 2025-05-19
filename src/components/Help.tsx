@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import helpContent from '../data/help-content.json';
+import { db } from '../db';
 
 interface HelpSection {
   id: string;
@@ -47,6 +48,7 @@ const Help = () => {
   const [sections, setSections] = useState<HelpSection[]>([]);
   const [filteredSections, setFilteredSections] = useState<HelpSection[]>([]);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
 
   // Mock data for apps - in a real application, this would come from a database
   const mockApps = [
@@ -103,6 +105,19 @@ const Help = () => {
   useEffect(() => {
     setSections(helpContent.sections);
     setSelectedSection(helpContent.sections[0].id);
+    
+    // Load wallpaper from IndexedDB
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
   }, []);
 
   useEffect(() => {
@@ -175,59 +190,75 @@ const Help = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-hidden flex">
-      {/* Sidebar */}
-      <div className="w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        <div className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-            <input
-              type="text"
-              placeholder="Search help..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 
-                bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            />
-          </div>
-        </div>
-        <nav className="flex-1 overflow-y-auto p-4">
-          {searchResults.map((section) => (
-            <button
-              key={section.id}
-              onClick={() => setSelectedSection(section.id)}
-              className={`w-full text-left px-4 py-2 rounded-lg mb-2 transition-colors ${
-                selectedSection === section.id
-                  ? 'bg-sakura-100 text-sakura-900 dark:bg-sakura-500 dark:text-white'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              <div>
-                <HighlightedText text={section.title} searchQuery={searchQuery} />
-                {section.contextSnippet && searchQuery && (
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                    <HighlightedText text={section.contextSnippet} searchQuery={searchQuery} />
-                  </p>
-                )}
-              </div>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
-        {selectedSection && (
-          <div className="max-w-4xl mx-auto">
-            <div className="prose dark:prose-invert prose-sakura max-w-none">
-              <ReactMarkdown components={MarkdownComponents}>
-                {sections.find((section) => section.id === selectedSection)?.content || ''}
-              </ReactMarkdown>
+    <>
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+      <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-hidden flex relative z-10">
+        {/* Sidebar */}
+        <div className="w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+          <div className="p-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search help..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 
+                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
             </div>
           </div>
-        )}
+          <nav className="flex-1 overflow-y-auto p-4">
+            {searchResults.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => setSelectedSection(section.id)}
+                className={`w-full text-left px-4 py-2 rounded-lg mb-2 transition-colors ${
+                  selectedSection === section.id
+                    ? 'bg-sakura-100 text-sakura-900 dark:bg-sakura-500 dark:text-white'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <div>
+                  <HighlightedText text={section.title} searchQuery={searchQuery} />
+                  {section.contextSnippet && searchQuery && (
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                      <HighlightedText text={section.contextSnippet} searchQuery={searchQuery} />
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {selectedSection && (
+            <div className="max-w-4xl mx-auto">
+              <div className="prose dark:prose-invert prose-sakura max-w-none">
+                <ReactMarkdown components={MarkdownComponents}>
+                  {sections.find((section) => section.id === selectedSection)?.content || ''}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

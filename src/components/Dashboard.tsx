@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Responsive, WidthProvider } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import { 
   Bot,
   Settings,
@@ -24,11 +27,27 @@ import {
   Move,
   Check,
   Plus,
-  AppWindow
+  AppWindow,
+  Search,
+  SlidersHorizontal,
+  Grid,
+  Layers,
+  MoreVertical,
+  Activity,
+  Globe,
+  User,
+  Brain,
+  Command,
+  Book,
+  Layout,
+  Compass,
+  Copy,
+  Edit,
+  X
 } from 'lucide-react';
 import { db } from '../db';
 import axios from 'axios';
-import api from '../services/api'; // Import the API service
+import api from '../services/api';
 import WebhookWidget from './widget-components/WebhookWidget';
 import WelcomeWidget from './widget-components/WelcomeWidget';
 import WhatsNewWidget from './widget-components/WhatsNewWidget';
@@ -39,6 +58,24 @@ import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
 import QuickChatWidget from './widget-components/QuickChatWidget';
 import AppWidget from './widget-components/AppWidget';
+import ResizableWidget, { 
+  WIDGET_SIZE_CONSTRAINTS, 
+  DEFAULT_SIZE_CONSTRAINTS 
+} from './widget-components/ResizableWidget';
+import { useTheme } from '../hooks/useTheme';
+
+// Extend Window interface to include electron
+declare global {
+  interface Window {
+    electron: {
+      getWorkflowsPath: () => Promise<string>;
+      getPythonPort: () => Promise<number>;
+      checkPythonBackend: () => Promise<{ port: number; status: string; available: boolean }>;
+      receive: (channel: string, func: (data: any) => void) => void;
+      removeListener: (channel: string, func: (data: any) => void) => void;
+    };
+  }
+}
 
 interface DashboardProps {
   onPageChange?: (page: string) => void;
@@ -46,8 +83,9 @@ interface DashboardProps {
 
 // Default widget configuration for first-time users only
 const DEFAULT_WIDGETS = [
-  { id: 'welcome', type: 'welcome', order: 0 },
-  { id: 'privacy', type: 'privacy', order: 1 }
+  { id: 'privacy', type: 'privacy', order: 2, w: 12, h: 2 },
+  { id: 'whats-new', type: 'whats-new', order: 1, w: 12, h: 2 },
+  { id: 'welcome', type: 'welcome', order: 0, w: 12, h: 2 },
 ];
 
 interface Widget {
@@ -61,6 +99,12 @@ interface Widget {
   appName?: string;
   appDescription?: string;
   appIcon?: string;
+  model?: string; // Add model property for quick chat widgets
+  // Add layout properties
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 interface ContextMenuState {
@@ -70,7 +114,10 @@ interface ContextMenuState {
   widgetId?: string;
 }
 
+const ResponsiveGridLayout = WidthProvider(Responsive);
+
 const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
+  const { isDark } = useTheme();
   const [ollamaUrl, setOllamaUrl] = useState('');
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
@@ -79,6 +126,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [pythonPort, setPythonPort] = useState<number | null>(null);
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
 
   // Widget system state
   const [widgets, setWidgets] = useState<Widget[]>(() => {
@@ -115,6 +163,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [isRearrangeMode, setIsRearrangeMode] = useState(false);
   const [draggedWidget, setDraggedWidget] = useState<string | null>(null);
   const [dragOverWidget, setDragOverWidget] = useState<string | null>(null);
+
+  // Load user name from database
+  const [userName, setUserName] = useState<string>('');
 
   // Load config and check connections
   useEffect(() => {
@@ -184,6 +235,44 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     console.log('Saving widgets to localStorage:', widgets);
     localStorage.setItem('dashboard_widgets', JSON.stringify(widgets));
   }, [widgets]);
+
+  // Load user name from database
+  useEffect(() => {
+    const loadUserName = async () => {
+      const personalInfo = await db.getPersonalInfo();
+      if (personalInfo?.name) {
+        // Capitalize first letter, rest lowercase
+        const formattedName = personalInfo.name.charAt(0).toUpperCase() + personalInfo.name.slice(1).toLowerCase();
+        setUserName(formattedName);
+      }
+    };
+    loadUserName();
+  }, []);
+
+  // Load wallpaper from IndexedDB on mount
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
+  // Add useEffect to scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // Alternative: scroll the dashboard container to top
+    const dashboardContainer = document.getElementById('dashboard-container');
+    if (dashboardContainer) {
+      dashboardContainer.scrollTop = 0;
+    }
+  }, []);
 
   const checkOllamaConnection = async (url: string) => {
     setOllamaStatus('checking');
@@ -255,6 +344,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       };
       console.log('Adding new app widget:', newWidget);
       setWidgets(prev => [...prev, newWidget]);
+      // Automatically enter rearrange mode after adding widget
+      setIsRearrangeMode(true);
       return;
     }
 
@@ -267,6 +358,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     
     console.log('Adding new widget:', newWidget);
     setWidgets(prev => [...prev, newWidget]);
+    // Automatically enter rearrange mode after adding widget
+    setIsRearrangeMode(true);
   };
 
   const handleRemoveWidget = (id: string) => {
@@ -282,8 +375,59 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     });
   };
 
-  // Sort widgets by order
-  const sortedWidgets = [...widgets].sort((a, b) => (a.order || 0) - (b.order || 0));
+  // Grid layout configuration
+  const layouts = {
+    lg: widgets.map((widget, index) => {
+      const constraints = WIDGET_SIZE_CONSTRAINTS[widget.type as keyof typeof WIDGET_SIZE_CONSTRAINTS] || DEFAULT_SIZE_CONSTRAINTS;
+      return {
+        i: widget.id,
+        x: widget.x ?? (index % 3) * 4, // Use nullish coalescing to only use default if x is null/undefined
+        y: widget.y ?? Math.floor(index / 3) * 4, // Use nullish coalescing to only use default if y is null/undefined
+        w: widget.w || constraints.minW,
+        h: widget.h || constraints.minH,
+        minW: constraints.minW,
+        minH: constraints.minH,
+        maxW: constraints.maxW,
+        maxH: constraints.maxH,
+        static: !isRearrangeMode // Make widgets static when not in rearrange mode
+      };
+    })
+  };
+
+  // Handle layout change
+  const handleLayoutChange = (layout: any[], layouts: any) => {
+    // Only update positions if in rearrange mode to prevent unwanted position changes
+    if (isRearrangeMode) {
+      const updatedWidgets = widgets.map(widget => {
+        const layoutItem = layout.find(item => item.i === widget.id);
+        if (layoutItem) {
+          return {
+            ...widget,
+            x: layoutItem.x,
+            y: layoutItem.y,
+            w: layoutItem.w,
+            h: layoutItem.h
+          };
+        }
+        return widget;
+      });
+      setWidgets(updatedWidgets);
+    }
+  };
+
+  // Handle widget resize
+  const handleWidgetResize = (id: string, dimensions: { width: number; height: number }) => {
+    setWidgets(prev => prev.map(widget => {
+      if (widget.id === id) {
+        return {
+          ...widget,
+          w: Math.ceil(dimensions.width / 100), // Convert pixels to grid units
+          h: Math.ceil(dimensions.height / 100)  // Convert pixels to grid units
+        };
+      }
+      return widget;
+    }));
+  };
 
   const renderWidget = (widget: Widget) => {
     console.log('Attempting to render widget:', widget);
@@ -296,12 +440,43 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       return null;
     }
 
+    // Get current size from layout
+    const layout = layouts.lg.find(l => l.i === widget.id);
+    const currentSize = {
+      w: layout?.w || 4,
+      h: layout?.h || 4
+    };
+
+    const handleSizePresetSelect = (preset: { w: number; h: number }) => {
+      setWidgets(prev => prev.map(w => {
+        if (w.id === widget.id) {
+          return {
+            ...w,
+            w: preset.w,
+            h: preset.h
+          };
+        }
+        return w;
+      }));
+    };
+
+    const wrapWithResizable = (component: React.ReactNode) => (
+      <ResizableWidget
+        key={widget.id}
+        className="glassmorphic rounded-2xl"
+        isRearrangeMode={isRearrangeMode}
+        onSizePresetSelect={handleSizePresetSelect}
+        currentSize={currentSize}
+        widgetType={widget.type}
+      >
+        {component}
+      </ResizableWidget>
+    );
+
     switch (widget.type) {
       case 'welcome':
-        console.log('Rendering welcome widget');
-        return (
+        return wrapWithResizable(
           <WelcomeWidget
-            key={widget.id}
             id={widget.id}
             onRemove={handleRemoveWidget}
             pythonStatus={pythonStatus}
@@ -310,33 +485,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           />
         );
       case 'whats-new':
-        return (
+        return wrapWithResizable(
           <WhatsNewWidget
-            key={widget.id}
             id={widget.id}
             onRemove={handleRemoveWidget}
           />
         );
       case 'capabilities':
-        return (
+        return wrapWithResizable(
           <CapabilitiesWidget
-            key={widget.id}
             id={widget.id}
             onRemove={handleRemoveWidget}
           />
         );
       case 'privacy':
-        return (
+        return wrapWithResizable(
           <PrivacyWidget
-            key={widget.id}
             id={widget.id}
             onRemove={handleRemoveWidget}
           />
         );
       case 'webhook':
-        return (
+        return wrapWithResizable(
           <WebhookWidget
-            key={widget.id}
             id={widget.id}
             name={widget.name || ''}
             url={widget.url || ''}
@@ -344,18 +515,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           />
         );
       case 'quick-chat':
-        return (
+        return wrapWithResizable(
           <QuickChatWidget
-            key={widget.id}
             id={widget.id}
             onRemove={handleRemoveWidget}
           />
         );
-
       case 'email':
-        return (
+        return wrapWithResizable(
           <EmailWidget
-            key={widget.id}
             id={widget.id}
             name={widget.name || ''}
             url={widget.url || ''}
@@ -363,9 +531,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           />
         );
       case 'app':
-        return (
+        return wrapWithResizable(
           <AppWidget
-            key={widget.id}
             id={widget.id}
             appId={widget.appId || ''}
             name={widget.appName || ''}
@@ -468,6 +635,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     setWidgets(prev => [...prev, newWidget]);
     localStorage.setItem(`webhook_widget_${widgetId}`, JSON.stringify({ name, url }));
     setShowAddWidget(false);
+    // Automatically enter rearrange mode after adding widget
+    setIsRearrangeMode(true);
   };
 
   const handleAddEmailWidget = (name: string, url: string, refreshInterval: number) => {
@@ -483,9 +652,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     setWidgets(prev => [...prev, newWidget]);
     localStorage.setItem(`email_widget_${widgetId}`, JSON.stringify({ name, url, refreshInterval }));
     setShowAddWidget(false);
+    // Automatically enter rearrange mode after adding widget
+    setIsRearrangeMode(true);
   };
 
-  const handleAddQuickChatWidget = (name: string, url: string, model: string) => {
+  const handleAddQuickChatWidget = (name: string, url: string, model: string, systemPrompt: string = '', prePrompt: string = '') => {
     const widgetId = `quick-chat-${Date.now()}`;
     const newWidget: Widget = {
       id: widgetId,
@@ -496,14 +667,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       order: widgets.length
     };
     setWidgets(prev => [...prev, newWidget]);
-    localStorage.setItem(`quick_chat_widget_${widgetId}`, JSON.stringify({ ollamaUrl: url, model }));
+    localStorage.setItem(`quick_chat_widget_${widgetId}`, JSON.stringify({ 
+      ollamaUrl: url, 
+      model,
+      systemPrompt,
+      prePrompt
+    }));
     setShowAddWidget(false);
+    // Automatically enter rearrange mode after adding widget
+    setIsRearrangeMode(true);
   };
 
   const toggleRearrangeMode = () => {
-    setIsRearrangeMode(!isRearrangeMode);
     if (isRearrangeMode) {
       // When exiting rearrange mode, ensure all widgets have correct order values
+      // but preserve their x,y positions
       setWidgets(prev => 
         prev.map((widget, index) => ({
           ...widget,
@@ -515,83 +693,139 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       setDraggedWidget(null);
       setDragOverWidget(null);
     }
+    setIsRearrangeMode(!isRearrangeMode);
+  };
+
+  const handleSetWallpaper = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          // Convert file to base64
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const base64String = e.target?.result as string;
+            // Store in IndexedDB
+            await db.setWallpaper(base64String);
+            // Update state
+            setWallpaperUrl(base64String);
+          };
+          reader.readAsDataURL(file);
+        } catch (error) {
+          console.error('Error setting wallpaper:', error);
+        }
+      }
+    };
+    input.click();
   };
 
   return (
-    <div 
-      className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none"
-      onContextMenu={(e) => !isRearrangeMode && handleContextMenu(e)}
-    >
-      <div className="w-[90%] mx-auto p-6">
-        {/* Rearrange Mode Controls */}
-        <div className="mb-4 flex justify-between items-center">
-          {isRearrangeMode && (
-            <button
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
-              onClick={toggleRearrangeMode}
-            >
-              <Check className="w-4 h-4" />
-              Done
-            </button>
-          )}
-        </div>
-
-        {/* Toast Notification */}
-        {showToast && (
-          <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fadeIn z-50">
-            At least one widget must remain on the dashboard
-          </div>
-        )}
-
-        {/* Rearrange Mode Instruction */}
-        {isRearrangeMode && (
-          <div className="mb-4 bg-sakura-500/10 p-4 rounded-lg text-sakura-800 dark:text-sakura-200 text-sm">
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              <span>Drag and drop widgets to rearrange them, then click "Done" when finished.</span>
+    <>
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+      <div 
+        id="dashboard-container"
+        className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none relative"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          handleContextMenu(e);
+        }}
+      >
+        <div className="relative z-10">
+          {/* Rearrange Mode Controls */}
+          <div id="dashboard-header" className="mb-4 flex justify-between items-center px-4 pt-4 group">
+            {/* Greeting */}
+            <div id="greeting-message" className="py-3">
+              <h2 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100" style={{ fontFamily: "'Inter', 'Roboto', system-ui, sans-serif", textShadow: '0 1px 2px rgba(0,0,0,0.1)', letterSpacing: '-0.01em' }}>
+                Hi, <span className="bg-gradient-to-r from-sakura-500 to-pink-500 bg-clip-text text-transparent">{userName || 'there'}</span> 
+              </h2>
             </div>
-          </div>
-        )}
 
-        {/* Render all widgets in their fixed order */}
-        <div className="flex flex-col gap-8 relative">
-          {sortedWidgets.map(widget => (
-            <div 
-              key={widget.id} 
-              className={`w-full transition-all ${
-                isRearrangeMode ? 'cursor-move' : ''
-              } ${
-                dragOverWidget === widget.id ? 'transform scale-105 opacity-70' : ''
-              } ${
-                draggedWidget === widget.id ? 'opacity-50' : ''
-              }`}
-              draggable={isRearrangeMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              onContextMenu={(e) => !isRearrangeMode && handleContextMenu(e, widget.id)}
-            >
-              <div className={`relative ${isRearrangeMode ? 'border-2 border-dashed border-sakura-300 dark:border-sakura-700 rounded-2xl p-1' : ''}`}>
-                {isRearrangeMode && (
-                  <div className="absolute -top-3 -left-3 z-10 bg-sakura-500 text-white p-1 rounded-full">
+            <div className={`flex items-center gap-4 transition-opacity duration-200 ${isRearrangeMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}> 
+              <button
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+                onClick={toggleRearrangeMode}
+              >
+                {isRearrangeMode ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Done
+                  </>
+                ) : (
+                  <>
                     <Move className="w-4 h-4" />
-                  </div>
+                    Rearrange Widgets
+                  </>
                 )}
-                {renderWidget(widget)}
-              </div>
+              </button>
+              <button
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+                onClick={() => setShowAddWidget(true)}
+              >
+                <Plus className="w-4 h-4" />
+                Add Widget
+              </button>
             </div>
-          ))}
+          </div>
+
+          {/* Toast Notification */}
+          {showToast && (
+            <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fadeIn z-50">
+              At least one widget must remain on the dashboard
+            </div>
+          )}
+
+          {/* Grid Layout */}
+          <div className="px-2">
+            <ResponsiveGridLayout
+              className="layout"
+              layouts={layouts}
+              breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+              cols={{ lg: 12, md: 12, sm: 12, xs: 12, xxs: 12 }}
+              rowHeight={100}
+              margin={[16, 16]}
+              onLayoutChange={handleLayoutChange}
+              isDraggable={isRearrangeMode}
+              isResizable={false}
+              useCSSTransforms={true}
+            >
+              {widgets.map(widget => (
+                <div 
+                  key={widget.id} 
+                  className="widget-container"
+                  onContextMenu={(e) => handleContextMenu(e, widget.id)}
+                >
+                  {renderWidget(widget)}
+                </div>
+              ))}
+            </ResponsiveGridLayout>
+          </div>
         </div>
 
         {/* Context Menu */}
-        {contextMenu.show && !isRearrangeMode && (
+        {contextMenu.show && (
           <WidgetContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
             onClose={closeContextMenu}
             onAddWidget={() => setShowAddWidget(true)}
             onRearrangeWidgets={toggleRearrangeMode}
+            onSetWallpaper={handleSetWallpaper}
             onRemoveWidget={
               contextMenu.widgetId 
                 ? () => handleRemoveWidget(contextMenu.widgetId!)
@@ -609,36 +843,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             onAddWebhookWidget={handleAddWebhookWidget}
             onAddEmailWidget={handleAddEmailWidget}
             onAddQuickChatWidget={handleAddQuickChatWidget}
-            onAddEmailWidget={(name: string, url: string, refreshInterval: number) => {
-              const widgetId = `email-${Date.now()}`;
-              const newWidget: Widget = {
-                id: widgetId,
-                type: 'email',
-                name,
-                url,
-                refreshInterval,
-                order: widgets.length
-              };
-              console.log('Adding new email widget:', newWidget);
-              setWidgets(prev => [...prev, newWidget]);
-              localStorage.setItem(`email_widget_${widgetId}`, JSON.stringify({ name, url, refreshInterval }));
-              setShowAddWidget(false);
-            }}
-            onAddQuickChatWidget={(name: string, url: string, model: string) => {
-              const widgetId = `quick-chat-${Date.now()}`;
-              const newWidget: Widget = {
-                id: widgetId,
-                type: 'quick-chat',
-                order: widgets.length
-              };
-              setWidgets(prev => [...prev, newWidget]);
-              localStorage.setItem(`quick_chat_widget_${widgetId}`, JSON.stringify({ ollamaUrl: url, model }));
+            onResetDefault={() => {
+              setWidgets(DEFAULT_WIDGETS);
+              localStorage.setItem('dashboard_widgets', JSON.stringify(DEFAULT_WIDGETS));
               setShowAddWidget(false);
             }}
           />
         )}
       </div>
-    </div>
+    </>
   );
 };
 
