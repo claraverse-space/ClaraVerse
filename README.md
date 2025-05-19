@@ -106,4 +106,101 @@ Wire up APIs, prompts, tools, and logic into fully working apps.
 
 ### 🎨 Image Generation w/ ComfyUI
 
-Offline Stable Diffusion. Stylized, tu
+Offline Stable Diffusion. Stylized, tuned, and customizable.
+
+<p align="center"><img src="/public/screenshots/image-gen-screenshot.png" width="800"/></p>
+
+---
+
+### 🖼️ Image Gallery Management
+
+Organize your generations with tags, thumbnails, and metadata.
+
+<p align="center"><img src="/public/screenshots/gallery-screenshot.png" width="800"/></p>
+
+---
+
+## 🤜 Clara vs The Rest
+
+| Feature                       | Clara         | OpenWebUI   | LibreChat  |
+|------------------------------|---------------|-------------|------------|
+| 💻 Fully Local Stack         | ✅ Yes         | ❌ Partial  | ❌ Partial |
+| 🧩 Visual App Builder        | ✅ Built-in    | ❌          | ❌         |
+| 🔁 Native N8N Automation     | ✅ Integrated  | ❌          | ❌         |
+| 🧠 OpenInterpreter Support   | ✅ Yes         | ❌          | ❌         |
+| 📂 File Manager & Widgets    | ✅ Fully Local | ❌          | ✅ Basic   |
+| 🧱 Agent Templates & Builder | ✅ Yes         | ❌          | ❌         |
+| 🖼️ Image Generation w/ SD    | ✅ ComfyUI     | ❌          | ❌         |
+
+---
+
+## 🧪 Install & Run (Docker)
+
+> ✅ **Only Prerequisite**: [Docker Desktop](https://www.docker.com/products/docker-desktop)
+
+```bash
+# One-liner to run everything (Clara + Ollama + N8N)
+docker run -d --name clara --pull always -p 8000:8000 ghcr.io/badboysm890/claraverse:latest
+```
+
+---
+
+## 💻 Download Desktop App
+
+* 🪟 [Windows (.exe)](https://github.com/badboysm890/ClaraVerse/releases)
+* 🍎 [macOS (.dmg)](https://github.com/badboysm890/ClaraVerse/releases)
+* 🐧 [Linux (.AppImage)](https://github.com/badboysm890/ClaraVerse/releases)
+
+---
+
+## 🍏 macOS Unsigned App Fix
+
+> Getting the “App is damaged” warning?
+
+```bash
+# Just right-click the app and hit "Open"  
+# Then go to System Preferences > Security and allow it manually
+```
+
+Totally safe. It’s unsigned, not unsafe.
+
+---
+
+## 👨‍💻 Dev Setup
+
+```bash
+git clone https://github.com/badboysm890/ClaraVerse.git
+cd ClaraVerse
+npm install
+npm run dev           # For web
+npm run electron:dev  # For desktop
+```
+
+### ⚒️ Build
+
+```bash
+npm run build              # Web
+npm run electron:build     # Desktop
+```
+
+---
+
+## 📈 GitHub Star Growth
+
+[![Star History](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse&type=Date)](https://www.star-history.com/#badboysm890/ClaraVerse&Date)
+
+---
+
+## 💬 Support / Feedback / Memes
+
+📧 **[praveensm890@gmail.com](mailto:praveensm890@gmail.com)**  
+🐙 [Raise issues or PRs on GitHub](https://github.com/badboysm890/ClaraVerse)  
+🔥 Got memes? Post them. I’ll probably feature them.
+
+---
+
+## 🧠 Want to Launch Your Own AI SaaS?
+
+Clara gives you the full local AI stack — no vendor lock-in, no API hell, no GPU bills.
+
+**Clara’s your rocket. Light it up. 🚀**
