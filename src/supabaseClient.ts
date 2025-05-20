@@ -1,13 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://qtnaotlbkjfqhzwsnqxc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0bmFvdGxia2pmcWh6d3NucXhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU2NTkyODYsImV4cCI6MjA2MTIzNTI4Nn0.j-yyVIGO4ibAMU6QpTOx4NtqRNseA3IJbYekzRKrj24';
-
-// For admin operations only (WARNING: DO NOT USE IN PRODUCTION)
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0bmFvdGxia2pmcWh6d3NucXhjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NTY1OTI4NiwiZXhwIjoyMDYxMjM1Mjg2fQ.aGxcb_HsCyFZCYaGPvk0QUinIpJbPuLWBt0FBK6C72I';
+// Get Supabase URL and keys from environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qtnaotlbkjfqhzwsnqxc.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Default client with anon key (for regular operations)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Admin client with service key (for admin operations only)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+// This should ONLY be used in secure server environments, never in client-side code
+const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY || '';
+export const supabaseAdmin = typeof window === 'undefined' 
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null; // Only allow this in non-browser environments
