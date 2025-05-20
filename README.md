@@ -86,7 +86,7 @@
 
 - Ollama for model inference
 - N8N for workflow automation
-- Clara’s assistant, UI, image tools
+- Clara's assistant, UI, image tools
 
 ---
 
@@ -100,7 +100,7 @@
 
 ## 🍎 macOS Users
 
-If you see a “damaged app” warning:
+If you see a "damaged app" warning:
 
 1. Right-click the `.app` and choose **Open**
 2. Allow in *System Preferences → Security & Privacy*
@@ -137,3 +137,26 @@ npm run electron:build     # Desktop build
 ## 🤝 Support & Contact
 
 Need help? Reach out via 📧 **praveensm890@gmail.com**
+
+---
+
+## 🔐 Environment Variables & Security
+
+For developers who want to use external services like Supabase, you'll need to set up environment variables:
+
+1. Create a `.env` file at the root of the project
+2. Add your environment variables following this structure:
+
+```
+# Supabase Configuration (if using Supabase)
+VITE_SUPABASE_URL=your_supabase_url_here
+VITE_SUPABASE_ANON_KEY=your_anon_key_here
+
+# Only for server-side usage, not for client-side code
+VITE_SUPABASE_SERVICE_KEY=your_service_key_here_server_only
+```
+
+**⚠️ Security Note:**
+- Never commit your `.env` file to version control
+- Don't store API keys directly in your code
+- The `.gitignore` file is configured to exclude sensitive files like `.env`

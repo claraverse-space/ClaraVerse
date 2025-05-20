@@ -23,7 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+!.env.example
 /tools/.env
+
+# Security files
+secret_key.txt
+*_key.txt
+*.pem
+*.key
 
 # Electron specific
 release
