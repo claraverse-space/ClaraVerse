@@ -222,7 +222,7 @@ const BaseLlmNode = ({ data, isConnectable }: any) => {
           <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">{data.label}</div>
+          <div className="font-medium text-sm text-gray-900 dark:text-white">{data.label}</div>
         </div>
         <button 
           onClick={handleSettingsClick}
@@ -398,7 +398,7 @@ const BaseLlmNode = ({ data, isConnectable }: any) => {
           onFocus={stopPropagation}
           placeholder="Enter system prompt..."
           className={`w-full p-2 rounded border ${
-            isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+            isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'
           } text-sm`}
           rows={3}
         />

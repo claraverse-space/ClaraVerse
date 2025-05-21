@@ -1,8 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Configure PDF.js worker
-const pdfWorkerSrc = '/pdf.worker.min.js';
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+// Configure PDF.js worker with static path
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 export async function readPdfContent(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();

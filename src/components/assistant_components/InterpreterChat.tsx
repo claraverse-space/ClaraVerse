@@ -4,7 +4,7 @@ import { User, Bot, Copy, Check, ArrowDown, RefreshCw, Square, Brain, ChevronDow
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { Components } from 'react-markdown';
 import { InterpreterMessage } from '../../utils/InterpreterClient';
 import { AssistantHeader } from '../assistant_components';

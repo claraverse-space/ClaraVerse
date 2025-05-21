@@ -99,6 +99,19 @@ const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
               </Dialog.Title>
             </div>
 
+            {/* Explanation Section */}
+            <div className="mb-8 p-4 rounded-xl bg-sakura-50 dark:bg-sakura-900/20 text-gray-700 dark:text-gray-200 text-sm leading-relaxed border border-sakura-100 dark:border-sakura-800">
+              <div className="font-semibold mb-1">How model selection works in <span className="text-sakura-600 font-bold">Auto Mode</span>:</div>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><span className="font-medium text-blue-700 dark:text-blue-300">Vision Model</span>: Used automatically when you attach images to your message.</li>
+                <li><span className="font-medium text-green-700 dark:text-green-300">Tool &amp; Text Model</span>: Used for all normal text queries and when you use tools. This is the default model for most conversations.</li>
+                <li><span className="font-medium text-purple-700 dark:text-purple-300">RAG Model</span>: Used when you enable Retrieval-Augmented Generation (RAG) by attaching documents or enabling RAG context.</li>
+              </ul>
+              <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                You can override the model for a specific message in the chat input, but these settings control the default automatic selection based on your input.
+              </div>
+            </div>
+
             <div className="space-y-8">
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">

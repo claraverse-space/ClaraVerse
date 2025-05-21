@@ -47,6 +47,7 @@ interface ChatInputProps {
   useStructuredToolCalling?: boolean;
   onToggleStructuredToolCalling?: () => void;
   selectedModel?: string;
+  activeAutoModel?: string;
 }
 
 const defaultModelConfig: ModelConfig = {
@@ -123,7 +124,8 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
     onModelSelect = () => {},
     useStructuredToolCalling = false,
     onToggleStructuredToolCalling,
-    selectedModel = ''
+    selectedModel = '',
+    activeAutoModel = ''
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tempDocInputRef = useRef<HTMLInputElement>(null);
@@ -1172,39 +1174,6 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
                       </div>
                     )}
 
-                    {/* Model Selection - Only show in manual mode */}
-                    {modelConfig.mode === 'manual' && models.length > 0 && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowModelSelect(!showModelSelect)}
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors"
-                        >
-                          <Bot className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                          <span className="text-gray-700 dark:text-gray-300">{selectedModel || 'Select Model'}</span>
-                          <ChevronDown className="w-4 h-4 text-gray-500" />
-                        </button>
-
-                        {showModelSelect && (
-                          <div className="absolute bottom-full right-0 mb-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
-                            {models.map((model) => (
-                              <button
-                                key={model.name}
-                                onClick={() => {
-                                  onModelSelect?.(model.name);
-                                  setShowModelSelect(false);
-                                }}
-                                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 ${
-                                  selectedModel === model.name ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
-                                }`}
-                              >
-                                {model.name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {/* Mode Selection */}
                     <div className="relative">
                       <button
@@ -1255,6 +1224,61 @@ const ChatInput = forwardRef<any, ChatInputProps>((props, ref) => {
                         </div>
                       )}
                     </div>
+
+                    {/* Model Selection - Now shown in both Manual and Auto modes */}
+                    {models.length > 0 && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowModelSelect(!showModelSelect)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors ${
+                            modelConfig.mode === 'auto' ? 'border border-blue-300 dark:border-blue-600' : ''
+                          }`}
+                        >
+                          <Bot className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                          <span className="text-gray-700 dark:text-gray-300">
+                            {modelConfig.mode === 'auto' 
+                              ? (activeAutoModel || selectedModel || 'Auto')
+                              : (selectedModel || 'Select Model')}
+                            {modelConfig.mode === 'auto' && ' (Auto)'}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-gray-500" />
+                        </button>
+
+                        {showModelSelect && (
+                          <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                            {modelConfig.mode === 'auto' && (
+                              <div className="px-4 py-2 text-xs text-blue-600 dark:text-blue-400 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                <div>In Auto Mode, models are selected based on your content.</div>
+                                <div className="mt-1 font-medium">Active model: {activeAutoModel || selectedModel || 'None'}</div>
+                              </div>
+                            )}
+                            {models.map((model) => (
+                              <button
+                                key={model.name}
+                                onClick={() => {
+                                  onModelSelect?.(model.name);
+                                  setShowModelSelect(false);
+                                }}
+                                className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 ${
+                                  selectedModel === model.name ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
+                                }`}
+                              >
+                                {model.name}
+                                {modelConfig.mode === 'auto' && modelConfig.visionModel === model.name && (
+                                  <span className="ml-2 text-xs text-blue-500">(Vision)</span>
+                                )}
+                                {modelConfig.mode === 'auto' && modelConfig.toolModel === model.name && (
+                                  <span className="ml-2 text-xs text-green-500">(Tool & Text)</span>
+                                )}
+                                {modelConfig.mode === 'auto' && modelConfig.ragModel === model.name && (
+                                  <span className="ml-2 text-xs text-purple-500">(RAG)</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Send Button */}
                     {isProcessing || isExecuting ? (

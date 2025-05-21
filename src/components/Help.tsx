@@ -13,16 +13,21 @@ import {
   MessagesSquare,
   Bot,
   MoreVertical,
-  ExternalLink
+  ExternalLink,
+  Moon,
+  Sun
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Components } from 'react-markdown';
 import helpContent from '../data/help-content.json';
 import { db } from '../db';
+import { useTheme } from '../hooks/useTheme';
 
 interface HelpSection {
   id: string;
   title: string;
   content: string;
+  contextSnippet?: string;
 }
 
 const HighlightedText = ({ text, searchQuery }: { text: string; searchQuery: string }) => {
@@ -43,6 +48,7 @@ const HighlightedText = ({ text, searchQuery }: { text: string; searchQuery: str
 };
 
 const Help = () => {
+  const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [sections, setSections] = useState<HelpSection[]>([]);
@@ -176,17 +182,22 @@ const Help = () => {
   }, [searchQuery, sections]);
 
   // Custom markdown components for highlighting
-  const MarkdownComponents = {
-    p: ({ children }: { children: React.ReactNode }) => (
-      <p className="mb-4 text-gray-700 dark:text-gray-300">
+  const MarkdownComponents: Partial<Components> = {
+    p: ({ children, ...props }) => (
+      <p className="mb-4 text-gray-700 dark:text-gray-300" {...props}>
         {typeof children === 'string' ? (
           <HighlightedText text={children} searchQuery={searchQuery} />
         ) : (
           children
         )}
       </p>
-    ),
+    )
     // Add more components as needed for other markdown elements
+  };
+
+  // Toggle theme function
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
   return (
@@ -209,7 +220,7 @@ const Help = () => {
         {/* Sidebar */}
         <div className="w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
           <div className="p-4">
-            <div className="relative">
+            <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input
                 type="text"
@@ -220,6 +231,25 @@ const Help = () => {
                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>
+            
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center justify-center w-full py-2 px-4 mb-2 rounded-lg border border-gray-200 dark:border-gray-700 
+                bg-white dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              {theme === 'dark' ? (
+                <div className="flex items-center">
+                  <Sun size={16} className="mr-2" />
+                  <span>Light Mode</span>
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  <Moon size={16} className="mr-2" />
+                  <span>Dark Mode</span>
+                </div>
+              )}
+            </button>
           </div>
           <nav className="flex-1 overflow-y-auto p-4">
             {searchResults.map((section) => (

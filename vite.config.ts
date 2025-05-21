@@ -2,20 +2,35 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs-extra';
+import type { PluginOption } from 'vite';
 
-function copyPdfWorker() {
+// Function to copy the PDF.js worker to the public directory
+function copyPdfWorker(): PluginOption {
   return {
     name: 'copy-pdf-worker',
     buildStart() {
-      const workerSrc = path.resolve(
-        __dirname,
-        'node_modules/pdfjs-dist/build/pdf.worker.min.js'
-      );
-      const workerDest = path.resolve(
-        __dirname,
-        'public/pdf.worker.min.js'
-      );
-      fs.copySync(workerSrc, workerDest);
+      try {
+        const workerSrc = path.resolve(
+          __dirname,
+          'node_modules/pdfjs-dist/build/pdf.worker.min.js'
+        );
+        const workerDest = path.resolve(
+          __dirname,
+          'public/pdf.worker.min.js'
+        );
+        
+        // Skip if file already exists and source exists
+        if (fs.existsSync(workerSrc)) {
+          console.log('Copying PDF.js worker to public directory');
+          fs.copySync(workerSrc, workerDest);
+        } else {
+          console.warn('PDF.js worker source file not found:', workerSrc);
+        }
+        return Promise.resolve();
+      } catch (err) {
+        console.error('Error copying PDF.js worker:', err);
+        return Promise.resolve();
+      }
     }
   };
 }

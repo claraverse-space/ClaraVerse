@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './common/Tabs';
-import { Code, Eye, MessageSquare, Send, Layout, Save, Play, RefreshCw, Wand2, ArrowRight, Check, Download, FolderPlus, Folder, ArrowLeft, Target } from 'lucide-react';
+import { Code, Eye, MessageSquare, Send, Layout, Save, Play, RefreshCw, Wand2, ArrowRight, Check, Download, FolderPlus, Folder, ArrowLeft, Target, Moon, Sun, Monitor } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { useTheme } from '../hooks/useTheme';
@@ -29,7 +29,7 @@ interface UIBuilderProps {
 }
 
 const UIBuilder: React.FC<UIBuilderProps> = ({ onPageChange }) => {
-  const { isDark } = useTheme();
+  const { isDark, theme, setTheme } = useTheme();
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatMode, setChatMode] = useState<'chat' | 'design'>('design');
@@ -1345,421 +1345,943 @@ button:focus {
   // Find the index of the last AI message in the full messages array
   const lastStreamingMessageIndex = messages.length - 1;
 
+  // Add dark mode toggle functionality
+  const toggleTheme = () => {
+    if (theme === 'light') setTheme('dark');
+    else if (theme === 'dark') setTheme('light');
+    else if (theme === 'system') setTheme('dark');
+  };
+
   return (
-    <div className="flex h-screen bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-900">
-      <Sidebar activePage="ui-builder" onPageChange={onPageChange} />
-      
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar userName="User" onPageChange={onPageChange} />
-        
-        <div ref={containerRef} className="flex-1 flex relative overflow-hidden">
-          {/* Left Panel - Clara's Designer Interface */}
-          <div 
-            style={{ width: `${leftPanelWidth}%` }} 
-            className="h-full flex flex-col glassmorphic transition-all duration-100 overflow-hidden"
-          >
-            <div className="px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-gray-200 dark:border-gray-700/50">
-              <div className="flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-sakura-500" />
-                <h2 className="font-medium text-gray-900 dark:text-white text-sm">Clara's Designer</h2>
-              </div>
-              <ApiTypeSelector 
-                onApiTypeChange={handleApiTypeChange}
-                currentApiType={apiType}
-                onPageChange={onPageChange}
-              />
-            </div>
-            
-            {/* Fixed height chat panel */}
-            <div className="flex-1 overflow-hidden">
-              <ChatPanel 
-                messages={messages} 
-                mode={chatMode} 
-                onModeChange={setChatMode}
-                selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
-                onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
-                apiType={apiType}
-                onRestoreCheckpoint={({ html, css, js, find, replace }) => {
-                  // Targeted restore: only one of html/css/js is non-empty and both find/replace are present
-                  if (
-                    ((html !== '' && css === '' && js === '') || (html === '' && css !== '' && js === '') || (html === '' && css === '' && js !== '')) &&
-                    typeof find === 'string' && typeof replace === 'string'
-                  ) {
-                    let didRestore = false;
-                    if (html !== '') setHtmlCode(prev => {
-                      if (prev.includes(replace)) {
-                        didRestore = true;
-                        return prev.replace(replace, find);
-                      }
-                      return prev;
-                    });
-                    if (css !== '') setCssCode(prev => {
-                      if (prev.includes(replace)) {
-                        didRestore = true;
-                        return prev.replace(replace, find);
-                      }
-                      return prev;
-                    });
-                    if (js !== '') setJsCode(prev => {
-                      if (prev.includes(replace)) {
-                        didRestore = true;
-                        return prev.replace(replace, find);
-                      }
-                      return prev;
-                    });
-                    setToast({
-                      message: didRestore ? 'Checkpoint restored successfully.' : 'Could not find the edit to restore.',
-                      type: didRestore ? 'success' : 'error',
-                      visible: true
-                    });
-                    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500);
-                  } else {
-                    // Normal restore (full code)
-                    if (html !== '') setHtmlCode(html);
-                    if (css !== '') setCssCode(css);
-                    if (js !== '') setJsCode(js);
-                  }
-                  setActiveTab('preview');
-                  setTimeout(() => updatePreview(), 100);
-                }}
-                isGenerating={isGenerating}
-                isProcessing={isProcessing}
-                processingProgress={processingProgress}
-                streamStats={streamStats}
-                lastStreamingMessageIndex={lastStreamingMessageIndex}
-              />
-            </div>
-            
-            {/* Fixed input box */}
-            <div className="p-4 bg-transparent backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0">
-              <div className="relative">
-                <textarea
-                  ref={textareaRef}
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={chatMode === 'design' 
-                    ? "Describe changes you want to make to the UI..." 
-                    : "Type a message..."}
-                  className="w-full p-3 pr-24 text-sm rounded-xl min-h-[44px] max-h-[180px] bg-transparent dark:text-white focus:outline-none resize-none overflow-hidden border border-gray-200 dark:border-gray-700/50"
-                  style={{ height: 'auto' }}
-                />
-                <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsTargetedEdit(v => !v)}
-                    className={`p-2 rounded-full transition-colors ${isTargetedEdit ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400 hover:text-purple-500'}`}
-                    title="Targeted Edit: Only update a specific part of the code"
-                  >
-                    <Target className={`w-4 h-4 ${isTargetedEdit ? 'fill-purple-500' : ''}`} />
-                  </button>
-                  <button
-                    onClick={enhancePrompt}
-                    disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
-                    className={`p-2 rounded-lg transition-colors ${
-                      chatInput.trim() && !isEnhancing && !isGenerating && !isProcessing
-                        ? 'bg-purple-500/80 hover:bg-purple-600/90 text-white'
-                        : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {isEnhancing ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Wand2 className="w-4 h-4" />
-                    )}
-                  </button>
-                  <button
-                    onClick={generateCompletion}
-                    disabled={
-                      (apiType === 'ollama' && !selectedOllamaModel) || 
-                      (apiType === 'openai' && (!selectedOpenAIModel || !apiConfig.openai_api_key)) || 
-                      !chatInput.trim() || 
-                      isGenerating ||
-                      isEnhancing ||
-                      isProcessing
-                    }
-                    className={`p-2 rounded-lg transition-colors ${
-                      chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing && !isProcessing
-                        ? 'bg-blue-500/80 hover:bg-blue-600/90 text-white'
-                        : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {isGenerating || isProcessing ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <ArrowRight className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Horizontal Resize Handle */}
-          <div 
-            className="absolute top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-sakura-400/30 active:bg-sakura-400/50 transition-colors"
-            style={{ left: `${leftPanelWidth}%` }}
-            onMouseDown={startHorizontalResize}
+    <div className={`flex h-screen flex-col`}>
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar activePage="uibuilder" onPageChange={onPageChange || (() => {})} />
+        <div className="flex flex-1 flex-col">
+          <Topbar 
+            userName="User"
+            onPageChange={onPageChange}
+            isDarkMode={isDark}
+            onToggleDarkMode={toggleTheme}
           />
           
-          {/* Right Panel - Code Editors with Tabs */}
-          <div 
-            id="right-panel"
-            style={{ width: `${100 - leftPanelWidth}%` }} 
-            className="h-full flex flex-col transition-all duration-100 bg-transparent backdrop-blur-sm"
-          >
-            <div className="p-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30 backdrop-blur-md flex-shrink-0">
-              <Tabs defaultValue="html" className="w-auto">
-                <TabsList className="flex bg-gray-100/80 dark:bg-gray-800/80 rounded-lg p-1 gap-1">
-                  <TabsTrigger 
-                    value="html" 
-                    onClick={() => setActiveTab('html')}
-                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
-                      activeTab === 'html' 
-                        ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
-                    }`}
-                    aria-label="HTML"
-                  >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                      <Code className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-medium ml-1 sm:inline hidden">HTML</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="css" 
-                    onClick={() => setActiveTab('css')}
-                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
-                      activeTab === 'css' 
-                        ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
-                    }`}
-                    aria-label="CSS"
-                  >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                      <Code className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-medium ml-1 sm:inline hidden">CSS</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="js" 
-                    onClick={() => setActiveTab('js')}
-                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
-                      activeTab === 'js' 
-                        ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
-                    }`}
-                    aria-label="JavaScript"
-                  >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                      <Code className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-medium ml-1 sm:inline hidden">JS</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="preview" 
-                    onClick={() => {
-                      setActiveTab('preview');
-                    }}
-                    className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
-                      activeTab === 'preview' 
-                        ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
-                    }`}
-                    aria-label="Preview"
-                  >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                      <Eye className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-medium ml-1 sm:inline hidden">Preview</span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onPageChange('apps')}
-                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
-                  title="Back to Apps"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                
-                <div className="h-9 px-2 bg-gray-100/80 dark:bg-gray-800/80 rounded-md flex items-center">
-                  <button
-                    onClick={() => setShowProjectManager(true)}
-                    className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 px-1.5 py-1 rounded"
-                    title="Open Project Manager"
-                  >
-                    <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 max-w-[100px] truncate sm:inline hidden">
-                      {currentDesign?.name || "Untitled Project"}
-                    </span>
-                  </button>
-                </div>
-                
-                <button 
-                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
-                  onClick={updatePreview}
-                  title="Refresh Preview"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                
-                <button 
-                  onClick={handleNewProject}
-                  className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
-                  title="New Project"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                
-                <button
-                  className={`w-9 h-9 flex items-center justify-center rounded-md transition-colors ${
-                    isSaving
-                      ? 'bg-gray-400 cursor-not-allowed text-white'
-                      : saveStatus === 'success'
-                      ? 'bg-green-500 text-white'
-                      : saveStatus === 'error'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-blue-500/90 hover:bg-blue-600 text-white'
-                  }`}
-                  onClick={saveDesign}
-                  disabled={isSaving}
-                  title={isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : 'Save Project'}
-                >
-                  {isSaving ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : saveStatus === 'success' ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                </button>
-                
-                <button
-                  className="w-9 h-9 flex items-center justify-center rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
-                  onClick={() => setShowExportModal(true)}
-                  title="Export Project"
-                >
-                  <FolderPlus className="w-4 h-4" />
-                </button>
-              </div>
+          <div className="dark:bg-neutral-950 flex flex-1 flex-col overflow-hidden bg-neutral-50">
+            {/* Dark mode toggle */}
+            <div className="absolute top-20 right-4 z-10">
+              <button
+                onClick={toggleTheme}
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-white p-2 text-gray-700 shadow-sm hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
             </div>
             
-            <div className="flex-1 overflow-hidden">
-              {/* Code Editors and Preview */}
-              <div className="h-full shadow-inner">
-                {activeTab === 'html' && (
-                  <Editor
-                    value={htmlCode}
-                    onChange={(value) => setHtmlCode(value || '')}
-                    language="html"
-                    theme={isDark ? 'vs-dark' : 'vs-light'}
-                    options={{
-                      minimap: { enabled: true },
-                      fontSize: 14,
-                      wordWrap: 'on',
-                      automaticLayout: true,
-                      padding: { top: 16 },
-                      scrollBeyondLastLine: false,
-                      lineNumbers: 'on',
-                      lineDecorationsWidth: 10,
-                      lineNumbersMinChars: 3,
-                      renderLineHighlight: 'all',
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      bracketPairColorization: { enabled: true },
-                      folding: true,
-                      scrollbar: {
-                        vertical: 'visible',
-                        horizontal: 'visible',
-                        verticalScrollbarSize: 12,
-                        horizontalScrollbarSize: 12,
-                      }
-                    }}
-                    className="h-full w-full"
-                  />
-                )}
-                {activeTab === 'css' && (
-                  <Editor
-                    value={cssCode}
-                    onChange={(value) => setCssCode(value || '')}
-                    language="css"
-                    theme={isDark ? 'vs-dark' : 'vs-light'}
-                    options={{
-                      minimap: { enabled: true },
-                      fontSize: 14,
-                      wordWrap: 'on',
-                      automaticLayout: true,
-                      padding: { top: 16 },
-                      scrollBeyondLastLine: false,
-                      lineNumbers: 'on',
-                      lineDecorationsWidth: 10,
-                      lineNumbersMinChars: 3,
-                      renderLineHighlight: 'all',
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      bracketPairColorization: { enabled: true },
-                      folding: true,
-                      scrollbar: {
-                        vertical: 'visible',
-                        horizontal: 'visible',
-                        verticalScrollbarSize: 12,
-                        horizontalScrollbarSize: 12,
-                      }
-                    }}
-                    className="h-full w-full"
-                  />
-                )}
-                {activeTab === 'js' && (
-                  <Editor
-                    value={jsCode}
-                    onChange={(value) => setJsCode(value || '')}
-                    language="javascript"
-                    theme={isDark ? 'vs-dark' : 'vs-light'}
-                    options={{
-                      minimap: { enabled: true },
-                      fontSize: 14,
-                      wordWrap: 'on',
-                      automaticLayout: true,
-                      padding: { top: 16 },
-                      scrollBeyondLastLine: false,
-                      lineNumbers: 'on',
-                      lineDecorationsWidth: 10,
-                      lineNumbersMinChars: 3,
-                      renderLineHighlight: 'all',
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      bracketPairColorization: { enabled: true },
-                      folding: true,
-                      scrollbar: {
-                        vertical: 'visible',
-                        horizontal: 'visible',
-                        verticalScrollbarSize: 12,
-                        horizontalScrollbarSize: 12,
-                      }
-                    }}
-                    className="h-full w-full"
-                  />
-                )}
-                {activeTab === 'preview' && (
-                  <div className="w-full h-full relative overflow-hidden">
-                    {previewError && (
-                      <div className="absolute top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-sm z-50">
-                        Error on line {previewError.line}: {previewError.message}
-                      </div>
-                    )}
-                    <div className="absolute inset-0">
-                      <PreviewPanel
-                        elements={[{ id: '1', type: 'div', props: {}, children: [] }]}
-                        htmlContent={htmlCode}
-                        cssContent={cssCode}
-                        jsContent={jsCode}
+            {/* Rest of the content */}
+            <div className="flex-1 flex overflow-hidden">
+              <div className="z-10">
+                <div 
+                  style={{ width: `${leftPanelWidth}%` }} 
+                  className="h-full flex flex-col glassmorphic transition-all duration-100 overflow-hidden"
+                >
+                  <div className="px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-gray-200 dark:border-gray-700/50">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="w-5 h-5 text-sakura-500" />
+                      <h2 className="font-medium text-gray-900 dark:text-white text-sm">Clara's Designer</h2>
+                    </div>
+                    <ApiTypeSelector 
+                      onApiTypeChange={handleApiTypeChange}
+                      currentApiType={apiType}
+                      onPageChange={onPageChange}
+                    />
+                  </div>
+                  
+                  {/* Fixed height chat panel */}
+                  <div className="flex-1 overflow-hidden">
+                    <ChatPanel 
+                      messages={messages} 
+                      mode={chatMode} 
+                      onModeChange={setChatMode}
+                      selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
+                      onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
+                      apiType={apiType}
+                      onRestoreCheckpoint={({ html, css, js, find, replace }) => {
+                        // Targeted restore: only one of html/css/js is non-empty and both find/replace are present
+                        if (
+                          ((html !== '' && css === '' && js === '') || (html === '' && css !== '' && js === '') || (html === '' && css === '' && js !== '')) &&
+                          typeof find === 'string' && typeof replace === 'string'
+                        ) {
+                          let didRestore = false;
+                          if (html !== '') setHtmlCode(prev => {
+                            if (prev.includes(replace)) {
+                              didRestore = true;
+                              return prev.replace(replace, find);
+                            }
+                            return prev;
+                          });
+                          if (css !== '') setCssCode(prev => {
+                            if (prev.includes(replace)) {
+                              didRestore = true;
+                              return prev.replace(replace, find);
+                            }
+                            return prev;
+                          });
+                          if (js !== '') setJsCode(prev => {
+                            if (prev.includes(replace)) {
+                              didRestore = true;
+                              return prev.replace(replace, find);
+                            }
+                            return prev;
+                          });
+                          setToast({
+                            message: didRestore ? 'Checkpoint restored successfully.' : 'Could not find the edit to restore.',
+                            type: didRestore ? 'success' : 'error',
+                            visible: true
+                          });
+                          setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500);
+                        } else {
+                          // Normal restore (full code)
+                          if (html !== '') setHtmlCode(html);
+                          if (css !== '') setCssCode(css);
+                          if (js !== '') setJsCode(js);
+                        }
+                        setActiveTab('preview');
+                        setTimeout(() => updatePreview(), 100);
+                      }}
+                      isGenerating={isGenerating}
+                      isProcessing={isProcessing}
+                      processingProgress={processingProgress}
+                      streamStats={streamStats}
+                      lastStreamingMessageIndex={lastStreamingMessageIndex}
+                    />
+                  </div>
+                  
+                  {/* Fixed input box */}
+                  <div className="p-4 bg-transparent backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0">
+                    <div className="relative">
+                      <textarea
+                        ref={textareaRef}
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={chatMode === 'design' 
+                          ? "Describe changes you want to make to the UI..." 
+                          : "Type a message..."}
+                        className="w-full p-3 pr-24 text-sm rounded-xl min-h-[44px] max-h-[180px] bg-transparent dark:text-white focus:outline-none resize-none overflow-hidden border border-gray-200 dark:border-gray-700/50"
+                        style={{ height: 'auto' }}
                       />
+                      <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsTargetedEdit(v => !v)}
+                          className={`p-2 rounded-full transition-colors ${isTargetedEdit ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400 hover:text-purple-500'}`}
+                          title="Targeted Edit: Only update a specific part of the code"
+                        >
+                          <Target className={`w-4 h-4 ${isTargetedEdit ? 'fill-purple-500' : ''}`} />
+                        </button>
+                        <button
+                          onClick={enhancePrompt}
+                          disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
+                          className={`p-2 rounded-lg transition-colors ${
+                            chatInput.trim() && !isEnhancing && !isGenerating && !isProcessing
+                              ? 'bg-purple-500/80 hover:bg-purple-600/90 text-white'
+                              : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {isEnhancing ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={generateCompletion}
+                          disabled={
+                            (apiType === 'ollama' && !selectedOllamaModel) || 
+                            (apiType === 'openai' && (!selectedOpenAIModel || !apiConfig.openai_api_key)) || 
+                            !chatInput.trim() || 
+                            isGenerating ||
+                            isEnhancing ||
+                            isProcessing
+                          }
+                          className={`p-2 rounded-lg transition-colors ${
+                            chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing && !isProcessing
+                              ? 'bg-blue-500/80 hover:bg-blue-600/90 text-white'
+                              : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {isGenerating || isProcessing ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ArrowRight className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                )}
+                </div>
+                
+                {/* Horizontal Resize Handle */}
+                <div 
+                  className="absolute top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-sakura-400/30 active:bg-sakura-400/50 transition-colors"
+                  style={{ left: `${leftPanelWidth}%` }}
+                  onMouseDown={startHorizontalResize}
+                />
+                
+                {/* Right Panel - Code Editors with Tabs */}
+                <div 
+                  id="right-panel"
+                  style={{ width: `${100 - leftPanelWidth}%` }} 
+                  className="h-full flex flex-col transition-all duration-100 bg-transparent backdrop-blur-sm"
+                >
+                  <div className="p-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30 backdrop-blur-md flex-shrink-0">
+                    <Tabs defaultValue="html" className="w-auto">
+                      <TabsList className="flex bg-gray-100/80 dark:bg-gray-800/80 rounded-lg p-1 gap-1">
+                        <TabsTrigger 
+                          value="html" 
+                          onClick={() => setActiveTab('html')}
+                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                            activeTab === 'html' 
+                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                          }`}
+                          aria-label="HTML"
+                        >
+                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Code className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-medium ml-1 sm:inline hidden">HTML</span>
+                        </TabsTrigger>
+                        <TabsTrigger 
+                          value="css" 
+                          onClick={() => setActiveTab('css')}
+                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                            activeTab === 'css' 
+                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                          }`}
+                          aria-label="CSS"
+                        >
+                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Code className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-medium ml-1 sm:inline hidden">CSS</span>
+                        </TabsTrigger>
+                        <TabsTrigger 
+                          value="js" 
+                          onClick={() => setActiveTab('js')}
+                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                            activeTab === 'js' 
+                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                          }`}
+                          aria-label="JavaScript"
+                        >
+                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Code className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-medium ml-1 sm:inline hidden">JS</span>
+                        </TabsTrigger>
+                        <TabsTrigger 
+                          value="preview" 
+                          onClick={() => {
+                            setActiveTab('preview');
+                          }}
+                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                            activeTab === 'preview' 
+                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                          }`}
+                          aria-label="Preview"
+                        >
+                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                            <Eye className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-medium ml-1 sm:inline hidden">Preview</span>
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                    
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onPageChange('apps')}
+                        className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                        title="Back to Apps"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      
+                      <div className="h-9 px-2 bg-gray-100/80 dark:bg-gray-800/80 rounded-md flex items-center">
+                        <button
+                          onClick={() => setShowProjectManager(true)}
+                          className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 px-1.5 py-1 rounded"
+                          title="Open Project Manager"
+                        >
+                          <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                        </button>
+                      </div>
+                      
+                      <div ref={containerRef} className="flex-1 flex relative overflow-hidden">
+                        {/* Left Panel - Clara's Designer Interface */}
+                        <div 
+                          style={{ width: `${leftPanelWidth}%` }} 
+                          className="h-full flex flex-col glassmorphic transition-all duration-100 overflow-hidden"
+                        >
+                          <div className="px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-gray-200 dark:border-gray-700/50">
+                            <div className="flex items-center gap-2">
+                              <Wand2 className="w-5 h-5 text-sakura-500" />
+                              <h2 className="font-medium text-gray-900 dark:text-white text-sm">Clara's Designer</h2>
+                            </div>
+                            <ApiTypeSelector 
+                              onApiTypeChange={handleApiTypeChange}
+                              currentApiType={apiType}
+                              onPageChange={onPageChange}
+                            />
+                          </div>
+                          
+                          {/* Fixed height chat panel */}
+                          <div className="flex-1 overflow-hidden">
+                            <ChatPanel 
+                              messages={messages} 
+                              mode={chatMode} 
+                              onModeChange={setChatMode}
+                              selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
+                              onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
+                              apiType={apiType}
+                              onRestoreCheckpoint={({ html, css, js, find, replace }) => {
+                                // Targeted restore: only one of html/css/js is non-empty and both find/replace are present
+                                if (
+                                  ((html !== '' && css === '' && js === '') || (html === '' && css !== '' && js === '') || (html === '' && css === '' && js !== '')) &&
+                                  typeof find === 'string' && typeof replace === 'string'
+                                ) {
+                                  let didRestore = false;
+                                  if (html !== '') setHtmlCode(prev => {
+                                    if (prev.includes(replace)) {
+                                      didRestore = true;
+                                      return prev.replace(replace, find);
+                                    }
+                                    return prev;
+                                  });
+                                  if (css !== '') setCssCode(prev => {
+                                    if (prev.includes(replace)) {
+                                      didRestore = true;
+                                      return prev.replace(replace, find);
+                                    }
+                                    return prev;
+                                  });
+                                  if (js !== '') setJsCode(prev => {
+                                    if (prev.includes(replace)) {
+                                      didRestore = true;
+                                      return prev.replace(replace, find);
+                                    }
+                                    return prev;
+                                  });
+                                  setToast({
+                                    message: didRestore ? 'Checkpoint restored successfully.' : 'Could not find the edit to restore.',
+                                    type: didRestore ? 'success' : 'error',
+                                    visible: true
+                                  });
+                                  setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500);
+                                } else {
+                                  // Normal restore (full code)
+                                  if (html !== '') setHtmlCode(html);
+                                  if (css !== '') setCssCode(css);
+                                  if (js !== '') setJsCode(js);
+                                }
+                                setActiveTab('preview');
+                                setTimeout(() => updatePreview(), 100);
+                              }}
+                              isGenerating={isGenerating}
+                              isProcessing={isProcessing}
+                              processingProgress={processingProgress}
+                              streamStats={streamStats}
+                              lastStreamingMessageIndex={lastStreamingMessageIndex}
+                            />
+                          </div>
+                          
+                          {/* Fixed input box */}
+                          <div className="p-4 bg-transparent backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0">
+                            <div className="relative">
+                              <textarea
+                                ref={textareaRef}
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={chatMode === 'design' 
+                                  ? "Describe changes you want to make to the UI..." 
+                                  : "Type a message..."}
+                                className="w-full p-3 pr-24 text-sm rounded-xl min-h-[44px] max-h-[180px] bg-transparent dark:text-white focus:outline-none resize-none overflow-hidden border border-gray-200 dark:border-gray-700/50"
+                                style={{ height: 'auto' }}
+                              />
+                              <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsTargetedEdit(v => !v)}
+                                  className={`p-2 rounded-full transition-colors ${isTargetedEdit ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400 hover:text-purple-500'}`}
+                                  title="Targeted Edit: Only update a specific part of the code"
+                                >
+                                  <Target className={`w-4 h-4 ${isTargetedEdit ? 'fill-purple-500' : ''}`} />
+                                </button>
+                                <button
+                                  onClick={enhancePrompt}
+                                  disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    chatInput.trim() && !isEnhancing && !isGenerating && !isProcessing
+                                      ? 'bg-purple-500/80 hover:bg-purple-600/90 text-white'
+                                      : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  {isEnhancing ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Wand2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={generateCompletion}
+                                  disabled={
+                                    (apiType === 'ollama' && !selectedOllamaModel) || 
+                                    (apiType === 'openai' && (!selectedOpenAIModel || !apiConfig.openai_api_key)) || 
+                                    !chatInput.trim() || 
+                                    isGenerating ||
+                                    isEnhancing ||
+                                    isProcessing
+                                  }
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing && !isProcessing
+                                      ? 'bg-blue-500/80 hover:bg-blue-600/90 text-white'
+                                      : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                  }`}
+                                >
+                                  {isGenerating || isProcessing ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <ArrowRight className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Horizontal Resize Handle */}
+                        <div 
+                          className="absolute top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-sakura-400/30 active:bg-sakura-400/50 transition-colors"
+                          style={{ left: `${leftPanelWidth}%` }}
+                          onMouseDown={startHorizontalResize}
+                        />
+                        
+                        {/* Right Panel - Code Editors with Tabs */}
+                        <div 
+                          id="right-panel"
+                          style={{ width: `${100 - leftPanelWidth}%` }} 
+                          className="h-full flex flex-col transition-all duration-100 bg-transparent backdrop-blur-sm"
+                        >
+                          <div className="p-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30 backdrop-blur-md flex-shrink-0">
+                            <Tabs defaultValue="html" className="w-auto">
+                              <TabsList className="flex bg-gray-100/80 dark:bg-gray-800/80 rounded-lg p-1 gap-1">
+                                <TabsTrigger 
+                                  value="html" 
+                                  onClick={() => setActiveTab('html')}
+                                  className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                    activeTab === 'html' 
+                                      ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                  }`}
+                                  aria-label="HTML"
+                                >
+                                  <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    <Code className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-xs font-medium ml-1 sm:inline hidden">HTML</span>
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                  value="css" 
+                                  onClick={() => setActiveTab('css')}
+                                  className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                    activeTab === 'css' 
+                                      ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                  }`}
+                                  aria-label="CSS"
+                                >
+                                  <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    <Code className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-xs font-medium ml-1 sm:inline hidden">CSS</span>
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                  value="js" 
+                                  onClick={() => setActiveTab('js')}
+                                  className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                    activeTab === 'js' 
+                                      ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                  }`}
+                                  aria-label="JavaScript"
+                                >
+                                  <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    <Code className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-xs font-medium ml-1 sm:inline hidden">JS</span>
+                                </TabsTrigger>
+                                <TabsTrigger 
+                                  value="preview" 
+                                  onClick={() => {
+                                    setActiveTab('preview');
+                                  }}
+                                  className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                    activeTab === 'preview' 
+                                      ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                  }`}
+                                  aria-label="Preview"
+                                >
+                                  <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-xs font-medium ml-1 sm:inline hidden">Preview</span>
+                                </TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                            
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => onPageChange('apps')}
+                                className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                                title="Back to Apps"
+                              >
+                                <ArrowLeft className="w-4 h-4" />
+                              </button>
+                              
+                              <div className="h-9 px-2 bg-gray-100/80 dark:bg-gray-800/80 rounded-md flex items-center">
+                                <button
+                                  onClick={() => setShowProjectManager(true)}
+                                  className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 px-1.5 py-1 rounded"
+                                  title="Open Project Manager"
+                                >
+                                  <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                </button>
+                              </div>
+                              
+                              <div ref={containerRef} className="flex-1 flex relative overflow-hidden">
+                                {/* Left Panel - Clara's Designer Interface */}
+                                <div 
+                                  style={{ width: `${leftPanelWidth}%` }} 
+                                  className="h-full flex flex-col glassmorphic transition-all duration-100 overflow-hidden"
+                                >
+                                  <div className="px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-gray-200 dark:border-gray-700/50">
+                                    <div className="flex items-center gap-2">
+                                      <Wand2 className="w-5 h-5 text-sakura-500" />
+                                      <h2 className="font-medium text-gray-900 dark:text-white text-sm">Clara's Designer</h2>
+                                    </div>
+                                    <ApiTypeSelector 
+                                      onApiTypeChange={handleApiTypeChange}
+                                      currentApiType={apiType}
+                                      onPageChange={onPageChange}
+                                    />
+                                  </div>
+                                  
+                                  {/* Fixed height chat panel */}
+                                  <div className="flex-1 overflow-hidden">
+                                    <ChatPanel 
+                                      messages={messages} 
+                                      mode={chatMode} 
+                                      onModeChange={setChatMode}
+                                      selectedModel={apiType === 'ollama' ? selectedOllamaModel : selectedOpenAIModel as any}
+                                      onModelSelect={apiType === 'ollama' ? handleOllamaModelSelect : handleOpenAIModelSelect as any}
+                                      apiType={apiType}
+                                      onRestoreCheckpoint={({ html, css, js, find, replace }) => {
+                                        // Targeted restore: only one of html/css/js is non-empty and both find/replace are present
+                                        if (
+                                          ((html !== '' && css === '' && js === '') || (html === '' && css !== '' && js === '') || (html === '' && css === '' && js !== '')) &&
+                                          typeof find === 'string' && typeof replace === 'string'
+                                        ) {
+                                          let didRestore = false;
+                                          if (html !== '') setHtmlCode(prev => {
+                                            if (prev.includes(replace)) {
+                                              didRestore = true;
+                                              return prev.replace(replace, find);
+                                            }
+                                            return prev;
+                                          });
+                                          if (css !== '') setCssCode(prev => {
+                                            if (prev.includes(replace)) {
+                                              didRestore = true;
+                                              return prev.replace(replace, find);
+                                            }
+                                            return prev;
+                                          });
+                                          if (js !== '') setJsCode(prev => {
+                                            if (prev.includes(replace)) {
+                                              didRestore = true;
+                                              return prev.replace(replace, find);
+                                            }
+                                            return prev;
+                                          });
+                                          setToast({
+                                            message: didRestore ? 'Checkpoint restored successfully.' : 'Could not find the edit to restore.',
+                                            type: didRestore ? 'success' : 'error',
+                                            visible: true
+                                          });
+                                          setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500);
+                                        } else {
+                                          // Normal restore (full code)
+                                          if (html !== '') setHtmlCode(html);
+                                          if (css !== '') setCssCode(css);
+                                          if (js !== '') setJsCode(js);
+                                        }
+                                        setActiveTab('preview');
+                                        setTimeout(() => updatePreview(), 100);
+                                      }}
+                                      isGenerating={isGenerating}
+                                      isProcessing={isProcessing}
+                                      processingProgress={processingProgress}
+                                      streamStats={streamStats}
+                                      lastStreamingMessageIndex={lastStreamingMessageIndex}
+                                    />
+                                  </div>
+                                  
+                                  {/* Fixed input box */}
+                                  <div className="p-4 bg-transparent backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0">
+                                    <div className="relative">
+                                      <textarea
+                                        ref={textareaRef}
+                                        value={chatInput}
+                                        onChange={(e) => setChatInput(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={chatMode === 'design' 
+                                          ? "Describe changes you want to make to the UI..." 
+                                          : "Type a message..."}
+                                        className="w-full p-3 pr-24 text-sm rounded-xl min-h-[44px] max-h-[180px] bg-transparent dark:text-white focus:outline-none resize-none overflow-hidden border border-gray-200 dark:border-gray-700/50"
+                                        style={{ height: 'auto' }}
+                                      />
+                                      <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setIsTargetedEdit(v => !v)}
+                                          className={`p-2 rounded-full transition-colors ${isTargetedEdit ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400 hover:text-purple-500'}`}
+                                          title="Targeted Edit: Only update a specific part of the code"
+                                        >
+                                          <Target className={`w-4 h-4 ${isTargetedEdit ? 'fill-purple-500' : ''}`} />
+                                        </button>
+                                        <button
+                                          onClick={enhancePrompt}
+                                          disabled={!chatInput.trim() || isEnhancing || isGenerating || isProcessing}
+                                          className={`p-2 rounded-lg transition-colors ${
+                                            chatInput.trim() && !isEnhancing && !isGenerating && !isProcessing
+                                              ? 'bg-purple-500/80 hover:bg-purple-600/90 text-white'
+                                              : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                          }`}
+                                        >
+                                          {isEnhancing ? (
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Wand2 className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={generateCompletion}
+                                          disabled={
+                                            (apiType === 'ollama' && !selectedOllamaModel) || 
+                                            (apiType === 'openai' && (!selectedOpenAIModel || !apiConfig.openai_api_key)) || 
+                                            !chatInput.trim() || 
+                                            isGenerating ||
+                                            isEnhancing ||
+                                            isProcessing
+                                          }
+                                          className={`p-2 rounded-lg transition-colors ${
+                                            chatInput.trim() && ((apiType === 'ollama' && selectedOllamaModel) || (apiType === 'openai' && selectedOpenAIModel && apiConfig.openai_api_key)) && !isGenerating && !isEnhancing && !isProcessing
+                                              ? 'bg-blue-500/80 hover:bg-blue-600/90 text-white'
+                                              : 'bg-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                          }`}
+                                        >
+                                          {isGenerating || isProcessing ? (
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <ArrowRight className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Horizontal Resize Handle */}
+                                <div 
+                                  className="absolute top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-sakura-400/30 active:bg-sakura-400/50 transition-colors"
+                                  style={{ left: `${leftPanelWidth}%` }}
+                                  onMouseDown={startHorizontalResize}
+                                />
+                                
+                                {/* Right Panel - Code Editors with Tabs */}
+                                <div 
+                                  id="right-panel"
+                                  style={{ width: `${100 - leftPanelWidth}%` }} 
+                                  className="h-full flex flex-col transition-all duration-100 bg-transparent backdrop-blur-sm"
+                                >
+                                  <div className="p-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30 backdrop-blur-md flex-shrink-0">
+                                    <Tabs defaultValue="html" className="w-auto">
+                                      <TabsList className="flex bg-gray-100/80 dark:bg-gray-800/80 rounded-lg p-1 gap-1">
+                                        <TabsTrigger 
+                                          value="html" 
+                                          onClick={() => setActiveTab('html')}
+                                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                            activeTab === 'html' 
+                                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                          }`}
+                                          aria-label="HTML"
+                                        >
+                                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'html' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                            <Code className="w-3.5 h-3.5" />
+                                          </div>
+                                          <span className="text-xs font-medium ml-1 sm:inline hidden">HTML</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger 
+                                          value="css" 
+                                          onClick={() => setActiveTab('css')}
+                                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                            activeTab === 'css' 
+                                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                          }`}
+                                          aria-label="CSS"
+                                        >
+                                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'css' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                            <Code className="w-3.5 h-3.5" />
+                                          </div>
+                                          <span className="text-xs font-medium ml-1 sm:inline hidden">CSS</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger 
+                                          value="js" 
+                                          onClick={() => setActiveTab('js')}
+                                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                            activeTab === 'js' 
+                                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                          }`}
+                                          aria-label="JavaScript"
+                                        >
+                                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'js' ? 'text-yellow-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                            <Code className="w-3.5 h-3.5" />
+                                          </div>
+                                          <span className="text-xs font-medium ml-1 sm:inline hidden">JS</span>
+                                        </TabsTrigger>
+                                        <TabsTrigger 
+                                          value="preview" 
+                                          onClick={() => {
+                                            setActiveTab('preview');
+                                          }}
+                                          className={`min-w-[40px] px-2 py-1.5 flex items-center justify-center rounded-md transition-all duration-200 ${
+                                            activeTab === 'preview' 
+                                              ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' 
+                                              : 'text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50'
+                                          }`}
+                                          aria-label="Preview"
+                                        >
+                                          <div className={`flex items-center justify-center w-5 h-5 rounded ${activeTab === 'preview' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                            <Eye className="w-3.5 h-3.5" />
+                                          </div>
+                                          <span className="text-xs font-medium ml-1 sm:inline hidden">Preview</span>
+                                        </TabsTrigger>
+                                      </TabsList>
+                                    </Tabs>
+                                    
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => onPageChange('apps')}
+                                        className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                                        title="Back to Apps"
+                                      >
+                                        <ArrowLeft className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <div className="h-9 px-2 bg-gray-100/80 dark:bg-gray-800/80 rounded-md flex items-center">
+                                        <button
+                                          onClick={() => setShowProjectManager(true)}
+                                          className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 px-1.5 py-1 rounded"
+                                          title="Open Project Manager"
+                                        >
+                                          <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 max-w-[100px] truncate sm:inline hidden">
+                                            {currentDesign?.name || "Untitled Project"}
+                                          </span>
+                                        </button>
+                                      </div>
+                                      
+                                      <button 
+                                        className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                                        onClick={updatePreview}
+                                        title="Refresh Preview"
+                                      >
+                                        <RefreshCw className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <button 
+                                        onClick={handleNewProject}
+                                        className="w-9 h-9 flex items-center justify-center rounded-md bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-700/80 transition-colors"
+                                        title="New Project"
+                                      >
+                                        <Download className="w-4 h-4" />
+                                      </button>
+                                      
+                                      <button
+                                        className={`w-9 h-9 flex items-center justify-center rounded-md transition-colors ${
+                                          isSaving
+                                            ? 'bg-gray-400 cursor-not-allowed text-white'
+                                            : saveStatus === 'success'
+                                            ? 'bg-green-500 text-white'
+                                            : saveStatus === 'error'
+                                            ? 'bg-red-500 text-white'
+                                            : 'bg-blue-500/90 hover:bg-blue-600 text-white'
+                                        }`}
+                                        onClick={saveDesign}
+                                        disabled={isSaving}
+                                        title={isSaving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : 'Save Project'}
+                                      >
+                                        {isSaving ? (
+                                          <RefreshCw className="w-4 h-4 animate-spin" />
+                                        ) : saveStatus === 'success' ? (
+                                          <Check className="w-4 h-4" />
+                                        ) : (
+                                          <Save className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                      
+                                      <button
+                                        className="w-9 h-9 flex items-center justify-center rounded-md bg-sakura-500 hover:bg-sakura-600 text-white transition-colors"
+                                        onClick={() => setShowExportModal(true)}
+                                        title="Export Project"
+                                      >
+                                        <FolderPlus className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex-1 overflow-hidden">
+                                    {/* Code Editors and Preview */}
+                                    <div className="h-full shadow-inner">
+                                      {activeTab === 'html' && (
+                                        <Editor
+                                          value={htmlCode}
+                                          onChange={(value) => setHtmlCode(value || '')}
+                                          language="html"
+                                          theme={isDark ? 'vs-dark' : 'vs-light'}
+                                          options={{
+                                            minimap: { enabled: true },
+                                            fontSize: 14,
+                                            wordWrap: 'on',
+                                            automaticLayout: true,
+                                            padding: { top: 16 },
+                                            scrollBeyondLastLine: false,
+                                            lineNumbers: 'on',
+                                            lineDecorationsWidth: 10,
+                                            lineNumbersMinChars: 3,
+                                            renderLineHighlight: 'all',
+                                            cursorBlinking: 'smooth',
+                                            cursorSmoothCaretAnimation: 'on',
+                                            bracketPairColorization: { enabled: true },
+                                            folding: true,
+                                            scrollbar: {
+                                              vertical: 'visible',
+                                              horizontal: 'visible',
+                                              verticalScrollbarSize: 12,
+                                              horizontalScrollbarSize: 12,
+                                            }
+                                          }}
+                                          className="h-full w-full"
+                                        />
+                                      )}
+                                      {activeTab === 'css' && (
+                                        <Editor
+                                          value={cssCode}
+                                          onChange={(value) => setCssCode(value || '')}
+                                          language="css"
+                                          theme={isDark ? 'vs-dark' : 'vs-light'}
+                                          options={{
+                                            minimap: { enabled: true },
+                                            fontSize: 14,
+                                            wordWrap: 'on',
+                                            automaticLayout: true,
+                                            padding: { top: 16 },
+                                            scrollBeyondLastLine: false,
+                                            lineNumbers: 'on',
+                                            lineDecorationsWidth: 10,
+                                            lineNumbersMinChars: 3,
+                                            renderLineHighlight: 'all',
+                                            cursorBlinking: 'smooth',
+                                            cursorSmoothCaretAnimation: 'on',
+                                            bracketPairColorization: { enabled: true },
+                                            folding: true,
+                                            scrollbar: {
+                                              vertical: 'visible',
+                                              horizontal: 'visible',
+                                              verticalScrollbarSize: 12,
+                                              horizontalScrollbarSize: 12,
+                                            }
+                                          }}
+                                          className="h-full w-full"
+                                        />
+                                      )}
+                                      {activeTab === 'js' && (
+                                        <Editor
+                                          value={jsCode}
+                                          onChange={(value) => setJsCode(value || '')}
+                                          language="javascript"
+                                          theme={isDark ? 'vs-dark' : 'vs-light'}
+                                          options={{
+                                            minimap: { enabled: true },
+                                            fontSize: 14,
+                                            wordWrap: 'on',
+                                            automaticLayout: true,
+                                            padding: { top: 16 },
+                                            scrollBeyondLastLine: false,
+                                            lineNumbers: 'on',
+                                            lineDecorationsWidth: 10,
+                                            lineNumbersMinChars: 3,
+                                            renderLineHighlight: 'all',
+                                            cursorBlinking: 'smooth',
+                                            cursorSmoothCaretAnimation: 'on',
+                                            bracketPairColorization: { enabled: true },
+                                            folding: true,
+                                            scrollbar: {
+                                              vertical: 'visible',
+                                              horizontal: 'visible',
+                                              verticalScrollbarSize: 12,
+                                              horizontalScrollbarSize: 12,
+                                            }
+                                          }}
+                                          className="h-full w-full"
+                                        />
+                                      )}
+                                      {activeTab === 'preview' && (
+                                        <div className="w-full h-full relative overflow-hidden">
+                                          {previewError && (
+                                            <div className="absolute top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-sm z-50">
+                                              Error on line {previewError.line}: {previewError.message}
+                                            </div>
+                                          )}
+                                          <div className="absolute inset-0">
+                                            <PreviewPanel
+                                              elements={[{ id: '1', type: 'div', props: {}, children: [] }]}
+                                              htmlContent={htmlCode}
+                                              cssContent={cssCode}
+                                              jsContent={jsCode}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
