@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { FC } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -37,7 +37,7 @@ interface FlowCanvasProps {
   nodeStatuses: Record<string, 'running' | 'completed' | 'error'>;
 }
 
-const FlowCanvas: React.FC<FlowCanvasProps> = ({
+function FlowCanvas({
   nodes,
   edges,
   onNodesChange,
@@ -57,11 +57,11 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
   minimapStyle,
   minimapNodeColor,
   ...props
-}) => {
+}: FlowCanvasProps) {
   // Modify node status styling to use glow instead of animation
   const nodesWithStatus = nodes.map(node => ({
     ...node,
-    className: `${node.className || ''} transition-all duration-300`,
+    className: `${node.className || ''} transition-shadow transition-border duration-300`,
     style: {
       ...node.style,
       boxShadow: props.nodeStatuses[node.id] === 'running'
@@ -150,6 +150,6 @@ const FlowCanvas: React.FC<FlowCanvasProps> = ({
       )}
     </div>
   );
-};
+}
 
 export default React.memo(FlowCanvas);
