@@ -225,6 +225,22 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   });
   const [isLLMConnected, setIsLLMConnected] = useState(false);
 
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -1095,7 +1111,21 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="relative flex h-screen">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
       {!isInitialSetupComplete && (
         <InitialLoadingOverlay 
           loadingStatus={loadingStatus} 

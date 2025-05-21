@@ -67,6 +67,22 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [showNewFeatureTag, setShowNewFeatureTag] = useState(false);
   const [showMiniStore, setShowMiniStore] = useState(false);
 
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
   useEffect(() => {
     const prefetchWorkflows = async () => {
       try {
@@ -546,7 +562,21 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="relative flex h-screen">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
       <Sidebar activePage="n8n" onPageChange={onPageChange || (() => {})} />
       
       <div className="flex-1 flex flex-col">
@@ -600,7 +630,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     {showNewFeatureTag && (
                       <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 whitespace-nowrap">
                         <div className="bg-gradient-to-r from-purple-600 via-blue-500 to-pink-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
-                          New Feature 🎉 - Explore ClaraVerse Store!
+                          New Feature �� - Explore ClaraVerse Store!
                         </div>
                       </div>
                     )}

@@ -775,8 +775,38 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     localStorage.setItem('use_structured_tool_calling', newValue.toString());
   };
 
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
   return (
-    <div className="flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
+    <div className="relative flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
       {/* Only show sidebar when not in interpreter mode */}
       {!isInterpreterMode && (
         <AssistantSidebar
