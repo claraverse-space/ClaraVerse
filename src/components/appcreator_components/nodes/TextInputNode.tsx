@@ -96,7 +96,7 @@ const TextInputNode = ({ id, data, isConnectable }: any) => {
           <div className="p-1.5 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-4 h-4 text-white" />
           </div>
-          <div className="font-medium text-sm">
+          <div className="font-medium text-sm text-gray-900 dark:text-white">
             {data.label}
           </div>
         </div>
@@ -115,7 +115,7 @@ const TextInputNode = ({ id, data, isConnectable }: any) => {
           onChange={handleChange}
           placeholder="Enter text input..."
           className={`w-full p-2 rounded border ${
-            isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+            isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'
           } text-sm resize-none focus:outline-none focus:ring-2 focus:ring-sakura-500`}
           style={{ height: dimensions.height - 80 }} // Adjust for padding and header
           onClick={(e) => e.stopPropagation()}

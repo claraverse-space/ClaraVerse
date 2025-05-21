@@ -167,7 +167,7 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
           <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">
+          <div className="font-medium text-sm text-gray-900 dark:text-white">
             {data.label || 'RAG Query'}
           </div>
         </div>
@@ -218,7 +218,7 @@ const RagNode: React.FC<{ data: any; isConnectable: boolean }> = ({ data, isConn
               value={newCollectionName}
               onChange={(e) => setNewCollectionName(e.target.value)}
               placeholder="Enter collection name"
-              className={`flex-1 p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} text-sm`}
+              className={`flex-1 p-2 rounded border ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'} text-sm`}
               onKeyDown={(e) => e.key === 'Enter' && handleAddCollection()}
             />
             <button

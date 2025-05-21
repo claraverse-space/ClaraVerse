@@ -93,7 +93,7 @@ const TextOutputNode = ({ id, data, isConnectable }: any) => {
             <div className="p-1.5 rounded-lg" style={{ background: nodeColor }}>
               <Icon className="w-4 h-4 text-white" />
             </div>
-            <div className="font-medium text-sm">
+            <div className="font-medium text-sm text-gray-900 dark:text-white">
               {data.label}
             </div>
           </div>

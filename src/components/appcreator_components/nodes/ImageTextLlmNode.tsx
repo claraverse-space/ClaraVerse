@@ -253,7 +253,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           <div className="p-2 rounded-lg" style={{ background: nodeColor || '#8B5CF6' }}>
             <Icon className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">
+          <div className="font-medium text-sm text-gray-900 dark:text-white">
             {data.label || 'Image + Text LLM'}
           </div>
         </div>
@@ -458,7 +458,7 @@ const ImageTextLlmNode: React.FC<any> = ({ data, isConnectable }) => {
           onFocus={stopPropagation}
           placeholder="Optional system prompt to guide the model..."
           className={`w-full p-2 rounded border ${
-            isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+            isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'
           } text-sm`}
           rows={3}
         />

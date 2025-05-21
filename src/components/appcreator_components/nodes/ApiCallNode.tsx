@@ -98,7 +98,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
           <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
             <Globe className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">{data.label || 'API Call'}</div>
+          <div className="font-medium text-sm text-gray-900 dark:text-white">{data.label || 'API Call'}</div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -138,7 +138,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
 
       <div className="space-y-2">
         <div>
-          <label className="block text-xs mb-1">Endpoint</label>
+          <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Endpoint</label>
           <input
             type="text"
             value={endpoint}
@@ -149,7 +149,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
         </div>
 
         <div>
-          <label className="block text-xs mb-1">Method</label>
+          <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Method</label>
           <select
             value={method}
             onChange={handleMethodChange}
@@ -282,7 +282,7 @@ const ApiCallNode = ({ data, isConnectable }: any) => {
 
         {(method === 'POST' || method === 'PUT') && (
           <div>
-            <label className="block text-xs mb-1">Request Body</label>
+            <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Request Body</label>
             <textarea
               value={requestBody}
               onChange={handleBodyChange}

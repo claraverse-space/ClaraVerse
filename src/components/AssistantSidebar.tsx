@@ -198,6 +198,8 @@ const AssistantSidebar = ({
         className={`glassmorphic h-full flex flex-col gap-6 transition-all duration-300 ease-in-out ${
           isExpanded ? 'w-64 sidebar-expanded' : 'w-20'
         }`}
+        onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+        style={!isExpanded ? { cursor: 'pointer' } : undefined}
       >
         <div className={`flex items-center py-4 ${
           isExpanded ? 'px-4 justify-start gap-3' : 'justify-center'
@@ -321,16 +323,25 @@ const AssistantSidebar = ({
         </div>
 
         {/* Expand/Collapse Button */}
-        <button
-          aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          onClick={() => setIsExpanded((prev) => !prev)}
-          className={`absolute top-1/2 -right-3 transform -translate-y-1/2 transition-transform duration-300 z-10 ${
-            isExpanded ? 'rotate-180' : ''
-          } bg-sakura-500 rounded-full p-1 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sakura-400`}
-          tabIndex={0}
-        >
-          <ChevronRight className="w-4 h-4 text-white" />
-        </button>
+        <div className="absolute top-1/2 -right-5 transform -translate-y-1/2 z-10" style={{ width: 40, height: 40 }}>
+          <div className="relative group w-full h-full flex items-center justify-center">
+            <button
+              aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+              onClick={(e) => { e.stopPropagation(); setIsExpanded((prev) => !prev); }}
+              className={`w-full h-full flex items-center justify-center bg-sakura-500 rounded-full shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-sakura-400 transition-transform duration-300 ${
+                isExpanded ? 'rotate-180' : ''
+              }`}
+              tabIndex={0}
+              style={{ padding: 0, border: 'none' }}
+            >
+              <ChevronRight className="w-4 h-4 text-white" />
+            </button>
+            {/* Tooltip */}
+            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 rounded bg-gray-800 text-white text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap shadow-lg z-20 transition-opacity duration-200">
+              {isExpanded ? 'Collapse' : 'Expand'}
+            </div>
+          </div>
+        </div>
       </div>
 
       <WhatsNewModal 

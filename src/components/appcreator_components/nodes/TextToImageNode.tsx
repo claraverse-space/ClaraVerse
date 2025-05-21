@@ -157,7 +157,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
           <div className="p-2 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-5 h-5 text-white" />
           </div>
-          <div className="font-medium text-sm">{data.label || 'Text to Image'}</div>
+          <div className="font-medium text-sm text-gray-900 dark:text-white">{data.label || 'Text to Image'}</div>
         </div>
         <button 
           onClick={handleSettingsToggle}
@@ -170,7 +170,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
       {showSettings && (
         <div className="mb-3 space-y-3">
           <div>
-            <label className="block text-xs mb-1">ComfyUI URL</label>
+            <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">ComfyUI URL</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -217,7 +217,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
           </div>
 
           <div>
-            <label className="block text-xs mb-1">Steps: {steps}</label>
+            <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Steps: {steps}</label>
             <input
               type="range"
               min="1"
@@ -229,7 +229,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
           </div>
 
           <div>
-            <label className="block text-xs mb-1">Guidance Scale: {guidance}</label>
+            <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Guidance Scale: {guidance}</label>
             <input
               type="range"
               min="1"
@@ -243,7 +243,7 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs mb-1">Width</label>
+              <label className="block text-xs mb-1 text-gray-700 dark:text-gray-300">Width</label>
               <input
                 type="number"
                 value={width}

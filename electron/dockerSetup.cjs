@@ -267,18 +267,45 @@ class DockerSetup extends EventEmitter {
 
   async createNetwork() {
     try {
+      // First check if the network already exists
       const networks = await this.docker.listNetworks();
-      const exists = networks.some(n => n.Name === 'clara_network');
+      const networkExists = networks.some(network => network.Name === 'clara_network');
       
-      if (!exists) {
+      if (networkExists) {
+        console.log('Network clara_network already exists, skipping creation');
+        return;
+      }
+      
+      // Create the network if it doesn't exist
+      try {
         await this.docker.createNetwork({
           Name: 'clara_network',
           Driver: 'bridge'
         });
+        console.log('Successfully created clara_network');
+      } catch (error) {
+        // Special handling for conflict error (network created between our check and creation)
+        if (error.statusCode === 409) {
+          console.log('Network already exists (409 error), continuing...');
+          return;
+        }
+        
+        // Log details for other errors to help troubleshooting
+        console.error('Error creating network:', error.message);
+        console.error('Error details:', error);
+        
+        // For Mac-specific issues, provide more guidance
+        if (process.platform === 'darwin') {
+          console.log('On macOS, make sure Docker Desktop is running and properly configured');
+          console.log('Try restarting Docker Desktop if issues persist');
+        }
+        
+        throw new Error(`Failed to create network: ${error.message}`);
       }
     } catch (error) {
-      console.error('Network creation error:', error);
-      throw error;
+      console.error('Error in createNetwork:', error.message);
+      // Don't throw here to allow the application to continue even if network creation fails
+      // We'll let containers attempt to connect, which might work if the network exists but we failed to detect it
     }
   }
 

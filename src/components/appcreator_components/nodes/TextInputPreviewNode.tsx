@@ -230,7 +230,7 @@ const TextInputPreviewNode = ({ id, data, isConnectable }: any) => {
           <div className="p-1.5 rounded-lg" style={{ background: nodeColor }}>
             <Icon className="w-4 h-4 text-white" />
           </div>
-          <div className="font-medium text-sm">
+          <div className="font-medium text-sm text-gray-900 dark:text-white">
             {data.label}
           </div>
         </div>
@@ -268,12 +268,12 @@ const TextInputPreviewNode = ({ id, data, isConnectable }: any) => {
                 type="text"
                 value={expression}
                 onChange={handleExpressionChange}
+                placeholder="Enter path (e.g., output[0].output)"
                 className={`flex-1 p-2 rounded-l border-l border-y text-sm ${
                   isDark 
-                    ? 'bg-gray-700 border-gray-600 text-gray-300' 
-                    : 'bg-gray-50 border-gray-300 text-gray-600'
+                    ? 'bg-gray-700 border-gray-600 text-gray-300 placeholder-gray-500' 
+                    : 'bg-gray-50 border-gray-300 text-gray-600 placeholder-gray-400'
                 }`}
-                placeholder="Enter path (e.g., output[0].output)"
               />
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}

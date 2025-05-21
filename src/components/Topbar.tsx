@@ -12,27 +12,41 @@ interface TopbarProps {
 }
 
 const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false }: TopbarProps) => {
-  const { theme, setTheme, isDark } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [now, setNow] = useState(new Date());
   const [timezone, setTimezone] = useState<string>(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [personalInfo, setPersonalInfo] = useState<any>(null);
 
   useEffect(() => {
     let timer = setInterval(() => setNow(new Date()), 1000);
     db.getPersonalInfo().then(info => {
+      setPersonalInfo(info);
       if (info?.timezone) setTimezone(info.timezone);
+      if (info?.theme_preference) setTheme(info.theme_preference);
     });
     return () => clearInterval(timer);
-  }, []);
+  }, [setTheme]);
 
   const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: timezone });
   const dateString = now.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: timezone });
   const dayString = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone });
 
+  // Helper to update theme everywhere
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme);
+    if (personalInfo) {
+      db.updatePersonalInfo({ ...personalInfo, theme_preference: newTheme });
+      setPersonalInfo({ ...personalInfo, theme_preference: newTheme });
+    }
+  };
+
   // Cycle through theme modes: light -> dark -> system -> light ...
   const cycleTheme = () => {
-    if (theme === 'light') setTheme('dark');
-    else if (theme === 'dark') setTheme('system');
-    else setTheme('light');
+    let newTheme;
+    if (theme === 'light') newTheme = 'dark';
+    else if (theme === 'dark') newTheme = 'system';
+    else newTheme = 'light';
+    handleThemeChange(newTheme);
   };
 
   return (

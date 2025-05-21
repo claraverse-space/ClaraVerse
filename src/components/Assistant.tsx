@@ -70,6 +70,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     const storedOpenAIModel = localStorage.getItem('selected_openai_model');
     return apiType === 'ollama' ? (storedOllamaModel || '') : (storedOpenAIModel || '');
   });
+  const [activeAutoModel, setActiveAutoModel] = useState<string>('');
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isStreaming, setIsStreaming] = useState(() => {
@@ -269,6 +270,36 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const [client, setClient] = useState<AssistantOllamaClient | null>(null);
 
+  const getAppropriateModelForContent = () => {
+    // Determine which auto-selected model to show based on content
+    if (images.length > 0 && modelSelectionConfig.visionModel) {
+      setActiveAutoModel(modelSelectionConfig.visionModel);
+      return modelSelectionConfig.visionModel;
+    } else if (modelSelectionConfig.toolModel) {
+      // Use toolModel for both tool use and normal text
+      setActiveAutoModel(modelSelectionConfig.toolModel);
+      return modelSelectionConfig.toolModel;
+    } else if (ragEnabled && modelSelectionConfig.ragModel) {
+      setActiveAutoModel(modelSelectionConfig.ragModel);
+      return modelSelectionConfig.ragModel;
+    } else if (modelSelectionConfig.mode === 'auto') {
+      // Default to the first auto model that's set
+      const firstModel = modelSelectionConfig.visionModel || 
+                         modelSelectionConfig.toolModel || 
+                         modelSelectionConfig.ragModel;
+      setActiveAutoModel(firstModel || '');
+      return firstModel || selectedModel;
+    }
+    return selectedModel;
+  };
+
+  // Update active model whenever content changes that would affect model selection
+  useEffect(() => {
+    if (modelSelectionConfig.mode === 'auto') {
+      getAppropriateModelForContent();
+    }
+  }, [images.length, useAllTools, selectedTool, ragEnabled, modelSelectionConfig]);
+
   // Move this up before any useEffect that uses assistantChat
   const assistantChat = useAssistantChat({
     client,
@@ -297,6 +328,22 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
     useStructuredToolCalling,
     isStreaming,
   });
+
+  // Modified handleSend to use the appropriate model
+  const originalHandleSend = assistantChat.handleSend;
+  
+  assistantChat.handleSend = () => {
+    if (modelSelectionConfig.mode === 'auto') {
+      // Update the active model before sending message
+      const appropriateModel = getAppropriateModelForContent();
+      if (appropriateModel && appropriateModel !== selectedModel) {
+        setSelectedModel(appropriateModel);
+      }
+    }
+    
+    // Call the original handler
+    originalHandleSend();
+  };
 
   useEffect(() => {
     return () => {
@@ -802,6 +849,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           useStructuredToolCalling={useStructuredToolCalling}
           onToggleStructuredToolCalling={handleToggleStructuredToolCalling}
           selectedModel={selectedModel}
+          activeAutoModel={activeAutoModel}
         />
 
         {showImageWarning && images.length > 0 && (
