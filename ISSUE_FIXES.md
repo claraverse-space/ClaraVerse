@@ -44,16 +44,16 @@
 ## Additional Issues
 
 ### Issue #63: File Saving on Mac
-- Needs verification after Docker network fix
-- Plan to test file saving functionality on Mac
+- Status: Likely resolved by Docker network fix (#62).
+- Action: Requires manual testing on a Mac environment for full confirmation.
 
 ### Issue #57: Deployment Issue with Clara Network
-- Likely resolved by the Docker network fix
-- Needs testing to confirm
+- Status: Highly likely resolved by the Docker network fix (#62), which improved network creation stability.
+- Action: Further deployment testing in various environments is recommended for full confirmation.
 
 ### Issue #56: Claraverse Auth API Redaction
-- Status: Needs validation
-- Plan to review implementation
+- Status: ✅ Validated.
+- Details: Implementation in `supabaseClient.ts` correctly prevents admin client initialization in the browser context, using environment variables and runtime checks.
 
 ### Issue #65: Better Documentation
 - In progress: Documentation improvements for the fixed issues
