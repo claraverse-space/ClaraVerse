@@ -20,10 +20,21 @@
    - This is only an issue in development mode, not in production builds
    - Fixing requires a breaking change to vite and related dependencies
 
-2. **PrismJS DOM Clobbering (Moderate Severity)**
-   - Upgrading the direct dependency did not fix the issue
-   - The vulnerability exists in nested dependencies (refractor -> prismjs)
-   - Fixing requires breaking changes to `react-syntax-highlighter`
+2. **PrismJS DOM Clobbering (Moderate Severity - CVE-2024-53382)**
+   - The project's direct dependency `prismjs` is at `^1.30.0` (patched).
+   - However, the vulnerability persists due to the transitive dependency `react-syntax-highlighter@^15.6.1`, which depends on `refractor@^3.6.0`, which in turn depends on the vulnerable `prismjs@~1.27.0`.
+   - `react-syntax-highlighter` maintainers are aware of this issue.
+   - **Recommendations:**
+     - Monitor `react-syntax-highlighter` for an updated version that resolves this transitive dependency.
+     - As an interim measure, consider using `overrides` in `package.json` to force all instances of `prismjs` to `^1.30.0`:
+       ```json
+       "overrides": {
+         "prismjs": "^1.30.0"
+       }
+       ```
+       (or `resolutions` for Yarn users).
+     - **Caution:** If using overrides, thoroughly test all syntax highlighting features for compatibility issues, as `react-syntax-highlighter` did not specify this version.
+   - This vulnerability is related to DOM Clobbering and could lead to XSS if untrusted HTML is processed by the highlighter.
 
 ## Recommendations for Development
 
