@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,6 +12,7 @@
     --sakura-400: #ff669d;
     --sakura-500: #ff1a75;
     --sakura-600: #e6006b;
+    font-family: 'Quicksand', sans-serif;
   }
 
   .dark {

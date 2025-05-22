@@ -201,8 +201,21 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       setError(null);
       setIsLoading(false);
       
-      // Inject custom styles to fix any UI issues
+      // Inject Google Fonts link for Quicksand
+      webview.executeJavaScript(`
+        if (!document.getElementById('quicksand-font')) {
+          const link = document.createElement('link');
+          link.id = 'quicksand-font';
+          link.rel = 'stylesheet';
+          link.href = 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap';
+          document.head.appendChild(link);
+        }
+      `);
+      // Inject CSS to use Quicksand
       webview.insertCSS(`
+        body, #app, * {
+          font-family: 'Quicksand', sans-serif !important;
+        }
         body { overflow: auto !important; }
         #app { height: 100vh !important; }
       `);
@@ -630,7 +643,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     {showNewFeatureTag && (
                       <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 whitespace-nowrap">
                         <div className="bg-gradient-to-r from-purple-600 via-blue-500 to-pink-500 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
-                          New Feature �� - Explore ClaraVerse Store!
+                          New Feature - Explore ClaraVerse Store!
                         </div>
                       </div>
                     )}
