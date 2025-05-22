@@ -22,6 +22,7 @@ import { Components } from 'react-markdown';
 import helpContent from '../data/help-content.json';
 import { db } from '../db';
 import { useTheme } from '../hooks/useTheme';
+import ReactPlayer from 'react-player/youtube';
 
 interface HelpSection {
   id: string;
@@ -109,8 +110,19 @@ const Help = () => {
   ];
 
   useEffect(() => {
-    setSections(helpContent.sections);
-    setSelectedSection(helpContent.sections[0].id);
+    let updatedSections = helpContent.sections;
+    if (!helpContent.sections.some((s: any) => s.id === 'dashboard-features')) {
+      updatedSections = [
+        {
+          id: 'dashboard-features',
+          title: 'Dashboard - Tour',
+          content: '',
+        },
+        ...helpContent.sections
+      ];
+    }
+    setSections(updatedSections);
+    setSelectedSection(updatedSections[0].id);
     
     // Load wallpaper from IndexedDB
     const loadWallpaper = async () => {
@@ -277,7 +289,35 @@ const Help = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-8">
-          {selectedSection && (
+          {selectedSection === 'dashboard-features' ? (
+            <div className="flex-1 flex flex-col items-center justify-center h-full w-full">
+              <div className="w-full max-w-3xl mx-auto flex flex-col items-center mb-6 px-2 md:px-0">
+                <h1 className="text-3xl md:text-4xl font-extrabold text-sakura-700 dark:text-sakura-300 mb-2 font-sans text-center drop-shadow-sm">Clara Dashboard Tour</h1>
+                <p className="text-lg md:text-xl text-gray-700 dark:text-gray-200 mb-4 font-sans text-center max-w-2xl">Discover all the features and possibilities of your Clara dashboard. Watch this quick tour to learn how to get the most out of your workspace, customize your experience, and unlock powerful tools for productivity and creativity.</p>
+              </div>
+              <div className="relative flex flex-col items-center justify-center w-full h-full rounded-2xl shadow-lg overflow-hidden bg-white/80 dark:bg-gray-900/80" style={{ aspectRatio: '16/9', minHeight: 320, maxHeight: '70vh' }}>
+                {/* Soft blur/glow overlay for video edges */}
+                <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl" style={{
+                  boxShadow: '0 0 60px 20px rgba(236,72,153,0.10), 0 0 120px 40px rgba(236,72,153,0.08)',
+                  backdropFilter: 'blur(2px)',
+                  WebkitBackdropFilter: 'blur(2px)'
+                }} />
+                <ReactPlayer
+                  url="https://youtu.be/8G6Ckl6uIQ0"
+                  width="100%"
+                  height="100%"
+                  controls
+                  light="https://img.youtube.com/vi/8G6Ckl6uIQ0/maxresdefault.jpg"
+                  playIcon={<button className="bg-sakura-500 text-white px-6 py-3 rounded-full text-lg font-semibold shadow-lg hover:bg-sakura-600 transition">▶ Play Dashboard Demo</button>}
+                  className="react-player rounded-2xl"
+                  style={{ background: 'rgba(0,0,0,0.1)', zIndex: 20 }}
+                />
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center z-30">
+                  <span className="bg-sakura-100 dark:bg-sakura-700/80 text-sakura-900 dark:text-white px-4 py-2 rounded-full text-sm font-medium shadow">Clara's Dashboard Demo</span>
+                </div>
+              </div>
+            </div>
+          ) : selectedSection && (
             <div className="max-w-4xl mx-auto">
               <div className="prose dark:prose-invert prose-sakura max-w-none">
                 <ReactMarkdown components={MarkdownComponents}>

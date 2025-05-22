@@ -73,7 +73,10 @@ export default {
         'fade-out': 'fade-out 3s ease-out forwards',
         'glow': 'glow 2s ease-in-out infinite',
         'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
-      }
+      },
+      fontFamily: {
+        sans: ['Quicksand', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
     },
   },
   plugins: [

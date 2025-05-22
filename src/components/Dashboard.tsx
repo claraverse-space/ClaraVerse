@@ -723,135 +723,119 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   return (
-    <>
-      {/* Wallpaper */}
-      {wallpaperUrl && (
-        <div 
-          className="absolute top-0 left-0 right-0 bottom-0 z-0"
-          style={{
-            backgroundImage: `url(${wallpaperUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.1,
-            filter: 'blur(1px)',
-            pointerEvents: 'none'
-          }}
-        />
-      )}
-      <div 
-        id="dashboard-container"
-        className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none relative"
-        onContextMenu={(e) => {
-          e.preventDefault();
-          handleContextMenu(e);
-        }}
-      >
-        <div className="relative z-10">
-          {/* Rearrange Mode Controls */}
-          <div id="dashboard-header" className="mb-4 flex justify-between items-center px-4 pt-4 group">
-            {/* Greeting */}
-            <div id="greeting-message" className="py-3">
-              <h2 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100" style={{ fontFamily: "'Inter', 'Roboto', system-ui, sans-serif", textShadow: '0 1px 2px rgba(0,0,0,0.1)', letterSpacing: '-0.01em' }}>
-                Hi, <span className="bg-gradient-to-r from-sakura-500 to-pink-500 bg-clip-text text-transparent">{userName || 'there'}</span> 
-              </h2>
-            </div>
-
-            <div className={`flex items-center gap-4 transition-opacity duration-200 ${isRearrangeMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}> 
-              <button
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
-                onClick={toggleRearrangeMode}
-              >
-                {isRearrangeMode ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Done
-                  </>
-                ) : (
-                  <>
-                    <Move className="w-4 h-4" />
-                    Rearrange Widgets
-                  </>
-                )}
-              </button>
-              <button
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
-                onClick={() => setShowAddWidget(true)}
-              >
-                <Plus className="w-4 h-4" />
-                Add Widget
-              </button>
-            </div>
+    <div 
+      id="dashboard-container"
+      className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none relative"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        handleContextMenu(e);
+      }}
+    >
+      <div className="relative z-10">
+        {/* Rearrange Mode Controls */}
+        <div id="dashboard-header" className="mb-4 flex justify-between items-center px-4 pt-4 group">
+          {/* Greeting */}
+          <div id="greeting-message" className="py-3">
+            <h2 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100 font-sans" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.1)', letterSpacing: '-0.01em' }}>
+              Hi, <span className="bg-gradient-to-r from-sakura-500 to-pink-500 bg-clip-text text-transparent">{userName || 'there'}</span> 
+            </h2>
           </div>
 
-          {/* Toast Notification */}
-          {showToast && (
-            <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fadeIn z-50">
-              At least one widget must remain on the dashboard
-            </div>
-          )}
-
-          {/* Grid Layout */}
-          <div className="px-2">
-            <ResponsiveGridLayout
-              className="layout"
-              layouts={layouts}
-              breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-              cols={{ lg: 12, md: 12, sm: 12, xs: 12, xxs: 12 }}
-              rowHeight={100}
-              margin={[16, 16]}
-              onLayoutChange={handleLayoutChange}
-              isDraggable={isRearrangeMode}
-              isResizable={false}
-              useCSSTransforms={true}
+          <div className={`flex items-center gap-4 transition-opacity duration-200 ${isRearrangeMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}> 
+            <button
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+              onClick={toggleRearrangeMode}
             >
-              {widgets.map(widget => (
-                <div 
-                  key={widget.id} 
-                  className="widget-container"
-                  onContextMenu={(e) => handleContextMenu(e, widget.id)}
-                >
-                  {renderWidget(widget)}
-                </div>
-              ))}
-            </ResponsiveGridLayout>
+              {isRearrangeMode ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Done
+                </>
+              ) : (
+                <>
+                  <Move className="w-4 h-4" />
+                  Rearrange Widgets
+                </>
+              )}
+            </button>
+            <button
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+              onClick={() => setShowAddWidget(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Add Widget
+            </button>
           </div>
         </div>
 
-        {/* Context Menu */}
-        {contextMenu.show && (
-          <WidgetContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={closeContextMenu}
-            onAddWidget={() => setShowAddWidget(true)}
-            onRearrangeWidgets={toggleRearrangeMode}
-            onSetWallpaper={handleSetWallpaper}
-            onRemoveWidget={
-              contextMenu.widgetId 
-                ? () => handleRemoveWidget(contextMenu.widgetId!)
-                : undefined
-            }
-            showRemove={!!contextMenu.widgetId}
-          />
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fadeIn z-50">
+            At least one widget must remain on the dashboard
+          </div>
         )}
 
-        {/* Add Widget Modal */}
-        {showAddWidget && (
-          <AddWidgetModal
-            onClose={() => setShowAddWidget(false)}
-            onAddWidget={handleAddWidget}
-            onAddWebhookWidget={handleAddWebhookWidget}
-            onAddEmailWidget={handleAddEmailWidget}
-            onAddQuickChatWidget={handleAddQuickChatWidget}
-            onResetDefault={() => {
-              setWidgets(DEFAULT_WIDGETS);
-              localStorage.setItem('dashboard_widgets', JSON.stringify(DEFAULT_WIDGETS));
-              setShowAddWidget(false);
-            }}
-          />
-        )}
+        {/* Grid Layout */}
+        <div className="px-2">
+          <ResponsiveGridLayout
+            className="layout"
+            layouts={layouts}
+            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+            cols={{ lg: 12, md: 12, sm: 12, xs: 12, xxs: 12 }}
+            rowHeight={100}
+            margin={[16, 16]}
+            onLayoutChange={handleLayoutChange}
+            isDraggable={isRearrangeMode}
+            isResizable={false}
+            useCSSTransforms={true}
+          >
+            {widgets.map(widget => (
+              <div 
+                key={widget.id} 
+                className="widget-container"
+                onContextMenu={(e) => handleContextMenu(e, widget.id)}
+              >
+                {renderWidget(widget)}
+              </div>
+            ))}
+          </ResponsiveGridLayout>
+        </div>
       </div>
-    </>
+
+      {/* Context Menu */}
+      {contextMenu.show && (
+        <WidgetContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          onAddWidget={() => setShowAddWidget(true)}
+          onRearrangeWidgets={toggleRearrangeMode}
+          onSetWallpaper={handleSetWallpaper}
+          onRemoveWidget={
+            contextMenu.widgetId 
+              ? () => handleRemoveWidget(contextMenu.widgetId!)
+              : undefined
+          }
+          showRemove={!!contextMenu.widgetId}
+        />
+      )}
+
+      {/* Add Widget Modal */}
+      {showAddWidget && (
+        <AddWidgetModal
+          onClose={() => setShowAddWidget(false)}
+          onAddWidget={handleAddWidget}
+          onAddWebhookWidget={handleAddWebhookWidget}
+          onAddEmailWidget={handleAddEmailWidget}
+          onAddQuickChatWidget={handleAddQuickChatWidget}
+          onResetDefault={() => {
+            setWidgets(DEFAULT_WIDGETS);
+            localStorage.setItem('dashboard_widgets', JSON.stringify(DEFAULT_WIDGETS));
+            setShowAddWidget(false);
+          }}
+        />
+      )}
+    </div>
   );
 };
 
