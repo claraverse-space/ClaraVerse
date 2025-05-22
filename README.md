@@ -46,6 +46,22 @@ If you like what I’m building:
 
 ---
 
+---
+
+## 🤜 Clara vs The Rest
+
+| Feature                      | Clara         | OpenWebUI   | LibreChat  |
+|------------------------------|---------------|-------------|------------|
+| 💻 Fully Local Stack         | ✅ Yes         | ✅ Yes      | ✅ Yes     |
+| 🧩 Visual App Builder        | ✅ Built-in    | ❌          | ❌         |
+| 🔁 Native N8N Automation     | ✅ Integrated  | ❌          | ❌         |
+| 🧠 OpenInterpreter Support   | ✅ Yes         | ❌          | ❌         |
+| 📂 File Manager & Widgets    | ✅ Fully Local | ❌          | ✅ Basic   |
+| 🧱 Agent Templates & Builder | ✅ Yes         | ❌          | ❌         |
+| 🖼️ Image Generation w/ SD    | ✅ ComfyUI     | ✅ Basic    | ❌         |
+
+---
+
 ## 🚀 Feature Showcase
 
 ### 🧱 Widgets for Days
@@ -118,21 +134,6 @@ Organize your generations with tags, thumbnails, and metadata.
 
 <p align="center"><img src="/public/screenshots/gallery-screenshot.png" width="800"/></p>
 
----
-
-## 🤜 Clara vs The Rest
-
-| Feature                      | Clara         | OpenWebUI   | LibreChat  |
-|------------------------------|---------------|-------------|------------|
-| 💻 Fully Local Stack         | ✅ Yes         | ✅ Yes      | ✅ Yes     |
-| 🧩 Visual App Builder        | ✅ Built-in    | ❌          | ❌         |
-| 🔁 Native N8N Automation     | ✅ Integrated  | ❌          | ❌         |
-| 🧠 OpenInterpreter Support   | ✅ Yes         | ❌          | ❌         |
-| 📂 File Manager & Widgets    | ✅ Fully Local | ❌          | ✅ Basic   |
-| 🧱 Agent Templates & Builder | ✅ Yes         | ❌          | ❌         |
-| 🖼️ Image Generation w/ SD    | ✅ ComfyUI     | ✅ Basic    | ❌         |
-
----
 
 ## 🧪 Install & Run (Docker)
 
