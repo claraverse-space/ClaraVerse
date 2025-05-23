@@ -1,3 +1,6 @@
-import { Client, Workflow, BasePipe, EfficientPipe } from "@stable-canvas/comfyui-client";
+// This file previously exported the ComfyUI client from @stable-canvas/comfyui-client.
+// It is now deprecated in favor of direct comfyui-api HTTP calls.
 
-export { Client, Workflow, BasePipe, EfficientPipe };
+// You can add comfyui-api HTTP helper functions here if needed in the future.
+
+export {};

@@ -56,8 +56,6 @@
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
     "@saintno/comfyui-sdk": "^0.2.45",
-    "@stable-canvas/comfyui-client": "^1.4.1",
-    "@stable-canvas/comfyui-client-cli": "latest",
     "@supabase/supabase-js": "^2.49.4",
     "@types/crypto-js": "^4.2.2",
     "@types/uuid": "^10.0.0",

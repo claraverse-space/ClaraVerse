@@ -70,6 +70,7 @@ const GeneratedGallery: React.FC<GeneratedGalleryProps> = ({
       <ImageViewModal
         imageUrl={viewingImage}
         onClose={() => setViewingImage(null)}
+        syncGroup="generated-gallery"
       />
     </div>
   );
