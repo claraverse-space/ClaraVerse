@@ -3,7 +3,6 @@ import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { Image, Settings, Sliders, RefreshCw } from 'lucide-react';
 import { db } from '../../../db';
-import { Client } from '@stable-canvas/comfyui-client';
 
 const SAMPLERS = [
   'euler', 'euler_ancestral', 'heun', 'dpm_2', 'dpm_2_ancestral',
@@ -65,49 +64,31 @@ const TextToImageNode = ({ data, isConnectable }: any) => {
     loadConfig();
   }, []);
 
-  // Function to fetch available models from ComfyUI
+  // Fetch available models from comfyui-api
   const fetchModels = async (url: string) => {
     setIsLoadingModels(true);
     setModelError(null);
     try {
-      const client = new Client({ 
-        api_host: url.replace(/^https?:\/\//, ''),
-        ssl: url.startsWith('https')
-      });
-      
-      // Connect and wait for ready state
-      client.connect();
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Connection timeout')), 15000);
-        const checkConnection = setInterval(() => {
-          if (client.socket?.readyState === WebSocket.OPEN) {
-            clearInterval(checkConnection);
-            clearTimeout(timeout);
-            resolve(true);
-          }
-        }, 100);
-      });
-
-      const models = await client.getSDModels();
+      let comfyuiApiUrl = url;
+      if (!comfyuiApiUrl.startsWith('http')) comfyuiApiUrl = 'http://' + comfyuiApiUrl;
+      comfyuiApiUrl = comfyuiApiUrl.replace(/:(\d+)$/, ':8189');
+      const resp = await fetch(`${comfyuiApiUrl}/object_info`);
+      if (!resp.ok) throw new Error('Failed to fetch models info');
+      const modelsInfo = await resp.json();
+      const models = modelsInfo?.model_list || [];
       setAvailableModels(models);
-      
-      // If no model is selected but models are available, select the first one
       if (!model && models.length > 0) {
         setModel(models[0]);
         if (!data.config) data.config = {};
         data.config.model = models[0];
       }
-
-      client.close();
     } catch (error) {
-      console.error('Error fetching models:', error);
       setModelError((error as Error)?.message || 'Failed to fetch models');
     } finally {
       setIsLoadingModels(false);
     }
   };
 
-  // Fetch models when ComfyUI URL changes
   useEffect(() => {
     if (comfyuiUrl) {
       fetchModels(comfyuiUrl);

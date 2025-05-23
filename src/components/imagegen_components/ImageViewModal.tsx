@@ -1,12 +1,14 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import SynchronizedImageViewer from './SynchronizedImageViewer';
 
 interface ImageViewModalProps {
   imageUrl: string | null;
   onClose: () => void;
+  syncGroup?: string;
 }
 
-const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose }) => {
+const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose, syncGroup = 'default' }) => {
   if (!imageUrl) return null;
 
   return (
@@ -14,14 +16,14 @@ const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose }) =>
       <div className="relative max-w-7xl w-full h-full p-4 flex items-center justify-center">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors z-10"
         >
           <X className="w-6 h-6" />
         </button>
-        <img
-          src={imageUrl}
-          alt="Generated"
-          className="max-w-full max-h-full object-contain"
+        <SynchronizedImageViewer
+          imageUrl={imageUrl}
+          className="w-full h-full"
+          syncGroup={syncGroup}
         />
       </div>
     </div>

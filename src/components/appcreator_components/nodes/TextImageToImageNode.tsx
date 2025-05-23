@@ -3,7 +3,6 @@ import { Handle, Position } from 'reactflow';
 import { useTheme } from '../../../hooks/useTheme';
 import { ImageIcon, Settings, Sliders, RefreshCw } from 'lucide-react';
 import { db } from '../../../db';
-import { Client } from '@stable-canvas/comfyui-client';
 
 const SAMPLERS = [
   'euler', 'euler_ancestral', 'heun', 'dpm_2', 'dpm_2_ancestral',
@@ -62,91 +61,32 @@ const TextImageToImageNode = ({ data, isConnectable }: any) => {
     loadConfig();
   }, []);
 
-  // Add useEffect to fetch models when component mounts or URL changes
-  useEffect(() => {
-    if (comfyuiUrl) {
-      console.log('Fetching models with URL:', comfyuiUrl);
-      fetchModels(comfyuiUrl);
-    }
-  }, [comfyuiUrl]);
-
-  // Modify fetchModels function to handle SSL and protocol properly
+  // Fetch available models from comfyui-api
   const fetchModels = async (url: string) => {
     setIsLoadingModels(true);
     setModelError(null);
     try {
-      // Clean up URL and determine SSL
-      const cleanUrl = url.replace(/^https?:\/\//, '');
-      const ssl = url.startsWith('https');
-      
-      console.log('Creating client with:', { api_host: cleanUrl, ssl });
-      const client = new Client({ api_host: cleanUrl, ssl });
-      
-      client.connect();
-      console.log('Waiting for connection...');
-
-      // Wait for connection
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Connection timeout')), 15000);
-        const checkConnection = setInterval(() => {
-          if (client.socket?.readyState === WebSocket.OPEN) {
-            clearInterval(checkConnection);
-            clearTimeout(timeout);
-            resolve(true);
-          }
-        }, 100);
-      });
-
-      console.log('Connected, fetching models...');
-
-      // Fetch all model types in parallel
-      const [models, loras, vaes, controlnets] = await Promise.all([
-        client.getSDModels().catch(e => {
-          console.error('Error fetching SD models:', e);
-          return [];
-        }),
-        client.getLoRAs().catch(e => {
-          console.error('Error fetching LoRAs:', e);
-          return [];
-        }),
-        client.getVAEs().catch(e => {
-          console.error('Error fetching VAEs:', e);
-          return [];
-        }),
-        client.getCNetModels().catch(e => {
-          console.error('Error fetching ControlNet models:', e);
-          return [];
-        })
-      ]);
-
-      console.log('Fetched models:', {
-        models,
-        loras,
-        vaes,
-        controlnets
-      });
-
+      let comfyuiApiUrl = url;
+      if (!comfyuiApiUrl.startsWith('http')) comfyuiApiUrl = 'http://' + comfyuiApiUrl;
+      comfyuiApiUrl = comfyuiApiUrl.replace(/:(\d+)$/, ':8189');
+      const resp = await fetch(`${comfyuiApiUrl}/object_info`);
+      if (!resp.ok) throw new Error('Failed to fetch models info');
+      const modelsInfo = await resp.json();
+      const models = modelsInfo?.model_list || [];
       setAvailableModels(models);
-      setAvailableLoras(loras);
-      setAvailableVaes(vaes);
-      setAvailableControlNets(controlnets);
-
-      // Set default model if none selected
-      if (!model && models.length > 0) {
-        const defaultModel = models[0];
-        setModel(defaultModel);
-        if (!data.config) data.config = {};
-        data.config.model = defaultModel;
-      }
-
-      client.close();
+      // Add similar logic for loras, vaes, controlnets if needed
     } catch (error) {
-      console.error('Error fetching models:', error);
       setModelError((error as Error)?.message || 'Failed to fetch models');
     } finally {
       setIsLoadingModels(false);
     }
   };
+
+  useEffect(() => {
+    if (comfyuiUrl) {
+      fetchModels(comfyuiUrl);
+    }
+  }, [comfyuiUrl]);
 
   // Update node config when settings change
   useEffect(() => {
