@@ -21,6 +21,7 @@ import {
 import { claraApiService } from '../services/claraApiService';
 import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs, validateProviderConfig } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
+import { claraMCPService } from '../services/claraMCPService';
 
 // Import clear data utility
 import '../utils/clearClaraData';
@@ -119,7 +120,27 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableRAG: false,
         enableStreaming: true,
         enableVision: true,
-        autoModelSelection: true
+        autoModelSelection: true,
+        enableMCP: true
+      },
+      mcp: {
+        enableTools: true,
+        enableResources: true,
+        enabledServers: [],
+        autoDiscoverTools: true,
+        maxToolCalls: 5
+      },
+      autonomousAgent: {
+        enabled: true,
+        maxRetries: 3,
+        retryDelay: 1000,
+        enableSelfCorrection: true,
+        enableToolGuidance: true,
+        enableProgressTracking: true,
+        maxToolCalls: 10,
+        confidenceThreshold: 0.7,
+        enableChainOfThought: true,
+        enableErrorLearning: true
       }
     }
   });
@@ -196,6 +217,14 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     const loadProvidersAndModels = async () => {
       setIsLoadingProviders(true);
       try {
+        // Initialize MCP service
+        try {
+          await claraMCPService.initialize();
+          console.log('MCP service initialized successfully');
+        } catch (mcpError) {
+          console.warn('MCP service initialization failed:', mcpError);
+        }
+
         // Load providers
         const loadedProviders = await claraApiService.getProviders();
         setProviders(loadedProviders);
@@ -256,7 +285,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enableRAG: false,
                 enableStreaming: true,
                 enableVision: true,
-                autoModelSelection: true
+                autoModelSelection: true,
+                enableMCP: true
+              },
+              mcp: {
+                enableTools: true,
+                enableResources: true,
+                enabledServers: [],
+                autoDiscoverTools: true,
+                maxToolCalls: 5
               }
             };
 
@@ -661,7 +698,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             enableRAG: false,
             enableStreaming: true,
             enableVision: true,
-            autoModelSelection: true
+            autoModelSelection: true,
+            enableMCP: true
+          },
+          mcp: {
+            enableTools: true,
+            enableResources: true,
+            enabledServers: [],
+            autoDiscoverTools: true,
+            maxToolCalls: 5
           }
         };
         
@@ -822,9 +867,47 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('Cleared all provider configurations. Refresh to see changes.');
     };
 
+    // Add MCP debugging functions
+    (window as any).debugMCP = async () => {
+      console.log('=== MCP Debug Info ===');
+      console.log('MCP Service Ready:', claraMCPService.isReady());
+      console.log('Available Servers:', claraMCPService.getRunningServers());
+      console.log('Available Tools:', claraMCPService.getAvailableTools());
+      console.log('Session MCP Config:', sessionConfig.aiConfig?.mcp);
+    };
+
+    (window as any).setupTestMCP = async () => {
+      console.log('🔧 Setting up test MCP server...');
+      const success = await claraMCPService.setupTestGitHubServer();
+      if (success) {
+        console.log('✅ Test MCP server setup complete');
+        await claraMCPService.refresh();
+        console.log('📊 Updated MCP status:', {
+          servers: claraMCPService.getRunningServers().length,
+          tools: claraMCPService.getAvailableTools().length
+        });
+      } else {
+        console.log('❌ Test MCP server setup failed');
+      }
+    };
+
+    (window as any).refreshMCP = async () => {
+      console.log('🔄 Refreshing MCP service...');
+      await claraMCPService.refresh();
+      console.log('📊 MCP status after refresh:', {
+        servers: claraMCPService.getRunningServers().length,
+        allServers: Array.from((claraMCPService as any).servers.values()).length,
+        tools: claraMCPService.getAvailableTools().length
+      });
+      console.log('🛠️ Available tools:', claraMCPService.getAvailableTools().map(t => `${t.server}:${t.name}`));
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
+      delete (window as any).debugMCP;
+      delete (window as any).setupTestMCP;
+      delete (window as any).refreshMCP;
     };
   }, [providers, models, sessionConfig, currentSession]);
 

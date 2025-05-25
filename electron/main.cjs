@@ -7,6 +7,7 @@ const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
+const MCPService = require('./mcpService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
 // Configure the main process logger
@@ -18,6 +19,7 @@ let mainWindow;
 let splash;
 let dockerSetup;
 let llamaSwapService;
+let mcpService;
 
 // Track active downloads for stop functionality
 const activeDownloads = new Map();
@@ -747,11 +749,215 @@ function registerModelManagerHandlers() {
   });
 }
 
+// Register MCP service IPC handlers
+function registerMCPHandlers() {
+  // Get all MCP servers
+  ipcMain.handle('mcp-get-servers', async () => {
+    try {
+      if (!mcpService) {
+        return [];
+      }
+      return mcpService.getAllServers();
+    } catch (error) {
+      log.error('Error getting MCP servers:', error);
+      return [];
+    }
+  });
+
+  // Add MCP server
+  ipcMain.handle('mcp-add-server', async (event, serverConfig) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.addServer(serverConfig);
+    } catch (error) {
+      log.error('Error adding MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Remove MCP server
+  ipcMain.handle('mcp-remove-server', async (event, name) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.removeServer(name);
+    } catch (error) {
+      log.error('Error removing MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Update MCP server
+  ipcMain.handle('mcp-update-server', async (event, name, updates) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.updateServer(name, updates);
+    } catch (error) {
+      log.error('Error updating MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Start MCP server
+  ipcMain.handle('mcp-start-server', async (event, name) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      const serverInfo = await mcpService.startServer(name);
+      
+      // Return only serializable data, excluding the process object
+      return {
+        name: serverInfo.name,
+        config: serverInfo.config,
+        startedAt: serverInfo.startedAt,
+        status: serverInfo.status,
+        pid: serverInfo.process?.pid
+      };
+    } catch (error) {
+      log.error('Error starting MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Stop MCP server
+  ipcMain.handle('mcp-stop-server', async (event, name) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.stopServer(name);
+    } catch (error) {
+      log.error('Error stopping MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Restart MCP server
+  ipcMain.handle('mcp-restart-server', async (event, name) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      const serverInfo = await mcpService.restartServer(name);
+      
+      // Return only serializable data, excluding the process object
+      return {
+        name: serverInfo.name,
+        config: serverInfo.config,
+        startedAt: serverInfo.startedAt,
+        status: serverInfo.status,
+        pid: serverInfo.process?.pid
+      };
+    } catch (error) {
+      log.error('Error restarting MCP server:', error);
+      throw error;
+    }
+  });
+
+  // Get MCP server status
+  ipcMain.handle('mcp-get-server-status', async (event, name) => {
+    try {
+      if (!mcpService) {
+        return null;
+      }
+      return mcpService.getServerStatus(name);
+    } catch (error) {
+      log.error('Error getting MCP server status:', error);
+      return null;
+    }
+  });
+
+  // Test MCP server
+  ipcMain.handle('mcp-test-server', async (event, name) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.testServer(name);
+    } catch (error) {
+      log.error('Error testing MCP server:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get MCP server templates
+  ipcMain.handle('mcp-get-templates', async () => {
+    try {
+      if (!mcpService) {
+        return [];
+      }
+      return mcpService.getServerTemplates();
+    } catch (error) {
+      log.error('Error getting MCP templates:', error);
+      return [];
+    }
+  });
+
+  // Start all enabled MCP servers
+  ipcMain.handle('mcp-start-all-enabled', async () => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.startAllEnabledServers();
+    } catch (error) {
+      log.error('Error starting all enabled MCP servers:', error);
+      throw error;
+    }
+  });
+
+  // Stop all MCP servers
+  ipcMain.handle('mcp-stop-all', async () => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.stopAllServers();
+    } catch (error) {
+      log.error('Error stopping all MCP servers:', error);
+      throw error;
+    }
+  });
+
+  // Import from Claude Desktop config
+  ipcMain.handle('mcp-import-claude-config', async (event, configPath) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.importFromClaudeConfig(configPath);
+    } catch (error) {
+      log.error('Error importing Claude config:', error);
+      throw error;
+    }
+  });
+
+  // Execute MCP tool call
+  ipcMain.handle('mcp-execute-tool', async (event, toolCall) => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.executeToolCall(toolCall);
+    } catch (error) {
+      log.error('Error executing MCP tool call:', error);
+      throw error;
+    }
+  });
+}
+
 // Register handlers for various app functions
 function registerHandlers() {
   registerLlamaSwapHandlers();
   registerDockerContainerHandlers();
   registerModelManagerHandlers();
+  registerMCPHandlers();
 }
 
 async function initializeApp() {
@@ -804,6 +1010,17 @@ async function initializeApp() {
     } catch (llamaSwapError) {
       splash.setStatus('LLM service initialization failed (will be available for manual start)', 'warning');
       log.error('Error initializing llama-swap service:', llamaSwapError);
+    }
+
+    // Initialize MCP service
+    splash.setStatus('Initializing MCP service...', 'info');
+    try {
+      mcpService = new MCPService();
+      log.info('MCP service initialized successfully');
+      splash.setStatus('MCP service initialized', 'success');
+    } catch (mcpError) {
+      splash.setStatus('MCP service initialization failed', 'warning');
+      log.error('Error initializing MCP service:', mcpError);
     }
 
     // Docker setup successful, create the main window immediately

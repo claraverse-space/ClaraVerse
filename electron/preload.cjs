@@ -139,6 +139,24 @@ contextBridge.exposeInMainWorld('modelManager', {
   }
 });
 
+// Add MCP service API
+contextBridge.exposeInMainWorld('mcpService', {
+  getServers: () => ipcRenderer.invoke('mcp-get-servers'),
+  addServer: (serverConfig) => ipcRenderer.invoke('mcp-add-server', serverConfig),
+  removeServer: (name) => ipcRenderer.invoke('mcp-remove-server', name),
+  updateServer: (name, updates) => ipcRenderer.invoke('mcp-update-server', name, updates),
+  startServer: (name) => ipcRenderer.invoke('mcp-start-server', name),
+  stopServer: (name) => ipcRenderer.invoke('mcp-stop-server', name),
+  restartServer: (name) => ipcRenderer.invoke('mcp-restart-server', name),
+  getServerStatus: (name) => ipcRenderer.invoke('mcp-get-server-status', name),
+  testServer: (name) => ipcRenderer.invoke('mcp-test-server', name),
+  getTemplates: () => ipcRenderer.invoke('mcp-get-templates'),
+  startAllEnabled: () => ipcRenderer.invoke('mcp-start-all-enabled'),
+  stopAll: () => ipcRenderer.invoke('mcp-stop-all'),
+  importClaudeConfig: (configPath) => ipcRenderer.invoke('mcp-import-claude-config', configPath),
+  executeToolCall: (toolCall) => ipcRenderer.invoke('mcp-execute-tool', toolCall)
+});
+
 // Notify main process when preload script has loaded
 window.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('app-ready', 'Preload script has loaded');

@@ -43,6 +43,47 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electron: ElectronAPI;
+    electronAPI: {
+      getContainers: () => Promise<any[]>;
+      containerAction: (containerId: string, action: string) => Promise<{ success: boolean; error?: string }>;
+      createContainer: (containerConfig: any) => Promise<{ success: boolean; id?: string; error?: string }>;
+      getContainerStats: (containerId: string) => Promise<any>;
+      getContainerLogs: (containerId: string) => Promise<string>;
+    };
+    llamaSwap: {
+      start: () => Promise<{ success: boolean; message?: string; error?: string; warning?: string; diagnostics?: any; status?: any }>;
+      stop: () => Promise<{ success: boolean; error?: string }>;
+      restart: () => Promise<{ success: boolean; message?: string; status?: any; error?: string }>;
+      getStatus: () => Promise<{ isRunning: boolean; port: number | null; apiUrl: string | null; error?: string }>;
+      getModels: () => Promise<any[]>;
+      getApiUrl: () => Promise<string | null>;
+      regenerateConfig: () => Promise<{ success: boolean; models?: number; error?: string }>;
+      debugBinaryPaths: () => Promise<{ success: boolean; debugInfo?: any; error?: string }>;
+    };
+    modelManager: {
+      searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;
+      downloadModel: (modelId: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      getLocalModels: () => Promise<{ success: boolean; models: any[]; error?: string }>;
+      deleteLocalModel: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+      onDownloadProgress: (callback: (data: any) => void) => () => void;
+      stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
+    };
+    mcpService: {
+      getServers: () => Promise<MCPServer[]>;
+      addServer: (serverConfig: MCPServerConfig) => Promise<boolean>;
+      removeServer: (name: string) => Promise<boolean>;
+      updateServer: (name: string, updates: Partial<MCPServerConfig>) => Promise<boolean>;
+      startServer: (name: string) => Promise<MCPServerInfo>;
+      stopServer: (name: string) => Promise<boolean>;
+      restartServer: (name: string) => Promise<MCPServerInfo>;
+      getServerStatus: (name: string) => Promise<MCPServerStatus | null>;
+      testServer: (name: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+      getTemplates: () => Promise<MCPServerTemplate[]>;
+      startAllEnabled: () => Promise<{ name: string; success: boolean; error?: string }[]>;
+      stopAll: () => Promise<{ name: string; success: boolean; error?: string }[]>;
+      importClaudeConfig: (configPath: string) => Promise<{ imported: number; errors: any[] }>;
+      executeToolCall: (toolCall: any) => Promise<any>;
+    };
   }
 }
 
@@ -63,4 +104,57 @@ declare global {
       };
     }
   }
+}
+
+// MCP Types
+interface MCPServerConfig {
+  name: string;
+  type: 'stdio' | 'remote';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  description?: string;
+  enabled?: boolean;
+}
+
+interface MCPServerInfo {
+  process?: any;
+  name: string;
+  config: MCPServerConfig;
+  startedAt: Date;
+  status: 'starting' | 'running' | 'error' | 'stopped';
+  error?: string;
+}
+
+interface MCPServerStatus {
+  name: string;
+  config: MCPServerConfig;
+  isRunning: boolean;
+  status: 'starting' | 'running' | 'error' | 'stopped';
+  startedAt?: Date;
+  error?: string;
+  pid?: number;
+}
+
+interface MCPServer {
+  name: string;
+  config: MCPServerConfig;
+  isRunning: boolean;
+  status: 'starting' | 'running' | 'error' | 'stopped';
+  startedAt?: Date;
+  error?: string;
+  pid?: number;
+}
+
+interface MCPServerTemplate {
+  name: string;
+  displayName: string;
+  description: string;
+  command: string;
+  args: string[];
+  type: 'stdio' | 'remote';
+  category: string;
+  env?: Record<string, string>;
 } 

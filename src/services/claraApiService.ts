@@ -16,11 +16,14 @@ import {
   ClaraAIConfig,
   ClaraArtifact,
   ClaraFileProcessingResult,
-  ClaraProviderType 
+  ClaraProviderType,
+  ClaraMCPToolCall,
+  ClaraMCPToolResult
 } from '../types/clara_assistant_types';
 import { defaultTools, executeTool } from '../utils/claraTools';
 import { db } from '../db';
 import type { Tool } from '../db';
+import { claraMCPService } from './claraMCPService';
 
 /**
  * Chat request payload for Clara backend
@@ -65,9 +68,57 @@ interface ClaraFileUploadResponse {
   error?: string;
 }
 
+/**
+ * Enhanced autonomous agent configuration
+ */
+interface AutonomousAgentConfig {
+  maxRetries: number;
+  retryDelay: number;
+  enableSelfCorrection: boolean;
+  enableToolGuidance: boolean;
+  enableProgressTracking: boolean;
+  maxToolCalls: number;
+  confidenceThreshold: number;
+}
+
+/**
+ * Tool execution attempt tracking
+ */
+interface ToolExecutionAttempt {
+  attempt: number;
+  toolName: string;
+  arguments: any;
+  error?: string;
+  success: boolean;
+  timestamp: Date;
+}
+
+/**
+ * Agent execution context
+ */
+interface AgentExecutionContext {
+  originalQuery: string;
+  attempts: ToolExecutionAttempt[];
+  toolsAvailable: string[];
+  currentStep: number;
+  maxSteps: number;
+  progressLog: string[];
+}
+
 export class ClaraApiService {
   private client: AssistantAPIClient | null = null;
   private currentProvider: ClaraProvider | null = null;
+  
+  // Enhanced autonomous agent configuration
+  private agentConfig: AutonomousAgentConfig = {
+    maxRetries: 3,
+    retryDelay: 1000,
+    enableSelfCorrection: true,
+    enableToolGuidance: true,
+    enableProgressTracking: true,
+    maxToolCalls: 10,
+    confidenceThreshold: 0.7
+  };
 
   constructor() {
     this.initializeFromConfig();
@@ -188,7 +239,7 @@ export class ClaraApiService {
   }
 
   /**
-   * Send a chat message using the AssistantAPIClient with streaming support
+   * Send a chat message using the AssistantAPIClient with enhanced autonomous agent capabilities
    */
   public async sendChatMessage(
     message: string,
@@ -203,6 +254,29 @@ export class ClaraApiService {
     }
 
     try {
+      // Update agent config from session config
+      if (config.autonomousAgent) {
+        this.agentConfig = {
+          maxRetries: config.autonomousAgent.maxRetries,
+          retryDelay: config.autonomousAgent.retryDelay,
+          enableSelfCorrection: config.autonomousAgent.enableSelfCorrection,
+          enableToolGuidance: config.autonomousAgent.enableToolGuidance,
+          enableProgressTracking: config.autonomousAgent.enableProgressTracking,
+          maxToolCalls: config.autonomousAgent.maxToolCalls,
+          confidenceThreshold: config.autonomousAgent.confidenceThreshold
+        };
+      }
+
+      // Initialize agent execution context
+      const agentContext: AgentExecutionContext = {
+        originalQuery: message,
+        attempts: [],
+        toolsAvailable: [],
+        currentStep: 0,
+        maxSteps: this.agentConfig.maxToolCalls,
+        progressLog: []
+      };
+
       // Process file attachments if any
       const processedAttachments = await this.processFileAttachments(attachments || []);
 
@@ -219,23 +293,87 @@ export class ClaraApiService {
         console.log(`Model ID extraction: "${originalModelId}" -> "${modelId}"`);
       }
       
-      console.log(`Sending request to AI provider with model: "${modelId}"`);
+      console.log(`🤖 Starting autonomous agent with model: "${modelId}"`);
+      console.log('🔧 Agent configuration:', this.agentConfig);
+
+      // Get tools if enabled
+      let tools: Tool[] = [];
+      if (config.features.enableTools) {
+        const dbTools = await db.getEnabledTools();
+        tools = dbTools;
+        
+        // Add MCP tools if enabled
+        if (config.features.enableMCP && config.mcp?.enableTools) {
+          console.log('🔧 MCP is enabled, attempting to add MCP tools...');
+          try {
+            // Ensure MCP service is ready
+            if (claraMCPService.isReady()) {
+              console.log('✅ MCP service is ready');
+              // Get MCP tools from enabled servers
+              const enabledServers = config.mcp.enabledServers || [];
+              console.log('📋 Enabled MCP servers:', enabledServers);
+              
+              const mcpTools = enabledServers.length > 0 
+                ? claraMCPService.getToolsFromServers(enabledServers)
+                : claraMCPService.getAvailableTools();
+              
+              console.log(`🛠️ Found ${mcpTools.length} MCP tools:`, mcpTools.map(t => `${t.server}:${t.name}`));
+              
+              // Convert MCP tools to OpenAI format and add to tools array
+              const mcpOpenAITools = claraMCPService.convertToolsToOpenAIFormat();
+              console.log(`🔄 Converted to ${mcpOpenAITools.length} OpenAI format tools`);
+              
+              // Convert to Tool format for compatibility
+              const mcpToolsFormatted: Tool[] = mcpOpenAITools.map(tool => ({
+                id: tool.function.name,
+                name: tool.function.name,
+                description: tool.function.description,
+                parameters: Object.entries(tool.function.parameters.properties || {}).map(([name, prop]: [string, any]) => ({
+                  name,
+                  type: prop.type || 'string',
+                  description: prop.description || '',
+                  required: tool.function.parameters.required?.includes(name) || false
+                })),
+                implementation: 'mcp', // Mark as MCP tool for special handling
+                isEnabled: true
+              }));
+              
+              const beforeCount = tools.length;
+              tools = [...tools, ...mcpToolsFormatted];
+              console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
+              
+              // Update agent context with available tools
+              agentContext.toolsAvailable = tools.map(t => t.name);
+            } else {
+              console.warn('⚠️ MCP service not ready, skipping MCP tools');
+            }
+          } catch (error) {
+            console.error('❌ Error adding MCP tools:', error);
+          }
+        } else {
+          console.log('🚫 MCP tools disabled:', {
+            enableMCP: config.features.enableMCP,
+            enableTools: config.mcp?.enableTools
+          });
+        }
+      }
+
+      // Enhanced system prompt with autonomous agent capabilities
+      const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(systemPrompt, tools, agentContext);
 
       // Prepare initial messages array
       const messages: ChatMessage[] = [];
       
-      // Add system prompt if provided
-      if (systemPrompt) {
-        messages.push({
-          role: 'system',
-          content: systemPrompt
-        });
-      }
+      // Add enhanced system prompt
+      messages.push({
+        role: 'system',
+        content: enhancedSystemPrompt
+      });
 
-      // Add conversation history if provided (excluding the current message which is already in the history)
+      // Add conversation history if provided
       if (conversationHistory && conversationHistory.length > 0) {
         // Convert Clara messages to ChatMessage format, excluding the last message since it's the current one
-        const historyMessages = conversationHistory.slice(0, -1); // Exclude the current message
+        const historyMessages = conversationHistory.slice(0, -1);
         for (const historyMessage of historyMessages) {
           const chatMessage: ChatMessage = {
             role: historyMessage.role,
@@ -254,7 +392,7 @@ export class ClaraApiService {
         }
       }
 
-      // Add the current user message (the last one from history if available, or construct it)
+      // Add the current user message
       const currentMessage = conversationHistory && conversationHistory.length > 0 
         ? conversationHistory[conversationHistory.length - 1] 
         : null;
@@ -264,12 +402,11 @@ export class ClaraApiService {
         content: currentMessage?.content || message
       };
 
-      // Add images if any attachments are images (prioritize current attachments over history)
+      // Add images if any attachments are images
       const imageAttachments = processedAttachments.filter(att => att.type === 'image');
       if (imageAttachments.length > 0) {
         userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
       } else if (currentMessage?.attachments) {
-        // Fallback to attachments from conversation history
         const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
         if (historyImageAttachments.length > 0) {
           userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
@@ -278,294 +415,22 @@ export class ClaraApiService {
 
       messages.push(userMessage);
 
-      console.log(`Sending ${messages.length} messages to AI (including system prompt and conversation context)`);
+      console.log(`🚀 Starting autonomous agent execution with ${messages.length} messages and ${tools.length} tools`);
 
-      // Get tools if enabled
-      let tools: Tool[] = [];
-      if (config.features.enableTools) {
-        const dbTools = await db.getEnabledTools();
-        tools = dbTools;
-      }
+      // Execute autonomous agent workflow
+      const result = await this.executeAutonomousAgent(
+        modelId, 
+        messages, 
+        tools, 
+        config, 
+        agentContext,
+        onContentChunk
+      );
 
-      // Set up request options
-      const options = {
-        temperature: config.parameters.temperature,
-        max_tokens: config.parameters.maxTokens,
-        top_p: config.parameters.topP,
-        useRag: config.features.enableRAG
-      };
-
-      let responseContent = '';
-      let toolCalls: any[] = [];
-      let finishReason = '';
-      let totalTokens = 0;
-
-      // First attempt with streaming if enabled
-      if (config.features.enableStreaming) {
-        try {
-          // Handle streaming with real-time content updates
-          const collectedToolCalls: any[] = [];
-          
-          for await (const chunk of this.client.streamChat(modelId, messages, options, tools)) {
-            // Stream content in real-time
-            if (chunk.message?.content) {
-              responseContent += chunk.message.content;
-              // Call the streaming callback if provided
-              if (onContentChunk) {
-                onContentChunk(chunk.message.content);
-              }
-            }
-            
-            // Collect tool calls
-            if (chunk.message?.tool_calls) {
-              for (const toolCall of chunk.message.tool_calls) {
-                // Find existing tool call or create new one
-                let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
-                if (!existingCall) {
-                  existingCall = {
-                    id: toolCall.id,
-                    type: toolCall.type || 'function',
-                    function: {
-                      name: toolCall.function?.name || '',
-                      arguments: ''
-                    }
-                  };
-                  collectedToolCalls.push(existingCall);
-                }
-                
-                // Append function name and arguments
-                if (toolCall.function?.name) {
-                  existingCall.function.name = toolCall.function.name;
-                }
-                if (toolCall.function?.arguments) {
-                  existingCall.function.arguments += toolCall.function.arguments;
-                }
-              }
-            }
-            
-            // Check finish reason
-            if (chunk.finish_reason) {
-              finishReason = chunk.finish_reason;
-            }
-            
-            // Get token usage
-            if (chunk.usage?.total_tokens) {
-              totalTokens = chunk.usage.total_tokens;
-            }
-          }
-          
-          // If we have tool calls, execute them and continue conversation
-          if (finishReason === 'tool_calls' && collectedToolCalls.length > 0) {
-            // Notify about tool execution
-            if (onContentChunk) {
-              onContentChunk('\n\n🔧 Executing tools...\n');
-            }
-            
-            // Add assistant message with tool calls to conversation
-            messages.push({
-              role: 'assistant',
-              content: responseContent,
-              tool_calls: collectedToolCalls
-            });
-            
-            // Execute tools and add results to conversation
-            const toolResults = await this.executeToolCalls(collectedToolCalls);
-            for (const result of toolResults) {
-              const toolCall = collectedToolCalls.find(tc => 
-                tc.function.name === result.toolName
-              );
-              if (toolCall) {
-                messages.push({
-                  role: 'tool',
-                  content: JSON.stringify(result.result),
-                  name: result.toolName
-                });
-              }
-            }
-            
-            // Notify about continuation
-            if (onContentChunk) {
-              onContentChunk('✅ Tools executed. Generating response...\n\n');
-            }
-            
-            // Continue conversation to get final response
-            const previousContent = responseContent;
-            responseContent = '';
-            
-            for await (const chunk of this.client.streamChat(modelId, messages, options)) {
-              if (chunk.message?.content) {
-                responseContent += chunk.message.content;
-                // Stream the final response content
-                if (onContentChunk) {
-                  onContentChunk(chunk.message.content);
-                }
-              }
-              if (chunk.usage?.total_tokens) {
-                totalTokens = chunk.usage.total_tokens;
-              }
-            }
-            
-            // Prepend the tool execution info to the final response
-            responseContent = previousContent + '\n\n🔧 Tools executed successfully.\n\n' + responseContent;
-            toolCalls = toolResults;
-          }
-
-        } catch (streamError: any) {
-          // Enhanced error detection and debugging
-          console.log('🔍 Stream error details:', {
-            error: streamError,
-            message: streamError.message,
-            errorData: streamError.errorData,
-            status: streamError.status,
-            type: typeof streamError,
-            keys: Object.keys(streamError)
-          });
-
-          // Multiple ways to extract error message
-          const errorMessage = streamError.message || 
-                              streamError.error?.message || 
-                              streamError.response?.data?.error?.message ||
-                              streamError.errorData?.error?.message ||
-                              streamError.errorData?.message ||
-                              JSON.stringify(streamError);
-          
-          // Enhanced error pattern detection
-          const lowerErrorMessage = errorMessage.toLowerCase();
-          const isToolsStreamError = (
-            lowerErrorMessage.includes('cannot use tools with stream') ||
-            lowerErrorMessage.includes('tools with stream') ||
-            lowerErrorMessage.includes('streaming with tools') ||
-            lowerErrorMessage.includes('tools are not supported with streaming') ||
-            lowerErrorMessage.includes('streaming is not supported with tools') ||
-            (lowerErrorMessage.includes('stream') && lowerErrorMessage.includes('tools'))
-          );
-          
-          console.log('🔍 Error analysis:', {
-            originalMessage: errorMessage,
-            lowerMessage: lowerErrorMessage,
-            isToolsStreamError,
-            hasTools: tools.length > 0,
-            willFallback: isToolsStreamError && tools.length > 0
-          });
-          
-          if (isToolsStreamError && tools.length > 0) {
-            console.log('🔄 Provider does not support streaming with tools. Retrying without streaming...');
-            
-            // Notify user about fallback
-            if (onContentChunk) {
-              onContentChunk('⚠️ Switching to non-streaming mode for tool support...\n\n');
-            }
-            
-            // Fallback to non-streaming mode
-            const response = await this.client.sendChat(modelId, messages, options, tools);
-            responseContent = response.message?.content || 'No response generated.';
-            totalTokens = response.usage?.total_tokens || 0;
-            
-            // Handle tool calls if present
-            if (response.message?.tool_calls) {
-              // Add assistant message with tool calls
-              messages.push({
-                role: 'assistant',
-                content: responseContent,
-                tool_calls: response.message.tool_calls
-              });
-              
-              // Execute tools and add results
-              const toolResults = await this.executeToolCalls(response.message.tool_calls);
-              for (const result of toolResults) {
-                const toolCall = response.message.tool_calls.find((tc: any) => 
-                  tc.function.name === result.toolName
-                );
-                if (toolCall) {
-                  messages.push({
-                    role: 'tool',
-                    content: JSON.stringify(result.result),
-                    name: result.toolName
-                  });
-                }
-              }
-              
-              // Get final response after tool execution
-              const finalResponse = await this.client.sendChat(modelId, messages, options);
-              responseContent = (responseContent + '\n\n🔧 Tools executed successfully.\n\n' + (finalResponse.message?.content || ''));
-              totalTokens = finalResponse.usage?.total_tokens || totalTokens;
-              
-              toolCalls = toolResults;
-            }
-            
-            // Stream the final content if callback is provided
-            if (onContentChunk && responseContent) {
-              onContentChunk(responseContent);
-            }
-          } else {
-            // Re-throw other streaming errors
-            throw streamError;
-          }
-        }
-        
-      } else {
-        // Non-streaming request (original path)
-        const response = await this.client.sendChat(modelId, messages, options, tools);
-        responseContent = response.message?.content || 'No response generated.';
-        totalTokens = response.usage?.total_tokens || 0;
-        
-        // Handle tool calls if present
-        if (response.message?.tool_calls) {
-          // Add assistant message with tool calls
-          messages.push({
-            role: 'assistant',
-            content: responseContent,
-            tool_calls: response.message.tool_calls
-          });
-          
-          // Execute tools and add results
-          const toolResults = await this.executeToolCalls(response.message.tool_calls);
-          for (const result of toolResults) {
-            const toolCall = response.message.tool_calls.find((tc: any) => 
-              tc.function.name === result.toolName
-            );
-            if (toolCall) {
-              messages.push({
-                role: 'tool',
-                content: JSON.stringify(result.result),
-                name: result.toolName
-              });
-            }
-          }
-          
-          // Get final response after tool execution
-          const finalResponse = await this.client.sendChat(modelId, messages, options);
-          responseContent = (responseContent + '\n\n🔧 Tools executed successfully.\n\n' + (finalResponse.message?.content || ''));
-          totalTokens = finalResponse.usage?.total_tokens || totalTokens;
-          
-          toolCalls = toolResults;
-        }
-      }
-
-      // Create Clara message from response
-      const claraMessage: ClaraMessage = {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: responseContent || 'No response generated.',
-        timestamp: new Date(),
-        attachments: processedAttachments,
-        metadata: {
-          model: `${config.provider}:${modelId}`,
-          tokens: totalTokens,
-          temperature: config.parameters.temperature,
-          toolsUsed: toolCalls.map(tc => tc.toolName)
-        }
-      };
-
-      // Add artifacts if any were generated from tool calls
-      if (toolCalls.length > 0) {
-        claraMessage.artifacts = this.parseToolResultsToArtifacts(toolCalls);
-      }
-
-      return claraMessage;
+      return result;
 
     } catch (error) {
-      console.error('Chat request failed:', error);
+      console.error('Autonomous agent execution failed:', error);
       
       // Check if this is an abort error (user stopped the stream)
       const isAbortError = error instanceof Error && (
@@ -578,12 +443,10 @@ export class ClaraApiService {
       if (isAbortError) {
         console.log('Stream was aborted by user, returning partial content');
         
-        // Return a message indicating the stream was aborted
-        // The actual streamed content is preserved by the component via callback
         return {
           id: `${Date.now()}-aborted`,
           role: 'assistant',
-          content: '', // Component preserves the actual streamed content
+          content: '',
           timestamp: new Date(),
           metadata: {
             model: `${config.provider}:${config.models.text || 'unknown'}`,
@@ -690,6 +553,44 @@ export class ClaraApiService {
         const args = typeof toolCall.function?.arguments === 'string' 
           ? JSON.parse(toolCall.function.arguments)
           : toolCall.function?.arguments || {};
+
+        // Check if this is an MCP tool call
+        if (functionName?.startsWith('mcp_')) {
+          try {
+            // Parse MCP tool calls and execute them
+            const mcpToolCalls = claraMCPService.parseOpenAIToolCalls([toolCall]);
+            
+            if (mcpToolCalls.length > 0) {
+              const mcpResult = await claraMCPService.executeToolCall(mcpToolCalls[0]);
+              
+              results.push({
+                toolName: functionName,
+                success: mcpResult.success,
+                result: mcpResult.success ? mcpResult.content?.[0]?.text || 'MCP tool executed successfully' : null,
+                error: mcpResult.error,
+                metadata: {
+                  type: 'mcp',
+                  server: mcpToolCalls[0].server,
+                  toolName: mcpToolCalls[0].name,
+                  ...mcpResult.metadata
+                }
+              });
+            } else {
+              results.push({
+                toolName: functionName,
+                success: false,
+                error: 'Failed to parse MCP tool call'
+              });
+            }
+          } catch (mcpError) {
+            results.push({
+              toolName: functionName,
+              success: false,
+              error: mcpError instanceof Error ? mcpError.message : 'MCP tool execution failed'
+            });
+          }
+          continue;
+        }
 
         // Try to execute with Clara tools first
         const claraTool = defaultTools.find(tool => tool.name === functionName || tool.id === functionName);
@@ -995,6 +896,450 @@ export class ClaraApiService {
    */
   public getCurrentProvider(): ClaraProvider | null {
     return this.currentProvider;
+  }
+
+  /**
+   * Build enhanced system prompt with autonomous agent capabilities
+   */
+  private buildEnhancedSystemPrompt(
+    originalPrompt: string | undefined, 
+    tools: Tool[], 
+    context: AgentExecutionContext
+  ): string {
+    const toolsList = tools.map(tool => {
+      const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
+      const optionalParams = tool.parameters.filter(p => !p.required).map(p => p.name);
+      
+      return `- ${tool.name}: ${tool.description}
+  Required: ${requiredParams.join(', ') || 'none'}
+  Optional: ${optionalParams.join(', ') || 'none'}`;
+    }).join('\n');
+
+    const enhancedPrompt = `${originalPrompt || 'You are Clara, a helpful AI assistant.'} 
+
+🤖 AUTONOMOUS AGENT MODE ACTIVATED 🤖
+
+You are now operating as an advanced autonomous agent with the following capabilities:
+
+CORE PRINCIPLES:
+1. **Persistence**: If a tool call fails, analyze the error and retry with corrected parameters
+2. **Self-Correction**: Learn from errors and adjust your approach automatically  
+3. **Tool Mastery**: Use tools effectively by carefully reading their descriptions and requirements
+4. **Progress Tracking**: Keep the user informed of your progress and reasoning
+
+AVAILABLE TOOLS:
+${toolsList || 'No tools available'}
+
+TOOL USAGE GUIDELINES:
+- **Always double-check tool names** - they must match exactly (case-sensitive)
+- **Validate all required parameters** before making tool calls
+- **If a tool fails**, analyze the error message and retry with corrections
+- **Use descriptive reasoning** - explain what you're doing and why
+- **Chain tools logically** - use outputs from one tool as inputs to another when appropriate
+
+ERROR HANDLING PROTOCOL:
+1. If a tool call fails due to misspelling, immediately retry with the correct spelling
+2. If parameters are missing/invalid, retry with proper parameters
+3. If a tool doesn't exist, suggest alternatives or explain limitations
+4. Maximum ${this.agentConfig.maxRetries} retries per tool before moving to alternatives
+
+RESPONSE FORMAT:
+- Start with your reasoning and plan
+- Clearly indicate when you're using tools
+- Explain any errors and how you're fixing them
+- Provide a comprehensive final answer
+
+Remember: You are autonomous and capable. Take initiative, solve problems step by step, and don't give up easily!`;
+
+    return enhancedPrompt;
+  }
+
+  /**
+   * Execute autonomous agent workflow with retry mechanisms and self-correction
+   */
+  private async executeAutonomousAgent(
+    modelId: string,
+    messages: ChatMessage[],
+    tools: Tool[],
+    config: ClaraAIConfig,
+    context: AgentExecutionContext,
+    onContentChunk?: (content: string) => void
+  ): Promise<ClaraMessage> {
+    const options = {
+      temperature: config.parameters.temperature,
+      max_tokens: config.parameters.maxTokens,
+      top_p: config.parameters.topP,
+      useRag: config.features.enableRAG
+    };
+
+    let responseContent = '';
+    let totalTokens = 0;
+    let allToolResults: any[] = [];
+    let conversationMessages = [...messages];
+
+    // Progress tracking
+    if (onContentChunk && this.agentConfig.enableProgressTracking) {
+      onContentChunk('🤖 **Autonomous Agent Activated**\n\n');
+    }
+
+    // Main agent execution loop
+    for (let step = 0; step < context.maxSteps; step++) {
+      context.currentStep = step;
+      
+      try {
+        if (onContentChunk && this.agentConfig.enableProgressTracking && step > 0) {
+          onContentChunk(`\n🔄 **Step ${step + 1}**: Continuing analysis...\n\n`);
+        }
+
+        let stepResponse;
+        let finishReason = '';
+
+        // Try streaming first if enabled
+        if (config.features.enableStreaming) {
+          try {
+            const collectedToolCalls: any[] = [];
+            let stepContent = '';
+
+            for await (const chunk of this.client!.streamChat(modelId, conversationMessages, options, tools)) {
+              if (chunk.message?.content) {
+                stepContent += chunk.message.content;
+                if (onContentChunk) {
+                  onContentChunk(chunk.message.content);
+                }
+              }
+
+              // Collect tool calls
+              if (chunk.message?.tool_calls) {
+                for (const toolCall of chunk.message.tool_calls) {
+                  let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
+                  if (!existingCall) {
+                    existingCall = {
+                      id: toolCall.id,
+                      type: toolCall.type || 'function',
+                      function: { name: toolCall.function?.name || '', arguments: '' }
+                    };
+                    collectedToolCalls.push(existingCall);
+                  }
+                  
+                  if (toolCall.function?.name) {
+                    existingCall.function.name = toolCall.function.name;
+                  }
+                  if (toolCall.function?.arguments) {
+                    existingCall.function.arguments += toolCall.function.arguments;
+                  }
+                }
+              }
+
+              if (chunk.finish_reason) {
+                finishReason = chunk.finish_reason;
+              }
+              if (chunk.usage?.total_tokens) {
+                totalTokens = chunk.usage.total_tokens;
+              }
+            }
+
+            stepResponse = {
+              message: {
+                content: stepContent,
+                tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+              },
+              usage: { total_tokens: totalTokens }
+            };
+            responseContent += stepContent;
+
+          } catch (streamError: any) {
+            // Fallback to non-streaming if streaming fails with tools
+            const errorMessage = streamError.message?.toLowerCase() || '';
+            if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
+              if (onContentChunk) {
+                onContentChunk('\n⚠️ Switching to non-streaming mode for tool support...\n\n');
+              }
+              stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
+              responseContent += stepResponse.message?.content || '';
+              totalTokens = stepResponse.usage?.total_tokens || 0;
+            } else {
+              throw streamError;
+            }
+          }
+        } else {
+          // Non-streaming mode
+          stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
+          const stepContent = stepResponse.message?.content || '';
+          responseContent += stepContent;
+          totalTokens = stepResponse.usage?.total_tokens || 0;
+          
+          if (onContentChunk && stepContent) {
+            onContentChunk(stepContent);
+          }
+        }
+
+        // Handle tool calls with retry mechanism
+        if (stepResponse.message?.tool_calls && stepResponse.message.tool_calls.length > 0) {
+          if (onContentChunk) {
+            onContentChunk('\n\n🔧 **Executing tools...**\n\n');
+          }
+
+          // Add assistant message with tool calls
+          conversationMessages.push({
+            role: 'assistant',
+            content: stepResponse.message.content || '',
+            tool_calls: stepResponse.message.tool_calls
+          });
+
+          // Execute tools with enhanced retry logic
+          const toolResults = await this.executeToolCallsWithRetry(
+            stepResponse.message.tool_calls, 
+            context,
+            onContentChunk
+          );
+
+          // Add tool results to conversation
+          for (const result of toolResults) {
+            const toolCall = stepResponse.message.tool_calls.find((tc: any) => 
+              tc.function.name === result.toolName
+            );
+            if (toolCall) {
+              conversationMessages.push({
+                role: 'tool',
+                content: JSON.stringify(result.result),
+                name: result.toolName
+              });
+            }
+          }
+
+          allToolResults.push(...toolResults);
+
+          if (onContentChunk) {
+            onContentChunk('✅ **Tools executed successfully**\n\n');
+          }
+
+          // Continue to next iteration for follow-up response
+          continue;
+        }
+
+        // If no tool calls, we're done
+        break;
+
+      } catch (error) {
+        console.error(`Agent step ${step + 1} failed:`, error);
+        
+        if (onContentChunk) {
+          onContentChunk(`\n❌ **Error in step ${step + 1}**: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`);
+        }
+
+        // Try to recover or break if too many failures
+        if (step >= this.agentConfig.maxRetries) {
+          break;
+        }
+      }
+    }
+
+    // Create final Clara message
+    const claraMessage: ClaraMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      role: 'assistant',
+      content: responseContent || 'I completed the autonomous agent execution.',
+      timestamp: new Date(),
+      metadata: {
+        model: `${config.provider}:${modelId}`,
+        tokens: totalTokens,
+        temperature: config.parameters.temperature,
+        toolsUsed: allToolResults.map(tc => tc.toolName),
+        agentSteps: context.currentStep + 1,
+        autonomousMode: true
+      }
+    };
+
+    // Add artifacts if any were generated from tool calls
+    if (allToolResults.length > 0) {
+      claraMessage.artifacts = this.parseToolResultsToArtifacts(allToolResults);
+    }
+
+    return claraMessage;
+  }
+
+  /**
+   * Execute tool calls with enhanced retry mechanism and error correction
+   */
+  private async executeToolCallsWithRetry(
+    toolCalls: any[], 
+    context: AgentExecutionContext,
+    onContentChunk?: (content: string) => void
+  ): Promise<any[]> {
+    const results = [];
+
+    for (const toolCall of toolCalls) {
+      const functionName = toolCall.function?.name;
+      let args = toolCall.function?.arguments;
+
+      // Parse arguments if they're a string
+      if (typeof args === 'string') {
+        try {
+          args = JSON.parse(args);
+        } catch (parseError) {
+          if (onContentChunk) {
+            onContentChunk(`⚠️ **Argument parsing failed for ${functionName}**: ${parseError}\n`);
+          }
+          results.push({
+            toolName: functionName,
+            success: false,
+            error: `Failed to parse arguments: ${parseError}`
+          });
+          continue;
+        }
+      }
+
+      // Retry mechanism for each tool call
+      let lastError = '';
+      let success = false;
+      let result = null;
+
+      for (let attempt = 1; attempt <= this.agentConfig.maxRetries; attempt++) {
+        try {
+          // Track attempt
+          const attemptRecord: ToolExecutionAttempt = {
+            attempt,
+            toolName: functionName,
+            arguments: args,
+            success: false,
+            timestamp: new Date()
+          };
+
+          if (onContentChunk && attempt > 1) {
+            onContentChunk(`🔄 **Retry ${attempt}/${this.agentConfig.maxRetries}** for ${functionName}\n`);
+          }
+
+          // Check if this is an MCP tool call
+          if (functionName?.startsWith('mcp_')) {
+            const mcpToolCalls = claraMCPService.parseOpenAIToolCalls([toolCall]);
+            
+            if (mcpToolCalls.length > 0) {
+              const mcpResult = await claraMCPService.executeToolCall(mcpToolCalls[0]);
+              
+              if (mcpResult.success) {
+                result = {
+                  toolName: functionName,
+                  success: true,
+                  result: mcpResult.content?.[0]?.text || 'MCP tool executed successfully',
+                  metadata: {
+                    type: 'mcp',
+                    server: mcpToolCalls[0].server,
+                    toolName: mcpToolCalls[0].name,
+                    attempts: attempt,
+                    ...mcpResult.metadata
+                  }
+                };
+                success = true;
+                attemptRecord.success = true;
+              } else {
+                lastError = mcpResult.error || 'MCP tool execution failed';
+                attemptRecord.error = lastError;
+              }
+            } else {
+              lastError = 'Failed to parse MCP tool call';
+              attemptRecord.error = lastError;
+            }
+          } else {
+            // Regular tool execution
+            const claraTool = defaultTools.find(tool => tool.name === functionName || tool.id === functionName);
+            
+            if (claraTool) {
+              const toolResult = await executeTool(claraTool.id, args);
+              if (toolResult.success) {
+                result = {
+                  toolName: functionName,
+                  success: true,
+                  result: toolResult.result,
+                  metadata: { attempts: attempt }
+                };
+                success = true;
+                attemptRecord.success = true;
+              } else {
+                lastError = toolResult.error || 'Tool execution failed';
+                attemptRecord.error = lastError;
+              }
+            } else {
+              // Try database tools
+              const dbTools = await db.getEnabledTools();
+              const dbTool = dbTools.find(tool => tool.name === functionName);
+              
+              if (dbTool) {
+                try {
+                  const funcBody = `return (async () => {
+                    ${dbTool.implementation}
+                    return await implementation(args);
+                  })();`;
+                  const testFunc = new Function('args', funcBody);
+                  const dbResult = await testFunc(args);
+                  
+                  result = {
+                    toolName: functionName,
+                    success: true,
+                    result: dbResult,
+                    metadata: { attempts: attempt }
+                  };
+                  success = true;
+                  attemptRecord.success = true;
+                } catch (dbError) {
+                  lastError = dbError instanceof Error ? dbError.message : 'Database tool execution failed';
+                  attemptRecord.error = lastError;
+                }
+              } else {
+                lastError = `Tool '${functionName}' not found. Available tools: ${context.toolsAvailable.join(', ')}`;
+                attemptRecord.error = lastError;
+              }
+            }
+          }
+
+          context.attempts.push(attemptRecord);
+
+          if (success) {
+            if (onContentChunk && attempt > 1) {
+              onContentChunk(`✅ **Success** on attempt ${attempt}\n`);
+            }
+            break;
+          }
+
+          // Wait before retry
+          if (attempt < this.agentConfig.maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, this.agentConfig.retryDelay));
+          }
+
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : 'Unknown error occurred';
+          context.attempts.push({
+            attempt,
+            toolName: functionName,
+            arguments: args,
+            error: lastError,
+            success: false,
+            timestamp: new Date()
+          });
+
+          if (onContentChunk) {
+            onContentChunk(`❌ **Attempt ${attempt} failed**: ${lastError}\n`);
+          }
+        }
+      }
+
+      // Add final result
+      if (success && result) {
+        results.push(result);
+      } else {
+        results.push({
+          toolName: functionName,
+          success: false,
+          error: lastError,
+          metadata: { attempts: this.agentConfig.maxRetries }
+        });
+        
+        if (onContentChunk) {
+          onContentChunk(`💥 **Tool ${functionName} failed after ${this.agentConfig.maxRetries} attempts**: ${lastError}\n\n`);
+        }
+      }
+    }
+
+    return results;
   }
 }
 

@@ -35,6 +35,12 @@ export interface ClaraMessage {
   /** Whether the message is currently being streamed */
   isStreaming?: boolean;
   
+  /** MCP tool calls made in this message */
+  mcpToolCalls?: ClaraMCPToolCall[];
+  
+  /** MCP tool results for this message */
+  mcpToolResults?: ClaraMCPToolResult[];
+  
   /** Additional metadata about the message */
   metadata?: ClaraMessageMetadata;
 }
@@ -346,38 +352,42 @@ export interface ClaraModel {
 }
 
 /**
- * Configuration for AI response generation
+ * Clara AI Configuration
  */
 export interface ClaraAIConfig {
-  /** Selected models for different tasks */
-  models: {
-    text?: string;
-    vision?: string;
-    code?: string;
-    embedding?: string;
-  };
-  
-  /** Active provider ID */
+  /** AI provider ID */
   provider: string;
   
-  /** Generation parameters */
+  /** Model configurations for different tasks */
+  models: {
+    text: string;
+    vision: string;
+    code: string;
+  };
+  
+  /** Model parameters */
   parameters: {
     temperature: number;
     maxTokens: number;
-    topP?: number;
-    topK?: number;
-    repeatPenalty?: number;
-    seed?: number;
+    topP: number;
+    topK: number;
   };
   
-  /** Feature toggles */
+  /** Feature flags */
   features: {
     enableTools: boolean;
     enableRAG: boolean;
     enableStreaming: boolean;
     enableVision: boolean;
     autoModelSelection: boolean;
+    enableMCP: boolean;
   };
+  
+  /** MCP configuration */
+  mcp?: ClaraMCPConfig;
+  
+  /** Autonomous agent configuration */
+  autonomousAgent?: ClaraAutonomousAgentConfig;
 }
 
 /**
@@ -670,6 +680,176 @@ export interface ClaraToolResult {
   
   /** Additional metadata */
   metadata?: Record<string, any>;
+}
+
+// ================================
+// MCP (Model Context Protocol) TYPES
+// ================================
+
+/**
+ * MCP Server configuration
+ */
+export interface ClaraMCPServerConfig {
+  name: string;
+  type: 'stdio' | 'remote';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  description?: string;
+  enabled?: boolean;
+}
+
+/**
+ * MCP Server status information
+ */
+export interface ClaraMCPServer {
+  name: string;
+  config: ClaraMCPServerConfig;
+  isRunning: boolean;
+  status: 'starting' | 'running' | 'error' | 'stopped';
+  startedAt?: Date;
+  error?: string;
+  pid?: number;
+}
+
+/**
+ * MCP Tool definition
+ */
+export interface ClaraMCPTool {
+  /** Tool name */
+  name: string;
+  
+  /** Tool description */
+  description: string;
+  
+  /** Input schema for the tool */
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, any>;
+    required?: string[];
+  };
+  
+  /** Server that provides this tool */
+  server: string;
+}
+
+/**
+ * MCP Resource definition
+ */
+export interface ClaraMCPResource {
+  /** Resource URI */
+  uri: string;
+  
+  /** Resource name */
+  name: string;
+  
+  /** Resource description */
+  description?: string;
+  
+  /** Resource MIME type */
+  mimeType?: string;
+  
+  /** Server that provides this resource */
+  server: string;
+}
+
+/**
+ * MCP Tool call request
+ */
+export interface ClaraMCPToolCall {
+  /** Tool name to call */
+  name: string;
+  
+  /** Arguments to pass to the tool */
+  arguments: Record<string, any>;
+  
+  /** Server to call the tool on */
+  server: string;
+  
+  /** Unique call ID */
+  callId: string;
+}
+
+/**
+ * MCP Tool call result
+ */
+export interface ClaraMCPToolResult {
+  /** Call ID that this result corresponds to */
+  callId: string;
+  
+  /** Whether the call was successful */
+  success: boolean;
+  
+  /** Result content */
+  content?: Array<{
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  }>;
+  
+  /** Error message if failed */
+  error?: string;
+  
+  /** Execution metadata */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * MCP (Model Context Protocol) configuration
+ */
+export interface ClaraMCPConfig {
+  /** Enable MCP tools */
+  enableTools: boolean;
+  
+  /** Enable MCP resources */
+  enableResources: boolean;
+  
+  /** List of enabled MCP server names */
+  enabledServers: string[];
+  
+  /** Auto-discover tools from running servers */
+  autoDiscoverTools: boolean;
+  
+  /** Maximum number of tool calls per conversation turn */
+  maxToolCalls: number;
+}
+
+/**
+ * Autonomous agent configuration
+ */
+export interface ClaraAutonomousAgentConfig {
+  /** Enable autonomous agent mode */
+  enabled: boolean;
+  
+  /** Maximum number of retries per tool call */
+  maxRetries: number;
+  
+  /** Delay between retries in milliseconds */
+  retryDelay: number;
+  
+  /** Enable self-correction capabilities */
+  enableSelfCorrection: boolean;
+  
+  /** Enable tool usage guidance in prompts */
+  enableToolGuidance: boolean;
+  
+  /** Enable progress tracking and reporting */
+  enableProgressTracking: boolean;
+  
+  /** Maximum number of tool calls per session */
+  maxToolCalls: number;
+  
+  /** Confidence threshold for autonomous decisions */
+  confidenceThreshold: number;
+  
+  /** Enable chain-of-thought reasoning */
+  enableChainOfThought: boolean;
+  
+  /** Enable error analysis and learning */
+  enableErrorLearning: boolean;
 }
 
 // ================================

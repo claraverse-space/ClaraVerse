@@ -47,11 +47,15 @@ import {
   ClaraFileType,
   ClaraProvider,
   ClaraModel,
-  ClaraAIConfig
+  ClaraAIConfig,
+  ClaraMCPServer
 } from '../../types/clara_assistant_types';
 
 // Import PDF.js for PDF processing
 import * as pdfjsLib from 'pdfjs-dist';
+
+// Import MCP service
+import { claraMCPService } from '../../services/claraMCPService';
 
 /**
  * Custom Tooltip Component
@@ -451,6 +455,29 @@ const AdvancedOptions: React.FC<{
   onModelChange?: (modelId: string, type: 'text' | 'vision' | 'code') => void;
   show: boolean;
 }> = ({ aiConfig, onConfigChange, providers, models, onProviderChange, onModelChange, show }) => {
+  const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
+  const [isLoadingMcpServers, setIsLoadingMcpServers] = useState(false);
+
+  // Load MCP servers when component mounts or when MCP is enabled
+  useEffect(() => {
+    const loadMcpServers = async () => {
+      if (!aiConfig?.features.enableMCP) return;
+      
+      setIsLoadingMcpServers(true);
+      try {
+        await claraMCPService.refreshServers();
+        const servers = claraMCPService.getRunningServers();
+        setMcpServers(servers);
+      } catch (error) {
+        console.error('Failed to load MCP servers:', error);
+      } finally {
+        setIsLoadingMcpServers(false);
+      }
+    };
+
+    loadMcpServers();
+  }, [aiConfig?.features.enableMCP]);
+
   if (!show || !aiConfig) return null;
 
   const handleParameterChange = (key: string, value: any) => {
@@ -469,6 +496,32 @@ const AdvancedOptions: React.FC<{
         [key]: value
       }
     });
+  };
+
+  const handleMcpConfigChange = (key: string, value: any) => {
+    const currentMcp = aiConfig.mcp || {
+      enableTools: true,
+      enableResources: true,
+      enabledServers: [],
+      autoDiscoverTools: true,
+      maxToolCalls: 5
+    };
+    
+    onConfigChange?.({
+      mcp: {
+        ...currentMcp,
+        [key]: value
+      }
+    });
+  };
+
+  const handleMcpServerToggle = (serverName: string, enabled: boolean) => {
+    const currentServers = aiConfig.mcp?.enabledServers || [];
+    const updatedServers = enabled
+      ? [...currentServers, serverName]
+      : currentServers.filter(name => name !== serverName);
+    
+    handleMcpConfigChange('enabledServers', updatedServers);
   };
 
   return (
@@ -618,6 +671,336 @@ const AdvancedOptions: React.FC<{
           />
           <span className="text-gray-600 dark:text-gray-400">Auto Model Selection</span>
         </label>
+
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={aiConfig.features.enableMCP || false}
+            onChange={(e) => handleFeatureChange('enableMCP', e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
+            <Server className="w-3 h-3" />
+            Enable MCP
+          </span>
+        </label>
+      </div>
+
+      {/* MCP Configuration */}
+      {aiConfig.features.enableMCP && (
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Server className="w-4 h-4 text-sakura-500" />
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              MCP Configuration
+            </h4>
+            {isLoadingMcpServers && (
+              <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+            )}
+          </div>
+
+          {/* MCP Features */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={aiConfig.mcp?.enableTools ?? true}
+                onChange={(e) => handleMcpConfigChange('enableTools', e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-600 dark:text-gray-400">MCP Tools</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={aiConfig.mcp?.enableResources ?? true}
+                onChange={(e) => handleMcpConfigChange('enableResources', e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-600 dark:text-gray-400">MCP Resources</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={aiConfig.mcp?.autoDiscoverTools ?? true}
+                onChange={(e) => handleMcpConfigChange('autoDiscoverTools', e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-600 dark:text-gray-400">Auto Discover</span>
+            </label>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Max Tool Calls: {aiConfig.mcp?.maxToolCalls ?? 5}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={aiConfig.mcp?.maxToolCalls ?? 5}
+                onChange={(e) => handleMcpConfigChange('maxToolCalls', parseInt(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* MCP Servers */}
+          {mcpServers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                Available MCP Servers ({mcpServers.length})
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {mcpServers.map((server) => {
+                  const isEnabled = aiConfig.mcp?.enabledServers?.includes(server.name) ?? false;
+                  return (
+                    <div key={server.name} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${
+                          server.isRunning ? 'bg-green-500' : 'bg-red-500'
+                        }`} />
+                        <span className="font-medium">{server.name}</span>
+                        <span className="text-gray-500">({server.status})</span>
+                      </div>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(e) => handleMcpServerToggle(server.name, e.target.checked)}
+                          disabled={!server.isRunning}
+                          className="rounded"
+                        />
+                        <span className="text-gray-600 dark:text-gray-400">Enable</span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {mcpServers.length === 0 && !isLoadingMcpServers && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+              No MCP servers available. Configure servers in Settings.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Autonomous Agent Settings */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+            <Bot className="w-4 h-4 text-sakura-500" />
+            Autonomous Agent
+          </h4>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={aiConfig?.autonomousAgent?.enabled || false}
+              onChange={(e) => {
+                const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                  enabled: false,
+                  maxRetries: 3,
+                  retryDelay: 1000,
+                  enableSelfCorrection: true,
+                  enableToolGuidance: true,
+                  enableProgressTracking: true,
+                  maxToolCalls: 10,
+                  confidenceThreshold: 0.8,
+                  enableChainOfThought: false,
+                  enableErrorLearning: true
+                };
+                
+                onConfigChange?.({
+                  autonomousAgent: {
+                    ...currentAutonomousAgent,
+                    enabled: e.target.checked
+                  }
+                });
+              }}
+              className="sr-only"
+            />
+            <div className={`w-11 h-6 rounded-full transition-colors ${
+              aiConfig?.autonomousAgent?.enabled 
+                ? 'bg-sakura-500' 
+                : 'bg-gray-300 dark:bg-gray-600'
+            }`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                aiConfig?.autonomousAgent?.enabled ? 'translate-x-5' : 'translate-x-0'
+              } mt-0.5 ml-0.5`} />
+            </div>
+          </label>
+        </div>
+
+        {aiConfig?.autonomousAgent?.enabled && (
+          <div className="space-y-3 pl-6 border-l-2 border-sakura-200 dark:border-sakura-800">
+            {/* Max Retries */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Max Retries: {aiConfig?.autonomousAgent?.maxRetries || 3}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={aiConfig?.autonomousAgent?.maxRetries || 3}
+                onChange={(e) => {
+                  const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                    enabled: true,
+                    maxRetries: 3,
+                    retryDelay: 1000,
+                    enableSelfCorrection: true,
+                    enableToolGuidance: true,
+                    enableProgressTracking: true,
+                    maxToolCalls: 10,
+                    confidenceThreshold: 0.8,
+                    enableChainOfThought: false,
+                    enableErrorLearning: true
+                  };
+                  
+                  onConfigChange?.({
+                    autonomousAgent: {
+                      ...currentAutonomousAgent,
+                      maxRetries: parseInt(e.target.value)
+                    }
+                  });
+                }}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+              />
+            </div>
+
+            {/* Max Tool Calls */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Max Tool Calls: {aiConfig?.autonomousAgent?.maxToolCalls || 10}
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={aiConfig?.autonomousAgent?.maxToolCalls || 10}
+                onChange={(e) => {
+                  const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                    enabled: true,
+                    maxRetries: 3,
+                    retryDelay: 1000,
+                    enableSelfCorrection: true,
+                    enableToolGuidance: true,
+                    enableProgressTracking: true,
+                    maxToolCalls: 10,
+                    confidenceThreshold: 0.8,
+                    enableChainOfThought: false,
+                    enableErrorLearning: true
+                  };
+                  
+                  onConfigChange?.({
+                    autonomousAgent: {
+                      ...currentAutonomousAgent,
+                      maxToolCalls: parseInt(e.target.value)
+                    }
+                  });
+                }}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+              />
+            </div>
+
+            {/* Agent Features */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={aiConfig?.autonomousAgent?.enableSelfCorrection || false}
+                  onChange={(e) => {
+                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                      enabled: true,
+                      maxRetries: 3,
+                      retryDelay: 1000,
+                      enableSelfCorrection: true,
+                      enableToolGuidance: true,
+                      enableProgressTracking: true,
+                      maxToolCalls: 10,
+                      confidenceThreshold: 0.8,
+                      enableChainOfThought: false,
+                      enableErrorLearning: true
+                    };
+                    
+                    onConfigChange?.({
+                      autonomousAgent: {
+                        ...currentAutonomousAgent,
+                        enableSelfCorrection: e.target.checked
+                      }
+                    });
+                  }}
+                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                />
+                Self-Correction
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={aiConfig?.autonomousAgent?.enableProgressTracking || false}
+                  onChange={(e) => {
+                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                      enabled: true,
+                      maxRetries: 3,
+                      retryDelay: 1000,
+                      enableSelfCorrection: true,
+                      enableToolGuidance: true,
+                      enableProgressTracking: true,
+                      maxToolCalls: 10,
+                      confidenceThreshold: 0.8,
+                      enableChainOfThought: false,
+                      enableErrorLearning: true
+                    };
+                    
+                    onConfigChange?.({
+                      autonomousAgent: {
+                        ...currentAutonomousAgent,
+                        enableProgressTracking: e.target.checked
+                      }
+                    });
+                  }}
+                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                />
+                Progress Tracking
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={aiConfig?.autonomousAgent?.enableChainOfThought || false}
+                  onChange={(e) => {
+                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                      enabled: true,
+                      maxRetries: 3,
+                      retryDelay: 1000,
+                      enableSelfCorrection: true,
+                      enableToolGuidance: true,
+                      enableProgressTracking: true,
+                      maxToolCalls: 10,
+                      confidenceThreshold: 0.8,
+                      enableChainOfThought: false,
+                      enableErrorLearning: true
+                    };
+                    
+                    onConfigChange?.({
+                      autonomousAgent: {
+                        ...currentAutonomousAgent,
+                        enableChainOfThought: e.target.checked
+                      }
+                    });
+                  }}
+                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                />
+                Chain of Thought
+              </label>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -665,7 +1048,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       enableRAG: sessionConfig?.aiConfig?.features.enableRAG ?? sessionConfig?.enableRAG ?? false,
       enableStreaming: sessionConfig?.aiConfig?.features.enableStreaming ?? true,
       enableVision: sessionConfig?.aiConfig?.features.enableVision ?? true,
-      autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true
+      autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true,
+      enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true
     }
   };
 
@@ -1082,7 +1466,29 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
   // Handle AI config changes
   const handleAIConfigChange = useCallback((newConfig: Partial<ClaraAIConfig>) => {
-    const updatedConfig = {
+    // Ensure we have proper defaults for all required fields
+    const defaultMcp = {
+      enableTools: true,
+      enableResources: true,
+      enabledServers: [],
+      autoDiscoverTools: true,
+      maxToolCalls: 5
+    };
+
+    const defaultAutonomousAgent = {
+      enabled: false,
+      maxRetries: 3,
+      retryDelay: 1000,
+      enableSelfCorrection: true,
+      enableToolGuidance: true,
+      enableProgressTracking: true,
+      maxToolCalls: 10,
+      confidenceThreshold: 0.8,
+      enableChainOfThought: false,
+      enableErrorLearning: true
+    };
+
+    const updatedConfig: ClaraAIConfig = {
       ...currentAIConfig,
       ...newConfig,
       parameters: {
@@ -1096,6 +1502,16 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       models: {
         ...currentAIConfig.models,
         ...newConfig.models
+      },
+      mcp: {
+        ...defaultMcp,
+        ...currentAIConfig.mcp,
+        ...newConfig.mcp
+      },
+      autonomousAgent: {
+        ...defaultAutonomousAgent,
+        ...currentAIConfig.autonomousAgent,
+        ...newConfig.autonomousAgent
       }
     };
 
@@ -1218,6 +1634,21 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
                 {/* Right Side Actions */}
                 <div className="flex items-center gap-2">
+                  {/* MCP Status Indicator */}
+                  {currentAIConfig.features.enableMCP && (
+                    <Tooltip content={`MCP enabled with ${currentAIConfig.mcp?.enabledServers?.length || 0} servers`} position="top">
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-600">
+                        <Server className="w-3 h-3" />
+                        <span>MCP</span>
+                        {currentAIConfig.mcp?.enabledServers?.length && (
+                          <span className="bg-green-200 dark:bg-green-800 px-1 rounded text-xs">
+                            {currentAIConfig.mcp.enabledServers.length}
+                          </span>
+                        )}
+                      </div>
+                    </Tooltip>
+                  )}
+
                   {/* Model/Provider Selection */}
                   <div className="relative">
                     {currentAIConfig.features.autoModelSelection ? (

@@ -4,11 +4,11 @@ healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "qwen3:30b":
+  "qwen3:8b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-30B-A3B-abliterated-erotic.Q2_K.gguf"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-8B-Q4_K_M.gguf"
       --port 9999 --jinja
     ttl: 300
 
@@ -17,4 +17,4 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "qwen3:30b"
+      - "qwen3:8b"
