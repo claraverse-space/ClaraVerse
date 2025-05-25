@@ -1,7 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
+@import 'prismjs/themes/prism.css';
+@import 'prismjs/themes/prism-dark.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Clara specific styles */
+@import './styles/claraSidebar.css';
+
+/* Custom CSS Variables */
+:root {
+  --sakura-50: #fef7f7;
+  --sakura-100: #fee2e2;
+  --sakura-200: #fecaca;
+  --sakura-300: #fca5a5;
+  --sakura-400: #f87171;
+  --sakura-500: #ef4444;
+  --sakura-600: #dc2626;
+  --sakura-700: #b91c1c;
+  --sakura-800: #991b1b;
+  --sakura-900: #7f1d1d;
+}
 
 @layer base {
   :root {
@@ -337,4 +356,51 @@ textarea {
 
 .scrollbar-none::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
+}
+
+/* Enhanced prose styling for markdown content */
+.prose {
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  @apply text-gray-900 dark:text-gray-100 font-bold;
+  @apply border-b border-gray-200 dark:border-gray-700 pb-2 mb-4;
+}
+
+.prose h1 { @apply text-2xl; }
+.prose h2 { @apply text-xl; }
+.prose h3 { @apply text-lg; }
+
+.prose p {
+  @apply mb-4 leading-relaxed;
+}
+
+.prose ul, .prose ol {
+  @apply mb-4 ml-6;
+}
+
+.prose li {
+  @apply mb-2;
+}
+
+.prose table {
+  @apply border-collapse border border-gray-300 dark:border-gray-600;
+}
+
+.prose th, .prose td {
+  @apply border border-gray-300 dark:border-gray-600 px-4 py-2;
+}
+
+.prose th {
+  @apply bg-gray-100 dark:bg-gray-800 font-semibold;
+}
+
+/* Code block enhancements */
+.prose pre {
+  @apply bg-transparent p-0 m-0;
+}
+
+.prose :not(pre) > code {
+  @apply bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-sm font-mono;
 }

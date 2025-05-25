@@ -1,0 +1,915 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import Topbar from './Topbar';
+import ClaraSidebar from './Clara_Components/ClaraSidebar';
+import ClaraAssistantInput from './Clara_Components/clara_assistant_input';
+import ClaraChatWindow from './Clara_Components/clara_assistant_chat_window';
+import Sidebar from './Sidebar';
+import { db } from '../db';
+import { claraDB } from '../db/claraDatabase';
+
+// Import Clara types and API service
+import { 
+  ClaraMessage, 
+  ClaraFileAttachment, 
+  ClaraSessionConfig, 
+  ClaraChatSession,
+  ClaraArtifact,
+  ClaraProvider,
+  ClaraModel,
+  ClaraAIConfig
+} from '../types/clara_assistant_types';
+import { claraApiService } from '../services/claraApiService';
+import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs, validateProviderConfig } from '../utils/providerConfigStorage';
+import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
+
+// Import clear data utility
+import '../utils/clearClaraData';
+
+interface ClaraAssistantProps {
+  onPageChange: (page: string) => void;
+}
+
+/**
+ * Generate a unique ID for messages
+ */
+const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+/**
+ * Create sample artifacts for demonstration
+ */
+const createSampleArtifacts = (content: string): ClaraArtifact[] => {
+  const artifacts: ClaraArtifact[] = [];
+
+  // Check if the content suggests code
+  if (content.toLowerCase().includes('code') || content.toLowerCase().includes('function')) {
+    artifacts.push({
+      id: generateId(),
+      type: 'code',
+      title: 'Generated Code Example',
+      content: `function greetUser(name) {
+  console.log(\`Hello, \${name}! Welcome to Clara!\`);
+  return \`Welcome, \${name}\`;
+}
+
+// Usage example
+const userName = "User";
+const greeting = greetUser(userName);
+console.log(greeting);`,
+      language: 'javascript',
+      createdAt: new Date(),
+      isExecutable: true
+    });
+  }
+
+  // Check if the content suggests data/table
+  if (content.toLowerCase().includes('table') || content.toLowerCase().includes('data')) {
+    artifacts.push({
+      id: generateId(),
+      type: 'table',
+      title: 'Sample Data Table',
+      content: JSON.stringify([
+        { id: 1, name: 'Clara Assistant', type: 'AI Assistant', status: 'Active' },
+        { id: 2, name: 'Document Analysis', type: 'Feature', status: 'Available' },
+        { id: 3, name: 'Image Recognition', type: 'Feature', status: 'Available' },
+        { id: 4, name: 'Code Generation', type: 'Feature', status: 'Active' }
+      ], null, 2),
+      createdAt: new Date()
+    });
+  }
+
+  return artifacts;
+};
+
+const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
+  // User and session state
+  const [userName, setUserName] = useState<string>('');
+  const [currentSession, setCurrentSession] = useState<ClaraChatSession | null>(null);
+  const [messages, setMessages] = useState<ClaraMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Session management state
+  const [sessions, setSessions] = useState<ClaraChatSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  
+  // Provider and model state
+  const [providers, setProviders] = useState<ClaraProvider[]>([]);
+  const [models, setModels] = useState<ClaraModel[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(true);
+
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  // Session configuration with new AI config structure
+  const [sessionConfig, setSessionConfig] = useState<ClaraSessionConfig>({
+    aiConfig: {
+      models: {
+        text: '',
+        vision: '',
+        code: ''
+      },
+      provider: '',
+      parameters: {
+        temperature: 0.7,
+        maxTokens: 1000,
+        topP: 1.0,
+        topK: 40
+      },
+      features: {
+        enableTools: true,
+        enableRAG: false,
+        enableStreaming: true,
+        enableVision: true,
+        autoModelSelection: true
+      }
+    }
+  });
+
+  // Load user name from database
+  useEffect(() => {
+    const loadUserName = async () => {
+      const personalInfo = await db.getPersonalInfo();
+      if (personalInfo?.name) {
+        const formattedName = personalInfo.name.charAt(0).toUpperCase() + personalInfo.name.slice(1).toLowerCase();
+        setUserName(formattedName);
+      }
+    };
+    loadUserName();
+  }, []);
+
+  // Load wallpaper from database
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
+  // Load chat sessions on component mount
+  useEffect(() => {
+    const loadSessions = async () => {
+      setIsLoadingSessions(true);
+      try {
+        // Debug data integrity
+        const integrity = await claraDB.debugDataIntegrity();
+        console.log('Clara data integrity check:', integrity);
+        
+        // Clean up orphaned data if found
+        if (integrity.orphanedMessages > 0 || integrity.orphanedFiles > 0) {
+          console.log('Cleaning up orphaned data...');
+          await claraDB.cleanupOrphanedData();
+        }
+        
+        const recentSessions = await claraDB.getRecentClaraSessions(50);
+        console.log('Loaded sessions:', recentSessions.map(s => ({ id: s.id, title: s.title, messages: s.messages.length })));
+        setSessions(recentSessions);
+        
+        // If no current session and we have existing sessions, load the most recent one with its messages
+        if (!currentSession && recentSessions.length > 0) {
+          const mostRecent = recentSessions[0];
+          // Ensure the session has its messages loaded
+          const sessionWithMessages = await claraDB.getClaraSession(mostRecent.id);
+          if (sessionWithMessages) {
+            setCurrentSession(sessionWithMessages);
+            setMessages(sessionWithMessages.messages);
+            console.log('Auto-loaded most recent session:', sessionWithMessages.title, 'with', sessionWithMessages.messages.length, 'messages');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load chat sessions:', error);
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    };
+
+    loadSessions();
+  }, []);
+
+  // Load providers and models
+  useEffect(() => {
+    const loadProvidersAndModels = async () => {
+      setIsLoadingProviders(true);
+      try {
+        // Load providers
+        const loadedProviders = await claraApiService.getProviders();
+        setProviders(loadedProviders);
+
+        // Clean up invalid provider configurations
+        const validProviderIds = loadedProviders.map(p => p.id);
+        cleanInvalidProviderConfigs(validProviderIds);
+
+        // Get primary provider and set it in config
+        const primaryProvider = loadedProviders.find(p => p.isPrimary) || loadedProviders[0];
+        if (primaryProvider) {
+          // Update API service to use primary provider
+          claraApiService.updateProvider(primaryProvider);
+
+          // Load models only from the primary provider
+          const loadedModels = await claraApiService.getModels(primaryProvider.id);
+          setModels(loadedModels);
+
+          // Try to load saved config for this provider first
+          const savedConfig = loadProviderConfig(primaryProvider.id);
+          if (savedConfig) {
+            console.log('Loading saved config for provider:', primaryProvider.name, savedConfig);
+            setSessionConfig(prev => ({
+              ...prev,
+              aiConfig: savedConfig
+            }));
+          } else {
+            console.log('No saved config found for provider:', primaryProvider.name, 'creating default config');
+            // Auto-select first available models for this provider
+            const textModel = loadedModels.find(m => 
+              m.provider === primaryProvider.id && 
+              (m.type === 'text' || m.type === 'multimodal')
+            );
+            const visionModel = loadedModels.find(m => 
+              m.provider === primaryProvider.id && 
+              m.supportsVision
+            );
+            const codeModel = loadedModels.find(m => 
+              m.provider === primaryProvider.id && 
+              m.supportsCode
+            );
+
+            const defaultConfig = {
+              provider: primaryProvider.id,
+              models: {
+                text: textModel?.id || '',
+                vision: visionModel?.id || '',
+                code: codeModel?.id || ''
+              },
+              parameters: {
+                temperature: 0.7,
+                maxTokens: 1000,
+                topP: 1.0,
+                topK: 40
+              },
+              features: {
+                enableTools: true,
+                enableRAG: false,
+                enableStreaming: true,
+                enableVision: true,
+                autoModelSelection: true
+              }
+            };
+
+            setSessionConfig(prev => ({
+              ...prev,
+              aiConfig: defaultConfig
+            }));
+
+            // Save the default config
+            saveProviderConfig(primaryProvider.id, defaultConfig);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load providers and models:', error);
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    };
+
+    loadProvidersAndModels();
+  }, []);
+
+  // Create new session
+  const createNewSession = useCallback(async (): Promise<ClaraChatSession> => {
+    try {
+      const session = await claraDB.createClaraSession('New Chat');
+      setSessions(prev => [session, ...prev]);
+      return session;
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+      // Fallback to in-memory session
+      const session: ClaraChatSession = {
+        id: generateId(),
+        title: 'New Chat',
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        config: sessionConfig
+      };
+      return session;
+    }
+  }, [sessionConfig]);
+
+  // Handle sending a new message
+  const handleSendMessage = useCallback(async (content: string, attachments?: ClaraFileAttachment[]) => {
+    if (!content.trim() && (!attachments || attachments.length === 0)) return;
+    if (!currentSession || !sessionConfig.aiConfig) return;
+
+    // Create user message
+    const userMessage: ClaraMessage = {
+      id: generateId(),
+      role: 'user',
+      content: content,
+      timestamp: new Date(),
+      attachments: attachments
+    };
+
+    // Add user message to state and get current conversation
+    const currentMessages = [...messages, userMessage];
+    setMessages(currentMessages);
+    setIsLoading(true);
+
+    // Save user message to database
+    try {
+      await claraDB.addClaraMessage(currentSession.id, userMessage);
+    } catch (error) {
+      console.error('Failed to save user message:', error);
+    }
+
+    // Create a temporary streaming message for the assistant
+    const streamingMessageId = generateId();
+    const streamingMessage: ClaraMessage = {
+      id: streamingMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      metadata: {
+        isStreaming: true,
+        model: `${sessionConfig.aiConfig.provider}:${sessionConfig.aiConfig.models.text}`,
+        temperature: sessionConfig.aiConfig.parameters.temperature
+      }
+    };
+
+    // Add the streaming message to state
+    setMessages(prev => [...prev, streamingMessage]);
+
+    try {
+      // Get conversation context (last 15 messages including the current user message)
+      const contextWindow = 15;
+      const conversationHistory = currentMessages
+        .slice(-contextWindow)  // Take last 15 messages
+        .filter(msg => msg.role !== 'system'); // Exclude system messages
+
+      // Send message with streaming callback and conversation context
+      const aiMessage = await claraApiService.sendChatMessage(
+        content,
+        sessionConfig.aiConfig,
+        attachments,
+        sessionConfig.systemPrompt,
+        conversationHistory, // Pass conversation context
+        // Streaming callback to update content in real-time
+        (chunk: string) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId 
+              ? { ...msg, content: msg.content + chunk }
+              : msg
+          ));
+        }
+      );
+      
+      // Replace the streaming message with the final message
+      const finalMessage = { 
+        ...aiMessage, 
+        id: streamingMessageId, // Keep the same ID
+        metadata: {
+          ...aiMessage.metadata,
+          isStreaming: false // Mark as complete
+        }
+      };
+
+      setMessages(prev => prev.map(msg => 
+        msg.id === streamingMessageId ? finalMessage : msg
+      ));
+
+      // Save AI message to database
+      try {
+        await claraDB.addClaraMessage(currentSession.id, finalMessage);
+      } catch (error) {
+        console.error('Failed to save AI message:', error);
+      }
+
+      // Update session title if it's still "New Chat"
+      if (currentSession.title === 'New Chat') {
+        const newTitle = content.slice(0, 50) + (content.length > 50 ? '...' : '');
+        const updatedSession = {
+          ...currentSession,
+          title: newTitle,
+          messages: [...currentMessages, finalMessage],
+          updatedAt: new Date()
+        };
+        
+        setCurrentSession(updatedSession);
+        
+        // Update in database and sessions list
+        try {
+          await claraDB.updateClaraSession(currentSession.id, { title: newTitle });
+          setSessions(prev => prev.map(s => 
+            s.id === currentSession.id ? { ...s, title: newTitle } : s
+          ));
+        } catch (error) {
+          console.error('Failed to update session title:', error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      
+      // Check if this is an abort error (user stopped the stream)
+      const isAbortError = error instanceof Error && (
+        error.message.includes('aborted') ||
+        error.message.includes('BodyStreamBuffer was aborted') ||
+        error.message.includes('AbortError') ||
+        error.name === 'AbortError'
+      );
+      
+      if (isAbortError) {
+        console.log('Stream was aborted by user, preserving streamed content');
+        
+        // Just mark the current streaming message as complete, preserving all streamed content
+        setMessages(prev => prev.map(msg => 
+          msg.id === streamingMessageId 
+            ? { 
+                ...msg, 
+                metadata: {
+                  ...msg.metadata,
+                  isStreaming: false,
+                  aborted: true
+                }
+              }
+            : msg
+        ));
+
+        // Save the aborted message to database with its current content
+        try {
+          // Get the current message with streamed content from state
+          setMessages(prev => {
+            const currentMessage = prev.find(msg => msg.id === streamingMessageId);
+            if (currentMessage && currentSession) {
+              const abortedMessage = {
+                ...currentMessage,
+                metadata: {
+                  ...currentMessage.metadata,
+                  isStreaming: false,
+                  aborted: true
+                }
+              };
+              // Save to database asynchronously
+              claraDB.addClaraMessage(currentSession.id, abortedMessage).catch(dbError => {
+                console.error('Failed to save aborted message:', dbError);
+              });
+            }
+            return prev; // Don't actually modify the state here, just access it
+          });
+        } catch (dbError) {
+          console.error('Failed to save aborted message:', dbError);
+        }
+      } else {
+        // Only show error message for actual errors (not user aborts)
+        const errorMessage: ClaraMessage = {
+          id: streamingMessageId,
+          role: 'assistant',
+          content: 'I apologize, but I encountered an error while processing your request. Please try again.',
+          timestamp: new Date(),
+          metadata: {
+            error: error instanceof Error ? error.message : 'Failed to generate response',
+            isStreaming: false
+          }
+        };
+        
+        setMessages(prev => prev.map(msg => 
+          msg.id === streamingMessageId ? errorMessage : msg
+        ));
+
+        // Save error message to database
+        try {
+          await claraDB.addClaraMessage(currentSession.id, errorMessage);
+        } catch (dbError) {
+          console.error('Failed to save error message:', dbError);
+        }
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentSession, messages, sessionConfig]);
+
+  // Handle session selection
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    if (currentSession?.id === sessionId) return;
+    
+    try {
+      const session = await claraDB.getClaraSession(sessionId);
+      if (session) {
+        setCurrentSession(session);
+        setMessages(session.messages);
+      }
+    } catch (error) {
+      console.error('Failed to load session:', error);
+    }
+  }, [currentSession]);
+
+  // Handle new chat creation
+  const handleNewChat = useCallback(async () => {
+    const newSession = await createNewSession();
+    setCurrentSession(newSession);
+    setMessages([]);
+  }, [createNewSession]);
+
+  // Handle session actions
+  const handleSessionAction = useCallback(async (sessionId: string, action: 'star' | 'archive' | 'delete') => {
+    try {
+      if (action === 'delete') {
+        console.log('Deleting session:', sessionId);
+        await claraDB.deleteClaraSession(sessionId);
+        
+        // Update sessions list immediately
+        setSessions(prev => {
+          const updated = prev.filter(s => s.id !== sessionId);
+          console.log('Updated sessions after delete:', updated.map(s => ({ id: s.id, title: s.title })));
+          return updated;
+        });
+        
+        // If we deleted the current session, create a new one or select another
+        if (currentSession?.id === sessionId) {
+          console.log('Deleted current session, selecting new one...');
+          const remainingSessions = sessions.filter(s => s.id !== sessionId);
+          if (remainingSessions.length > 0) {
+            // Select the most recent remaining session
+            const nextSession = await claraDB.getClaraSession(remainingSessions[0].id);
+            if (nextSession) {
+              setCurrentSession(nextSession);
+              setMessages(nextSession.messages);
+              console.log('Selected next session:', nextSession.title);
+            }
+          } else {
+            // No sessions left, create a new one
+            await handleNewChat();
+          }
+        }
+      } else {
+        const updates = action === 'star' 
+          ? { isStarred: !sessions.find(s => s.id === sessionId)?.isStarred }
+          : { isArchived: !sessions.find(s => s.id === sessionId)?.isArchived };
+        
+        await claraDB.updateClaraSession(sessionId, updates);
+        setSessions(prev => prev.map(s => 
+          s.id === sessionId ? { ...s, ...updates } : s
+        ));
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} session:`, error);
+    }
+  }, [sessions, currentSession, handleNewChat]);
+
+  // Handle provider change
+  const handleProviderChange = useCallback(async (providerId: string) => {
+    try {
+      const provider = providers.find(p => p.id === providerId);
+      if (!provider) {
+        console.error('Provider not found:', providerId);
+        return;
+      }
+
+      setIsLoadingProviders(true);
+      console.log('=== Switching to provider ===');
+      console.log('Provider:', provider.name, '(ID:', providerId, ')');
+      
+      // STEP 1: Update API service to use selected provider
+      claraApiService.updateProvider(provider);
+      
+      // STEP 2: Load models ONLY from the selected provider
+      const newModels = await claraApiService.getModels(providerId);
+      console.log('Available models for', provider.name, ':', newModels.map(m => ({ id: m.id, name: m.name })));
+      setModels(newModels);
+      
+      // STEP 3: Create models filtered by current provider for validation
+      const providerModels = newModels.filter(m => m.provider === providerId);
+      console.log('Filtered models for provider validation:', providerModels.map(m => m.id));
+      
+      // STEP 4: Try to load saved config for this provider
+      const savedConfig = loadProviderConfig(providerId);
+      
+      if (savedConfig) {
+        console.log('Found saved config for', provider.name);
+        console.log('Saved models:', savedConfig.models);
+        
+        // STEP 5: Validate saved models against current provider's available models
+        const validTextModel = providerModels.find(m => m.id === savedConfig.models.text);
+        const validVisionModel = providerModels.find(m => m.id === savedConfig.models.vision);
+        const validCodeModel = providerModels.find(m => m.id === savedConfig.models.code);
+        
+        console.log('Model validation:');
+        console.log('- Text model valid:', !!validTextModel, validTextModel?.id);
+        console.log('- Vision model valid:', !!validVisionModel, validVisionModel?.id);
+        console.log('- Code model valid:', !!validCodeModel, validCodeModel?.id);
+        
+        // STEP 6: Create clean config with validated models
+        const cleanConfig = {
+          provider: providerId,
+          models: {
+            text: validTextModel ? savedConfig.models.text : '',
+            vision: validVisionModel ? savedConfig.models.vision : '',
+            code: validCodeModel ? savedConfig.models.code : ''
+          },
+          parameters: {
+            ...savedConfig.parameters
+          },
+          features: {
+            ...savedConfig.features
+          }
+        };
+        
+        console.log('Applied clean config:', cleanConfig);
+        setSessionConfig(prev => ({
+          ...prev,
+          aiConfig: cleanConfig
+        }));
+        
+        // If any models were invalid, save the cleaned config
+        if (!validTextModel || !validVisionModel || !validCodeModel) {
+          console.log('Cleaning invalid models from saved config');
+          saveProviderConfig(providerId, cleanConfig);
+        }
+        
+      } else {
+        console.log('No saved config found for', provider.name, '- creating default');
+        
+        // STEP 7: Create fresh default config for this provider
+        const textModel = providerModels.find(m => m.type === 'text' || m.type === 'multimodal');
+        const visionModel = providerModels.find(m => m.supportsVision);
+        const codeModel = providerModels.find(m => m.supportsCode);
+        
+        console.log('Auto-selected models:');
+        console.log('- Text:', textModel?.id || 'none');
+        console.log('- Vision:', visionModel?.id || 'none');
+        console.log('- Code:', codeModel?.id || 'none');
+        
+        const defaultConfig = {
+          provider: providerId,
+          models: {
+            text: textModel?.id || '',
+            vision: visionModel?.id || '',
+            code: codeModel?.id || ''
+          },
+          parameters: {
+            temperature: 0.7,
+            maxTokens: 1000,
+            topP: 1.0,
+            topK: 40
+          },
+          features: {
+            enableTools: true,
+            enableRAG: false,
+            enableStreaming: true,
+            enableVision: true,
+            autoModelSelection: true
+          }
+        };
+        
+        console.log('Created default config:', defaultConfig);
+        setSessionConfig(prev => ({
+          ...prev,
+          aiConfig: defaultConfig
+        }));
+        
+        // Save the default config
+        saveProviderConfig(providerId, defaultConfig);
+      }
+      
+      console.log('=== Provider switch complete ===');
+      
+    } catch (error) {
+      console.error('Failed to change provider:', error);
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  }, [providers]);
+
+  // Handle model change
+  const handleModelChange = useCallback((modelId: string, type: 'text' | 'vision' | 'code') => {
+    setSessionConfig(prev => {
+      if (!prev.aiConfig?.provider) {
+        console.error('No provider set when trying to change model');
+        return prev;
+      }
+
+      // Validate that the selected model belongs to the current provider
+      const selectedModel = models.find(m => m.id === modelId);
+      if (selectedModel && selectedModel.provider !== prev.aiConfig.provider) {
+        console.error('Model validation failed: Model', modelId, 'belongs to provider', selectedModel.provider, 'but current provider is', prev.aiConfig.provider);
+        return prev; // Don't update if model is from wrong provider
+      }
+
+      console.log('Model change validation passed:', {
+        modelId,
+        type,
+        provider: prev.aiConfig.provider,
+        modelProvider: selectedModel?.provider
+      });
+
+      const updatedConfig = {
+        ...prev,
+        aiConfig: {
+          ...prev.aiConfig,
+          models: {
+            ...prev.aiConfig.models,
+            [type]: modelId
+          }
+        }
+      };
+      
+      // Save the updated configuration for the current provider
+      if (updatedConfig.aiConfig?.provider) {
+        saveProviderConfig(updatedConfig.aiConfig.provider, updatedConfig.aiConfig);
+        console.log('Saved model change for provider:', updatedConfig.aiConfig.provider, type, modelId);
+      }
+      
+      return updatedConfig;
+    });
+  }, [models]);
+
+  // Handle message interactions
+  const handleCopyMessage = useCallback((content: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      // Could show a toast notification here
+      console.log('Message copied:', content);
+    }).catch(err => {
+      console.error('Failed to copy message:', err);
+    });
+  }, []);
+
+  const handleRetryMessage = useCallback((messageId: string) => {
+    console.log('Retrying message:', messageId);
+    // Implementation for retrying failed messages
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex > 0) {
+      const previousMessage = messages[messageIndex - 1];
+      if (previousMessage.role === 'user') {
+        handleSendMessage(previousMessage.content, previousMessage.attachments);
+      }
+    }
+  }, [messages, handleSendMessage]);
+
+  const handleEditMessage = useCallback((messageId: string, newContent: string) => {
+    console.log('Editing message:', messageId, newContent);
+    // Implementation for editing messages
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, content: newContent, timestamp: new Date() }
+        : msg
+    ));
+  }, []);
+
+  // Handle stopping generation
+  const handleStop = useCallback(() => {
+    console.log('Stopping generation...');
+    claraApiService.stop();
+    setIsLoading(false);
+  }, []);
+
+  // Handle session config changes
+  const handleConfigChange = useCallback((newConfig: Partial<ClaraSessionConfig>) => {
+    setSessionConfig(prev => {
+      const updated = { ...prev, ...newConfig };
+      
+      // Only save provider-specific configuration if we have a valid provider
+      if (updated.aiConfig?.provider) {
+        // If provider is changing through this config change, don't save mixed config
+        if (newConfig.aiConfig?.provider && newConfig.aiConfig.provider !== prev.aiConfig?.provider) {
+          console.log('Provider changing through config, will be handled by provider change handler');
+          return updated;
+        }
+        
+        // Validate models belong to current provider before saving
+        if (newConfig.aiConfig?.models) {
+          const currentProvider = updated.aiConfig.provider;
+          const models_ = newConfig.aiConfig.models;
+          const textModel = models_.text ? models.find(m => m.id === models_.text) : null;
+          const visionModel = models_.vision ? models.find(m => m.id === models_.vision) : null;
+          const codeModel = models_.code ? models.find(m => m.id === models_.code) : null;
+          
+          if ((textModel && textModel.provider !== currentProvider) ||
+              (visionModel && visionModel.provider !== currentProvider) ||
+              (codeModel && codeModel.provider !== currentProvider)) {
+            console.error('Config validation failed: Models from wrong provider in config change');
+            return prev; // Don't update if models are from wrong provider
+          }
+        }
+        
+        saveProviderConfig(updated.aiConfig.provider, updated.aiConfig);
+        console.log('Saved config change for provider:', updated.aiConfig.provider, newConfig);
+      }
+      
+      return updated;
+    });
+  }, [models]);
+
+  // Debug utility for testing provider configurations
+  useEffect(() => {
+    // Expose debug functions to window for testing
+    (window as any).debugClaraProviders = () => {
+      console.log('Current provider configurations:');
+      console.log('Providers:', providers.map(p => ({ id: p.id, name: p.name, isPrimary: p.isPrimary })));
+      console.log('Models:', models.map(m => ({ id: m.id, name: m.name, provider: m.provider })));
+      console.log('Current session config:', sessionConfig);
+      console.log('Current session:', currentSession?.id, currentSession?.title);
+      
+      // Debug provider configs from localStorage
+      debugProviderConfigs();
+    };
+
+    (window as any).clearProviderConfigs = () => {
+      clearAllProviderConfigs();
+      console.log('Cleared all provider configurations. Refresh to see changes.');
+    };
+
+    return () => {
+      delete (window as any).debugClaraProviders;
+      delete (window as any).clearProviderConfigs;
+    };
+  }, [providers, models, sessionConfig, currentSession]);
+
+  // Initialize with a new session if none exists
+  useEffect(() => {
+    const initializeSession = async () => {
+      // Only create a new session if we're not loading and there are no sessions and no current session
+      if (!isLoadingSessions && sessions.length === 0 && !currentSession) {
+        const newSession = await createNewSession();
+        setCurrentSession(newSession);
+        setMessages([]);
+        console.log('Created new session as no sessions exist');
+      }
+    };
+    
+    initializeSession();
+  }, [isLoadingSessions, sessions.length, currentSession, createNewSession]);
+
+  return (
+    <div className="flex h-screen w-full relative">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+
+      {/* Content with relative z-index */}
+      <div className="relative z-10 flex h-screen w-full">
+        {/* App Sidebar (main navigation) on the left */}
+        <Sidebar activePage="clara" onPageChange={onPageChange} />
+
+        {/* Main: Chat Area */}
+        <div className="flex-1 flex flex-col h-full">
+          {/* Header */}
+          <Topbar 
+            userName={userName}
+            onPageChange={onPageChange}
+          />
+          
+          {/* Chat Window */}
+          <ClaraChatWindow
+            messages={messages}
+            userName={userName}
+            isLoading={isLoading}
+            onRetryMessage={handleRetryMessage}
+            onCopyMessage={handleCopyMessage}
+            onEditMessage={handleEditMessage}
+          />
+          
+          {/* Chat Input */}
+          <ClaraAssistantInput
+            onSendMessage={handleSendMessage}
+            isLoading={isLoading || isLoadingProviders}
+            sessionConfig={sessionConfig}
+            onConfigChange={handleConfigChange}
+            providers={providers}
+            models={models}
+            onProviderChange={handleProviderChange}
+            onModelChange={handleModelChange}
+            onStop={handleStop}
+            onNewChat={handleNewChat}
+          />
+        </div>
+
+        {/* Clara Chat History Sidebar on the right */}
+        <ClaraSidebar 
+          sessions={sessions}
+          currentSessionId={currentSession?.id}
+          isLoading={isLoadingSessions}
+          onSelectSession={handleSelectSession}
+          onNewChat={handleNewChat}
+          onSessionAction={handleSessionAction}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default ClaraAssistant; 

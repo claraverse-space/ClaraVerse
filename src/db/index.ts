@@ -1177,7 +1177,7 @@ export class LocalStorageDB {
       // Create Clara's Pocket if it doesn't exist
       if (!clarasPocketExists) {
         await this.addProvider({
-          name: "Clara's Pocket",
+          name: "Clara's Core",
           type: 'claras-pocket',
           baseUrl: 'http://localhost:8091/v1',
           isEnabled: true,

@@ -150,7 +150,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
 
   const mainMenuItems = [
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
-    { icon: Bot, label: 'Chat', id: 'assistant' },
+    // { icon: Bot, label: 'Chat', id: 'assistant' },
+    { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'apps' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     { icon: Network, label: 'Workflows', id: 'n8n' },
@@ -167,6 +168,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
       className={`glassmorphic h-full flex flex-col gap-6 transition-all duration-300 ease-in-out ${
         isExpanded ? 'w-64' : 'w-20'
       }`}
+      style={{ minWidth: isExpanded ? '16rem' : '5rem', maxWidth: isExpanded ? '16rem' : '5rem' }}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
@@ -195,13 +197,13 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
               <button 
                 onClick={() => onPageChange(item.id)}
                 data-page={item.id}
-                className={`w-full flex items-center rounded-lg transition-colors ${
+                className={`w-full flex items-center rounded-lg transition-colors h-10 ${
                   isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                 } ${
                   activePage === item.id
                     ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
-                } py-2`}
+                }`}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
                 <span 
@@ -275,13 +277,13 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
                 <button 
                   onClick={() => onPageChange(item.id)}
                   data-page={item.id}
-                  className={`w-full flex items-center rounded-lg transition-colors ${
+                  className={`w-full flex items-center rounded-lg transition-colors h-10 ${
                     isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                   } ${
                     activePage === item.id
                       ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
-                  } py-2`}
+                  }`}
                 >
                   <item.icon className="w-5 h-5 flex-shrink-0" />
                   <span 
@@ -297,16 +299,6 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
           </ul>
         </div>
       </nav>
-
-      <div 
-        className={`absolute top-1/2 -right-3 transform -translate-y-1/2 transition-transform duration-300 ${
-          isExpanded ? 'rotate-180' : ''
-        }`}
-      >
-        <div className="bg-sakura-500 rounded-full p-1 shadow-lg cursor-pointer">
-          <ChevronRight className="w-4 h-4 text-white" />
-        </div>
-      </div>
     </div>
   );
 };

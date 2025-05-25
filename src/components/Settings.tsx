@@ -3,6 +3,7 @@ import { Save, User, Globe, Server, Key, Lock, Image, Settings as SettingsIcon, 
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
+import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride';
 
 // Define types for model management
 interface HuggingFaceModel {
@@ -148,6 +149,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, onDownload, downloading, d
                         </div>
                       ) : (
                         <button
+                          data-tour="model-download-btn"
                           onClick={() => onDownload(model.id, model.files[0].rfilename)}
                           className="px-3 py-1 bg-sakura-500 text-white text-xs rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-1"
                         >
@@ -242,6 +244,7 @@ const Settings = () => {
 
   const { setTheme } = useTheme();
   const { providers, addProvider, updateProvider, deleteProvider, setPrimaryProvider, loading: providersLoading } = useProviders();
+  const { theme } = useTheme();
   const saveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Add provider modal state
@@ -257,6 +260,54 @@ const Settings = () => {
     apiKey: '',
     isEnabled: true
   });
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [runTour, setRunTour] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+
+  const tourSteps: Step[] = [
+    {
+      target: '[data-tour="search-bar"]',
+      content: (
+        <div className="text-sakura-600 dark:text-sakura-300">
+          <b>Search for Models</b><br />
+          Type a model name or keyword here to discover amazing AI models!
+        </div>
+      ),
+      disableBeacon: true,
+      placement: 'bottom',
+    },
+    {
+      target: '[data-tour="search-btn"]',
+      content: (
+        <div className="text-sakura-600 dark:text-sakura-300">
+          <b>Find Models</b><br />
+          Click here to search HuggingFace for models matching your query.
+        </div>
+      ),
+      placement: 'bottom',
+    },
+    {
+      target: '[data-tour="model-download-btn"]',
+      content: (
+        <div className="text-sakura-600 dark:text-sakura-300">
+          <b>Download a Model</b><br />
+          Click this button to download a model to your library. Try it out!
+        </div>
+      ),
+      placement: 'left',
+    },
+    {
+      target: '[data-tour="library-tab"]',
+      content: (
+        <div className="text-sakura-600 dark:text-sakura-300">
+          <b>My Library</b><br />
+          View and manage all your downloaded models here.
+        </div>
+      ),
+      placement: 'bottom',
+    },
+  ];
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -693,11 +744,17 @@ const Settings = () => {
       case 'ollama':
         return { baseUrl: 'http://localhost:11434/v1', name: 'Ollama' };
       case 'claras-pocket':
-        return { baseUrl: 'http://localhost:8091/v1', name: "Clara's Pocket" };
+        return { baseUrl: 'http://localhost:8091/v1', name: "Clara's Core" };
       default:
         return { baseUrl: '', name: '' };
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'models' && !localStorage.getItem('modelManagerOnboardingComplete')) {
+      setShowOnboarding(true);
+    }
+  }, [activeTab]);
 
   return (
     <>
@@ -1137,169 +1194,205 @@ const Settings = () => {
 
           {/* Model Manager Tab */}
           {activeTab === 'models' && (
-            <div className="space-y-6">
-              {/* Header with Tabs */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <HardDrive className="w-6 h-6 text-sakura-500" />
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Model Manager
-                  </h2>
+            <>
+              {showOnboarding && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+                  <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 max-w-md w-full shadow-2xl text-center border border-sakura-100 dark:border-sakura-900/40 relative animate-in fade-in duration-300">
+                    <div className="text-5xl mb-4 select-none">🦙✨</div>
+                    <h2 className="text-2xl font-bold mb-2 text-sakura-600 dark:text-sakura-300">Welcome to Model Manager!</h2>
+                    <p className="text-gray-600 dark:text-gray-300 mb-6 text-base">
+                      Discover, download, and manage AI models with ease.<br />Let's take a quick tour to get you started!
+                    </p>
+                    <button
+                      className="px-6 py-2 bg-sakura-500 text-white rounded-lg font-semibold hover:bg-sakura-600 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-sakura-300"
+                      onClick={() => {
+                        setShowOnboarding(false);
+                        localStorage.setItem('modelManagerOnboardingComplete', 'true');
+                        setRunTour(true);
+                      }}
+                    >
+                      Get Started
+                    </button>
+                    <button
+                      className="block mt-4 text-sm text-gray-400 hover:text-sakura-500 dark:hover:text-sakura-300 transition-colors mx-auto"
+                      onClick={() => {
+                        setShowOnboarding(false);
+                        localStorage.setItem('modelManagerOnboardingComplete', 'true');
+                      }}
+                    >
+                      Skip
+                    </button>
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 w-16 h-2 bg-sakura-200 dark:bg-sakura-900/40 rounded-full blur-sm opacity-60" />
+                  </div>
                 </div>
-                
-                {/* Tab Navigation */}
-                <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-6">
-                  <button
-                    onClick={() => setModelManagerTab('discover')}
-                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      modelManagerTab === 'discover'
-                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Discover Models
-                  </button>
-                  <button
-                    onClick={() => setModelManagerTab('library')}
-                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      modelManagerTab === 'library'
-                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                  >
-                    My Library ({localModels.length})
-                  </button>
-                </div>
+              )}
+              <div className="space-y-6">
+                {/* Header with Tabs */}
+                <div className="glassmorphic rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <HardDrive className="w-6 h-6 text-sakura-500" />
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Model Manager
+                    </h2>
+                  </div>
+                  
+                  {/* Tab Navigation */}
+                  <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-6">
+                    <button
+                      onClick={() => setModelManagerTab('discover')}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        modelManagerTab === 'discover'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Discover Models
+                    </button>
+                    <button
+                      data-tour="library-tab"
+                      onClick={() => setModelManagerTab('library')}
+                      className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        modelManagerTab === 'library'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      My Library ({localModels.length})
+                    </button>
+                  </div>
 
-                {/* Discover Tab Content */}
-                {modelManagerTab === 'discover' && (
-                  <>
-                    {/* Search Section - Moved to Top */}
+                  {/* Discover Tab Content */}
+                  {modelManagerTab === 'discover' && (
+                    <>
+                      {/* Search Section - Moved to Top */}
+                      <div className="glassmorphic rounded-xl p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <Search className="w-5 h-5 text-sakura-500" />
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Search Models
+                          </h3>
+                        </div>
+                        
+                        <div className="flex gap-2 mb-6">
+                          <input
+                            data-tour="search-bar"
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && searchModels()}
+                            placeholder="Search for models (e.g., 'llama', 'qwen', 'phi')"
+                            className="flex-1 px-4 py-3 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                          />
+                          <button
+                            data-tour="search-btn"
+                            onClick={searchModels}
+                            disabled={isSearching || !searchQuery.trim()}
+                            className="px-6 py-3 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                          >
+                            <Search className="w-4 h-4" />
+                            {isSearching ? 'Searching...' : 'Search'}
+                          </button>
+                        </div>
+
+                        {/* Search Results */}
+                        {searchResults.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium text-gray-900 dark:text-white">Search Results</h4>
+                              <span className="text-sm text-gray-500 dark:text-gray-400">{searchResults.length} models found</span>
+                            </div>
+                            <div className="grid gap-4 max-h-[600px] overflow-y-auto">
+                              {searchResults.map((model) => (
+                                <ModelCard key={model.id} model={model} onDownload={downloadModel} downloading={downloading} downloadProgress={downloadProgress} formatFileSize={formatFileSize} onTagClick={handleTagFilter} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Library Tab Content */}
+                  {modelManagerTab === 'library' && (
                     <div className="glassmorphic rounded-xl p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <Search className="w-5 h-5 text-sakura-500" />
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          Search Models
-                        </h3>
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Your Model Library
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                          <span>Total Storage: {localModels.reduce((acc, model) => acc + model.size, 0) > 0 ? formatFileSize(localModels.reduce((acc, model) => acc + model.size, 0)) : '0 B'}</span>
+                        </div>
                       </div>
                       
-                      <div className="flex gap-2 mb-6">
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && searchModels()}
-                          placeholder="Search for models (e.g., 'llama', 'qwen', 'phi')"
-                          className="flex-1 px-4 py-3 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                        />
-                        <button
-                          onClick={searchModels}
-                          disabled={isSearching || !searchQuery.trim()}
-                          className="px-6 py-3 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                        >
-                          <Search className="w-4 h-4" />
-                          {isSearching ? 'Searching...' : 'Search'}
-                        </button>
-                      </div>
-
-                      {/* Search Results */}
-                      {searchResults.length > 0 && (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900 dark:text-white">Search Results</h4>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">{searchResults.length} models found</span>
+                      {localModels.length > 0 ? (
+                        <div className="grid gap-3">
+                          {localModels.map((model) => (
+                            <div key={model.path} className="flex items-center gap-4 p-4 bg-white/30 dark:bg-gray-800/30 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors">
+                              <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center text-white">
+                                <HardDrive className="w-6 h-6" />
+                              </div>
+                              <div className="flex-1">
+                                <h5 className="font-semibold text-gray-900 dark:text-white">{model.name}</h5>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 font-mono">{model.file}</p>
+                                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                  <span className="flex items-center gap-1">
+                                    <HardDrive className="w-3 h-3" />
+                                    {formatFileSize(model.size)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Cloud className="w-3 h-3" />
+                                    {model.source}
+                                  </span>
+                                  <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-3 py-1 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 text-xs rounded-full font-medium">
+                                  Active
+                                </span>
+                                {deleting.has(model.path) ? (
+                                  <div className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white text-xs rounded-lg opacity-50 cursor-not-allowed">
+                                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Removing...
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => deleteLocalModel(model.path)}
+                                    disabled={deleting.has(model.path)}
+                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                    title="Remove model"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12">
+                          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <HardDrive className="w-8 h-8 text-gray-400 dark:text-gray-600" />
                           </div>
-                          <div className="grid gap-4 max-h-[600px] overflow-y-auto">
-                            {searchResults.map((model) => (
-                              <ModelCard key={model.id} model={model} onDownload={downloadModel} downloading={downloading} downloadProgress={downloadProgress} formatFileSize={formatFileSize} onTagClick={handleTagFilter} />
-                            ))}
-                          </div>
+                          <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No models in your library</h4>
+                          <p className="text-gray-500 dark:text-gray-400 mb-4">
+                            Download models from the Discover tab to get started
+                          </p>
+                          <button 
+                            onClick={() => setModelManagerTab('discover')}
+                            className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+                          >
+                            Discover Models
+                          </button>
                         </div>
                       )}
                     </div>
-                  </>
-                )}
-
-                {/* Library Tab Content */}
-                {modelManagerTab === 'library' && (
-                  <div className="glassmorphic rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          Your Model Library
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                        <span>Total Storage: {localModels.reduce((acc, model) => acc + model.size, 0) > 0 ? formatFileSize(localModels.reduce((acc, model) => acc + model.size, 0)) : '0 B'}</span>
-                      </div>
-                    </div>
-                    
-                    {localModels.length > 0 ? (
-                      <div className="grid gap-3">
-                        {localModels.map((model) => (
-                          <div key={model.path} className="flex items-center gap-4 p-4 bg-white/30 dark:bg-gray-800/30 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors">
-                            <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center text-white">
-                              <HardDrive className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1">
-                              <h5 className="font-semibold text-gray-900 dark:text-white">{model.name}</h5>
-                              <p className="text-sm text-gray-600 dark:text-gray-300 font-mono">{model.file}</p>
-                              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                <span className="flex items-center gap-1">
-                                  <HardDrive className="w-3 h-3" />
-                                  {formatFileSize(model.size)}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Cloud className="w-3 h-3" />
-                                  {model.source}
-                                </span>
-                                <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="px-3 py-1 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 text-xs rounded-full font-medium">
-                                Active
-                              </span>
-                              {deleting.has(model.path) ? (
-                                <div className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white text-xs rounded-lg opacity-50 cursor-not-allowed">
-                                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                  Removing...
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => deleteLocalModel(model.path)}
-                                  disabled={deleting.has(model.path)}
-                                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                  title="Remove model"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <HardDrive className="w-8 h-8 text-gray-400 dark:text-gray-600" />
-                        </div>
-                        <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No models in your library</h4>
-                        <p className="text-gray-500 dark:text-gray-400 mb-4">
-                          Download models from the Discover tab to get started
-                        </p>
-                        <button 
-                          onClick={() => setModelManagerTab('discover')}
-                          className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
-                        >
-                          Discover Models
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -1467,6 +1560,85 @@ const Settings = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Joyride Tour */}
+      {activeTab === 'models' && (
+        <Joyride
+          steps={tourSteps}
+          run={runTour}
+          stepIndex={tourStepIndex}
+          continuous
+          showSkipButton
+          showProgress
+          disableScrolling={false}
+          styles={{
+            options: {
+              zIndex: 10000,
+              primaryColor: '#e573b6', // sakura-500
+              backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+              textColor: theme === 'dark' ? '#f3f4f6' : '#374151',
+              arrowColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+            },
+            tooltip: {
+              borderRadius: 16,
+              boxShadow: theme === 'dark' 
+                ? '0 4px 32px 0 rgba(0, 0, 0, 0.3)' 
+                : '0 4px 32px 0 rgba(233, 30, 99, 0.08)',
+              padding: 20,
+              fontSize: 16,
+              background: theme === 'dark' ? '#1f2937' : '#ffffff',
+              color: theme === 'dark' ? '#f3f4f6' : '#374151',
+              border: theme === 'dark' ? '1px solid #374151' : '1px solid #e5e7eb',
+            },
+            buttonNext: {
+              background: '#e573b6',
+              color: '#fff',
+              borderRadius: 8,
+              border: 'none',
+              padding: '8px 16px',
+              fontWeight: '600',
+            },
+            buttonBack: {
+              color: '#e573b6',
+              background: 'transparent',
+              border: '1px solid #e573b6',
+              borderRadius: 8,
+              padding: '8px 16px',
+              fontWeight: '600',
+            },
+            buttonSkip: {
+              color: theme === 'dark' ? '#9ca3af' : '#6b7280',
+              background: 'transparent',
+              border: 'none',
+              padding: '8px 16px',
+            },
+            spotlight: {
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            },
+            overlay: {
+              backgroundColor: theme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.4)',
+            },
+          }}
+          locale={{
+            back: 'Back',
+            close: 'Close',
+            last: 'Finish',
+            next: 'Next',
+            skip: 'Skip Tour',
+          }}
+          callback={(data: CallBackProps) => {
+            const { status, index, type } = data;
+            if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
+              setRunTour(false);
+              setTourStepIndex(0);
+            } else if (type === 'step:after' || type === 'error:target_not_found') {
+              setTourStepIndex((index ?? 0) + 1);
+            } else if (type === 'step:before') {
+              setTourStepIndex(index ?? 0);
+            }
+          }}
+        />
       )}
     </>
   );

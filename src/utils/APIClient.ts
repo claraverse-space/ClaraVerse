@@ -29,6 +29,8 @@ interface APIResponse {
     content: string;
     role: ChatRole;
     tool_calls?: {
+      id?: string;
+      type?: string;
       function: {
         name: string;
         arguments: string | Record<string, unknown>;
@@ -43,8 +45,12 @@ interface APIResponse {
     };
     delta?: {
       content?: string;
+      role?: string;
+      tool_calls?: any[];
     };
+    finish_reason?: string;
   }];
+  finish_reason?: string;
   usage?: {
     total_tokens: number;
   };
@@ -213,7 +219,24 @@ export class APIClient {
       });
 
       if (!streamResponse.ok) {
-        throw new Error(`Stream request failed: ${streamResponse.status} ${streamResponse.statusText}`);
+        // Try to parse JSON error response
+        let errorMessage = `Stream request failed: ${streamResponse.status} ${streamResponse.statusText}`;
+        try {
+          const errorData = await streamResponse.json();
+          if (errorData.error?.message) {
+            errorMessage = errorData.error.message;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+          // Throw error with parsed details
+          const error = new Error(errorMessage);
+          (error as any).status = streamResponse.status;
+          (error as any).errorData = errorData;
+          throw error;
+        } catch (parseError) {
+          // If JSON parsing fails, throw original error
+          throw new Error(errorMessage);
+        }
       }
 
       if (!streamResponse.body) throw new Error("No response body");
@@ -233,15 +256,37 @@ export class APIClient {
           
           try {
             const parsed = JSON.parse(line.replace('data: ', ''));
-            const data: APIResponse = {
-              message: {
-                content: parsed.choices?.[0]?.delta?.content || '',
-                role: 'assistant'
-              }
-            };
-            yield data;
+            
+            // Check for error in streaming response
+            if (parsed.error) {
+              const error = new Error(parsed.error.message || 'Streaming error');
+              (error as any).errorData = parsed.error;
+              throw error;
+            }
+            
+            const choice = parsed.choices?.[0];
+            
+            if (choice) {
+              const data: APIResponse = {
+                message: {
+                  content: choice.delta?.content || '',
+                  role: choice.delta?.role || 'assistant',
+                  tool_calls: choice.delta?.tool_calls
+                },
+                finish_reason: choice.finish_reason,
+                usage: parsed.usage
+              };
+              
+              yield data;
+            }
           } catch (e) {
-            console.warn('Failed to parse streaming response line:', line, e);
+            // If it's a parsing error, just warn and continue
+            if (e instanceof SyntaxError) {
+              console.warn('Failed to parse streaming response line:', line, e);
+            } else {
+              // If it's our custom error (like tools+stream error), re-throw it
+              throw e;
+            }
           }
         }
       }

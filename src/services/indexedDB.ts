@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 6; // Increment version to trigger upgrade for new stores
+const DB_VERSION = 7; // Increment version to trigger upgrade for Clara stores
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -90,6 +90,30 @@ export class IndexedDBService {
         // Add providers store
         if (!db.objectStoreNames.contains('providers')) {
           db.createObjectStore('providers', { keyPath: 'id' });
+        }
+
+        // Add Clara-specific stores
+        if (!db.objectStoreNames.contains('clara_sessions')) {
+          const sessionStore = db.createObjectStore('clara_sessions', { keyPath: 'id' });
+          sessionStore.createIndex('created_at_index', 'createdAt', { unique: false });
+          sessionStore.createIndex('updated_at_index', 'updatedAt', { unique: false });
+          sessionStore.createIndex('starred_index', 'isStarred', { unique: false });
+          sessionStore.createIndex('archived_index', 'isArchived', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('clara_messages')) {
+          const messageStore = db.createObjectStore('clara_messages', { keyPath: 'id' });
+          messageStore.createIndex('session_id_index', 'sessionId', { unique: false });
+          messageStore.createIndex('timestamp_index', 'timestamp', { unique: false });
+          messageStore.createIndex('role_index', 'role', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('clara_files')) {
+          const fileStore = db.createObjectStore('clara_files', { keyPath: 'id' });
+          fileStore.createIndex('session_id_index', 'sessionId', { unique: false });
+          fileStore.createIndex('message_id_index', 'messageId', { unique: false });
+          fileStore.createIndex('type_index', 'type', { unique: false });
+          fileStore.createIndex('created_at_index', 'createdAt', { unique: false });
         }
       };
     });

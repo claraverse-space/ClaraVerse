@@ -22,6 +22,7 @@ import ToolbarDebug from './debug/ToolbarDebug';
 import { db } from './db';
 import { InterpreterProvider } from './contexts/InterpreterContext';
 import { ProvidersProvider } from './contexts/ProvidersContext';
+import ClaraAssistant from './components/ClaraAssistant';
 
 function App() {
   const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
@@ -72,6 +73,9 @@ function App() {
   const renderContent = () => {
     if (activePage === 'assistant') {
       return <Assistant onPageChange={setActivePage} />;
+    }
+    if (activePage === 'clara') {
+      return <ClaraAssistant onPageChange={setActivePage} />;
     }
     
     if (activePage === 'app-creator') {
