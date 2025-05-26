@@ -84,6 +84,7 @@ export class OllamaClient {
   private abortController: AbortController | null = null;
   private static readonly OLLAMA_MAX_TOKENS = 8000; // Ollama's token limit
   private config: OpenAIConfig;
+  private static problematicTools: Set<string> = new Set();
 
   constructor(baseUrl: string, config?: Partial<OpenAIConfig>) {
     this.config = {
@@ -364,7 +365,7 @@ export class OllamaClient {
     // Convert tools to API format
     const formattedTools = tools?.map(tool => this.formatTool(tool));
     
-    const payload = { 
+    const payload: any = { 
       model, 
       messages: this.prepareMessages(messages), 
       tools: formattedTools,
@@ -922,7 +923,30 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
 
   // Helper method for OpenAI requests
   private async sendOpenAIRequest(model: string, messages: any[], options?: any, tools?: any[]) {
-    const formattedTools = tools?.map(tool => ({
+    return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, tools);
+  }
+
+  // Helper method for OpenAI requests with dynamic tool removal
+  private async sendOpenAIRequestWithDynamicToolRemoval(
+    model: string, 
+    messages: any[], 
+    options?: any, 
+    tools?: any[], 
+    attempt: number = 1
+  ): Promise<any> {
+    // No limit on attempts - keep trying until all problematic tools are removed
+    let currentTools = tools ? [...tools] : undefined;
+    
+    // Filter out known problematic tools before starting
+    if (currentTools && currentTools.length > 0) {
+      const originalCount = currentTools.length;
+      currentTools = this.filterOutProblematicTools(currentTools);
+      if (currentTools.length < originalCount) {
+        console.log(`🔧 [DYNAMIC-TOOLS-OLLAMA] Filtered out ${originalCount - currentTools.length} known problematic tools, ${currentTools.length} remaining`);
+      }
+    }
+    
+    const formattedTools = currentTools?.map(tool => ({
       type: 'function',
       function: {
         name: tool.name,
@@ -943,22 +967,291 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
       }
     }));
 
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        tools: formattedTools,
-        temperature: options?.temperature || 0.7,
-        top_p: options?.top_p || 0.9,
-        stream: options?.stream || false
-      })
-    });
+    const payload: any = {
+      model,
+      messages,
+      temperature: options?.temperature || 0.7,
+      top_p: options?.top_p || 0.9,
+      stream: options?.stream || false
+    };
 
-    return await response.json();
+    if (formattedTools && formattedTools.length > 0) {
+      payload.tools = formattedTools;
+    }
+
+    try {
+      console.log(`🔧 [DYNAMIC-TOOLS-OLLAMA] Attempt ${attempt}: Sending OpenAI request with ${formattedTools?.length || 0} tools`);
+      
+      const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        // Try to parse JSON error response
+        let errorMessage = `OpenAI request failed: ${response.status} ${response.statusText}`;
+        let errorData: any = null;
+        
+        try {
+          errorData = await response.json();
+          if (errorData.error?.message) {
+            errorMessage = errorData.error.message;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (parseError) {
+          // If JSON parsing fails, use original error message
+        }
+        
+        // Check if this is a tool validation error
+        const isToolValidationError = this.isOpenAIToolValidationError({ message: errorMessage, errorData });
+        
+        if (isToolValidationError && currentTools && currentTools.length > 0) {
+          const problematicToolIndex = this.extractProblematicToolIndex({ message: errorMessage, errorData });
+          
+          if (problematicToolIndex !== null && problematicToolIndex < currentTools.length) {
+            const removedTool = currentTools[problematicToolIndex];
+            console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing problematic tool at index ${problematicToolIndex}: ${removedTool.name}`);
+            console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Error details:`, errorMessage);
+            
+            // Store the problematic tool so it won't be loaded again
+            this.storeProblematicTool(removedTool, errorMessage);
+            
+            // Remove the problematic tool
+            currentTools.splice(problematicToolIndex, 1);
+            
+            // Retry with remaining tools
+            console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
+            return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, currentTools, attempt + 1);
+          } else {
+            console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Could not identify problematic tool index from error`);
+            
+            // If we can't identify the specific tool, remove the first tool and try again
+            if (currentTools.length > 0) {
+              const removedTool = currentTools[0];
+              console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing first tool as fallback: ${removedTool.name}`);
+              this.storeProblematicTool(removedTool, errorMessage);
+              currentTools.splice(0, 1);
+              
+              console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
+              return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, currentTools, attempt + 1);
+            } else {
+              // No tools left, send without tools
+              console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] No tools left, sending without tools`);
+              return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
+            }
+          }
+        } else if (isToolValidationError && (!currentTools || currentTools.length === 0)) {
+          console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Tool validation error but no tools to remove, sending without tools`);
+          // Send without tools
+          return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
+        } else {
+          // Not a tool validation error, throw the error
+          const error = new Error(errorMessage);
+          (error as any).status = response.status;
+          (error as any).errorData = errorData;
+          throw error;
+        }
+      }
+
+      console.log(`✅ [DYNAMIC-TOOLS-OLLAMA] OpenAI request successful on attempt ${attempt}`);
+      return await response.json();
+    } catch (error: any) {
+      // Check if this is an OpenAI tool validation error that occurred during the request
+      const isToolValidationError = this.isOpenAIToolValidationError(error);
+      
+      if (isToolValidationError && currentTools && currentTools.length > 0) {
+        const problematicToolIndex = this.extractProblematicToolIndex(error);
+        
+        if (problematicToolIndex !== null && problematicToolIndex < currentTools.length) {
+          const removedTool = currentTools[problematicToolIndex];
+          console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing problematic tool at index ${problematicToolIndex}: ${removedTool.name}`);
+          console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Error details:`, error.message);
+          
+          // Store the problematic tool so it won't be loaded again
+          this.storeProblematicTool(removedTool, error.message);
+          
+          // Remove the problematic tool
+          currentTools.splice(problematicToolIndex, 1);
+          
+          // Retry with remaining tools
+          console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
+          return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, currentTools, attempt + 1);
+        } else {
+          console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Could not identify problematic tool index from error`);
+          
+          // If we can't identify the specific tool, remove the first tool and try again
+          if (currentTools.length > 0) {
+            const removedTool = currentTools[0];
+            console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing first tool as fallback: ${removedTool.name}`);
+            this.storeProblematicTool(removedTool, error.message);
+            currentTools.splice(0, 1);
+            
+            console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
+            return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, currentTools, attempt + 1);
+          } else {
+            // No tools left, send without tools
+            console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] No tools left, sending without tools`);
+            return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
+          }
+        }
+      } else if (isToolValidationError && (!currentTools || currentTools.length === 0)) {
+        console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Tool validation error but no tools to remove, sending without tools`);
+        // Send without tools
+        return this.sendOpenAIRequestWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
+      } else {
+        // Not a tool validation error, re-throw the error
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Check if an error is an OpenAI tool validation error
+   */
+  private isOpenAIToolValidationError(error: any): boolean {
+    if (!error) return false;
+    
+    const message = error.message || '';
+    const errorData = error.errorData || {};
+    
+    // Check for OpenAI function parameter validation errors
+    return (
+      message.includes('Invalid schema for function') ||
+      message.includes('array schema missing items') ||
+      message.includes('invalid_function_parameters') ||
+      errorData.error?.code === 'invalid_function_parameters' ||
+      errorData.error?.type === 'invalid_request_error'
+    );
+  }
+
+  /**
+   * Extract the problematic tool index from OpenAI error message
+   */
+  private extractProblematicToolIndex(error: any): number | null {
+    if (!error) return null;
+    
+    const message = error.message || '';
+    const errorData = error.errorData || {};
+    
+    // Look for patterns like "tools[9].function.parameters"
+    const toolIndexMatch = message.match(/tools\[(\d+)\]/);
+    if (toolIndexMatch) {
+      const index = parseInt(toolIndexMatch[1], 10);
+      console.log(`🔍 [DYNAMIC-TOOLS-OLLAMA] Extracted tool index ${index} from error message: ${message}`);
+      return index;
+    }
+    
+    // Also check in errorData.error.param
+    if (errorData.error?.param) {
+      const paramMatch = errorData.error.param.match(/tools\[(\d+)\]/);
+      if (paramMatch) {
+        const index = parseInt(paramMatch[1], 10);
+        console.log(`🔍 [DYNAMIC-TOOLS-OLLAMA] Extracted tool index ${index} from error param: ${errorData.error.param}`);
+        return index;
+      }
+    }
+    
+    console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Could not extract tool index from error:`, { message, errorData });
+    return null;
+  }
+
+  /**
+   * Store a problematic tool so it won't be loaded again
+   */
+  private storeProblematicTool(tool: any, errorMessage: string): void {
+    const toolKey = `${tool.name}:${tool.description}`;
+    OllamaClient.problematicTools.add(toolKey);
+    
+    console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Stored problematic tool: ${tool.name}`);
+    console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Error: ${errorMessage}`);
+    console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Total problematic tools: ${OllamaClient.problematicTools.size}`);
+    
+    // Also store in localStorage for persistence across sessions
+    try {
+      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools-ollama') || '[]');
+      const toolInfo = {
+        name: tool.name,
+        description: tool.description,
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Check if already exists
+      const exists = stored.some((t: any) => t.name === tool.name && t.description === tool.description);
+      if (!exists) {
+        stored.push(toolInfo);
+        localStorage.setItem('clara-problematic-tools-ollama', JSON.stringify(stored));
+        console.log(`💾 [PROBLEMATIC-TOOLS-OLLAMA] Persisted to localStorage`);
+      }
+    } catch (error) {
+      console.warn('Failed to store problematic tool in localStorage:', error);
+    }
+  }
+
+  /**
+   * Filter out known problematic tools
+   */
+  private filterOutProblematicTools(tools: any[]): any[] {
+    // Load from localStorage on first use
+    if (OllamaClient.problematicTools.size === 0) {
+      this.loadProblematicToolsFromStorage();
+    }
+    
+    const filtered = tools.filter(tool => {
+      const toolKey = `${tool.name}:${tool.description}`;
+      const isProblematic = OllamaClient.problematicTools.has(toolKey);
+      
+      if (isProblematic) {
+        console.log(`🚫 [FILTER-OLLAMA] Skipping known problematic tool: ${tool.name}`);
+      }
+      
+      return !isProblematic;
+    });
+    
+    return filtered;
+  }
+
+  /**
+   * Load problematic tools from localStorage
+   */
+  private loadProblematicToolsFromStorage(): void {
+    try {
+      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools-ollama') || '[]');
+      for (const toolInfo of stored) {
+        const toolKey = `${toolInfo.name}:${toolInfo.description}`;
+        OllamaClient.problematicTools.add(toolKey);
+      }
+      
+      if (stored.length > 0) {
+        console.log(`📂 [PROBLEMATIC-TOOLS-OLLAMA] Loaded ${stored.length} problematic tools from localStorage`);
+      }
+    } catch (error) {
+      console.warn('Failed to load problematic tools from localStorage:', error);
+    }
+  }
+
+  /**
+   * Clear all stored problematic tools (for debugging/reset)
+   */
+  public static clearProblematicTools(): void {
+    OllamaClient.problematicTools.clear();
+    try {
+      localStorage.removeItem('clara-problematic-tools-ollama');
+      console.log(`🗑️ [PROBLEMATIC-TOOLS-OLLAMA] Cleared all stored problematic tools`);
+    } catch (error) {
+      console.warn('Failed to clear problematic tools from localStorage:', error);
+    }
+  }
+
+  /**
+   * Get list of problematic tools (for debugging)
+   */
+  public static getProblematicTools(): string[] {
+    return Array.from(OllamaClient.problematicTools);
   }
 }

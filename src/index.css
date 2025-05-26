@@ -314,14 +314,6 @@ textarea {
   @apply text-xl font-semibold mb-3 text-gray-800 dark:text-gray-100 mt-6;
 }
 
-.prose ol {
-  @apply list-decimal list-inside mb-4 space-y-2;
-}
-
-.prose ul {
-  @apply list-disc list-inside mb-4 space-y-2;
-}
-
 .prose p {
   @apply mb-4 text-gray-700 dark:text-gray-300;
 }
@@ -377,11 +369,43 @@ textarea {
 }
 
 .prose ul, .prose ol {
-  @apply mb-4 ml-6;
+  @apply mb-4;
 }
 
 .prose li {
+  @apply mb-2 pl-2;
+}
+
+/* Ensure proper list alignment and spacing */
+.prose ol {
+  @apply list-decimal mb-4 space-y-2 pl-6;
+  list-style-position: outside;
+}
+
+.prose ul {
+  @apply list-disc mb-4 space-y-2 pl-6;
+  list-style-position: outside;
+}
+
+/* Nested list styling */
+.prose ol ol,
+.prose ul ul,
+.prose ol ul,
+.prose ul ol {
+  @apply mt-2 mb-2;
+}
+
+/* List item content alignment */
+.prose li > p {
   @apply mb-2;
+}
+
+.prose li > p:first-child {
+  @apply mt-0;
+}
+
+.prose li > p:last-child {
+  @apply mb-0;
 }
 
 .prose table {

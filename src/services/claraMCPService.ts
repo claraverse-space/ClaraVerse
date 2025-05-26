@@ -621,18 +621,396 @@ export class ClaraMCPService {
 
   /**
    * Convert tool calls to OpenAI-compatible format for AI models
+   * Only includes tools that pass OpenAI validation to ensure requests always work
    */
   public convertToolsToOpenAIFormat(): any[] {
     const tools = this.getAvailableTools();
+    console.log(`🔧 [TOOL-CONVERSION] Starting validation and conversion of ${tools.length} tools`);
     
-    return tools.map(tool => ({
+    const validatedTools: any[] = [];
+    const rejectedTools: string[] = [];
+    
+    for (let i = 0; i < tools.length; i++) {
+      const tool = tools[i];
+      const toolId = `${tool.server}:${tool.name}`;
+      
+      try {
+        console.log(`🔧 [TOOL-VALIDATION] Testing tool ${i + 1}/${tools.length}: ${toolId}`);
+        
+        // Try to create a valid OpenAI tool
+        const openAITool = this.createOpenAITool(tool);
+        
+        // AGGRESSIVE FINAL FIX: Ensure all arrays have items right before validation
+        this.aggressiveArrayFix(openAITool);
+        
+        // FINAL VALIDATION: Check the exact schema that will be sent to OpenAI
+        const finalValidation = this.validateFinalOpenAITool(openAITool, toolId);
+        if (!finalValidation.isValid) {
+          rejectedTools.push(`${toolId} (${finalValidation.reason})`);
+          console.error(`❌ [FINAL-VALIDATION] Tool ${toolId} failed final validation: ${finalValidation.reason}`);
+          continue;
+        }
+        
+        // Test if it passes OpenAI validation
+        if (this.isValidOpenAITool(openAITool)) {
+          validatedTools.push(openAITool);
+          console.log(`✅ [TOOL-VALIDATION] Tool ${toolId} passed validation`);
+        } else {
+          rejectedTools.push(toolId);
+          console.warn(`❌ [TOOL-VALIDATION] Tool ${toolId} failed validation - excluding from request`);
+        }
+        
+      } catch (error) {
+        rejectedTools.push(toolId);
+        console.error(`❌ [TOOL-VALIDATION] Tool ${toolId} threw error during validation:`, error);
+      }
+    }
+    
+    console.log(`✅ [TOOL-CONVERSION] Validation complete:`);
+    console.log(`   - Valid tools: ${validatedTools.length}`);
+    console.log(`   - Rejected tools: ${rejectedTools.length}`);
+    
+    if (rejectedTools.length > 0) {
+      console.warn(`⚠️ [TOOL-CONVERSION] Rejected tools:`, rejectedTools);
+    }
+    
+    // Log the final valid tools (but only names to avoid spam)
+    const validToolNames = validatedTools.map(t => t.function.name);
+    console.log(`🔧 [TOOL-CONVERSION] Final valid tools:`, validToolNames);
+    
+    // FINAL DEBUG: Log the exact schemas being sent to OpenAI for array-containing tools
+    console.log(`🔍 [FINAL-DEBUG] Checking final schemas for array properties...`);
+    for (const tool of validatedTools) {
+      const toolName = tool.function.name;
+      if (tool.function.parameters?.properties) {
+        for (const [propName, propSchema] of Object.entries(tool.function.parameters.properties)) {
+          const prop = propSchema as any;
+          if (prop?.type === 'array') {
+            console.log(`🔍 [FINAL-DEBUG] Tool ${toolName}, array property '${propName}':`, {
+              type: prop.type,
+              hasItems: !!prop.items,
+              items: prop.items,
+              fullProperty: prop
+            });
+          }
+        }
+      }
+    }
+    
+    return validatedTools;
+  }
+
+  /**
+   * Create an OpenAI-compatible tool from an MCP tool
+   */
+  private createOpenAITool(tool: ClaraMCPTool): any {
+    console.log(`🔧 [CREATE-TOOL] Creating OpenAI tool for: ${tool.server}:${tool.name}`);
+    
+    // Try to fix the schema first
+    const fixedParameters = this.fixOpenAISchema(tool.inputSchema);
+    
+    // FAILSAFE: Double-check that all array properties have items
+    this.ensureArrayItemsExist(fixedParameters);
+    
+    const openAITool = {
       type: 'function',
       function: {
         name: `mcp_${tool.server}_${tool.name}`,
         description: `[MCP:${tool.server}] ${tool.description}`,
-        parameters: tool.inputSchema
+        parameters: fixedParameters
       }
-    }));
+    };
+    
+    // COMPREHENSIVE DEBUG: Log the exact final tool being sent to OpenAI
+    console.log(`✅ [CREATE-TOOL] Final OpenAI tool for ${tool.server}:${tool.name}:`);
+    console.log(`📋 [CREATE-TOOL] Tool name: ${openAITool.function.name}`);
+    console.log(`📋 [CREATE-TOOL] Parameters schema:`, JSON.stringify(openAITool.function.parameters, null, 2));
+    
+    // Special debug for array properties
+    if (openAITool.function.parameters?.properties) {
+      for (const [propName, propSchema] of Object.entries(openAITool.function.parameters.properties)) {
+        const prop = propSchema as any;
+        if (prop?.type === 'array') {
+          console.log(`🔍 [CREATE-TOOL] Array property '${propName}':`, {
+            type: prop.type,
+            hasItems: !!prop.items,
+            itemsType: prop.items?.type,
+            itemsSchema: prop.items
+          });
+        }
+      }
+    }
+    
+    // FINAL SAFETY CHECK: Ensure all arrays have items before returning
+    this.finalArraySafetyCheck(openAITool, `${tool.server}:${tool.name}`);
+    
+    return openAITool;
+  }
+
+  /**
+   * Failsafe method to ensure all array properties have items
+   */
+  private ensureArrayItemsExist(schema: any): void {
+    if (!schema || typeof schema !== 'object') {
+      return;
+    }
+
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        if (propSchema && typeof propSchema === 'object') {
+          const prop = propSchema as any;
+          
+          if (prop.type === 'array') {
+            if (!prop.items || typeof prop.items !== 'object' || !prop.items.type) {
+              console.warn(`🚨 [FAILSAFE] Array property '${propName}' still missing items! Adding emergency fix.`);
+              prop.items = { type: 'object' };
+            }
+          }
+          
+          // Recursively check nested objects
+          if (prop.type === 'object') {
+            this.ensureArrayItemsExist(prop);
+          }
+          
+          // Check array items
+          if (prop.items) {
+            this.ensureArrayItemsExist(prop.items);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Test if a tool is valid according to OpenAI's requirements
+   */
+  private isValidOpenAITool(tool: any): boolean {
+    try {
+      // Basic structure validation
+      if (!tool || tool.type !== 'function' || !tool.function) {
+        return false;
+      }
+
+      const func = tool.function;
+      
+      // Function must have name and description
+      if (!func.name || typeof func.name !== 'string' || 
+          !func.description || typeof func.description !== 'string') {
+        return false;
+      }
+
+      // Parameters must exist and be valid
+      if (!func.parameters) {
+        return false;
+      }
+
+      // Validate the parameters schema
+      return this.isValidParametersSchema(func.parameters);
+      
+    } catch (error) {
+      console.error(`[TOOL-VALIDATION] Error validating tool:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Validate parameters schema according to OpenAI requirements
+   */
+  private isValidParametersSchema(schema: any): boolean {
+    try {
+      // Must be an object
+      if (!schema || typeof schema !== 'object') {
+        return false;
+      }
+
+      // Must have type 'object'
+      if (schema.type !== 'object') {
+        return false;
+      }
+
+      // Must have properties (can be empty)
+      if (!schema.hasOwnProperty('properties') || typeof schema.properties !== 'object') {
+        return false;
+      }
+
+      // Required must be an array if present
+      if (schema.hasOwnProperty('required') && !Array.isArray(schema.required)) {
+        return false;
+      }
+
+      // Validate each property
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        if (!this.isValidPropertySchema(propSchema, propName)) {
+          return false;
+        }
+      }
+
+      // Validate required array references existing properties
+      if (schema.required) {
+        for (const reqProp of schema.required) {
+          if (typeof reqProp !== 'string' || !schema.properties[reqProp]) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+      
+    } catch (error) {
+      console.error(`[SCHEMA-VALIDATION] Error validating parameters schema:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Validate a single property schema
+   */
+  private isValidPropertySchema(propSchema: any, propName: string): boolean {
+    try {
+      if (!propSchema || typeof propSchema !== 'object') {
+        return false;
+      }
+
+      // Must have a type
+      if (!propSchema.type || typeof propSchema.type !== 'string') {
+        return false;
+      }
+
+      // Special validation for arrays - they MUST have items
+      if (propSchema.type === 'array') {
+        if (!propSchema.items || typeof propSchema.items !== 'object') {
+          console.warn(`[SCHEMA-VALIDATION] Array property '${propName}' missing valid items`);
+          return false;
+        }
+        
+        // Items must have a type
+        if (!propSchema.items.type || typeof propSchema.items.type !== 'string') {
+          console.warn(`[SCHEMA-VALIDATION] Array property '${propName}' items missing type`);
+          return false;
+        }
+      }
+
+      // Validate nested objects recursively
+      if (propSchema.type === 'object' && propSchema.properties) {
+        for (const [nestedPropName, nestedPropSchema] of Object.entries(propSchema.properties)) {
+          if (!this.isValidPropertySchema(nestedPropSchema, `${propName}.${nestedPropName}`)) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+      
+    } catch (error) {
+      console.error(`[SCHEMA-VALIDATION] Error validating property '${propName}':`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Fix schema to be compatible with OpenAI function calling requirements
+   * This is a basic fix attempt - if it can't be fixed, validation will reject it
+   */
+  private fixOpenAISchema(schema: any): any {
+    if (!schema || typeof schema !== 'object') {
+      return {
+        type: 'object',
+        properties: {},
+        required: []
+      };
+    }
+
+    // Deep clone the schema to avoid modifying the original
+    const fixedSchema = JSON.parse(JSON.stringify(schema));
+
+    console.log(`🔧 [SCHEMA-FIX] Original schema:`, JSON.stringify(fixedSchema, null, 2));
+
+    // Ensure we have the required top-level structure
+    if (!fixedSchema.type) {
+      fixedSchema.type = 'object';
+    }
+    if (!fixedSchema.properties) {
+      fixedSchema.properties = {};
+    }
+    if (!fixedSchema.required) {
+      fixedSchema.required = [];
+    }
+
+    // Recursively clean up the schema to remove OpenAI-incompatible properties
+    this.cleanSchemaForOpenAI(fixedSchema);
+
+    console.log(`✅ [SCHEMA-FIX] Fixed schema:`, JSON.stringify(fixedSchema, null, 2));
+
+    // Clean up required array
+    if (fixedSchema.required && Array.isArray(fixedSchema.required)) {
+      fixedSchema.required = fixedSchema.required.filter((reqProp: string) => {
+        return fixedSchema.properties && fixedSchema.properties[reqProp];
+      });
+    }
+
+    return fixedSchema;
+  }
+
+  /**
+   * Recursively clean up schema properties to be OpenAI-compatible
+   */
+  private cleanSchemaForOpenAI(schema: any): void {
+    if (!schema || typeof schema !== 'object') {
+      return;
+    }
+
+    // Remove OpenAI-incompatible properties from ANY level (including top-level)
+    const removedProps: string[] = [];
+    if (schema.$schema) { removedProps.push('$schema'); delete schema.$schema; }
+    if (schema.additionalProperties !== undefined) { removedProps.push('additionalProperties'); delete schema.additionalProperties; }
+    if (schema.anyOf) { removedProps.push('anyOf'); delete schema.anyOf; }
+    if (schema.oneOf) { removedProps.push('oneOf'); delete schema.oneOf; }
+    if (schema.allOf) { removedProps.push('allOf'); delete schema.allOf; }
+    if (schema.not) { removedProps.push('not'); delete schema.not; }
+    if (schema.const) { removedProps.push('const'); delete schema.const; }
+    if (schema.enum) { removedProps.push('enum'); delete schema.enum; }
+
+    if (removedProps.length > 0) {
+      console.log(`🧹 [SCHEMA-CLEAN] Removed incompatible properties:`, removedProps);
+    }
+
+    // Handle properties recursively
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        if (propSchema && typeof propSchema === 'object') {
+          const prop = propSchema as any;
+          
+          // AGGRESSIVE FIX: Handle all array properties
+          if (prop.type === 'array') {
+            console.log(`🔧 [SCHEMA-CLEAN] Processing array property '${propName}':`, prop);
+            
+            // Always ensure items exists and is valid
+            if (!prop.items || typeof prop.items !== 'object' || !prop.items.type) {
+              console.log(`🔧 [SCHEMA-CLEAN] Fixing array property '${propName}' - adding/fixing items`);
+              prop.items = { type: 'object' };
+            } else {
+              console.log(`🔧 [SCHEMA-CLEAN] Array property '${propName}' already has valid items:`, prop.items);
+              // Clean the existing items
+              this.cleanSchemaForOpenAI(prop.items);
+            }
+          }
+          
+          // Recursively clean nested objects
+          if (prop.type === 'object') {
+            this.cleanSchemaForOpenAI(prop);
+          }
+          
+          // Clean the property itself
+          this.cleanSchemaForOpenAI(prop);
+        }
+      }
+    }
+
+    // Handle array items at the top level
+    if (schema.items && typeof schema.items === 'object') {
+      console.log(`🔧 [SCHEMA-CLEAN] Cleaning top-level array items`);
+      this.cleanSchemaForOpenAI(schema.items);
+    }
   }
 
   /**
@@ -780,6 +1158,413 @@ export class ClaraMCPService {
   public async refresh(): Promise<void> {
     await this.refreshServers();
     await this.discoverToolsAndResources();
+  }
+
+  /**
+   * Get enabled and running servers with status information
+   */
+  public getEnabledServersStatus(): { 
+    server: string; 
+    enabled: boolean; 
+    running: boolean; 
+    status: string;
+    toolCount: number;
+  }[] {
+    const serverStatus: { 
+      server: string; 
+      enabled: boolean; 
+      running: boolean; 
+      status: string;
+      toolCount: number;
+    }[] = [];
+
+    for (const [serverName, server] of this.servers.entries()) {
+      const enabled = server.config?.enabled !== false;
+      const running = server.isRunning && server.status === 'running';
+      const toolCount = Array.from(this.tools.values()).filter(tool => tool.server === serverName).length;
+      
+      serverStatus.push({
+        server: serverName,
+        enabled,
+        running,
+        status: server.status || 'unknown',
+        toolCount
+      });
+    }
+
+    return serverStatus;
+  }
+
+  /**
+   * Get tools only from enabled and running servers
+   */
+  public getToolsFromEnabledServers(enabledServerNames?: string[]): ClaraMCPTool[] {
+    const serverStatus = this.getEnabledServersStatus();
+    
+    // If specific servers are requested, filter by those
+    const targetServers = enabledServerNames || 
+      serverStatus.filter(s => s.enabled).map(s => s.server);
+    
+    console.log(`🔍 [MCP-FILTER] Target servers:`, targetServers);
+    console.log(`🔍 [MCP-FILTER] Server status:`, serverStatus);
+    
+    const availableTools: ClaraMCPTool[] = [];
+    const unavailableServers: string[] = [];
+    
+    for (const serverName of targetServers) {
+      const status = serverStatus.find(s => s.server === serverName);
+      
+      if (!status) {
+        console.warn(`⚠️ [MCP-FILTER] Server '${serverName}' not found`);
+        unavailableServers.push(`${serverName} (not found)`);
+        continue;
+      }
+      
+      if (!status.enabled) {
+        console.warn(`⚠️ [MCP-FILTER] Server '${serverName}' is disabled`);
+        unavailableServers.push(`${serverName} (disabled)`);
+        continue;
+      }
+      
+      if (!status.running) {
+        console.warn(`⚠️ [MCP-FILTER] Server '${serverName}' is not running (status: ${status.status})`);
+        unavailableServers.push(`${serverName} (not running - ${status.status})`);
+        continue;
+      }
+      
+      // Get tools from this server
+      const serverTools = Array.from(this.tools.values()).filter(tool => tool.server === serverName);
+      availableTools.push(...serverTools);
+      
+      console.log(`✅ [MCP-FILTER] Added ${serverTools.length} tools from server '${serverName}'`);
+    }
+    
+    if (unavailableServers.length > 0) {
+      console.warn(`⚠️ [MCP-FILTER] Unavailable servers:`, unavailableServers);
+    }
+    
+    console.log(`🔧 [MCP-FILTER] Final result: ${availableTools.length} tools from ${targetServers.length - unavailableServers.length}/${targetServers.length} servers`);
+    
+    return availableTools;
+  }
+
+  /**
+   * Convert specific tools to OpenAI-compatible format
+   */
+  public convertSpecificToolsToOpenAIFormat(tools: ClaraMCPTool[]): any[] {
+    console.log(`🔧 [TOOL-CONVERSION] Converting ${tools.length} specific tools`);
+    
+    const validatedTools: any[] = [];
+    const rejectedTools: string[] = [];
+    
+    for (let i = 0; i < tools.length; i++) {
+      const tool = tools[i];
+      const toolId = `${tool.server}:${tool.name}`;
+      
+      try {
+        console.log(`🔧 [TOOL-VALIDATION] Testing tool ${i + 1}/${tools.length}: ${toolId}`);
+        
+        // Try to create a valid OpenAI tool
+        const openAITool = this.createOpenAITool(tool);
+        
+        // AGGRESSIVE FINAL FIX: Ensure all arrays have items right before validation
+        this.aggressiveArrayFix(openAITool);
+        
+        // FINAL VALIDATION: Check the exact schema that will be sent to OpenAI
+        const finalValidation = this.validateFinalOpenAITool(openAITool, toolId);
+        if (!finalValidation.isValid) {
+          rejectedTools.push(`${toolId} (${finalValidation.reason})`);
+          console.error(`❌ [FINAL-VALIDATION] Tool ${toolId} failed final validation: ${finalValidation.reason}`);
+          continue;
+        }
+        
+        // Test if it passes OpenAI validation
+        if (this.isValidOpenAITool(openAITool)) {
+          validatedTools.push(openAITool);
+          console.log(`✅ [TOOL-VALIDATION] Tool ${toolId} passed validation`);
+        } else {
+          rejectedTools.push(toolId);
+          console.warn(`❌ [TOOL-VALIDATION] Tool ${toolId} failed validation - excluding from request`);
+        }
+        
+      } catch (error) {
+        rejectedTools.push(toolId);
+        console.error(`❌ [TOOL-VALIDATION] Tool ${toolId} threw error during validation:`, error);
+      }
+    }
+    
+    console.log(`✅ [TOOL-CONVERSION] Validation complete:`);
+    console.log(`   - Valid tools: ${validatedTools.length}`);
+    console.log(`   - Rejected tools: ${rejectedTools.length}`);
+    
+    if (rejectedTools.length > 0) {
+      console.warn(`⚠️ [TOOL-CONVERSION] Rejected tools:`, rejectedTools);
+    }
+    
+    // Log the final valid tools (but only names to avoid spam)
+    const validToolNames = validatedTools.map(t => t.function.name);
+    console.log(`🔧 [TOOL-CONVERSION] Final valid tools:`, validToolNames);
+    
+    // FINAL DEBUG: Log the exact schemas being sent to OpenAI for array-containing tools
+    console.log(`🔍 [FINAL-DEBUG] Checking final schemas for array properties...`);
+    for (const tool of validatedTools) {
+      const toolName = tool.function.name;
+      if (tool.function.parameters?.properties) {
+        for (const [propName, propSchema] of Object.entries(tool.function.parameters.properties)) {
+          const prop = propSchema as any;
+          if (prop?.type === 'array') {
+            console.log(`🔍 [FINAL-DEBUG] Tool ${toolName}, array property '${propName}':`, {
+              type: prop.type,
+              hasItems: !!prop.items,
+              items: prop.items,
+              fullProperty: prop
+            });
+          }
+        }
+      }
+    }
+    
+    return validatedTools;
+  }
+
+  /**
+   * Final validation check for OpenAI tools
+   */
+  private validateFinalOpenAITool(tool: any, toolId: string): { isValid: boolean; reason?: string } {
+    try {
+      // Check for additionalProperties anywhere in the schema
+      const hasAdditionalProperties = this.findAdditionalProperties(tool.function.parameters);
+      if (hasAdditionalProperties.found) {
+        return { 
+          isValid: false, 
+          reason: `additionalProperties found at: ${hasAdditionalProperties.path}` 
+        };
+      }
+
+      // Check for array properties without items
+      const missingItems = this.findArraysWithoutItems(tool.function.parameters);
+      if (missingItems.found) {
+        return { 
+          isValid: false, 
+          reason: `array missing items at: ${missingItems.path}` 
+        };
+      }
+
+      return { isValid: true };
+    } catch (error) {
+      return { 
+        isValid: false, 
+        reason: `validation error: ${error instanceof Error ? error.message : 'unknown'}` 
+      };
+    }
+  }
+
+  /**
+   * Recursively find any additionalProperties in the schema
+   */
+  private findAdditionalProperties(schema: any, path: string = 'root'): { found: boolean; path?: string } {
+    if (!schema || typeof schema !== 'object') {
+      return { found: false };
+    }
+
+    if (schema.additionalProperties !== undefined) {
+      return { found: true, path };
+    }
+
+    if (schema.properties) {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        const result = this.findAdditionalProperties(propSchema, `${path}.properties.${propName}`);
+        if (result.found) {
+          return result;
+        }
+      }
+    }
+
+    if (schema.items) {
+      const result = this.findAdditionalProperties(schema.items, `${path}.items`);
+      if (result.found) {
+        return result;
+      }
+    }
+
+    return { found: false };
+  }
+
+  /**
+   * Recursively find any arrays without items
+   */
+  private findArraysWithoutItems(schema: any, path: string = 'root'): { found: boolean; path?: string } {
+    if (!schema || typeof schema !== 'object') {
+      return { found: false };
+    }
+
+    if (schema.type === 'array' && (!schema.items || typeof schema.items !== 'object' || !schema.items.type)) {
+      return { found: true, path };
+    }
+
+    if (schema.properties) {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        const result = this.findArraysWithoutItems(propSchema, `${path}.properties.${propName}`);
+        if (result.found) {
+          return result;
+        }
+      }
+    }
+
+    if (schema.items) {
+      const result = this.findArraysWithoutItems(schema.items, `${path}.items`);
+      if (result.found) {
+        return result;
+      }
+    }
+
+    return { found: false };
+  }
+
+  /**
+   * Get server availability summary for UI feedback
+   */
+  public getServerAvailabilitySummary(requestedServers?: string[]): {
+    available: string[];
+    unavailable: { server: string; reason: string }[];
+    totalTools: number;
+  } {
+    const serverStatus = this.getEnabledServersStatus();
+    const targetServers = requestedServers || 
+      serverStatus.filter(s => s.enabled).map(s => s.server);
+    
+    const available: string[] = [];
+    const unavailable: { server: string; reason: string }[] = [];
+    let totalTools = 0;
+    
+    for (const serverName of targetServers) {
+      const status = serverStatus.find(s => s.server === serverName);
+      
+      if (!status) {
+        unavailable.push({ server: serverName, reason: 'Server not found' });
+      } else if (!status.enabled) {
+        unavailable.push({ server: serverName, reason: 'Server disabled in configuration' });
+      } else if (!status.running) {
+        unavailable.push({ server: serverName, reason: `Server not running (${status.status})` });
+      } else {
+        available.push(serverName);
+        totalTools += status.toolCount;
+      }
+    }
+    
+    return { available, unavailable, totalTools };
+  }
+
+  /**
+   * Get detailed tool breakdown by server for UI feedback
+   */
+  public getToolBreakdownByServer(requestedServers?: string[]): {
+    serverName: string;
+    status: 'available' | 'unavailable';
+    reason?: string;
+    tools: { name: string; description: string }[];
+  }[] {
+    const serverStatus = this.getEnabledServersStatus();
+    const targetServers = requestedServers || 
+      serverStatus.filter(s => s.enabled).map(s => s.server);
+    
+    const breakdown: {
+      serverName: string;
+      status: 'available' | 'unavailable';
+      reason?: string;
+      tools: { name: string; description: string }[];
+    }[] = [];
+    
+    for (const serverName of targetServers) {
+      const status = serverStatus.find(s => s.server === serverName);
+      
+      if (!status) {
+        breakdown.push({
+          serverName,
+          status: 'unavailable',
+          reason: 'Server not found',
+          tools: []
+        });
+      } else if (!status.enabled) {
+        breakdown.push({
+          serverName,
+          status: 'unavailable',
+          reason: 'Server disabled in configuration',
+          tools: []
+        });
+      } else if (!status.running) {
+        breakdown.push({
+          serverName,
+          status: 'unavailable',
+          reason: `Server not running (${status.status})`,
+          tools: []
+        });
+      } else {
+        // Get tools from this server
+        const serverTools = Array.from(this.tools.values())
+          .filter(tool => tool.server === serverName)
+          .map(tool => ({
+            name: tool.name,
+            description: tool.description
+          }));
+        
+        breakdown.push({
+          serverName,
+          status: 'available',
+          tools: serverTools
+        });
+      }
+    }
+    
+    return breakdown;
+  }
+
+  /**
+   * Aggressive final fix for OpenAI tools
+   */
+  private aggressiveArrayFix(tool: any): void {
+    if (!tool || typeof tool !== 'object') {
+      return;
+    }
+
+    if (tool.function && tool.function.parameters) {
+      const parameters = tool.function.parameters;
+      if (parameters.properties) {
+        for (const propName in parameters.properties) {
+          const prop = parameters.properties[propName];
+          if (prop && typeof prop === 'object' && prop.type === 'array') {
+            if (!prop.items || typeof prop.items !== 'object' || !prop.items.type) {
+              console.log(`🔧 [AGGRESSIVE-FIX] Fixing array property '${propName}' - adding/fixing items`);
+              prop.items = { type: 'object' };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Final safety check for OpenAI tools
+   */
+  private finalArraySafetyCheck(tool: any, toolId: string): void {
+    if (!tool || typeof tool !== 'object') {
+      return;
+    }
+
+    if (tool.function && tool.function.parameters) {
+      const parameters = tool.function.parameters;
+      if (parameters.properties) {
+        for (const propName in parameters.properties) {
+          const prop = parameters.properties[propName];
+          if (prop && typeof prop === 'object' && prop.type === 'array') {
+            if (!prop.items || typeof prop.items !== 'object' || !prop.items.type) {
+              console.log(`🔧 [FINAL-SAFETY-CHECK] Fixing array property '${propName}' - adding/fixing items`);
+              prop.items = { type: 'object' };
+            }
+          }
+        }
+      }
+    }
   }
 }
 

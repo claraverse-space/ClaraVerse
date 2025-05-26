@@ -275,6 +275,36 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({
               {children}
             </blockquote>
           ),
+
+          // Enhanced ordered list renderer
+          ol: ({ children, ...props }) => (
+            <ol 
+              className="list-decimal list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
+              {...props}
+            >
+              {children}
+            </ol>
+          ),
+
+          // Enhanced unordered list renderer
+          ul: ({ children, ...props }) => (
+            <ul 
+              className="list-disc list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
+              {...props}
+            >
+              {children}
+            </ul>
+          ),
+
+          // Enhanced list item renderer
+          li: ({ children, ...props }) => (
+            <li 
+              className="pl-2 leading-relaxed text-gray-800 dark:text-gray-200"
+              {...props}
+            >
+              {children}
+            </li>
+          ),
         }}
       >
         {content}

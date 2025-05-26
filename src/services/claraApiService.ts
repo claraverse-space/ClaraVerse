@@ -317,52 +317,110 @@ export class ClaraApiService {
             // Ensure MCP service is ready
             if (claraMCPService.isReady()) {
               console.log('✅ MCP service is ready');
-              // Get MCP tools from enabled servers
+              
+              // Get enabled servers from config
               const enabledServers = config.mcp.enabledServers || [];
-              console.log('📋 Enabled MCP servers:', enabledServers);
+              console.log('📋 Enabled MCP servers from config:', enabledServers);
               
-              const mcpTools = enabledServers.length > 0 
-                ? claraMCPService.getToolsFromServers(enabledServers)
-                : claraMCPService.getAvailableTools();
+              // Check server availability and provide feedback
+              const serverSummary = claraMCPService.getServerAvailabilitySummary(enabledServers);
+              console.log('🔍 Server availability summary:', serverSummary);
               
-              console.log(`🛠️ Found ${mcpTools.length} MCP tools:`, mcpTools.map(t => `${t.server}:${t.name}`));
+              // Provide UI feedback about server status
+              if (onContentChunk && (serverSummary.unavailable.length > 0 || enabledServers.length === 0)) {
+                let feedbackMessage = '\n🔧 **MCP Server Status:**\n';
+                
+                if (enabledServers.length === 0) {
+                  feedbackMessage += '⚠️ No MCP servers configured. Using all available servers.\n';
+                } else {
+                  if (serverSummary.available.length > 0) {
+                    feedbackMessage += `✅ Available: ${serverSummary.available.join(', ')} (${serverSummary.totalTools} tools)\n`;
+                  }
+                  
+                  if (serverSummary.unavailable.length > 0) {
+                    feedbackMessage += '❌ Unavailable servers:\n';
+                    for (const unavailable of serverSummary.unavailable) {
+                      feedbackMessage += `   • ${unavailable.server}: ${unavailable.reason}\n`;
+                    }
+                  }
+                }
+                
+                feedbackMessage += '\n';
+                onContentChunk(feedbackMessage);
+              }
               
-              // Convert MCP tools to OpenAI format and add to tools array
-              const mcpOpenAITools = claraMCPService.convertToolsToOpenAIFormat();
-              console.log(`🔄 Converted to ${mcpOpenAITools.length} OpenAI format tools`);
+              // Get tools only from enabled and running servers
+              const mcpTools = claraMCPService.getToolsFromEnabledServers(enabledServers.length > 0 ? enabledServers : undefined);
+              console.log(`🛠️ Found ${mcpTools.length} MCP tools from enabled/running servers:`, mcpTools.map(t => `${t.server}:${t.name}`));
               
-              // Convert to Tool format for compatibility
-              const mcpToolsFormatted: Tool[] = mcpOpenAITools.map(tool => ({
-                id: tool.function.name,
-                name: tool.function.name,
-                description: tool.function.description,
-                parameters: Object.entries(tool.function.parameters.properties || {}).map(([name, prop]: [string, any]) => ({
-                  name,
-                  type: prop.type || 'string',
-                  description: prop.description || '',
-                  required: tool.function.parameters.required?.includes(name) || false
-                })),
-                implementation: 'mcp', // Mark as MCP tool for special handling
-                isEnabled: true
-              }));
-              
-              const beforeCount = tools.length;
-              tools = [...tools, ...mcpToolsFormatted];
-              console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
-              
-              // Update agent context with available tools
-              agentContext.toolsAvailable = tools.map(t => t.name);
+              if (mcpTools.length === 0) {
+                console.warn('⚠️ No MCP tools available from enabled/running servers');
+                if (onContentChunk) {
+                  onContentChunk('⚠️ **No MCP tools available** - all configured servers are offline or disabled.\n\n');
+                }
+              } else {
+                // Convert only the filtered tools to OpenAI format
+                const mcpOpenAITools = claraMCPService.convertSpecificToolsToOpenAIFormat(mcpTools);
+                console.log(`🔄 Converted and validated ${mcpOpenAITools.length} OpenAI format tools`);
+                
+                // Convert to Tool format for compatibility
+                const mcpToolsFormatted: Tool[] = mcpOpenAITools.map(tool => ({
+                  id: tool.function.name,
+                  name: tool.function.name,
+                  description: tool.function.description,
+                  parameters: Object.entries(tool.function.parameters.properties || {}).map(([name, prop]: [string, any]) => ({
+                    name,
+                    type: prop.type || 'string',
+                    description: prop.description || '',
+                    required: tool.function.parameters.required?.includes(name) || false
+                  })),
+                  implementation: 'mcp', // Mark as MCP tool for special handling
+                  isEnabled: true
+                }));
+                
+                const beforeCount = tools.length;
+                tools = [...tools, ...mcpToolsFormatted];
+                console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
+                
+                // Provide UI feedback about loaded tools
+                if (onContentChunk && mcpToolsFormatted.length > 0) {
+                  const toolsByServer = mcpToolsFormatted.reduce((acc, tool) => {
+                    const serverName = tool.name.split('_')[1]; // Extract server name from mcp_server_tool format
+                    acc[serverName] = (acc[serverName] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>);
+                  
+                  let toolsMessage = `🛠️ **Loaded ${mcpToolsFormatted.length} MCP tools:**\n`;
+                  for (const [server, count] of Object.entries(toolsByServer)) {
+                    toolsMessage += `   • ${server}: ${count} tools\n`;
+                  }
+                  toolsMessage += '\n';
+                  onContentChunk(toolsMessage);
+                }
+                
+                // Update agent context with available tools
+                agentContext.toolsAvailable = tools.map(t => t.name);
+              }
             } else {
               console.warn('⚠️ MCP service not ready, skipping MCP tools');
+              if (onContentChunk) {
+                onContentChunk('⚠️ **MCP service not ready** - skipping MCP tools. Please check your MCP configuration.\n\n');
+              }
             }
           } catch (error) {
             console.error('❌ Error adding MCP tools:', error);
+            if (onContentChunk) {
+              onContentChunk(`❌ **Error loading MCP tools:** ${error instanceof Error ? error.message : 'Unknown error'}\n\n`);
+            }
           }
         } else {
           console.log('🚫 MCP tools disabled:', {
             enableMCP: config.features.enableMCP,
             enableTools: config.mcp?.enableTools
           });
+          if (onContentChunk && config.features.enableMCP === false) {
+            onContentChunk('ℹ️ **MCP tools disabled** in configuration.\n\n');
+          }
         }
       }
 
@@ -1145,6 +1203,9 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     let totalTokens = 0;
     let allToolResults: any[] = [];
     let conversationMessages = [...messages];
+    
+    // Track processed tool call IDs to prevent duplicates
+    const processedToolCallIds = new Set<string>();
 
     // Progress tracking
     if (onContentChunk && this.agentConfig.enableProgressTracking) {
@@ -1349,6 +1410,9 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
         // Handle tool calls with retry mechanism
         if (stepResponse.message?.tool_calls && stepResponse.message.tool_calls.length > 0) {
           console.log(`🔧 Processing ${stepResponse.message.tool_calls.length} tool calls...`);
+          console.log(`🔧 Tool call IDs:`, stepResponse.message.tool_calls.map((tc: any) => ({ id: tc.id, name: tc.function?.name })));
+          console.log(`🔧 Already processed IDs:`, Array.from(processedToolCallIds));
+          
           if (onContentChunk) {
             onContentChunk('\n\n🔧 **Executing tools...**\n\n');
           }
@@ -1367,24 +1431,33 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
             onContentChunk
           );
 
-          // Add tool results to conversation
-          for (const result of toolResults) {
-            // Use the processed tool message if available, otherwise fallback to basic format
-            if (result.toolMessage) {
-              // Use the comprehensive tool message with images and proper formatting
-              const toolMessage = {
-                ...result.toolMessage,
-                tool_call_id: stepResponse.message.tool_calls.find((tc: any) => 
-                  tc.function.name === result.toolName
-                )?.id
-              };
-              conversationMessages.push(toolMessage);
-            } else {
-              // Fallback to basic format for non-MCP tools
-              const toolCall = stepResponse.message.tool_calls.find((tc: any) => 
-                tc.function.name === result.toolName
-              );
-              if (toolCall) {
+          // Add tool results to conversation with deduplication
+          // IMPORTANT: OpenAI requires a tool message for EVERY tool call ID, even if the tool fails
+          for (const toolCall of stepResponse.message.tool_calls) {
+            // Check if we've already processed this tool call ID
+            if (processedToolCallIds.has(toolCall.id)) {
+              console.warn(`⚠️ Skipping duplicate tool call ID: ${toolCall.id} for tool: ${toolCall.function?.name}`);
+              continue;
+            }
+
+            // Mark this tool call ID as processed
+            processedToolCallIds.add(toolCall.id);
+
+            // Find the corresponding result for this tool call
+            const result = toolResults.find(r => r.toolName === toolCall.function?.name);
+            
+            if (result) {
+              // Use the processed tool message if available, otherwise fallback to basic format
+              if (result.toolMessage) {
+                // Use the comprehensive tool message with images and proper formatting
+                const toolMessage = {
+                  ...result.toolMessage,
+                  tool_call_id: toolCall.id
+                };
+                conversationMessages.push(toolMessage);
+                console.log(`✅ Added MCP tool message for ${result.toolName} with tool_call_id: ${toolCall.id}`);
+              } else {
+                // Fallback to basic format for non-MCP tools
                 // Ensure we always have valid content for OpenAI
                 let content: string;
                 if (result.success && result.result !== undefined && result.result !== null) {
@@ -1394,17 +1467,35 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
                   content = result.error || `Tool ${result.toolName} execution failed`;
                 }
                 
-                conversationMessages.push({
-                  role: 'tool',
+                const toolMessage = {
+                  role: 'tool' as const,
                   content: content,
                   name: result.toolName,
                   tool_call_id: toolCall.id
-                });
+                };
+                conversationMessages.push(toolMessage);
+                console.log(`✅ Added basic tool message for ${result.toolName} with tool_call_id: ${toolCall.id}`);
               }
+            } else {
+              // No result found for this tool call - create a failure message
+              // This ensures every tool call ID has a corresponding tool message
+              console.warn(`⚠️ No result found for tool call ${toolCall.id} (${toolCall.function?.name}), creating failure message`);
+              
+              const failureMessage = {
+                role: 'tool' as const,
+                content: `Tool execution failed: No result returned for ${toolCall.function?.name || 'unknown tool'}`,
+                name: toolCall.function?.name || 'unknown_tool',
+                tool_call_id: toolCall.id
+              };
+              conversationMessages.push(failureMessage);
+              console.log(`✅ Added failure tool message for ${toolCall.function?.name} with tool_call_id: ${toolCall.id}`);
             }
           }
 
           allToolResults.push(...toolResults);
+          
+          console.log(`🔧 After processing tools, conversation has ${conversationMessages.length} messages`);
+          console.log(`🔧 Processed tool call IDs now:`, Array.from(processedToolCallIds));
 
           if (onContentChunk) {
             onContentChunk('✅ **Tools executed successfully**\n\n');
@@ -1423,13 +1514,89 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
       } catch (error) {
         console.error(`❌ Agent step ${step + 1} failed:`, error);
         
+        // Check if this is a duplicate tool_call_id error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('Duplicate value for \'tool_call_id\'') || errorMessage.includes('duplicate')) {
+          console.error(`🚨 Detected duplicate tool_call_id error. Processed IDs:`, Array.from(processedToolCallIds));
+          
+          if (onContentChunk) {
+            onContentChunk(`\n❌ **Error**: Duplicate tool call detected. This indicates a system issue that has been logged for debugging.\n\n`);
+          }
+          
+          // Try to recover by clearing processed IDs and continuing
+          processedToolCallIds.clear();
+          console.log(`🔄 Cleared processed tool call IDs, attempting to continue...`);
+          
+          // If we have tool results, try to provide a meaningful response
+          if (allToolResults.length > 0) {
+            const successfulResults = allToolResults.filter(r => r.success);
+            const failedResults = allToolResults.filter(r => !r.success);
+            
+            let errorSummary = `I encountered a technical issue while processing the tools, but I was able to execute ${successfulResults.length} tools successfully`;
+            if (failedResults.length > 0) {
+              errorSummary += ` and ${failedResults.length} tools failed`;
+            }
+            errorSummary += '. Here\'s what I found:\n\n';
+            
+            // Add successful results
+            for (const result of successfulResults) {
+              if (result.result) {
+                errorSummary += `**${result.toolName}**: ${typeof result.result === 'string' ? result.result : JSON.stringify(result.result)}\n\n`;
+              }
+            }
+            
+            // Add failed results
+            for (const result of failedResults) {
+              errorSummary += `**${result.toolName}** (failed): ${result.error || 'Unknown error'}\n\n`;
+            }
+            
+            responseContent += errorSummary;
+            
+            if (onContentChunk) {
+              onContentChunk(errorSummary);
+            }
+          }
+          
+          break; // Exit the loop to prevent further errors
+        }
+        
         if (onContentChunk) {
-          onContentChunk(`\n❌ **Error in step ${step + 1}**: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`);
+          onContentChunk(`\n❌ **Error in step ${step + 1}**: ${errorMessage}\n\n`);
         }
 
         // Try to recover or break if too many failures
         if (step >= this.agentConfig.maxRetries) {
           console.log(`💥 Max retries reached, breaking out of agent loop`);
+          
+          // Provide a meaningful error message to the user
+          const errorSummary = `I encountered repeated errors during execution. Here's what I was able to accomplish:\n\n`;
+          let finalSummary = errorSummary;
+          
+          if (allToolResults.length > 0) {
+            const successfulResults = allToolResults.filter(r => r.success);
+            const failedResults = allToolResults.filter(r => !r.success);
+            
+            finalSummary += `✅ Successfully executed ${successfulResults.length} tools\n`;
+            finalSummary += `❌ Failed to execute ${failedResults.length} tools\n\n`;
+            
+            if (successfulResults.length > 0) {
+              finalSummary += `**Successful results:**\n`;
+              for (const result of successfulResults) {
+                if (result.result) {
+                  finalSummary += `- **${result.toolName}**: ${typeof result.result === 'string' ? result.result.substring(0, 200) : JSON.stringify(result.result).substring(0, 200)}...\n`;
+                }
+              }
+            }
+          } else {
+            finalSummary += `Unfortunately, I wasn't able to execute any tools successfully due to technical issues.`;
+          }
+          
+          responseContent += finalSummary;
+          
+          if (onContentChunk) {
+            onContentChunk(finalSummary);
+          }
+          
           break;
         }
       }
@@ -1438,11 +1605,11 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     console.log(`🎯 Autonomous agent execution completed. Response content length: ${responseContent.length}, Tool results: ${allToolResults.length}`);
     console.log(`🔚 Loop ended at step ${context.currentStep + 1}/${actualMaxSteps}`);
 
-    // Create final Clara message
+    // Create final Clara message with better error handling
     const claraMessage: ClaraMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'assistant',
-      content: responseContent || 'I completed the autonomous agent execution.',
+      content: responseContent || 'I completed the autonomous agent execution, but encountered some technical issues. Please try again or contact support if the problem persists.',
       timestamp: new Date(),
       metadata: {
         model: `${config.provider}:${modelId}`,
@@ -1450,7 +1617,13 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
         temperature: config.parameters.temperature,
         toolsUsed: allToolResults.map(tc => tc.toolName),
         agentSteps: context.currentStep + 1,
-        autonomousMode: true
+        autonomousMode: true,
+        processedToolCallIds: Array.from(processedToolCallIds),
+        toolResultsSummary: {
+          total: allToolResults.length,
+          successful: allToolResults.filter(r => r.success).length,
+          failed: allToolResults.filter(r => !r.success).length
+        }
       }
     };
 
@@ -1872,24 +2045,23 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
             tool_calls: response.message.tool_calls
           });
           
-          // Add tool results
-          for (const result of toolResults) {
-            // Use the processed tool message if available, otherwise fallback to basic format
-            if (result.toolMessage) {
-              // Use the comprehensive tool message with images and proper formatting
-              const toolMessage = {
-                ...result.toolMessage,
-                tool_call_id: response.message.tool_calls.find((tc: any) => 
-                  tc.function.name === result.toolName
-                )?.id
-              };
-              followUpMessages.push(toolMessage);
-            } else {
-              // Fallback to basic format for non-MCP tools
-              const toolCall = response.message.tool_calls.find((tc: any) => 
-                tc.function.name === result.toolName
-              );
-              if (toolCall) {
+          // Add tool results - IMPORTANT: OpenAI requires a tool message for EVERY tool call ID
+          for (const toolCall of response.message.tool_calls) {
+            // Find the corresponding result for this tool call
+            const result = toolResults.find(r => r.toolName === toolCall.function?.name);
+            
+            if (result) {
+              // Use the processed tool message if available, otherwise fallback to basic format
+              if (result.toolMessage) {
+                // Use the comprehensive tool message with images and proper formatting
+                const toolMessage = {
+                  ...result.toolMessage,
+                  tool_call_id: toolCall.id
+                };
+                followUpMessages.push(toolMessage);
+                console.log(`✅ Added MCP tool message for ${result.toolName} with tool_call_id: ${toolCall.id}`);
+              } else {
+                // Fallback to basic format for non-MCP tools
                 // Ensure we always have valid content for OpenAI
                 let content: string;
                 if (result.success && result.result !== undefined && result.result !== null) {
@@ -1905,7 +2077,20 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
                   name: result.toolName,
                   tool_call_id: toolCall.id
                 });
+                console.log(`✅ Added basic tool message for ${result.toolName} with tool_call_id: ${toolCall.id}`);
               }
+            } else {
+              // No result found for this tool call - create a failure message
+              // This ensures every tool call ID has a corresponding tool message
+              console.warn(`⚠️ No result found for tool call ${toolCall.id} (${toolCall.function?.name}), creating failure message`);
+              
+              followUpMessages.push({
+                role: 'tool',
+                content: `Tool execution failed: No result returned for ${toolCall.function?.name || 'unknown tool'}`,
+                name: toolCall.function?.name || 'unknown_tool',
+                tool_call_id: toolCall.id
+              });
+              console.log(`✅ Added failure tool message for ${toolCall.function?.name} with tool_call_id: ${toolCall.id}`);
             }
           }
 
@@ -2194,6 +2379,304 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
       images,
       toolMessage
     };
+  }
+
+  /**
+   * Validate and sanitize OpenAI tools to prevent schema errors
+   */
+  private validateAndSanitizeOpenAITools(tools: any[]): any[] {
+    const validatedTools: any[] = [];
+
+    for (const tool of tools) {
+      try {
+        console.log(`🔍 [TOOL-VALIDATION] Validating tool: ${tool.function?.name}`);
+        
+        // Basic structure validation
+        if (!tool.type || tool.type !== 'function') {
+          console.warn(`⚠️ [TOOL-VALIDATION] Skipping tool with invalid type: ${tool.type}`);
+          continue;
+        }
+
+        if (!tool.function) {
+          console.warn(`⚠️ [TOOL-VALIDATION] Skipping tool without function property`);
+          continue;
+        }
+
+        const func = tool.function;
+
+        // Validate function name
+        if (!func.name || typeof func.name !== 'string' || func.name.trim() === '') {
+          console.warn(`⚠️ [TOOL-VALIDATION] Skipping tool with invalid name: ${func.name}`);
+          continue;
+        }
+
+        // Validate description
+        if (!func.description || typeof func.description !== 'string') {
+          console.warn(`⚠️ [TOOL-VALIDATION] Tool ${func.name} missing description, adding default`);
+          func.description = `Tool: ${func.name}`;
+        }
+
+        // Validate and fix parameters
+        if (!func.parameters) {
+          console.warn(`⚠️ [TOOL-VALIDATION] Tool ${func.name} missing parameters, adding default`);
+          func.parameters = {
+            type: 'object',
+            properties: {},
+            required: []
+          };
+        } else {
+          // Sanitize parameters schema
+          func.parameters = this.sanitizeParametersSchema(func.parameters, func.name);
+        }
+
+        // Validate the final tool structure
+        const validation = this.validateToolStructure(tool);
+        if (!validation.isValid) {
+          console.error(`❌ [TOOL-VALIDATION] Tool ${func.name} failed final validation:`, validation.errors);
+          
+          // Create a minimal fallback tool
+          const fallbackTool = {
+            type: 'function',
+            function: {
+              name: func.name,
+              description: `${func.description} (Schema validation failed)`,
+              parameters: {
+                type: 'object',
+                properties: {},
+                required: []
+              }
+            }
+          };
+          
+          console.log(`🔧 [TOOL-VALIDATION] Created fallback tool for ${func.name}`);
+          validatedTools.push(fallbackTool);
+        } else {
+          console.log(`✅ [TOOL-VALIDATION] Tool ${func.name} passed validation`);
+          validatedTools.push(tool);
+        }
+
+      } catch (error) {
+        console.error(`❌ [TOOL-VALIDATION] Error validating tool:`, error, tool);
+        // Skip this tool entirely if we can't even process it
+      }
+    }
+
+    console.log(`🔧 [TOOL-VALIDATION] Validated ${validatedTools.length}/${tools.length} tools`);
+    return validatedTools;
+  }
+
+  /**
+   * Sanitize parameters schema to ensure OpenAI compatibility
+   */
+  private sanitizeParametersSchema(schema: any, toolName: string): any {
+    if (!schema || typeof schema !== 'object') {
+      console.warn(`⚠️ [SCHEMA-SANITIZE] Tool ${toolName}: Invalid schema, using default`);
+      return {
+        type: 'object',
+        properties: {},
+        required: []
+      };
+    }
+
+    // Deep clone to avoid modifying original
+    const sanitized = JSON.parse(JSON.stringify(schema));
+
+    // Ensure required top-level properties
+    if (!sanitized.type) {
+      sanitized.type = 'object';
+    }
+    if (sanitized.type !== 'object') {
+      console.warn(`⚠️ [SCHEMA-SANITIZE] Tool ${toolName}: Top-level type must be 'object', fixing`);
+      sanitized.type = 'object';
+    }
+    if (!sanitized.properties) {
+      sanitized.properties = {};
+    }
+    if (!sanitized.required) {
+      sanitized.required = [];
+    }
+
+    // Sanitize properties
+    if (sanitized.properties && typeof sanitized.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(sanitized.properties)) {
+        if (propSchema && typeof propSchema === 'object') {
+          const prop = propSchema as any;
+          
+          // Fix array properties missing 'items'
+          if (prop.type === 'array' && !prop.items) {
+            console.log(`🔧 [SCHEMA-SANITIZE] Tool ${toolName}: Adding missing 'items' for array property '${propName}'`);
+            
+            // Smart type detection for items
+            let itemsType = 'string'; // Default
+            if (propName.toLowerCase().includes('number') || propName.toLowerCase().includes('id')) {
+              itemsType = 'number';
+            } else if (propName.toLowerCase().includes('boolean') || propName.toLowerCase().includes('flag')) {
+              itemsType = 'boolean';
+            }
+            
+            prop.items = { type: itemsType };
+          }
+
+          // Ensure all properties have a type
+          if (!prop.type) {
+            console.log(`🔧 [SCHEMA-SANITIZE] Tool ${toolName}: Adding missing type for property '${propName}'`);
+            prop.type = 'string'; // Default to string
+          }
+
+          // Validate array items
+          if (prop.type === 'array' && prop.items) {
+            if (typeof prop.items !== 'object') {
+              console.log(`🔧 [SCHEMA-SANITIZE] Tool ${toolName}: Fixing invalid items for array property '${propName}'`);
+              prop.items = { type: 'string' };
+            } else if (!prop.items.type) {
+              console.log(`🔧 [SCHEMA-SANITIZE] Tool ${toolName}: Adding missing type for items in array property '${propName}'`);
+              prop.items.type = 'string';
+            }
+          }
+
+          // Recursively sanitize nested objects
+          if (prop.type === 'object' && prop.properties) {
+            prop.properties = this.sanitizeParametersSchema(prop, `${toolName}.${propName}`).properties;
+          }
+        }
+      }
+    }
+
+    // Validate required array
+    if (sanitized.required && Array.isArray(sanitized.required)) {
+      sanitized.required = sanitized.required.filter((reqProp: any) => {
+        if (typeof reqProp !== 'string') {
+          console.warn(`⚠️ [SCHEMA-SANITIZE] Tool ${toolName}: Removing non-string required property: ${reqProp}`);
+          return false;
+        }
+        if (!sanitized.properties || !sanitized.properties[reqProp]) {
+          console.warn(`⚠️ [SCHEMA-SANITIZE] Tool ${toolName}: Removing non-existent required property: ${reqProp}`);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Validate tool structure for OpenAI compatibility
+   */
+  private validateToolStructure(tool: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    try {
+      // Check top-level structure
+      if (!tool.type || tool.type !== 'function') {
+        errors.push('Tool must have type "function"');
+      }
+
+      if (!tool.function) {
+        errors.push('Tool must have a function property');
+        return { isValid: false, errors };
+      }
+
+      const func = tool.function;
+
+      // Check function properties
+      if (!func.name || typeof func.name !== 'string' || func.name.trim() === '') {
+        errors.push('Function must have a valid name');
+      }
+
+      if (!func.description || typeof func.description !== 'string') {
+        errors.push('Function must have a description');
+      }
+
+      if (!func.parameters) {
+        errors.push('Function must have parameters');
+        return { isValid: false, errors };
+      }
+
+      // Validate parameters schema
+      const paramErrors = this.validateParametersStructure(func.parameters);
+      errors.push(...paramErrors);
+
+    } catch (error) {
+      errors.push(`Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Validate parameters structure recursively
+   */
+  private validateParametersStructure(schema: any, path: string = 'parameters'): string[] {
+    const errors: string[] = [];
+
+    if (!schema || typeof schema !== 'object') {
+      errors.push(`${path}: Schema must be an object`);
+      return errors;
+    }
+
+    // Check required top-level properties
+    if (!schema.type) {
+      errors.push(`${path}: Missing 'type' property`);
+    } else if (schema.type !== 'object') {
+      errors.push(`${path}: Top-level type must be 'object'`);
+    }
+
+    if (schema.properties !== undefined && typeof schema.properties !== 'object') {
+      errors.push(`${path}: 'properties' must be an object`);
+    }
+
+    if (schema.required !== undefined && !Array.isArray(schema.required)) {
+      errors.push(`${path}: 'required' must be an array`);
+    }
+
+    // Validate each property
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        if (propSchema && typeof propSchema === 'object') {
+          const prop = propSchema as any;
+          const propPath = `${path}.properties.${propName}`;
+
+          // Check property type
+          if (!prop.type) {
+            errors.push(`${propPath}: Missing 'type' property`);
+          } else {
+            // Validate array properties
+            if (prop.type === 'array') {
+              if (!prop.items) {
+                errors.push(`${propPath}: Array type must have 'items' property`);
+              } else if (typeof prop.items !== 'object') {
+                errors.push(`${propPath}: 'items' must be an object`);
+              } else if (!prop.items.type) {
+                errors.push(`${propPath}.items: Missing 'type' property`);
+              }
+            }
+
+            // Validate object properties recursively
+            if (prop.type === 'object' && prop.properties) {
+              const nestedErrors = this.validateParametersStructure(prop, propPath);
+              errors.push(...nestedErrors);
+            }
+          }
+        }
+      }
+    }
+
+    // Validate required array references existing properties
+    if (schema.required && Array.isArray(schema.required) && schema.properties) {
+      for (const reqProp of schema.required) {
+        if (typeof reqProp !== 'string') {
+          errors.push(`${path}: Required property names must be strings`);
+        } else if (!schema.properties[reqProp]) {
+          errors.push(`${path}: Required property '${reqProp}' does not exist in properties`);
+        }
+      }
+    }
+
+    return errors;
   }
 }
 
