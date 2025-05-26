@@ -142,32 +142,72 @@ export class ClaraMCPService {
   }
 
   /**
-   * Discover capabilities from a specific MCP server
+   * Discover capabilities from a specific MCP server (dynamic tool discovery)
    */
   private async discoverServerCapabilities(server: ClaraMCPServer): Promise<void> {
-    // For now, we'll add some common tools based on server type
-    // In a full implementation, this would communicate with the actual MCP server
-    // to discover its capabilities via the MCP protocol
-    
-    console.log(`🔍 Checking server type for ${server.name}...`);
-    
-    if (server.name === 'github') {
-      console.log('📦 Adding GitHub tools...');
-      this.addGitHubTools(server.name);
-    } else if (server.name === 'filesystem') {
-      console.log('📁 Adding filesystem tools...');
-      this.addFileSystemTools(server.name);
-    } else if (server.name === 'brave-search') {
-      console.log('🔍 Adding search tools...');
-      this.addSearchTools(server.name);
-    } else if (server.name === 'puppeteer') {
-      console.log('🌐 Adding web scraping tools...');
-      this.addWebScrapingTools(server.name);
-    } else {
-      console.log(`❓ Unknown server type: ${server.name}, no tools added`);
+    // Dynamic MCP tool discovery using the MCP protocol
+    try {
+      if (!window.mcpService?.executeToolCall) {
+        throw new Error('MCP service not available in window object');
+      }
+      // Compose a tool call for 'tools/list' (MCP standard)
+      const callId = `list_tools_${server.name}_${Date.now()}`;
+      const toolCall = {
+        name: 'tools/list',
+        arguments: {},
+        server: server.name,
+        callId
+      };
+      // Send the request to the MCP server
+      const response = await window.mcpService.executeToolCall(toolCall);
+      if (response && response.success && Array.isArray(response.content)) {
+        // The result should be an array of tool definitions
+        const tools = response.content.find((c: any) => c.type === 'json' || c.type === 'object' || c.type === 'text');
+        let toolList = [];
+        if (tools && tools.data) {
+          // If type: 'json', parse data
+          try {
+            toolList = typeof tools.data === 'string' ? JSON.parse(tools.data) : tools.data;
+          } catch (e) {
+            toolList = [];
+          }
+        } else if (tools && tools.text) {
+          // If type: 'text', try to parse as JSON
+          try {
+            toolList = JSON.parse(tools.text);
+          } catch (e) {
+            toolList = [];
+          }
+        }
+        if (Array.isArray(toolList)) {
+          for (const tool of toolList) {
+            if (tool && tool.name && tool.inputSchema) {
+              this.tools.set(`${server.name}:${tool.name}`, {
+                ...tool,
+                server: server.name
+              });
+            }
+          }
+          console.log(`✅ Dynamically discovered ${toolList.length} tools from MCP server '${server.name}'`);
+          return;
+        }
+      }
+      throw new Error('No valid tool list returned from server');
+    } catch (error) {
+      console.warn(`⚠️ Dynamic tool discovery failed for server ${server.name}:`, error);
+      // Optionally, fallback to hardcoded tools for known servers (legacy/test only)
+      if (server.name === 'github') {
+        this.addGitHubTools(server.name);
+      } else if (server.name === 'filesystem') {
+        this.addFileSystemTools(server.name);
+      } else if (server.name === 'brave-search') {
+        this.addSearchTools(server.name);
+      } else if (server.name === 'puppeteer') {
+        this.addWebScrapingTools(server.name);
+      } else {
+        console.log(`❓ Unknown server type: ${server.name}, no tools added`);
+      }
     }
-    
-    // Add more server-specific tool discovery logic here
   }
 
   /**
@@ -344,13 +384,27 @@ export class ClaraMCPService {
   private addSearchTools(serverName: string): void {
     const searchTools: ClaraMCPTool[] = [
       {
-        name: 'web_search',
-        description: 'Search the web using Brave Search',
+        name: 'brave_web_search',
+        description: 'Execute web searches with pagination and filtering',
         inputSchema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query' },
-            count: { type: 'number', description: 'Number of results to return' }
+            query: { type: 'string', description: 'Search terms' },
+            count: { type: 'number', description: 'Results per page (max 20)' },
+            offset: { type: 'number', description: 'Pagination offset (max 9)' }
+          },
+          required: ['query']
+        },
+        server: serverName
+      },
+      {
+        name: 'brave_local_search',
+        description: 'Search for local businesses and services',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Local search terms' },
+            count: { type: 'number', description: 'Number of results (max 20)' }
           },
           required: ['query']
         },
@@ -439,8 +493,12 @@ export class ClaraMCPService {
    */
   public async executeToolCall(toolCall: ClaraMCPToolCall): Promise<ClaraMCPToolResult> {
     try {
+      console.log(`🔧 [MCP] Starting tool execution:`, toolCall);
+      
       const tool = this.tools.get(`${toolCall.server}:${toolCall.name}`);
       if (!tool) {
+        console.error(`❌ [MCP] Tool not found: ${toolCall.server}:${toolCall.name}`);
+        console.log(`🔍 [MCP] Available tools:`, Array.from(this.tools.keys()));
         return {
           callId: toolCall.callId,
           success: false,
@@ -448,8 +506,13 @@ export class ClaraMCPService {
         };
       }
 
+      console.log(`✅ [MCP] Tool found:`, tool);
+
       const server = this.servers.get(toolCall.server);
       if (!server || !server.isRunning) {
+        console.error(`❌ [MCP] Server not running: ${toolCall.server}`);
+        console.log(`🔍 [MCP] Server status:`, server);
+        console.log(`🔍 [MCP] Available servers:`, Array.from(this.servers.keys()));
         return {
           callId: toolCall.callId,
           success: false,
@@ -457,18 +520,28 @@ export class ClaraMCPService {
         };
       }
 
+      console.log(`✅ [MCP] Server is running:`, server);
+
       // Use the backend MCP service to execute the tool call
+      console.log(`🔍 [MCP] Checking window.mcpService:`, !!window.mcpService);
+      console.log(`🔍 [MCP] Checking executeToolCall method:`, !!window.mcpService?.executeToolCall);
+      
       if (window.mcpService?.executeToolCall) {
         try {
+          console.log(`📡 [MCP] Calling backend MCP service with:`, toolCall);
           const result = await window.mcpService.executeToolCall(toolCall);
+          console.log(`📥 [MCP] Backend result:`, result);
           return result;
         } catch (error) {
-          console.error('Backend MCP execution failed, falling back to simulation:', error);
+          console.error('❌ [MCP] Backend MCP execution failed, falling back to simulation:', error);
           // Fall back to simulation if backend fails
         }
+      } else {
+        console.warn('⚠️ [MCP] Backend MCP service not available, using simulation');
       }
 
       // Fallback to simulation if backend is not available
+      console.log(`🎭 [MCP] Using simulation for tool:`, toolCall);
       const result = await this.simulateToolExecution(toolCall, tool);
       
       return {
@@ -488,7 +561,7 @@ export class ClaraMCPService {
         }
       };
     } catch (error) {
-      console.error(`Error executing MCP tool call ${toolCall.callId}:`, error);
+      console.error(`❌ [MCP] Error executing MCP tool call ${toolCall.callId}:`, error);
       return {
         callId: toolCall.callId,
         success: false,
@@ -529,8 +602,11 @@ export class ClaraMCPService {
       case 'create_pull_request':
         return `Created pull request "${args.title}" in ${args.owner}/${args.repo}: [Mock PR details]`;
       
-      case 'web_search':
-        return `Search results for "${args.query}": [Mock search results]`;
+      case 'brave_web_search':
+        return `Web search results for "${args.query}": [Mock search results for ${args.query}]`;
+      
+      case 'brave_local_search':
+        return `Local search results for "${args.query}": [Mock local business results for ${args.query}]`;
       
       case 'read_file':
         return `Contents of ${args.path}: [Mock file contents]`;
@@ -565,23 +641,73 @@ export class ClaraMCPService {
   public parseOpenAIToolCalls(toolCalls: any[]): ClaraMCPToolCall[] {
     const mcpToolCalls: ClaraMCPToolCall[] = [];
     
+    console.log(`🔍 [MCP-PARSE] Starting to parse ${toolCalls.length} tool calls`);
+    
     for (const toolCall of toolCalls) {
-      if (toolCall.function?.name?.startsWith('mcp_')) {
-        const nameParts = toolCall.function.name.replace('mcp_', '').split('_');
-        if (nameParts.length >= 2) {
-          const server = nameParts[0];
-          const toolName = nameParts.slice(1).join('_');
+      try {
+        console.log(`🔍 [MCP-PARSE] Processing tool call:`, JSON.stringify(toolCall, null, 2));
+        
+        if (toolCall.function?.name?.startsWith('mcp_')) {
+          const nameParts = toolCall.function.name.replace('mcp_', '').split('_');
+          console.log(`🔍 [MCP-PARSE] Name parts:`, nameParts);
           
-          mcpToolCalls.push({
-            name: toolName,
-            arguments: JSON.parse(toolCall.function.arguments || '{}'),
-            server: server,
-            callId: toolCall.id || `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          });
+          if (nameParts.length >= 2) {
+            const server = nameParts[0];
+            const toolName = nameParts.slice(1).join('_');
+            console.log(`🔍 [MCP-PARSE] Server: ${server}, Tool: ${toolName}`);
+            
+            // Parse arguments safely with better error handling
+            let parsedArguments = {};
+            try {
+              const argsString = toolCall.function.arguments || '{}';
+              console.log(`🔍 [MCP-PARSE] Raw arguments:`, argsString);
+              console.log(`🔍 [MCP-PARSE] Arguments type:`, typeof argsString);
+              
+              if (typeof argsString === 'string') {
+                const trimmedArgs = argsString.trim();
+                console.log(`🔍 [MCP-PARSE] Trimmed arguments:`, trimmedArgs);
+                
+                if (trimmedArgs === '' || trimmedArgs === 'null' || trimmedArgs === 'undefined') {
+                  parsedArguments = {};
+                  console.log(`🔍 [MCP-PARSE] Empty/null arguments, using empty object`);
+                } else {
+                  parsedArguments = JSON.parse(trimmedArgs);
+                  console.log(`🔍 [MCP-PARSE] Successfully parsed arguments:`, parsedArguments);
+                }
+              } else if (argsString && typeof argsString === 'object') {
+                parsedArguments = argsString;
+                console.log(`🔍 [MCP-PARSE] Using object arguments directly:`, parsedArguments);
+              } else {
+                parsedArguments = {};
+                console.log(`🔍 [MCP-PARSE] Invalid arguments type, using empty object`);
+              }
+            } catch (parseError) {
+              console.warn(`⚠️ Failed to parse tool arguments for ${toolCall.function.name}:`, parseError);
+              console.warn(`⚠️ Raw arguments:`, toolCall.function.arguments);
+              parsedArguments = {};
+            }
+            
+            const mcpToolCall = {
+              name: toolName,
+              arguments: parsedArguments,
+              server: server,
+              callId: toolCall.id || `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            };
+            
+            console.log(`🔍 [MCP-PARSE] Created MCP tool call:`, mcpToolCall);
+            mcpToolCalls.push(mcpToolCall);
+          } else {
+            console.warn(`⚠️ Invalid MCP tool name format: ${toolCall.function.name}`);
+          }
+        } else {
+          console.log(`🔍 [MCP-PARSE] Skipping non-MCP tool call: ${toolCall.function?.name}`);
         }
+      } catch (error) {
+        console.warn(`⚠️ Error parsing tool call:`, error, toolCall);
       }
     }
     
+    console.log(`🔍 [MCP-PARSE] Finished parsing, created ${mcpToolCalls.length} MCP tool calls`);
     return mcpToolCalls;
   }
 

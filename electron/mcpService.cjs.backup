@@ -493,9 +493,6 @@ class MCPService {
       // Send the request to the MCP server via stdin
       const requestString = JSON.stringify(mcpRequest) + '\n';
       
-      log.info(`[${serverName}] Sending MCP request:`, mcpRequest);
-      log.info(`[${serverName}] Request string:`, requestString);
-      
       return new Promise((resolve) => {
         let responseData = '';
         let timeoutId;
@@ -504,46 +501,24 @@ class MCPService {
         const onData = (data) => {
           responseData += data.toString();
           
-          // Log raw response data for debugging
-          log.info(`[${serverName}] Raw response data:`, data.toString());
-          log.info(`[${serverName}] Accumulated responseData:`, responseData);
-          
           // Try to parse JSON response
           try {
             const lines = responseData.split('\n').filter(line => line.trim());
-            log.info(`[${serverName}] Split into ${lines.length} lines:`, lines);
-            
             for (const line of lines) {
-              // Only try to parse lines that look like JSON (start with { or [)
-              const trimmedLine = line.trim();
-              log.info(`[${serverName}] Processing line:`, trimmedLine);
-              
-              if (!trimmedLine.startsWith('{') && !trimmedLine.startsWith('[')) {
-                log.info(`[${serverName}] Skipping non-JSON line:`, trimmedLine);
-                continue;
-              }
-              
-              log.info(`[${serverName}] Attempting to parse JSON line:`, trimmedLine);
-              
               try {
-                const response = JSON.parse(trimmedLine);
-                log.info(`[${serverName}] Successfully parsed JSON:`, response);
-                
+                const response = JSON.parse(line);
                 if (response.id === callId) {
-                  log.info(`[${serverName}] Found matching response for callId:`, callId);
                   // Clean up
                   clearTimeout(timeoutId);
                   serverInfo.process.stdout.off('data', onData);
                   
                   if (response.error) {
-                    log.error(`[${serverName}] MCP server returned error:`, response.error);
                     resolve({
                       callId,
                       success: false,
                       error: response.error.message || 'MCP tool execution failed'
                     });
                   } else {
-                    log.info(`[${serverName}] MCP server returned success:`, response.result);
                     resolve({
                       callId,
                       success: true,
@@ -556,25 +531,21 @@ class MCPService {
                     });
                   }
                   return;
-                } else {
-                  log.info(`[${serverName}] Response ID ${response.id} doesn't match expected ${callId}`);
                 }
               } catch (lineParseError) {
                 // Skip malformed lines and continue
-                log.error(`[${serverName}] JSON parse error for line:`, trimmedLine, 'Error:', lineParseError.message);
+                log.debug(`Skipping malformed JSON line from ${serverName}:`, line);
                 continue;
               }
             }
           } catch (parseError) {
             // Log parsing errors but continue waiting for more data
-            log.error(`[${serverName}] Overall JSON parsing error:`, parseError.message, 'ResponseData:', responseData);
+            log.debug(`JSON parsing error for ${serverName}:`, parseError.message);
           }
         };
 
         // Set up timeout
         timeoutId = setTimeout(() => {
-          log.error(`[${serverName}] MCP tool execution timeout after 30 seconds`);
-          log.error(`[${serverName}] Final responseData:`, responseData);
           serverInfo.process.stdout.off('data', onData);
           resolve({
             callId,
@@ -588,11 +559,8 @@ class MCPService {
 
         // Send the request
         try {
-          log.info(`[${serverName}] Writing request to stdin...`);
           serverInfo.process.stdin.write(requestString);
-          log.info(`[${serverName}] Request sent successfully`);
         } catch (writeError) {
-          log.error(`[${serverName}] Failed to write request:`, writeError);
           clearTimeout(timeoutId);
           serverInfo.process.stdout.off('data', onData);
           resolve({
@@ -644,15 +612,8 @@ class MCPService {
           try {
             const lines = responseData.split('\n').filter(line => line.trim());
             for (const line of lines) {
-              // Only try to parse lines that look like JSON (start with { or [)
-              const trimmedLine = line.trim();
-              if (!trimmedLine.startsWith('{') && !trimmedLine.startsWith('[')) {
-                log.debug(`Skipping non-JSON line from ${serverName}:`, trimmedLine);
-                continue;
-              }
-              
               try {
-                const response = JSON.parse(trimmedLine);
+                const response = JSON.parse(line);
                 if (response.id === callId) {
                   clearTimeout(timeoutId);
                   serverInfo.process.stdout.off('data', onData);
@@ -684,7 +645,7 @@ class MCPService {
                   return;
                 }
               } catch (lineParseError) {
-                log.debug(`Skipping malformed JSON line from ${serverName}:`, trimmedLine);
+                log.debug(`Skipping malformed JSON line from ${serverName}:`, line);
                 continue;
               }
             }

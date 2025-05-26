@@ -255,7 +255,9 @@ export class ClaraApiService {
 
     try {
       // Update agent config from session config
+      console.log(`🔧 Original agent config:`, this.agentConfig);
       if (config.autonomousAgent) {
+        console.log(`🔄 Updating agent config from session config:`, config.autonomousAgent);
         this.agentConfig = {
           maxRetries: config.autonomousAgent.maxRetries,
           retryDelay: config.autonomousAgent.retryDelay,
@@ -265,6 +267,9 @@ export class ClaraApiService {
           maxToolCalls: config.autonomousAgent.maxToolCalls,
           confidenceThreshold: config.autonomousAgent.confidenceThreshold
         };
+        console.log(`✅ Updated agent config:`, this.agentConfig);
+      } else {
+        console.log(`⚠️ No autonomousAgent config provided, using defaults`);
       }
 
       // Initialize agent execution context
@@ -276,6 +281,9 @@ export class ClaraApiService {
         maxSteps: this.agentConfig.maxToolCalls,
         progressLog: []
       };
+
+      console.log(`🎯 Agent context initialized with maxSteps: ${agentContext.maxSteps}`);
+      console.log(`🔧 Agent config maxToolCalls: ${this.agentConfig.maxToolCalls}`);
 
       // Process file attachments if any
       const processedAttachments = await this.processFileAttachments(attachments || []);
@@ -358,76 +366,156 @@ export class ClaraApiService {
         }
       }
 
-      // Enhanced system prompt with autonomous agent capabilities
-      const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(systemPrompt, tools, agentContext);
-
-      // Prepare initial messages array
-      const messages: ChatMessage[] = [];
+      // Check if autonomous agent mode is enabled
+      const isAutonomousMode = config.autonomousAgent?.enabled !== false;
       
-      // Add enhanced system prompt
-      messages.push({
-        role: 'system',
-        content: enhancedSystemPrompt
-      });
+      if (isAutonomousMode) {
+        console.log(`🤖 Autonomous agent mode enabled - using enhanced workflow`);
+        
+        // Enhanced system prompt with autonomous agent capabilities
+        const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(systemPrompt, tools, agentContext);
 
-      // Add conversation history if provided
-      if (conversationHistory && conversationHistory.length > 0) {
-        // Convert Clara messages to ChatMessage format, excluding the last message since it's the current one
-        const historyMessages = conversationHistory.slice(0, -1);
-        for (const historyMessage of historyMessages) {
-          const chatMessage: ChatMessage = {
-            role: historyMessage.role,
-            content: historyMessage.content
-          };
+        // Prepare initial messages array
+        const messages: ChatMessage[] = [];
+        
+        // Add enhanced system prompt
+        messages.push({
+          role: 'system',
+          content: enhancedSystemPrompt
+        });
 
-          // Add images if the message has image attachments
-          if (historyMessage.attachments) {
-            const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
-            if (imageAttachments.length > 0) {
-              chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+        // Add conversation history if provided
+        if (conversationHistory && conversationHistory.length > 0) {
+          // Convert Clara messages to ChatMessage format, excluding the last message since it's the current one
+          const historyMessages = conversationHistory.slice(0, -1);
+          for (const historyMessage of historyMessages) {
+            const chatMessage: ChatMessage = {
+              role: historyMessage.role,
+              content: historyMessage.content
+            };
+
+            // Add images if the message has image attachments
+            if (historyMessage.attachments) {
+              const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
+              if (imageAttachments.length > 0) {
+                chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+              }
             }
+
+            messages.push(chatMessage);
           }
-
-          messages.push(chatMessage);
         }
-      }
 
-      // Add the current user message
-      const currentMessage = conversationHistory && conversationHistory.length > 0 
-        ? conversationHistory[conversationHistory.length - 1] 
-        : null;
+        // Add the current user message
+        const currentMessage = conversationHistory && conversationHistory.length > 0 
+          ? conversationHistory[conversationHistory.length - 1] 
+          : null;
 
-      const userMessage: ChatMessage = {
-        role: 'user',
-        content: currentMessage?.content || message
-      };
+        const userMessage: ChatMessage = {
+          role: 'user',
+          content: currentMessage?.content || message
+        };
 
-      // Add images if any attachments are images
-      const imageAttachments = processedAttachments.filter(att => att.type === 'image');
-      if (imageAttachments.length > 0) {
-        userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
-      } else if (currentMessage?.attachments) {
-        const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
-        if (historyImageAttachments.length > 0) {
-          userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+        // Add images if any attachments are images
+        const imageAttachments = processedAttachments.filter(att => att.type === 'image');
+        if (imageAttachments.length > 0) {
+          userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+        } else if (currentMessage?.attachments) {
+          const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
+          if (historyImageAttachments.length > 0) {
+            userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+          }
         }
+
+        messages.push(userMessage);
+
+        console.log(`🚀 Starting autonomous agent execution with ${messages.length} messages and ${tools.length} tools`);
+
+        // Execute autonomous agent workflow
+        const result = await this.executeAutonomousAgent(
+          modelId, 
+          messages, 
+          tools, 
+          config, 
+          agentContext,
+          onContentChunk
+        );
+
+        return result;
+        
+      } else {
+        console.log(`💬 Standard chat mode - using direct execution`);
+        
+        // Standard system prompt without autonomous agent features
+        const standardSystemPrompt = systemPrompt || 'You are Clara, a helpful AI assistant.';
+
+        // Prepare messages array for standard chat
+        const messages: ChatMessage[] = [];
+        
+        // Add standard system prompt
+              messages.push({
+          role: 'system',
+          content: standardSystemPrompt
+        });
+
+        // Add conversation history if provided
+        if (conversationHistory && conversationHistory.length > 0) {
+          // Convert Clara messages to ChatMessage format, excluding the last message since it's the current one
+          const historyMessages = conversationHistory.slice(0, -1);
+          for (const historyMessage of historyMessages) {
+            const chatMessage: ChatMessage = {
+              role: historyMessage.role,
+              content: historyMessage.content
+            };
+
+            // Add images if the message has image attachments
+            if (historyMessage.attachments) {
+              const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
+              if (imageAttachments.length > 0) {
+                chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+              }
+            }
+
+            messages.push(chatMessage);
+          }
+        }
+
+        // Add the current user message
+        const currentMessage = conversationHistory && conversationHistory.length > 0 
+          ? conversationHistory[conversationHistory.length - 1] 
+          : null;
+
+        const userMessage: ChatMessage = {
+          role: 'user',
+          content: currentMessage?.content || message
+        };
+
+        // Add images if any attachments are images
+        const imageAttachments = processedAttachments.filter(att => att.type === 'image');
+        if (imageAttachments.length > 0) {
+          userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+        } else if (currentMessage?.attachments) {
+          const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
+          if (historyImageAttachments.length > 0) {
+            userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+          }
+        }
+
+        messages.push(userMessage);
+
+        console.log(`💬 Starting standard chat execution with ${messages.length} messages and ${tools.length} tools`);
+
+        // Execute standard chat workflow
+        const result = await this.executeStandardChat(
+          modelId, 
+          messages, 
+          tools, 
+          config,
+          onContentChunk
+        );
+
+        return result;
       }
-
-      messages.push(userMessage);
-
-      console.log(`🚀 Starting autonomous agent execution with ${messages.length} messages and ${tools.length} tools`);
-
-      // Execute autonomous agent workflow
-      const result = await this.executeAutonomousAgent(
-        modelId, 
-        messages, 
-        tools, 
-        config, 
-        agentContext,
-        onContentChunk
-      );
-
-      return result;
 
     } catch (error) {
       console.error('Autonomous agent execution failed:', error);
@@ -550,44 +638,112 @@ export class ClaraApiService {
     for (const toolCall of toolCalls) {
       try {
         const functionName = toolCall.function?.name;
-        const args = typeof toolCall.function?.arguments === 'string' 
-          ? JSON.parse(toolCall.function.arguments)
-          : toolCall.function?.arguments || {};
+        
+        // Add detailed debug logging for tool call structure
+        console.log(`🔍 [DEBUG] Raw tool call object:`, JSON.stringify(toolCall, null, 2));
+        console.log(`🔍 [DEBUG] Function name:`, functionName);
+        console.log(`🔍 [DEBUG] Raw arguments:`, toolCall.function?.arguments);
+        console.log(`🔍 [DEBUG] Arguments type:`, typeof toolCall.function?.arguments);
+        
+        // Safely parse arguments with better error handling
+        let args = {};
+        try {
+          if (typeof toolCall.function?.arguments === 'string') {
+            const argsString = toolCall.function.arguments.trim();
+            console.log(`🔍 [DEBUG] Arguments string (trimmed):`, argsString);
+            if (argsString === '' || argsString === 'null' || argsString === 'undefined') {
+              args = {};
+              console.log(`🔍 [DEBUG] Empty arguments, using empty object`);
+            } else {
+              args = JSON.parse(argsString);
+              console.log(`🔍 [DEBUG] Parsed arguments:`, args);
+            }
+          } else if (toolCall.function?.arguments && typeof toolCall.function.arguments === 'object') {
+            args = toolCall.function.arguments;
+            console.log(`🔍 [DEBUG] Using object arguments directly:`, args);
+          } else {
+            args = {};
+            console.log(`🔍 [DEBUG] No valid arguments, using empty object`);
+          }
+        } catch (parseError) {
+          console.warn(`⚠️ Failed to parse tool arguments for ${functionName}:`, parseError);
+          console.warn(`⚠️ Raw arguments:`, toolCall.function?.arguments);
+          args = {};
+        }
+
+        // Check for malformed tool calls
+        if (!functionName || functionName.trim() === '') {
+          console.warn('⚠️ Skipping malformed tool call with empty function name:', toolCall);
+          const result = {
+            toolName: 'unknown',
+            success: false,
+            error: 'Tool call has empty or missing function name'
+          };
+          results.push(result);
+          continue;
+        }
+
+        console.log(`🔧 Executing tool: ${functionName} with args:`, args);
 
         // Check if this is an MCP tool call
         if (functionName?.startsWith('mcp_')) {
+          console.log(`🔧 [API] Processing MCP tool call: ${functionName}`);
           try {
+            // Add debug logging before parsing
+            console.log(`🔍 [API] Tool call before parsing:`, JSON.stringify(toolCall, null, 2));
+            console.log(`🔍 [API] Parsed args before MCP:`, args);
+            
             // Parse MCP tool calls and execute them
+            console.log(`🔍 [API] Parsing tool call:`, toolCall);
             const mcpToolCalls = claraMCPService.parseOpenAIToolCalls([toolCall]);
+            console.log(`📋 [API] Parsed MCP tool calls:`, mcpToolCalls);
             
             if (mcpToolCalls.length > 0) {
+              console.log(`📡 [API] Executing MCP tool call:`, mcpToolCalls[0]);
+              console.log(`🔍 [API] MCP tool call arguments:`, mcpToolCalls[0].arguments);
               const mcpResult = await claraMCPService.executeToolCall(mcpToolCalls[0]);
+              console.log(`📥 [API] MCP execution result:`, mcpResult);
               
-              results.push({
+              // Process the MCP result comprehensively
+              const processedResult = this.processMCPToolResult(mcpResult, functionName);
+              
+              const result = {
                 toolName: functionName,
                 success: mcpResult.success,
-                result: mcpResult.success ? mcpResult.content?.[0]?.text || 'MCP tool executed successfully' : null,
+                result: processedResult.result,
                 error: mcpResult.error,
+                artifacts: processedResult.artifacts,
+                images: processedResult.images,
+                toolMessage: processedResult.toolMessage,
                 metadata: {
                   type: 'mcp',
                   server: mcpToolCalls[0].server,
                   toolName: mcpToolCalls[0].name,
                   ...mcpResult.metadata
                 }
-              });
+              };
+
+              console.log(`✅ MCP tool ${functionName} result:`, result);
+              results.push(result);
             } else {
-              results.push({
+              console.error(`❌ [API] Failed to parse MCP tool call`);
+              const result = {
                 toolName: functionName,
                 success: false,
                 error: 'Failed to parse MCP tool call'
-              });
+              };
+              console.log(`❌ MCP tool ${functionName} failed:`, result);
+              results.push(result);
             }
           } catch (mcpError) {
-            results.push({
+            console.error(`❌ [API] MCP tool execution error:`, mcpError);
+            const result = {
               toolName: functionName,
               success: false,
               error: mcpError instanceof Error ? mcpError.message : 'MCP tool execution failed'
-            });
+            };
+            console.log(`❌ MCP tool ${functionName} error:`, result);
+            results.push(result);
           }
           continue;
         }
@@ -597,6 +753,7 @@ export class ClaraApiService {
         
         if (claraTool) {
           const result = await executeTool(claraTool.id, args);
+          console.log(`✅ Clara tool ${functionName} result:`, result);
           results.push({
             toolName: functionName,
             success: result.success,
@@ -618,35 +775,43 @@ export class ClaraApiService {
               const testFunc = new Function('args', funcBody);
               const result = await testFunc(args);
               
+              console.log(`✅ Database tool ${functionName} result:`, result);
               results.push({
                 toolName: functionName,
                 success: true,
                 result: result
               });
             } catch (error) {
-              results.push({
+              const result = {
                 toolName: functionName,
                 success: false,
                 error: error instanceof Error ? error.message : 'Tool execution failed'
-              });
+              };
+              console.log(`❌ Database tool ${functionName} error:`, result);
+              results.push(result);
             }
           } else {
-            results.push({
+            const result = {
               toolName: functionName,
               success: false,
               error: `Tool '${functionName}' not found`
-            });
+            };
+            console.log(`❌ Tool ${functionName} not found:`, result);
+            results.push(result);
           }
         }
       } catch (error) {
-        results.push({
+        const result = {
           toolName: toolCall.function?.name || 'unknown',
           success: false,
           error: error instanceof Error ? error.message : 'Tool execution failed'
-        });
+        };
+        console.log(`❌ Tool execution error for ${toolCall.function?.name || 'unknown'}:`, result);
+        results.push(result);
       }
     }
 
+    console.log(`🔧 Tool execution summary: ${results.length} tools executed, ${results.filter(r => r.success).length} successful, ${results.filter(r => !r.success).length} failed`);
     return results;
   }
 
@@ -657,9 +822,14 @@ export class ClaraApiService {
     const artifacts: ClaraArtifact[] = [];
 
     for (const result of toolResults) {
-      if (result.success && result.result) {
-        // Check if result contains code, data, or other artifact-worthy content
-        if (typeof result.result === 'object') {
+      if (result.success) {
+        // Add MCP artifacts if available
+        if (result.artifacts && Array.isArray(result.artifacts)) {
+          artifacts.push(...result.artifacts);
+        }
+        
+        // Create artifacts for other tool results
+        if (result.result && typeof result.result === 'object' && !result.artifacts) {
           artifacts.push({
             id: `tool-result-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             type: 'json',
@@ -968,8 +1138,7 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     const options = {
       temperature: config.parameters.temperature,
       max_tokens: config.parameters.maxTokens,
-      top_p: config.parameters.topP,
-      useRag: config.features.enableRAG
+      top_p: config.parameters.topP
     };
 
     let responseContent = '';
@@ -982,9 +1151,21 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
       onContentChunk('🤖 **Autonomous Agent Activated**\n\n');
     }
 
+    console.log(`🔍 Starting autonomous agent loop with maxSteps: ${context.maxSteps}`);
+    
+    // Ensure we always make at least one call, even if maxSteps is 0
+    // If tools are available, ensure at least 2 steps (initial call + follow-up after tools)
+    const minStepsNeeded = tools.length > 0 ? 2 : 1;
+    const actualMaxSteps = Math.max(context.maxSteps, minStepsNeeded);
+    console.log(`🔧 Adjusted maxSteps from ${context.maxSteps} to ${actualMaxSteps} (min needed: ${minStepsNeeded} due to ${tools.length} tools available)`);
+
     // Main agent execution loop
-    for (let step = 0; step < context.maxSteps; step++) {
+    for (let step = 0; step < actualMaxSteps; step++) {
       context.currentStep = step;
+      
+      console.log(`🔄 Autonomous agent step ${step + 1}/${actualMaxSteps} starting...`);
+      console.log(`📝 Current conversation messages:`, conversationMessages.length);
+      console.log(`🛠️ Available tools:`, tools.length);
       
       try {
         if (onContentChunk && this.agentConfig.enableProgressTracking && step > 0) {
@@ -994,87 +1175,180 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
         let stepResponse;
         let finishReason = '';
 
+        console.log(`🚀 About to make LLM call with model: ${modelId}`);
+        console.log(`⚙️ Options:`, options);
+        console.log(`🔧 Streaming enabled:`, config.features.enableStreaming);
+
         // Try streaming first if enabled
         if (config.features.enableStreaming) {
-          try {
-            const collectedToolCalls: any[] = [];
-            let stepContent = '';
+          // Check if we should disable streaming for this provider when tools are present
+          const shouldDisableStreamingForTools = this.shouldDisableStreamingForTools(tools);
+          
+          if (shouldDisableStreamingForTools) {
+            console.log(`🔄 Disabling streaming for ${this.currentProvider?.type} provider with tools present`);
+            if (onContentChunk) {
+              onContentChunk('⚠️ Switching to non-streaming mode for better tool support with this provider...\n\n');
+            }
+            // Use non-streaming mode
+            stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
+            const stepContent = stepResponse.message?.content || '';
+            responseContent += stepContent;
+            totalTokens = stepResponse.usage?.total_tokens || 0;
+            
+            if (onContentChunk && stepContent) {
+              onContentChunk(stepContent);
+            }
+            console.log(`✅ Non-streaming completed. Content: ${stepContent.length} chars, Tool calls: ${stepResponse.message?.tool_calls?.length || 0}`);
+          } else {
+            // Use streaming mode
+            try {
+              console.log(`📡 Starting streaming chat...`);
+              const collectedToolCalls: any[] = [];
+              let stepContent = '';
 
-            for await (const chunk of this.client!.streamChat(modelId, conversationMessages, options, tools)) {
-              if (chunk.message?.content) {
-                stepContent += chunk.message.content;
-                if (onContentChunk) {
-                  onContentChunk(chunk.message.content);
+              for await (const chunk of this.client!.streamChat(modelId, conversationMessages, options, tools)) {
+                console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
+                if (chunk.message?.content) {
+                  stepContent += chunk.message.content;
+                  if (onContentChunk) {
+                    onContentChunk(chunk.message.content);
+                  }
+                }
+
+                // Collect tool calls
+                if (chunk.message?.tool_calls) {
+                  console.log(`🔧 [STREAM] Processing tool calls in chunk:`, chunk.message.tool_calls);
+                  for (const toolCall of chunk.message.tool_calls) {
+                    console.log(`🔧 [STREAM] Processing individual tool call:`, toolCall);
+                    
+                    // Skip tool calls without valid IDs or names
+                    if (!toolCall.id && !toolCall.function?.name) {
+                      console.log(`⚠️ [STREAM] Skipping tool call without ID or name:`, toolCall);
+                      continue;
+                    }
+                    
+                    let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
+                    if (!existingCall) {
+                      existingCall = {
+                        id: toolCall.id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        type: toolCall.type || 'function',
+                        function: { name: '', arguments: '' }
+                      };
+                      collectedToolCalls.push(existingCall);
+                      console.log(`✅ [STREAM] Created new tool call:`, existingCall);
+                    }
+                    
+                    // Update function name if provided
+                    if (toolCall.function?.name) {
+                      console.log(`🔧 [STREAM] Updating function name from "${existingCall.function.name}" to "${toolCall.function.name}"`);
+                      existingCall.function.name = toolCall.function.name;
+                    }
+                    
+                    // Accumulate arguments if provided
+                    if (toolCall.function?.arguments) {
+                      console.log(`🔧 [STREAM] Accumulating arguments: "${existingCall.function.arguments}" + "${toolCall.function.arguments}"`);
+                      existingCall.function.arguments += toolCall.function.arguments;
+                      console.log(`🔧 [STREAM] New accumulated arguments: "${existingCall.function.arguments}"`);
+                    }
+                    
+                    console.log(`📊 [STREAM] Current state of existingCall:`, existingCall);
+                  }
+                  console.log(`📊 [STREAM] Current collectedToolCalls:`, collectedToolCalls);
+                }
+
+                if (chunk.finish_reason) {
+                  finishReason = chunk.finish_reason;
+                  console.log(`🏁 Stream finished with reason:`, finishReason);
+                }
+                if (chunk.usage?.total_tokens) {
+                  totalTokens = chunk.usage.total_tokens;
                 }
               }
 
-              // Collect tool calls
-              if (chunk.message?.tool_calls) {
-                for (const toolCall of chunk.message.tool_calls) {
-                  let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
-                  if (!existingCall) {
-                    existingCall = {
-                      id: toolCall.id,
-                      type: toolCall.type || 'function',
-                      function: { name: toolCall.function?.name || '', arguments: '' }
-                    };
-                    collectedToolCalls.push(existingCall);
+              stepResponse = {
+                message: {
+                  content: stepContent,
+                  tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+                },
+                usage: { total_tokens: totalTokens }
+              };
+              responseContent += stepContent;
+              console.log(`✅ Streaming completed. Content length: ${stepContent.length}, Tool calls: ${collectedToolCalls.length}`);
+              console.log(`📊 [STREAM] Final collectedToolCalls:`, JSON.stringify(collectedToolCalls, null, 2));
+
+              // Filter out incomplete tool calls
+              if (stepResponse.message?.tool_calls) {
+                stepResponse.message.tool_calls = stepResponse.message.tool_calls.filter(toolCall => {
+                  // Must have a valid function name
+                  if (!toolCall.function?.name || toolCall.function.name.trim() === '') {
+                    console.warn('⚠️ Filtering out tool call with empty function name:', toolCall);
+                    return false;
                   }
                   
-                  if (toolCall.function?.name) {
-                    existingCall.function.name = toolCall.function.name;
+                  // Must have valid arguments (at least empty object)
+                  if (typeof toolCall.function.arguments !== 'string') {
+                    console.warn('⚠️ Filtering out tool call with invalid arguments type:', toolCall);
+                    return false;
                   }
-                  if (toolCall.function?.arguments) {
-                    existingCall.function.arguments += toolCall.function.arguments;
+                  
+                  // Try to parse arguments to ensure they're valid JSON
+                  try {
+                    JSON.parse(toolCall.function.arguments || '{}');
+                    return true;
+                  } catch (parseError) {
+                    console.warn('⚠️ Filtering out tool call with invalid JSON arguments:', toolCall, parseError);
+                    return false;
                   }
+                });
+                
+                // If no valid tool calls remain, remove the tool_calls property
+                if (stepResponse.message.tool_calls.length === 0) {
+                  stepResponse.message.tool_calls = undefined;
                 }
               }
 
-              if (chunk.finish_reason) {
-                finishReason = chunk.finish_reason;
+            } catch (streamError: any) {
+              console.error(`❌ Streaming error:`, streamError);
+              // Fallback to non-streaming if streaming fails with tools
+              const errorMessage = streamError.message?.toLowerCase() || '';
+              if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
+                console.log(`🔄 Falling back to non-streaming mode...`);
+                if (onContentChunk) {
+                  onContentChunk('\n⚠️ Switching to non-streaming mode for tool support... (Probably due to your server not supporting streaming with tools)\n\n');
+                }
+                stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
+                responseContent += stepResponse.message?.content || '';
+                totalTokens = stepResponse.usage?.total_tokens || 0;
+                console.log(`✅ Non-streaming fallback completed. Content: ${stepResponse.message?.content?.length || 0} chars`);
+              } else {
+                throw streamError;
               }
-              if (chunk.usage?.total_tokens) {
-                totalTokens = chunk.usage.total_tokens;
-              }
-            }
-
-            stepResponse = {
-              message: {
-                content: stepContent,
-                tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
-              },
-              usage: { total_tokens: totalTokens }
-            };
-            responseContent += stepContent;
-
-          } catch (streamError: any) {
-            // Fallback to non-streaming if streaming fails with tools
-            const errorMessage = streamError.message?.toLowerCase() || '';
-            if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
-              if (onContentChunk) {
-                onContentChunk('\n⚠️ Switching to non-streaming mode for tool support...\n\n');
-              }
-              stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
-              responseContent += stepResponse.message?.content || '';
-              totalTokens = stepResponse.usage?.total_tokens || 0;
-            } else {
-              throw streamError;
             }
           }
         } else {
           // Non-streaming mode
+          console.log(`📞 Making non-streaming chat call...`);
           stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
           const stepContent = stepResponse.message?.content || '';
           responseContent += stepContent;
           totalTokens = stepResponse.usage?.total_tokens || 0;
+          
+          console.log(`✅ Non-streaming completed. Content: ${stepContent.length} chars, Tool calls: ${stepResponse.message?.tool_calls?.length || 0}`);
           
           if (onContentChunk && stepContent) {
             onContentChunk(stepContent);
           }
         }
 
+        console.log(`📊 Step ${step + 1} response:`, {
+          contentLength: stepResponse.message?.content?.length || 0,
+          toolCallsCount: stepResponse.message?.tool_calls?.length || 0,
+          finishReason
+        });
+
         // Handle tool calls with retry mechanism
         if (stepResponse.message?.tool_calls && stepResponse.message.tool_calls.length > 0) {
+          console.log(`🔧 Processing ${stepResponse.message.tool_calls.length} tool calls...`);
           if (onContentChunk) {
             onContentChunk('\n\n🔧 **Executing tools...**\n\n');
           }
@@ -1095,15 +1369,38 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
 
           // Add tool results to conversation
           for (const result of toolResults) {
-            const toolCall = stepResponse.message.tool_calls.find((tc: any) => 
-              tc.function.name === result.toolName
-            );
-            if (toolCall) {
-              conversationMessages.push({
-                role: 'tool',
-                content: JSON.stringify(result.result),
-                name: result.toolName
-              });
+            // Use the processed tool message if available, otherwise fallback to basic format
+            if (result.toolMessage) {
+              // Use the comprehensive tool message with images and proper formatting
+              const toolMessage = {
+                ...result.toolMessage,
+                tool_call_id: stepResponse.message.tool_calls.find((tc: any) => 
+                  tc.function.name === result.toolName
+                )?.id
+              };
+              conversationMessages.push(toolMessage);
+            } else {
+              // Fallback to basic format for non-MCP tools
+              const toolCall = stepResponse.message.tool_calls.find((tc: any) => 
+                tc.function.name === result.toolName
+              );
+              if (toolCall) {
+                // Ensure we always have valid content for OpenAI
+                let content: string;
+                if (result.success && result.result !== undefined && result.result !== null) {
+                  content = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+                } else {
+                  // For failed tools or tools with no result
+                  content = result.error || `Tool ${result.toolName} execution failed`;
+                }
+                
+                conversationMessages.push({
+                  role: 'tool',
+                  content: content,
+                  name: result.toolName,
+                  tool_call_id: toolCall.id
+                });
+              }
             }
           }
 
@@ -1113,15 +1410,18 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
             onContentChunk('✅ **Tools executed successfully**\n\n');
           }
 
+          console.log(`🔄 Continuing to next step after tool execution...`);
+          console.log(`📊 Current step: ${step}, actualMaxSteps: ${actualMaxSteps}, will continue: ${step + 1 < actualMaxSteps}`);
           // Continue to next iteration for follow-up response
           continue;
         }
 
+        console.log(`🏁 No tool calls found, autonomous agent execution complete.`);
         // If no tool calls, we're done
         break;
 
       } catch (error) {
-        console.error(`Agent step ${step + 1} failed:`, error);
+        console.error(`❌ Agent step ${step + 1} failed:`, error);
         
         if (onContentChunk) {
           onContentChunk(`\n❌ **Error in step ${step + 1}**: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`);
@@ -1129,10 +1429,14 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
 
         // Try to recover or break if too many failures
         if (step >= this.agentConfig.maxRetries) {
+          console.log(`💥 Max retries reached, breaking out of agent loop`);
           break;
         }
       }
     }
+
+    console.log(`🎯 Autonomous agent execution completed. Response content length: ${responseContent.length}, Tool results: ${allToolResults.length}`);
+    console.log(`🔚 Loop ended at step ${context.currentStep + 1}/${actualMaxSteps}`);
 
     // Create final Clara message
     const claraMessage: ClaraMessage = {
@@ -1170,23 +1474,34 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
 
     for (const toolCall of toolCalls) {
       const functionName = toolCall.function?.name;
-      let args = toolCall.function?.arguments;
-
-      // Parse arguments if they're a string
-      if (typeof args === 'string') {
-        try {
-          args = JSON.parse(args);
-        } catch (parseError) {
-          if (onContentChunk) {
-            onContentChunk(`⚠️ **Argument parsing failed for ${functionName}**: ${parseError}\n`);
+      
+      // Safely parse arguments with better error handling
+      let args = {};
+      try {
+        if (typeof toolCall.function?.arguments === 'string') {
+          const argsString = toolCall.function.arguments.trim();
+          if (argsString === '' || argsString === 'null' || argsString === 'undefined') {
+            args = {};
+          } else {
+            args = JSON.parse(argsString);
           }
-          results.push({
-            toolName: functionName,
-            success: false,
-            error: `Failed to parse arguments: ${parseError}`
-          });
-          continue;
+        } else if (toolCall.function?.arguments && typeof toolCall.function.arguments === 'object') {
+          args = toolCall.function.arguments;
+        } else {
+          args = {};
         }
+      } catch (parseError) {
+        console.warn(`⚠️ Failed to parse tool arguments for ${functionName}:`, parseError);
+        console.warn(`⚠️ Raw arguments:`, toolCall.function?.arguments);
+        if (onContentChunk) {
+          onContentChunk(`⚠️ **Argument parsing failed for ${functionName}**: ${parseError}\n`);
+        }
+        results.push({
+          toolName: functionName,
+          success: false,
+          error: `Failed to parse arguments: ${parseError}`
+        });
+        continue;
       }
 
       // Retry mechanism for each tool call
@@ -1217,10 +1532,16 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
               const mcpResult = await claraMCPService.executeToolCall(mcpToolCalls[0]);
               
               if (mcpResult.success) {
+                // Process the MCP result comprehensively
+                const processedResult = this.processMCPToolResult(mcpResult, functionName);
+                
                 result = {
                   toolName: functionName,
                   success: true,
-                  result: mcpResult.content?.[0]?.text || 'MCP tool executed successfully',
+                  result: processedResult.result,
+                  artifacts: processedResult.artifacts,
+                  images: processedResult.images,
+                  toolMessage: processedResult.toolMessage,
                   metadata: {
                     type: 'mcp',
                     server: mcpToolCalls[0].server,
@@ -1231,9 +1552,11 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
                 };
                 success = true;
                 attemptRecord.success = true;
+                console.log(`✅ MCP tool ${functionName} succeeded on attempt ${attempt}:`, result);
               } else {
                 lastError = mcpResult.error || 'MCP tool execution failed';
                 attemptRecord.error = lastError;
+                console.log(`❌ MCP tool ${functionName} failed on attempt ${attempt}:`, lastError);
               }
             } else {
               lastError = 'Failed to parse MCP tool call';
@@ -1254,9 +1577,11 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
                 };
                 success = true;
                 attemptRecord.success = true;
+                console.log(`✅ Clara tool ${functionName} succeeded on attempt ${attempt}:`, result);
               } else {
                 lastError = toolResult.error || 'Tool execution failed';
                 attemptRecord.error = lastError;
+                console.log(`❌ Clara tool ${functionName} failed on attempt ${attempt}:`, lastError);
               }
             } else {
               // Try database tools
@@ -1280,9 +1605,11 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
                   };
                   success = true;
                   attemptRecord.success = true;
+                  console.log(`✅ Database tool ${functionName} succeeded on attempt ${attempt}:`, result);
                 } catch (dbError) {
                   lastError = dbError instanceof Error ? dbError.message : 'Database tool execution failed';
                   attemptRecord.error = lastError;
+                  console.log(`❌ Database tool ${functionName} failed on attempt ${attempt}:`, lastError);
                 }
               } else {
                 lastError = `Tool '${functionName}' not found. Available tools: ${context.toolsAvailable.join(', ')}`;
@@ -1324,14 +1651,17 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
 
       // Add final result
       if (success && result) {
+        console.log(`🎯 Final result for ${functionName}:`, result);
         results.push(result);
       } else {
-        results.push({
+        const finalResult = {
           toolName: functionName,
           success: false,
           error: lastError,
           metadata: { attempts: this.agentConfig.maxRetries }
-        });
+        };
+        console.log(`💥 Final failure for ${functionName}:`, finalResult);
+        results.push(finalResult);
         
         if (onContentChunk) {
           onContentChunk(`💥 **Tool ${functionName} failed after ${this.agentConfig.maxRetries} attempts**: ${lastError}\n\n`);
@@ -1339,7 +1669,531 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
       }
     }
 
+    console.log(`🔧 Autonomous tool execution summary: ${results.length} tools executed, ${results.filter(r => r.success).length} successful, ${results.filter(r => !r.success).length} failed`);
     return results;
+  }
+
+  /**
+   * Execute standard chat workflow (non-autonomous mode)
+   */
+  private async executeStandardChat(
+    modelId: string,
+    messages: ChatMessage[],
+    tools: Tool[],
+    config: ClaraAIConfig,
+    onContentChunk?: (content: string) => void
+  ): Promise<ClaraMessage> {
+    const options = {
+      temperature: config.parameters.temperature,
+      max_tokens: config.parameters.maxTokens,
+      top_p: config.parameters.topP
+    };
+
+    let responseContent = '';
+    let totalTokens = 0;
+    let toolResults: any[] = [];
+
+    try {
+      let response;
+
+      // Try streaming first if enabled
+      if (config.features.enableStreaming) {
+        // Check if we should disable streaming for this provider when tools are present
+        const shouldDisableStreamingForTools = this.shouldDisableStreamingForTools(tools);
+        
+        if (shouldDisableStreamingForTools) {
+          console.log(`🔄 Disabling streaming for ${this.currentProvider?.type} provider with tools present`);
+          if (onContentChunk) {
+            onContentChunk('⚠️ Switching to non-streaming mode for better tool support with this provider...\n\n');
+          }
+          // Use non-streaming mode
+          response = await this.client!.sendChat(modelId, messages, options, tools);
+          responseContent = response.message?.content || '';
+          totalTokens = response.usage?.total_tokens || 0;
+          
+          if (onContentChunk && responseContent) {
+            onContentChunk(responseContent);
+          }
+          console.log(`✅ Non-streaming completed. Content: ${responseContent.length} chars, Tool calls: ${response.message?.tool_calls?.length || 0}`);
+        } else {
+          // Use streaming mode
+          try {
+            const collectedToolCalls: any[] = [];
+            let streamContent = '';
+
+            for await (const chunk of this.client!.streamChat(modelId, messages, options, tools)) {
+              console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
+              if (chunk.message?.content) {
+                streamContent += chunk.message.content;
+                responseContent += chunk.message.content;
+                if (onContentChunk) {
+                  onContentChunk(chunk.message.content);
+                }
+              }
+
+              // Collect tool calls
+              if (chunk.message?.tool_calls) {
+                console.log(`🔧 [STANDARD-STREAM] Processing tool calls in chunk:`, chunk.message.tool_calls);
+                for (const toolCall of chunk.message.tool_calls) {
+                  console.log(`🔧 [STANDARD-STREAM] Processing individual tool call:`, toolCall);
+                  
+                  // Skip tool calls without valid IDs or names
+                  if (!toolCall.id && !toolCall.function?.name) {
+                    console.log(`⚠️ [STANDARD-STREAM] Skipping tool call without ID or name:`, toolCall);
+                    continue;
+                  }
+                  
+                  let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
+                  if (!existingCall) {
+                    existingCall = {
+                      id: toolCall.id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                      type: toolCall.type || 'function',
+                      function: { name: '', arguments: '' }
+                    };
+                    collectedToolCalls.push(existingCall);
+                    console.log(`✅ [STANDARD-STREAM] Created new tool call:`, existingCall);
+                  }
+                  
+                  // Update function name if provided
+                  if (toolCall.function?.name) {
+                    console.log(`🔧 [STANDARD-STREAM] Updating function name from "${existingCall.function.name}" to "${toolCall.function.name}"`);
+                    existingCall.function.name = toolCall.function.name;
+                  }
+                  
+                  // Accumulate arguments if provided
+                  if (toolCall.function?.arguments) {
+                    console.log(`🔧 [STANDARD-STREAM] Accumulating arguments: "${existingCall.function.arguments}" + "${toolCall.function.arguments}"`);
+                    existingCall.function.arguments += toolCall.function.arguments;
+                    console.log(`🔧 [STANDARD-STREAM] New accumulated arguments: "${existingCall.function.arguments}"`);
+                  }
+                  
+                  console.log(`📊 [STANDARD-STREAM] Current state of existingCall:`, existingCall);
+                }
+                console.log(`📊 [STANDARD-STREAM] Current collectedToolCalls:`, collectedToolCalls);
+              }
+
+              if (chunk.usage?.total_tokens) {
+                totalTokens = chunk.usage.total_tokens;
+              }
+            }
+
+            response = {
+              message: {
+                content: streamContent,
+                tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+              },
+              usage: { total_tokens: totalTokens }
+            };
+
+            // Filter out incomplete tool calls
+            if (response.message?.tool_calls) {
+              response.message.tool_calls = response.message.tool_calls.filter(toolCall => {
+                // Must have a valid function name
+                if (!toolCall.function?.name || toolCall.function.name.trim() === '') {
+                  console.warn('⚠️ Filtering out tool call with empty function name:', toolCall);
+                  return false;
+                }
+                
+                // Must have valid arguments (at least empty object)
+                if (typeof toolCall.function.arguments !== 'string') {
+                  console.warn('⚠️ Filtering out tool call with invalid arguments type:', toolCall);
+                  return false;
+                }
+                
+                // Try to parse arguments to ensure they're valid JSON
+                try {
+                  JSON.parse(toolCall.function.arguments || '{}');
+                  return true;
+                } catch (parseError) {
+                  console.warn('⚠️ Filtering out tool call with invalid JSON arguments:', toolCall, parseError);
+                  return false;
+                }
+              });
+              
+              // If no valid tool calls remain, remove the tool_calls property
+              if (response.message.tool_calls.length === 0) {
+                response.message.tool_calls = undefined;
+              }
+            }
+
+          } catch (streamError: any) {
+            // Fallback to non-streaming if streaming fails with tools
+            const errorMessage = streamError.message?.toLowerCase() || '';
+            if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
+              if (onContentChunk) {
+                onContentChunk('\n⚠️ Switching to non-streaming mode for tool support... (Probably due to your server not supporting streaming with tools)\n\n');
+              }
+              response = await this.client!.sendChat(modelId, messages, options, tools);
+              responseContent = response.message?.content || '';
+              totalTokens = response.usage?.total_tokens || 0;
+              
+              if (onContentChunk && responseContent) {
+                onContentChunk(responseContent);
+              }
+            } else {
+              throw streamError;
+            }
+          }
+        }
+      } else {
+        // Non-streaming mode
+        response = await this.client!.sendChat(modelId, messages, options, tools);
+        responseContent = response.message?.content || '';
+        totalTokens = response.usage?.total_tokens || 0;
+        
+        if (onContentChunk && responseContent) {
+          onContentChunk(responseContent);
+        }
+      }
+
+      // Handle tool calls if any (simple execution, no retry logic)
+      if (response.message?.tool_calls && response.message.tool_calls.length > 0) {
+        if (onContentChunk) {
+          onContentChunk('\n\n🔧 **Executing tools...**\n\n');
+        }
+
+        toolResults = await this.executeToolCalls(response.message.tool_calls);
+
+        if (onContentChunk) {
+          onContentChunk('✅ **Tools executed**\n\n');
+        }
+
+        // After tool execution, make a follow-up request to process the results
+        if (toolResults.length > 0) {
+          console.log(`🔄 Making follow-up request to process ${toolResults.length} tool results`);
+          
+          // Build conversation with tool results
+          const followUpMessages = [...messages];
+          
+          // Add the assistant's message with tool calls
+          followUpMessages.push({
+            role: 'assistant',
+            content: response.message.content || '',
+            tool_calls: response.message.tool_calls
+          });
+          
+          // Add tool results
+          for (const result of toolResults) {
+            // Use the processed tool message if available, otherwise fallback to basic format
+            if (result.toolMessage) {
+              // Use the comprehensive tool message with images and proper formatting
+              const toolMessage = {
+                ...result.toolMessage,
+                tool_call_id: response.message.tool_calls.find((tc: any) => 
+                  tc.function.name === result.toolName
+                )?.id
+              };
+              followUpMessages.push(toolMessage);
+            } else {
+              // Fallback to basic format for non-MCP tools
+              const toolCall = response.message.tool_calls.find((tc: any) => 
+                tc.function.name === result.toolName
+              );
+              if (toolCall) {
+                // Ensure we always have valid content for OpenAI
+                let content: string;
+                if (result.success && result.result !== undefined && result.result !== null) {
+                  content = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+                } else {
+                  // For failed tools or tools with no result
+                  content = result.error || `Tool ${result.toolName} execution failed`;
+                }
+                
+                followUpMessages.push({
+                  role: 'tool',
+                  content: content,
+                  name: result.toolName,
+                  tool_call_id: toolCall.id
+                });
+              }
+            }
+          }
+
+          console.log(`📤 Sending follow-up request with ${followUpMessages.length} messages`);
+          
+          // Make follow-up request (always non-streaming to avoid complexity)
+          try {
+            const followUpResponse = await this.client!.sendChat(modelId, followUpMessages, options);
+            const followUpContent = followUpResponse.message?.content || '';
+            
+            if (followUpContent) {
+              responseContent += followUpContent;
+              totalTokens += followUpResponse.usage?.total_tokens || 0;
+              
+              if (onContentChunk) {
+                onContentChunk(followUpContent);
+              }
+              
+              console.log(`✅ Follow-up response received: ${followUpContent.length} chars`);
+            }
+          } catch (followUpError) {
+            console.error('❌ Follow-up request failed:', followUpError);
+            if (onContentChunk) {
+              onContentChunk('\n⚠️ Failed to process tool results, but tools were executed successfully.\n');
+            }
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Standard chat execution failed:', error);
+      responseContent = 'I apologize, but I encountered an error while processing your request. Please try again.';
+    }
+
+    // Create final Clara message
+    const claraMessage: ClaraMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      role: 'assistant',
+      content: responseContent || 'I apologize, but I was unable to generate a response.',
+      timestamp: new Date(),
+      metadata: {
+        model: `${config.provider}:${modelId}`,
+        tokens: totalTokens,
+        temperature: config.parameters.temperature,
+        toolsUsed: toolResults.map(tc => tc.toolName),
+        autonomousMode: false
+      }
+    };
+
+    // Add artifacts if any were generated from tool calls
+    if (toolResults.length > 0) {
+      claraMessage.artifacts = this.parseToolResultsToArtifacts(toolResults);
+    }
+
+    return claraMessage;
+  }
+
+  /**
+   * Check if we should disable streaming for this provider when tools are present
+   */
+  private shouldDisableStreamingForTools(tools: Tool[]): boolean {
+    // If no tools are present, streaming is fine
+    if (!tools || tools.length === 0) {
+      return false;
+    }
+
+    // If no current provider, default to disabling streaming with tools
+    if (!this.currentProvider) {
+      return true;
+    }
+
+    // Check provider type and base URL to determine if it's OpenAI-like
+    const providerType = this.currentProvider.type?.toLowerCase();
+    const baseUrl = this.currentProvider.baseUrl?.toLowerCase() || '';
+
+    // Disable streaming for OpenAI-like providers when tools are present
+    // These providers stream tool call arguments incrementally which causes issues
+    const isOpenAILike = 
+      providerType === 'openai' ||
+      providerType === 'openrouter' ||
+      baseUrl.includes('openai.com') ||
+      baseUrl.includes('openrouter.ai') ||
+      baseUrl.includes('api.anthropic.com') ||
+      baseUrl.includes('generativelanguage.googleapis.com'); // Google AI
+
+    if (isOpenAILike) {
+      console.log(`🔧 Detected OpenAI-like provider (${providerType}, ${baseUrl}), disabling streaming with tools`);
+      return true;
+    }
+
+    // Keep streaming enabled for local providers like Ollama/llama.cpp
+    // These providers handle tool calls correctly in streaming mode
+    const isLocalProvider = 
+      providerType === 'ollama' ||
+      baseUrl.includes('localhost') ||
+      baseUrl.includes('127.0.0.1') ||
+      baseUrl.includes('0.0.0.0');
+
+    if (isLocalProvider) {
+      console.log(`🔧 Detected local provider (${providerType}, ${baseUrl}), keeping streaming enabled with tools`);
+      return false;
+    }
+
+    // For unknown providers, default to disabling streaming with tools to be safe
+    console.log(`🔧 Unknown provider type (${providerType}, ${baseUrl}), defaulting to disable streaming with tools`);
+    return true;
+  }
+
+  /**
+   * Process MCP tool results to handle all content types (text, images, files, etc.)
+   */
+  private processMCPToolResult(mcpResult: ClaraMCPToolResult, toolName: string): {
+    result: any;
+    artifacts: ClaraArtifact[];
+    images: string[];
+    toolMessage: ChatMessage;
+  } {
+    const artifacts: ClaraArtifact[] = [];
+    const images: string[] = [];
+    let textContent = '';
+    let structuredResult: any = {};
+
+    if (mcpResult.success && mcpResult.content) {
+      console.log(`🔍 [MCP-PROCESS] Processing ${mcpResult.content.length} content items for ${toolName}`);
+      
+      for (let i = 0; i < mcpResult.content.length; i++) {
+        const contentItem = mcpResult.content[i];
+        console.log(`🔍 [MCP-PROCESS] Content item ${i}:`, contentItem);
+        
+        switch (contentItem.type) {
+          case 'text':
+            if (contentItem.text) {
+              textContent += (textContent ? '\n\n' : '') + contentItem.text;
+              structuredResult.text = contentItem.text;
+            }
+            break;
+            
+          case 'image':
+            if (contentItem.data && contentItem.mimeType) {
+              console.log(`🖼️ [MCP-PROCESS] Processing image: ${contentItem.mimeType}`);
+              
+              // Add to images array for AI model
+              const imageData = contentItem.data.startsWith('data:') 
+                ? contentItem.data 
+                : `data:${contentItem.mimeType};base64,${contentItem.data}`;
+              images.push(imageData);
+              
+              // Create artifact for the image using 'json' type since 'image' is not supported
+              artifacts.push({
+                id: `mcp-image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'json',
+                title: `${toolName} - Image Result`,
+                content: JSON.stringify({
+                  type: 'image',
+                  mimeType: contentItem.mimeType,
+                  data: imageData,
+                  description: `Image generated by ${toolName}`
+                }, null, 2),
+                createdAt: new Date(),
+                metadata: {
+                  toolName,
+                  mimeType: contentItem.mimeType,
+                  source: 'mcp',
+                  contentIndex: i,
+                  originalType: 'image'
+                }
+              });
+              
+              // Add to structured result
+              if (!structuredResult.images) structuredResult.images = [];
+              structuredResult.images.push({
+                mimeType: contentItem.mimeType,
+                data: contentItem.data,
+                url: imageData
+              });
+              
+              // Add description to text content
+              textContent += (textContent ? '\n\n' : '') + `📷 Image generated (${contentItem.mimeType})`;
+            }
+            break;
+            
+          case 'resource':
+            if ((contentItem as any).resource) {
+              console.log(`📄 [MCP-PROCESS] Processing resource:`, (contentItem as any).resource);
+              
+              // Create artifact for the resource
+              artifacts.push({
+                id: `mcp-resource-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'json',
+                title: `${toolName} - Resource Result`,
+                content: JSON.stringify((contentItem as any).resource, null, 2),
+                createdAt: new Date(),
+                metadata: {
+                  toolName,
+                  source: 'mcp',
+                  contentIndex: i,
+                  originalType: 'resource'
+                }
+              });
+              
+              // Add to structured result
+              structuredResult.resource = (contentItem as any).resource;
+              
+              // Add description to text content
+              textContent += (textContent ? '\n\n' : '') + `📄 Resource: ${JSON.stringify((contentItem as any).resource, null, 2)}`;
+            }
+            break;
+            
+          default:
+            // Handle any additional content types that might be returned by MCP servers
+            // even if they're not in the official type definition
+            console.log(`🔍 [MCP-PROCESS] Processing additional content type: ${contentItem.type}`);
+            
+            if ((contentItem as any).data) {
+              console.log(`📊 [MCP-PROCESS] Processing data content`);
+              
+              let contentData = (contentItem as any).data;
+              if (typeof contentData === 'string') {
+                try {
+                  contentData = JSON.parse(contentData);
+                } catch (e) {
+                  console.warn('Failed to parse data content:', e);
+                }
+              }
+              
+              // Create artifact for the data
+              artifacts.push({
+                id: `mcp-data-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'json',
+                title: `${toolName} - ${contentItem.type} Result`,
+                content: JSON.stringify(contentData, null, 2),
+                createdAt: new Date(),
+                metadata: {
+                  toolName,
+                  source: 'mcp',
+                  contentIndex: i,
+                  originalType: contentItem.type
+                }
+              });
+              
+              // Add to structured result
+              structuredResult.data = contentData;
+              
+              // Add description to text content
+              textContent += (textContent ? '\n\n' : '') + `📊 ${contentItem.type}: ${JSON.stringify(contentData, null, 2)}`;
+            } else if (contentItem.text || (contentItem as any).data) {
+              // Handle any other content with text or data
+              const content = contentItem.text || JSON.stringify((contentItem as any).data);
+              textContent += (textContent ? '\n\n' : '') + `❓ ${contentItem.type}: ${content}`;
+              structuredResult[`${contentItem.type}_${i}`] = contentItem;
+            }
+            break;
+        }
+      }
+    }
+
+    // Fallback if no content was processed
+    if (!textContent && Object.keys(structuredResult).length === 0) {
+      textContent = mcpResult.success ? 'MCP tool executed successfully' : (mcpResult.error || 'MCP tool execution failed');
+      structuredResult = { message: textContent };
+    }
+
+    // Create the tool message for the conversation
+    const toolMessage: ChatMessage = {
+      role: 'tool',
+      content: textContent,
+      name: toolName
+    };
+
+    // Add images to the tool message if any
+    if (images.length > 0) {
+      toolMessage.images = images;
+      console.log(`🖼️ [MCP-PROCESS] Added ${images.length} images to tool message`);
+    }
+
+    console.log(`✅ [MCP-PROCESS] Processed MCP result for ${toolName}:`, {
+      textLength: textContent.length,
+      artifactsCount: artifacts.length,
+      imagesCount: images.length,
+      structuredKeys: Object.keys(structuredResult)
+    });
+
+    return {
+      result: Object.keys(structuredResult).length > 1 ? structuredResult : textContent,
+      artifacts,
+      images,
+      toolMessage
+    };
   }
 }
 

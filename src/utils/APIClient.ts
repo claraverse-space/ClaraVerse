@@ -8,6 +8,7 @@ export interface ChatMessage {
   images?: string[];
   tool_calls?: any[];
   name?: string; // For tool responses
+  tool_call_id?: string; // Required for OpenAI tool messages
 }
 
 export interface RequestOptions {

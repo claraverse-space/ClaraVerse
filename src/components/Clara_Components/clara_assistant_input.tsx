@@ -295,7 +295,7 @@ const ProviderSelector: React.FC<{
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full mt-2 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
           {providers.map((provider) => {
             const IconComponent = getProviderIcon(provider.type);
             return (
@@ -457,6 +457,16 @@ const AdvancedOptions: React.FC<{
 }> = ({ aiConfig, onConfigChange, providers, models, onProviderChange, onModelChange, show }) => {
   const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
   const [isLoadingMcpServers, setIsLoadingMcpServers] = useState(false);
+  
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState({
+    provider: true,
+    models: true,
+    parameters: false,
+    features: false,
+    mcp: false,
+    autonomous: false
+  });
 
   // Load MCP servers when component mounts or when MCP is enabled
   useEffect(() => {
@@ -524,483 +534,593 @@ const AdvancedOptions: React.FC<{
     handleMcpConfigChange('enabledServers', updatedServers);
   };
 
-  return (
-    <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4 space-y-4">
-      {/* Provider Selection */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          AI Provider
-        </label>
-        <ProviderSelector
-          providers={providers}
-          selectedProvider={aiConfig.provider}
-          onProviderChange={(providerId) => {
-            onConfigChange?.({ provider: providerId });
-            onProviderChange?.(providerId);
-          }}
-        />
-      </div>
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
-      {/* Model Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Text Model
-          </label>
-          <ModelSelector
-            models={models}
-            selectedModel={aiConfig.models.text || ''}
-            onModelChange={(modelId) => {
-              onConfigChange?.({
-                models: { ...aiConfig.models, text: modelId }
-              });
-              onModelChange?.(modelId, 'text');
-            }}
-            modelType="text"
-            currentProvider={aiConfig.provider}
-          />
-        </div>
-        
-        <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Vision Model
-          </label>
-          <ModelSelector
-            models={models}
-            selectedModel={aiConfig.models.vision || ''}
-            onModelChange={(modelId) => {
-              onConfigChange?.({
-                models: { ...aiConfig.models, vision: modelId }
-              });
-              onModelChange?.(modelId, 'vision');
-            }}
-            modelType="vision"
-            currentProvider={aiConfig.provider}
-          />
-        </div>
-        
-        <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Code Model
-          </label>
-          <ModelSelector
-            models={models}
-            selectedModel={aiConfig.models.code || ''}
-            onModelChange={(modelId) => {
-              onConfigChange?.({
-                models: { ...aiConfig.models, code: modelId }
-              });
-              onModelChange?.(modelId, 'code');
-            }}
-            modelType="code"
-            currentProvider={aiConfig.provider}
-          />
-        </div>
-      </div>
-
-      {/* Parameters */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Temperature: {aiConfig.parameters.temperature}
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            value={aiConfig.parameters.temperature}
-            onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
-            className="w-full"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Max Tokens
-          </label>
-          <input
-            type="number"
-            min="100"
-            max="8000"
-            value={aiConfig.parameters.maxTokens}
-            onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
-            className="w-full px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded"
-          />
-        </div>
-      </div>
-
-      {/* Features */}
-      <div className="grid grid-cols-2 gap-4">
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={aiConfig.features.enableTools}
-            onChange={(e) => handleFeatureChange('enableTools', e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-gray-600 dark:text-gray-400">Enable Tools</span>
-        </label>
-
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={aiConfig.features.enableRAG}
-            onChange={(e) => handleFeatureChange('enableRAG', e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-gray-600 dark:text-gray-400">Enable RAG</span>
-        </label>
-
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={aiConfig.features.enableStreaming}
-            onChange={(e) => handleFeatureChange('enableStreaming', e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-gray-600 dark:text-gray-400">Enable Streaming</span>
-        </label>
-
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={aiConfig.features.autoModelSelection}
-            onChange={(e) => handleFeatureChange('autoModelSelection', e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-gray-600 dark:text-gray-400">Auto Model Selection</span>
-        </label>
-
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={aiConfig.features.enableMCP || false}
-            onChange={(e) => handleFeatureChange('enableMCP', e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
-            <Server className="w-3 h-3" />
-            Enable MCP
+  const SectionHeader: React.FC<{
+    title: string;
+    icon: React.ReactNode;
+    isExpanded: boolean;
+    onToggle: () => void;
+    badge?: string | number;
+  }> = ({ title, icon, isExpanded, onToggle, badge }) => (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</span>
+        {badge && (
+          <span className="px-2 py-0.5 text-xs bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-300 rounded-full">
+            {badge}
           </span>
-        </label>
+        )}
+      </div>
+      <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+    </button>
+  );
+
+  return (
+    <div className="mt-4 glassmorphic rounded-xl bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200/30 dark:border-gray-700/50">
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+          <Settings className="w-5 h-5 text-sakura-500" />
+          Advanced Configuration
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          Configure AI models, parameters, and features
+        </p>
       </div>
 
-      {/* MCP Configuration */}
-      {aiConfig.features.enableMCP && (
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
-          <div className="flex items-center gap-2 mb-3">
-            <Server className="w-4 h-4 text-sakura-500" />
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              MCP Configuration
-            </h4>
-            {isLoadingMcpServers && (
-              <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+      {/* Scrollable Content */}
+      <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+        <div className="p-4 space-y-4">
+          
+          {/* Provider Selection */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="AI Provider"
+              icon={<Server className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.provider}
+              onToggle={() => toggleSection('provider')}
+              badge={providers.find(p => p.id === aiConfig.provider)?.name || 'None'}
+            />
+            
+            {expandedSections.provider && (
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
+                <ProviderSelector
+                  providers={providers}
+                  selectedProvider={aiConfig.provider}
+                  onProviderChange={(providerId) => {
+                    onConfigChange?.({ provider: providerId });
+                    onProviderChange?.(providerId);
+                  }}
+                />
+              </div>
             )}
           </div>
 
-          {/* MCP Features */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={aiConfig.mcp?.enableTools ?? true}
-                onChange={(e) => handleMcpConfigChange('enableTools', e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-600 dark:text-gray-400">MCP Tools</span>
-            </label>
-
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={aiConfig.mcp?.enableResources ?? true}
-                onChange={(e) => handleMcpConfigChange('enableResources', e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-600 dark:text-gray-400">MCP Resources</span>
-            </label>
-
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={aiConfig.mcp?.autoDiscoverTools ?? true}
-                onChange={(e) => handleMcpConfigChange('autoDiscoverTools', e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-600 dark:text-gray-400">Auto Discover</span>
-            </label>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Max Tool Calls: {aiConfig.mcp?.maxToolCalls ?? 5}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={aiConfig.mcp?.maxToolCalls ?? 5}
-                onChange={(e) => handleMcpConfigChange('maxToolCalls', parseInt(e.target.value))}
-                className="w-full"
-              />
-            </div>
+          {/* Model Selection */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Model Selection"
+              icon={<Bot className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.models}
+              onToggle={() => toggleSection('models')}
+            />
+            
+            {expandedSections.models && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Text Model
+                  </label>
+                  <ModelSelector
+                    models={models}
+                    selectedModel={aiConfig.models.text || ''}
+                    onModelChange={(modelId) => {
+                      onConfigChange?.({
+                        models: { ...aiConfig.models, text: modelId }
+                      });
+                      onModelChange?.(modelId, 'text');
+                    }}
+                    modelType="text"
+                    currentProvider={aiConfig.provider}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Vision Model
+                  </label>
+                  <ModelSelector
+                    models={models}
+                    selectedModel={aiConfig.models.vision || ''}
+                    onModelChange={(modelId) => {
+                      onConfigChange?.({
+                        models: { ...aiConfig.models, vision: modelId }
+                      });
+                      onModelChange?.(modelId, 'vision');
+                    }}
+                    modelType="vision"
+                    currentProvider={aiConfig.provider}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Code Model
+                  </label>
+                  <ModelSelector
+                    models={models}
+                    selectedModel={aiConfig.models.code || ''}
+                    onModelChange={(modelId) => {
+                      onConfigChange?.({
+                        models: { ...aiConfig.models, code: modelId }
+                      });
+                      onModelChange?.(modelId, 'code');
+                    }}
+                    modelType="code"
+                    currentProvider={aiConfig.provider}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* MCP Servers */}
-          {mcpServers.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                Available MCP Servers ({mcpServers.length})
-              </label>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {mcpServers.map((server) => {
-                  const isEnabled = aiConfig.mcp?.enabledServers?.includes(server.name) ?? false;
-                  return (
-                    <div key={server.name} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${
-                          server.isRunning ? 'bg-green-500' : 'bg-red-500'
-                        }`} />
-                        <span className="font-medium">{server.name}</span>
-                        <span className="text-gray-500">({server.status})</span>
+          {/* Parameters */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Parameters"
+              icon={<Wrench className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.parameters}
+              onToggle={() => toggleSection('parameters')}
+              badge={`T:${aiConfig.parameters.temperature} | Tokens:${aiConfig.parameters.maxTokens}`}
+            />
+            
+            {expandedSections.parameters && (
+              <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Temperature: {aiConfig.parameters.temperature}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={aiConfig.parameters.temperature}
+                    onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Max Tokens
+                  </label>
+                  <input
+                    type="number"
+                    min="100"
+                    max="8000"
+                    value={aiConfig.parameters.maxTokens}
+                    onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
+                    className="w-full px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Features */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Features"
+              icon={<Zap className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.features}
+              onToggle={() => toggleSection('features')}
+              badge={Object.values(aiConfig.features).filter(Boolean).length}
+            />
+            
+            {expandedSections.features && (
+              <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.features.enableTools}
+                    onChange={(e) => handleFeatureChange('enableTools', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600 dark:text-gray-400">Enable Tools</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.features.enableRAG}
+                    onChange={(e) => handleFeatureChange('enableRAG', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600 dark:text-gray-400">Enable RAG</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.features.enableStreaming}
+                    onChange={(e) => handleFeatureChange('enableStreaming', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600 dark:text-gray-400">Enable Streaming</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.features.autoModelSelection}
+                    onChange={(e) => handleFeatureChange('autoModelSelection', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600 dark:text-gray-400">Auto Model Selection</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.features.enableMCP || false}
+                    onChange={(e) => handleFeatureChange('enableMCP', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                    <Server className="w-3 h-3" />
+                    Enable MCP
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {/* MCP Configuration */}
+          {aiConfig.features.enableMCP && (
+            <div className="space-y-2">
+              <SectionHeader
+                title="MCP Configuration"
+                icon={<Server className="w-4 h-4 text-sakura-500" />}
+                isExpanded={expandedSections.mcp}
+                onToggle={() => toggleSection('mcp')}
+                badge={`${aiConfig.mcp?.enabledServers?.length || 0} servers`}
+              />
+              
+              {expandedSections.mcp && (
+                <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-3">
+                  {isLoadingMcpServers && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Loading MCP servers...
+                    </div>
+                  )}
+
+                  {/* MCP Features */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={aiConfig.mcp?.enableTools ?? true}
+                        onChange={(e) => handleMcpConfigChange('enableTools', e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">MCP Tools</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={aiConfig.mcp?.enableResources ?? true}
+                        onChange={(e) => handleMcpConfigChange('enableResources', e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">MCP Resources</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={aiConfig.mcp?.autoDiscoverTools ?? true}
+                        onChange={(e) => handleMcpConfigChange('autoDiscoverTools', e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400">Auto Discover</span>
+                    </label>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Max Tool Calls: {aiConfig.mcp?.maxToolCalls ?? 5}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={aiConfig.mcp?.maxToolCalls ?? 5}
+                        onChange={(e) => handleMcpConfigChange('maxToolCalls', parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* MCP Servers */}
+                  {mcpServers.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                        Available MCP Servers ({mcpServers.length})
+                      </label>
+                      <div className="space-y-2 max-h-24 overflow-y-auto">
+                        {mcpServers.map((server) => {
+                          const isEnabled = aiConfig.mcp?.enabledServers?.includes(server.name) ?? false;
+                          return (
+                            <div key={server.name} className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded text-xs">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  server.isRunning ? 'bg-green-500' : 'bg-red-500'
+                                }`} />
+                                <span className="font-medium">{server.name}</span>
+                                <span className="text-gray-500">({server.status})</span>
+                              </div>
+                              <label className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isEnabled}
+                                  onChange={(e) => handleMcpServerToggle(server.name, e.target.checked)}
+                                  disabled={!server.isRunning}
+                                  className="rounded"
+                                />
+                                <span className="text-gray-600 dark:text-gray-400">Enable</span>
+                              </label>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <label className="flex items-center gap-1">
+                    </div>
+                  )}
+
+                  {mcpServers.length === 0 && !isLoadingMcpServers && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                      No MCP servers available. Configure servers in Settings.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Autonomous Agent Settings */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Autonomous Agent"
+              icon={<Bot className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.autonomous}
+              onToggle={() => toggleSection('autonomous')}
+              badge={aiConfig?.autonomousAgent?.enabled ? 'Enabled' : 'Disabled'}
+            />
+            
+            {expandedSections.autonomous && (
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">Enable Autonomous Agent</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.autonomousAgent?.enabled || false}
+                      onChange={(e) => {
+                        const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                          enabled: true,
+                          maxRetries: 3,
+                          retryDelay: 1000,
+                          enableSelfCorrection: true,
+                          enableToolGuidance: true,
+                          enableProgressTracking: true,
+                          maxToolCalls: 10,
+                          confidenceThreshold: 0.8,
+                          enableChainOfThought: false,
+                          enableErrorLearning: true
+                        };
+                        
+                        onConfigChange?.({
+                          autonomousAgent: {
+                            ...currentAutonomousAgent,
+                            enabled: e.target.checked
+                          }
+                        });
+                      }}
+                      className="sr-only"
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${
+                      aiConfig?.autonomousAgent?.enabled 
+                        ? 'bg-sakura-500' 
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    }`}>
+                      <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                        aiConfig?.autonomousAgent?.enabled ? 'translate-x-5' : 'translate-x-0'
+                      } mt-0.5 ml-0.5`} />
+                    </div>
+                  </label>
+                </div>
+
+                {aiConfig?.autonomousAgent?.enabled && (
+                  <div className="space-y-3 pl-4 border-l-2 border-sakura-200 dark:border-sakura-800">
+                    {/* Max Retries */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Max Retries: {aiConfig?.autonomousAgent?.maxRetries || 3}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={aiConfig?.autonomousAgent?.maxRetries || 3}
+                        onChange={(e) => {
+                          const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                            enabled: true,
+                            maxRetries: 3,
+                            retryDelay: 1000,
+                            enableSelfCorrection: true,
+                            enableToolGuidance: true,
+                            enableProgressTracking: true,
+                            maxToolCalls: 10,
+                            confidenceThreshold: 0.8,
+                            enableChainOfThought: false,
+                            enableErrorLearning: true
+                          };
+                          
+                          onConfigChange?.({
+                            autonomousAgent: {
+                              ...currentAutonomousAgent,
+                              maxRetries: parseInt(e.target.value)
+                            }
+                          });
+                        }}
+                        className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                    </div>
+
+                    {/* Max Tool Calls */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Max Tool Calls: {aiConfig?.autonomousAgent?.maxToolCalls || 10}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="20"
+                        value={aiConfig?.autonomousAgent?.maxToolCalls || 10}
+                        onChange={(e) => {
+                          const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                            enabled: true,
+                            maxRetries: 3,
+                            retryDelay: 1000,
+                            enableSelfCorrection: true,
+                            enableToolGuidance: true,
+                            enableProgressTracking: true,
+                            maxToolCalls: 10,
+                            confidenceThreshold: 0.8,
+                            enableChainOfThought: false,
+                            enableErrorLearning: true
+                          };
+                          
+                          onConfigChange?.({
+                            autonomousAgent: {
+                              ...currentAutonomousAgent,
+                              maxToolCalls: parseInt(e.target.value)
+                            }
+                          });
+                        }}
+                        className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                    </div>
+
+                    {/* Agent Features */}
+                    <div className="grid grid-cols-1 gap-2">
+                      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
                         <input
                           type="checkbox"
-                          checked={isEnabled}
-                          onChange={(e) => handleMcpServerToggle(server.name, e.target.checked)}
-                          disabled={!server.isRunning}
-                          className="rounded"
+                          checked={aiConfig?.autonomousAgent?.enableSelfCorrection || false}
+                          onChange={(e) => {
+                            const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                              enabled: true,
+                              maxRetries: 3,
+                              retryDelay: 1000,
+                              enableSelfCorrection: true,
+                              enableToolGuidance: true,
+                              enableProgressTracking: true,
+                              maxToolCalls: 10,
+                              confidenceThreshold: 0.8,
+                              enableChainOfThought: false,
+                              enableErrorLearning: true
+                            };
+                            
+                            onConfigChange?.({
+                              autonomousAgent: {
+                                ...currentAutonomousAgent,
+                                enableSelfCorrection: e.target.checked
+                              }
+                            });
+                          }}
+                          className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
                         />
-                        <span className="text-gray-600 dark:text-gray-400">Enable</span>
+                        Self-Correction
+                      </label>
+
+                      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={aiConfig?.autonomousAgent?.enableProgressTracking || false}
+                          onChange={(e) => {
+                            const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                              enabled: true,
+                              maxRetries: 3,
+                              retryDelay: 1000,
+                              enableSelfCorrection: true,
+                              enableToolGuidance: true,
+                              enableProgressTracking: true,
+                              maxToolCalls: 10,
+                              confidenceThreshold: 0.8,
+                              enableChainOfThought: false,
+                              enableErrorLearning: true
+                            };
+                            
+                            onConfigChange?.({
+                              autonomousAgent: {
+                                ...currentAutonomousAgent,
+                                enableProgressTracking: e.target.checked
+                              }
+                            });
+                          }}
+                          className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                        />
+                        Progress Tracking
+                      </label>
+
+                      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={aiConfig?.autonomousAgent?.enableChainOfThought || false}
+                          onChange={(e) => {
+                            const currentAutonomousAgent = aiConfig?.autonomousAgent || {
+                              enabled: true,
+                              maxRetries: 3,
+                              retryDelay: 1000,
+                              enableSelfCorrection: true,
+                              enableToolGuidance: true,
+                              enableProgressTracking: true,
+                              maxToolCalls: 10,
+                              confidenceThreshold: 0.8,
+                              enableChainOfThought: false,
+                              enableErrorLearning: true
+                            };
+                            
+                            onConfigChange?.({
+                              autonomousAgent: {
+                                ...currentAutonomousAgent,
+                                enableChainOfThought: e.target.checked
+                              }
+                            });
+                          }}
+                          className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                        />
+                        Chain of Thought
                       </label>
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
-
-          {mcpServers.length === 0 && !isLoadingMcpServers && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
-              No MCP servers available. Configure servers in Settings.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Autonomous Agent Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
-            <Bot className="w-4 h-4 text-sakura-500" />
-            Autonomous Agent
-          </h4>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={aiConfig?.autonomousAgent?.enabled || false}
-              onChange={(e) => {
-                const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                  enabled: false,
-                  maxRetries: 3,
-                  retryDelay: 1000,
-                  enableSelfCorrection: true,
-                  enableToolGuidance: true,
-                  enableProgressTracking: true,
-                  maxToolCalls: 10,
-                  confidenceThreshold: 0.8,
-                  enableChainOfThought: false,
-                  enableErrorLearning: true
-                };
-                
-                onConfigChange?.({
-                  autonomousAgent: {
-                    ...currentAutonomousAgent,
-                    enabled: e.target.checked
-                  }
-                });
-              }}
-              className="sr-only"
-            />
-            <div className={`w-11 h-6 rounded-full transition-colors ${
-              aiConfig?.autonomousAgent?.enabled 
-                ? 'bg-sakura-500' 
-                : 'bg-gray-300 dark:bg-gray-600'
-            }`}>
-              <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                aiConfig?.autonomousAgent?.enabled ? 'translate-x-5' : 'translate-x-0'
-              } mt-0.5 ml-0.5`} />
-            </div>
-          </label>
-        </div>
-
-        {aiConfig?.autonomousAgent?.enabled && (
-          <div className="space-y-3 pl-6 border-l-2 border-sakura-200 dark:border-sakura-800">
-            {/* Max Retries */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Max Retries: {aiConfig?.autonomousAgent?.maxRetries || 3}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={aiConfig?.autonomousAgent?.maxRetries || 3}
-                onChange={(e) => {
-                  const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                    enabled: true,
-                    maxRetries: 3,
-                    retryDelay: 1000,
-                    enableSelfCorrection: true,
-                    enableToolGuidance: true,
-                    enableProgressTracking: true,
-                    maxToolCalls: 10,
-                    confidenceThreshold: 0.8,
-                    enableChainOfThought: false,
-                    enableErrorLearning: true
-                  };
-                  
-                  onConfigChange?.({
-                    autonomousAgent: {
-                      ...currentAutonomousAgent,
-                      maxRetries: parseInt(e.target.value)
-                    }
-                  });
-                }}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* Max Tool Calls */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Max Tool Calls: {aiConfig?.autonomousAgent?.maxToolCalls || 10}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="20"
-                value={aiConfig?.autonomousAgent?.maxToolCalls || 10}
-                onChange={(e) => {
-                  const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                    enabled: true,
-                    maxRetries: 3,
-                    retryDelay: 1000,
-                    enableSelfCorrection: true,
-                    enableToolGuidance: true,
-                    enableProgressTracking: true,
-                    maxToolCalls: 10,
-                    confidenceThreshold: 0.8,
-                    enableChainOfThought: false,
-                    enableErrorLearning: true
-                  };
-                  
-                  onConfigChange?.({
-                    autonomousAgent: {
-                      ...currentAutonomousAgent,
-                      maxToolCalls: parseInt(e.target.value)
-                    }
-                  });
-                }}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-              />
-            </div>
-
-            {/* Agent Features */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={aiConfig?.autonomousAgent?.enableSelfCorrection || false}
-                  onChange={(e) => {
-                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                      enabled: true,
-                      maxRetries: 3,
-                      retryDelay: 1000,
-                      enableSelfCorrection: true,
-                      enableToolGuidance: true,
-                      enableProgressTracking: true,
-                      maxToolCalls: 10,
-                      confidenceThreshold: 0.8,
-                      enableChainOfThought: false,
-                      enableErrorLearning: true
-                    };
-                    
-                    onConfigChange?.({
-                      autonomousAgent: {
-                        ...currentAutonomousAgent,
-                        enableSelfCorrection: e.target.checked
-                      }
-                    });
-                  }}
-                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
-                />
-                Self-Correction
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={aiConfig?.autonomousAgent?.enableProgressTracking || false}
-                  onChange={(e) => {
-                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                      enabled: true,
-                      maxRetries: 3,
-                      retryDelay: 1000,
-                      enableSelfCorrection: true,
-                      enableToolGuidance: true,
-                      enableProgressTracking: true,
-                      maxToolCalls: 10,
-                      confidenceThreshold: 0.8,
-                      enableChainOfThought: false,
-                      enableErrorLearning: true
-                    };
-                    
-                    onConfigChange?.({
-                      autonomousAgent: {
-                        ...currentAutonomousAgent,
-                        enableProgressTracking: e.target.checked
-                      }
-                    });
-                  }}
-                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
-                />
-                Progress Tracking
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={aiConfig?.autonomousAgent?.enableChainOfThought || false}
-                  onChange={(e) => {
-                    const currentAutonomousAgent = aiConfig?.autonomousAgent || {
-                      enabled: true,
-                      maxRetries: 3,
-                      retryDelay: 1000,
-                      enableSelfCorrection: true,
-                      enableToolGuidance: true,
-                      enableProgressTracking: true,
-                      maxToolCalls: 10,
-                      confidenceThreshold: 0.8,
-                      enableChainOfThought: false,
-                      enableErrorLearning: true
-                    };
-                    
-                    onConfigChange?.({
-                      autonomousAgent: {
-                        ...currentAutonomousAgent,
-                        enableChainOfThought: e.target.checked
-                      }
-                    });
-                  }}
-                  className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
-                />
-                Chain of Thought
-              </label>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -1476,7 +1596,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     };
 
     const defaultAutonomousAgent = {
-      enabled: false,
+      enabled: currentAIConfig.autonomousAgent?.enabled ?? true,
       maxRetries: 3,
       retryDelay: 1000,
       enableSelfCorrection: true,

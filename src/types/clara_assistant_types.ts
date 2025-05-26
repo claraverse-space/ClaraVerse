@@ -385,7 +385,7 @@ export interface ClaraAIConfig {
   
   /** MCP configuration */
   mcp?: ClaraMCPConfig;
-  
+    
   /** Autonomous agent configuration */
   autonomousAgent?: ClaraAutonomousAgentConfig;
 }
