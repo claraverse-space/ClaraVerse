@@ -1,6 +1,5 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import SynchronizedImageViewer from './SynchronizedImageViewer';
 
 interface ImageViewModalProps {
   imageUrl: string | null;
@@ -20,11 +19,6 @@ const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose, sync
         >
           <X className="w-6 h-6" />
         </button>
-        <SynchronizedImageViewer
-          imageUrl={imageUrl}
-          className="w-full h-full"
-          syncGroup={syncGroup}
-        />
       </div>
     </div>
   );
