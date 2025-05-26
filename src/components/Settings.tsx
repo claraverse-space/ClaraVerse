@@ -354,7 +354,7 @@ const Settings = () => {
         />
       )}
       
-      <div className="flex max-w-6xl mx-auto gap-6 relative z-10 h-full">
+      <div className="flex max-w-6xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
         {/* Sidebar with tabs */}
         <div className="w-64 shrink-0">
           <div className="glassmorphic rounded-xl p-4 space-y-2 sticky top-4">
@@ -418,7 +418,10 @@ const Settings = () => {
         </div>
 
         {/* Content area */}
-        <div className="flex-1 space-y-6 py-2 max-w-4xl">
+        <div className="flex-1 space-y-6 py-2 pb-6 max-w-4xl overflow-y-auto overflow-x-hidden scrollbar-none" style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}>
           {/* Personal Information Tab */}
           {activeTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">

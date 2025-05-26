@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const { app } = require('electron');
+const os = require('os');
 
 class MCPService {
   constructor() {
@@ -102,6 +103,118 @@ class MCPService {
     return true;
   }
 
+  // Helper method to get enhanced PATH with common Node.js installation locations
+  getEnhancedPath() {
+    const currentPath = process.env.PATH || '';
+    const homedir = os.homedir();
+    
+    // Common Node.js installation paths
+    const commonNodePaths = [
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      '/usr/bin',
+      path.join(homedir, '.nvm/current/bin'),
+      path.join(homedir, '.volta/bin'),
+      path.join(homedir, '.fnm/current/bin'),
+      path.join(homedir, 'n/bin'),
+      '/usr/local/node/bin',
+      '/opt/node/bin'
+    ];
+
+    // Filter existing paths and add them to PATH
+    const existingPaths = commonNodePaths.filter(nodePath => {
+      try {
+        return fs.existsSync(nodePath);
+      } catch (error) {
+        return false;
+      }
+    });
+
+    // Combine current PATH with existing Node.js paths
+    const allPaths = [currentPath, ...existingPaths].filter(Boolean);
+    return allPaths.join(path.delimiter);
+  }
+
+  // Helper method to check if a command exists
+  async commandExists(command) {
+    return new Promise((resolve) => {
+      const testProcess = spawn(command, ['--version'], {
+        stdio: 'ignore',
+        shell: process.platform === 'win32',
+        env: {
+          ...process.env,
+          PATH: this.getEnhancedPath()
+        }
+      });
+      
+      testProcess.on('error', () => resolve(false));
+      testProcess.on('exit', (code) => resolve(code === 0));
+    });
+  }
+
+  // Diagnose Node.js installation
+  async diagnoseNodeInstallation() {
+    const enhancedPath = this.getEnhancedPath();
+    const pathDirs = enhancedPath.split(path.delimiter);
+    
+    const diagnosis = {
+      nodeAvailable: false,
+      npmAvailable: false,
+      npxAvailable: false,
+      nodePath: null,
+      npmPath: null,
+      npxPath: null,
+      pathDirs: pathDirs,
+      suggestions: []
+    };
+
+    // Check for node, npm, and npx
+    for (const dir of pathDirs) {
+      if (!diagnosis.nodeAvailable) {
+        const nodePath = path.join(dir, process.platform === 'win32' ? 'node.exe' : 'node');
+        if (fs.existsSync(nodePath)) {
+          diagnosis.nodeAvailable = true;
+          diagnosis.nodePath = nodePath;
+        }
+      }
+      
+      if (!diagnosis.npmAvailable) {
+        const npmPath = path.join(dir, process.platform === 'win32' ? 'npm.cmd' : 'npm');
+        if (fs.existsSync(npmPath)) {
+          diagnosis.npmAvailable = true;
+          diagnosis.npmPath = npmPath;
+        }
+      }
+      
+      if (!diagnosis.npxAvailable) {
+        const npxPath = path.join(dir, process.platform === 'win32' ? 'npx.cmd' : 'npx');
+        if (fs.existsSync(npxPath)) {
+          diagnosis.npxAvailable = true;
+          diagnosis.npxPath = npxPath;
+        }
+      }
+    }
+
+    // Generate suggestions
+    if (!diagnosis.nodeAvailable) {
+      diagnosis.suggestions.push('Node.js is not installed or not found in PATH. Please install Node.js from https://nodejs.org/');
+    }
+    
+    if (!diagnosis.npmAvailable) {
+      diagnosis.suggestions.push('npm is not available. It should come with Node.js installation.');
+    }
+    
+    if (!diagnosis.npxAvailable) {
+      diagnosis.suggestions.push('npx is not available. It should come with npm 5.2.0 or later.');
+    }
+
+    if (diagnosis.nodeAvailable && diagnosis.npmAvailable && diagnosis.npxAvailable) {
+      diagnosis.suggestions.push('Node.js, npm, and npx are all available and should work correctly.');
+    }
+
+    return diagnosis;
+  }
+
   async startServer(name) {
     const serverConfig = this.config.mcpServers[name];
     if (!serverConfig) {
@@ -115,13 +228,23 @@ class MCPService {
     try {
       const { command, args = [], env = {} } = serverConfig;
       
-      // Merge environment variables
+      // Check if command exists before trying to start
+      if (command === 'npx' || command === 'npm' || command === 'node') {
+        const commandAvailable = await this.commandExists(command);
+        if (!commandAvailable) {
+          throw new Error(`Command '${command}' not found. Please ensure Node.js and npm are properly installed and available in your PATH.`);
+        }
+      }
+      
+      // Merge environment variables with enhanced PATH
       const processEnv = {
         ...process.env,
+        PATH: this.getEnhancedPath(),
         ...env
       };
 
       log.info(`Starting MCP server: ${name} with command: ${command} ${args.join(' ')}`);
+      log.info(`Using PATH: ${processEnv.PATH}`);
 
       const serverProcess = spawn(command, args, {
         env: processEnv,
@@ -148,7 +271,13 @@ class MCPService {
       serverProcess.on('error', (error) => {
         log.error(`MCP server '${name}' error:`, error);
         serverInfo.status = 'error';
-        serverInfo.error = error.message;
+        
+        // Provide more helpful error messages
+        if (error.code === 'ENOENT') {
+          serverInfo.error = `Command '${command}' not found. Please ensure Node.js and npm are properly installed.`;
+        } else {
+          serverInfo.error = error.message;
+        }
       });
 
       serverProcess.on('exit', (code, signal) => {
@@ -306,11 +435,19 @@ class MCPService {
       return new Promise((resolve) => {
         const testProcess = spawn(command, ['--version'], {
           stdio: 'ignore',
-          shell: process.platform === 'win32'
+          shell: process.platform === 'win32',
+          env: {
+            ...process.env,
+            PATH: this.getEnhancedPath()
+          }
         });
         
         testProcess.on('error', (error) => {
-          resolve({ success: false, error: error.message });
+          if (error.code === 'ENOENT') {
+            resolve({ success: false, error: `Command '${command}' not found. Please ensure Node.js and npm are properly installed.` });
+          } else {
+            resolve({ success: false, error: error.message });
+          }
         });
         
         testProcess.on('exit', (code) => {

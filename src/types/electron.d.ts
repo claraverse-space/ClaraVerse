@@ -83,6 +83,16 @@ declare global {
       stopAll: () => Promise<{ name: string; success: boolean; error?: string }[]>;
       importClaudeConfig: (configPath: string) => Promise<{ imported: number; errors: any[] }>;
       executeToolCall: (toolCall: any) => Promise<any>;
+      diagnoseNode: () => Promise<{
+        nodeAvailable: boolean;
+        npmAvailable: boolean;
+        npxAvailable: boolean;
+        nodePath?: string | null;
+        npmPath?: string | null;
+        npxPath?: string | null;
+        pathDirs: string[];
+        suggestions: string[];
+      }>;
     };
   }
 }

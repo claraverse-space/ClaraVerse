@@ -950,6 +950,24 @@ function registerMCPHandlers() {
       throw error;
     }
   });
+
+  // Diagnose Node.js installation
+  ipcMain.handle('mcp-diagnose-node', async () => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.diagnoseNodeInstallation();
+    } catch (error) {
+      log.error('Error diagnosing Node.js installation:', error);
+      return {
+        nodeAvailable: false,
+        npmAvailable: false,
+        npxAvailable: false,
+        suggestions: ['Error occurred while diagnosing Node.js installation: ' + error.message]
+      };
+    }
+  });
 }
 
 // Register handlers for various app functions

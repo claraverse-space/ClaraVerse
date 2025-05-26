@@ -6,6 +6,28 @@
   height: 100%;
 }
 
+/* Scrollbar hiding utilities */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
+/* Hide scrollbars globally for specific containers */
+.overflow-y-auto.scrollbar-none,
+.overflow-auto.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.overflow-y-auto.scrollbar-none::-webkit-scrollbar,
+.overflow-auto.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 .resizable-widget:hover .resize-handle {
   opacity: 1;
 }

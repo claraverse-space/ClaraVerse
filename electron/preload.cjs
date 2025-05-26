@@ -154,7 +154,8 @@ contextBridge.exposeInMainWorld('mcpService', {
   startAllEnabled: () => ipcRenderer.invoke('mcp-start-all-enabled'),
   stopAll: () => ipcRenderer.invoke('mcp-stop-all'),
   importClaudeConfig: (configPath) => ipcRenderer.invoke('mcp-import-claude-config', configPath),
-  executeToolCall: (toolCall) => ipcRenderer.invoke('mcp-execute-tool', toolCall)
+  executeToolCall: (toolCall) => ipcRenderer.invoke('mcp-execute-tool', toolCall),
+  diagnoseNode: () => ipcRenderer.invoke('mcp-diagnose-node')
 });
 
 // Notify main process when preload script has loaded

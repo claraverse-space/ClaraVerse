@@ -54,28 +54,6 @@ interface MCPServerTemplate {
   env?: Record<string, string>;
 }
 
-// Extend window interface for MCP service
-declare global {
-  interface Window {
-    mcpService?: {
-      getServers: () => Promise<MCPServer[]>;
-      addServer: (serverConfig: MCPServerConfig) => Promise<boolean>;
-      removeServer: (name: string) => Promise<boolean>;
-      updateServer: (name: string, updates: Partial<MCPServerConfig>) => Promise<boolean>;
-      startServer: (name: string) => Promise<MCPServerInfo>;
-      stopServer: (name: string) => Promise<boolean>;
-      restartServer: (name: string) => Promise<MCPServerInfo>;
-      getServerStatus: (name: string) => Promise<MCPServerStatus | null>;
-      testServer: (name: string) => Promise<{ success: boolean; message?: string; error?: string }>;
-      getTemplates: () => Promise<MCPServerTemplate[]>;
-      startAllEnabled: () => Promise<{ name: string; success: boolean; error?: string }[]>;
-      stopAll: () => Promise<{ name: string; success: boolean; error?: string }[]>;
-      importClaudeConfig: (configPath: string) => Promise<{ imported: number; errors: any[] }>;
-      executeToolCall: (toolCall: any) => Promise<any>;
-    };
-  }
-}
-
 const MCPSettings: React.FC = () => {
   // MCP state
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
@@ -85,7 +63,12 @@ const MCPSettings: React.FC = () => {
   const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
   const [showDeleteMcpConfirm, setShowDeleteMcpConfirm] = useState<string | null>(null);
   const [testingMcpServer, setTestingMcpServer] = useState<string | null>(null);
-  const [mcpTestResults, setMcpTestResults] = useState<{ [key: string]: 'success' | 'error' | null }>({});
+  const [mcpTestResults, setMcpTestResults] = useState<{ [key: string]: { 
+    status: 'success' | 'error' | null;
+    tools?: Array<{ name: string; description?: string; inputSchema?: any }>;
+    resources?: Array<{ uri: string; name?: string }>;
+    error?: string;
+  } }>({});
   const [newMcpServerForm, setNewMcpServerForm] = useState({
     name: '',
     type: 'stdio' as 'stdio' | 'remote',
@@ -97,6 +80,23 @@ const MCPSettings: React.FC = () => {
     description: '',
     enabled: true
   });
+
+  // Node.js diagnosis state
+  const [nodeDiagnosis, setNodeDiagnosis] = useState<{
+    nodeAvailable: boolean;
+    npmAvailable: boolean;
+    npxAvailable: boolean;
+    nodePath?: string | null;
+    npmPath?: string | null;
+    npxPath?: string | null;
+    pathDirs: string[];
+    suggestions: string[];
+  } | null>(null);
+  const [isRunningDiagnosis, setIsRunningDiagnosis] = useState(false);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
+  
+  // MCP sub-tab state
+  const [activeSubTab, setActiveSubTab] = useState<'servers' | 'templates' | 'diagnosis'>('servers');
 
   // Load MCP servers and templates
   useEffect(() => {
@@ -242,21 +242,126 @@ const MCPSettings: React.FC = () => {
     if (!window.mcpService) return;
     
     setTestingMcpServer(name);
-    setMcpTestResults(prev => ({ ...prev, [name]: null }));
+    setMcpTestResults(prev => ({ ...prev, [name]: { status: null } }));
     
     try {
-      const result = await window.mcpService.testServer(name);
-      setMcpTestResults(prev => ({ ...prev, [name]: result.success ? 'success' : 'error' }));
+      // First, check if the server is running
+      const serverStatus = await window.mcpService.getServerStatus(name);
+      let needsStart = !serverStatus?.isRunning;
+      
+      // If server is not running, try to start it temporarily for testing
+      if (needsStart) {
+        try {
+          await window.mcpService.startServer(name);
+          // Give it a moment to start
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (startError) {
+          setMcpTestResults(prev => ({ 
+            ...prev, 
+            [name]: { 
+              status: 'error', 
+              error: `Failed to start server: ${startError instanceof Error ? startError.message : 'Unknown error'}` 
+            } 
+          }));
+          return;
+        }
+      }
+
+      // Now try to discover tools by executing a tools/list call
+      try {
+        const toolsResult = await window.mcpService.executeToolCall({
+          server: name,
+          name: 'tools/list',
+          arguments: {},
+          callId: `test-${Date.now()}`
+        });
+
+        console.log('Full tools result:', JSON.stringify(toolsResult, null, 2)); // Enhanced debug log
+
+        // Try multiple possible response structures
+        let tools = null;
+        
+        if (toolsResult.success) {
+          // Check various possible nested structures
+          if (toolsResult.content && toolsResult.content[0]?.data) {
+            tools = toolsResult.content[0].data;
+            console.log('Found tools in content[0].data:', tools);
+          } else if (toolsResult.result?.result?.tools) {
+            tools = toolsResult.result.result.tools;
+            console.log('Found tools in result.result.tools:', tools);
+          } else if (toolsResult.result?.tools) {
+            tools = toolsResult.result.tools;
+            console.log('Found tools in result.tools:', tools);
+          } else if (toolsResult.tools) {
+            tools = toolsResult.tools;
+            console.log('Found tools in direct tools:', tools);
+          } else {
+            console.log('No tools found in response structure');
+          }
+        }
+
+        if (tools && Array.isArray(tools) && tools.length > 0) {
+          console.log('Setting tools in state:', tools);
+          setMcpTestResults(prev => ({ 
+            ...prev, 
+            [name]: { 
+              status: 'success', 
+              tools: tools.map((tool: any) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema
+              }))
+            } 
+          }));
+        } else {
+          console.log('No valid tools found, falling back to basic test');
+          // Fallback to basic test
+          const result = await window.mcpService.testServer(name);
+          setMcpTestResults(prev => ({ 
+            ...prev, 
+            [name]: { 
+              status: result.success ? 'success' : 'error', 
+              error: result.error 
+            } 
+          }));
+        }
+      } catch (toolsError) {
+        // Fallback to basic test if tools discovery fails
+        const result = await window.mcpService.testServer(name);
+        setMcpTestResults(prev => ({ 
+          ...prev, 
+          [name]: { 
+            status: result.success ? 'success' : 'error', 
+            error: result.error 
+          } 
+        }));
+      }
+
+      // If we started the server for testing, stop it again
+      if (needsStart) {
+        try {
+          await window.mcpService.stopServer(name);
+        } catch (stopError) {
+          console.warn('Failed to stop server after testing:', stopError);
+        }
+      }
+
     } catch (error) {
-      setMcpTestResults(prev => ({ ...prev, [name]: 'error' }));
+      setMcpTestResults(prev => ({ 
+        ...prev, 
+        [name]: { 
+          status: 'error', 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        } 
+      }));
       console.error('MCP server test failed:', error);
     } finally {
       setTestingMcpServer(null);
       
-      // Clear test results after 3 seconds
+      // Clear test results after 10 seconds (longer to see tools)
       setTimeout(() => {
-        setMcpTestResults(prev => ({ ...prev, [name]: null }));
-      }, 3000);
+        setMcpTestResults(prev => ({ ...prev, [name]: { status: null } }));
+      }, 10000);
     }
   };
 
@@ -319,269 +424,582 @@ const MCPSettings: React.FC = () => {
     setShowAddMcpModal(true);
   };
 
+  // Run Node.js diagnosis
+  const runNodeDiagnosis = async () => {
+    if (!window.mcpService) return;
+    
+    setIsRunningDiagnosis(true);
+    try {
+      const diagnosis = await window.mcpService.diagnoseNode();
+      setNodeDiagnosis(diagnosis);
+      setShowDiagnosis(true);
+    } catch (error) {
+      console.error('Error running Node.js diagnosis:', error);
+    } finally {
+      setIsRunningDiagnosis(false);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      {/* MCP Servers Section */}
-      <div className="glassmorphic rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Server className="w-6 h-6 text-sakura-500" />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                MCP Servers
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Manage Model Context Protocol servers for enhanced AI capabilities
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleImportClaudeConfig}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
-            >
-              <Upload className="w-4 h-4" />
-              Import Claude Config
-            </button>
-            <button
-              onClick={() => {
-                setEditingMcpServer(null);
-                setNewMcpServerForm({
-                  name: '',
-                  type: 'stdio',
-                  command: '',
-                  args: [],
-                  env: {},
-                  url: '',
-                  headers: {},
-                  description: '',
-                  enabled: true
-                });
-                setShowAddMcpModal(true);
-              }}
-              className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add Server
-            </button>
-          </div>
-        </div>
-
-        {/* MCP Servers List */}
-        {isLoadingMcp ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-sakura-500"></div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {mcpServers.length > 0 ? (
-              mcpServers.map((server) => (
-                <div
-                  key={server.name}
-                  className={`p-4 rounded-lg border transition-all ${
-                    server.isRunning 
-                      ? 'border-green-300 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10 shadow-sm' 
-                      : 'border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30'
-                  } hover:bg-white/50 dark:hover:bg-gray-800/50`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                        server.isRunning 
-                          ? 'bg-green-500' 
-                          : server.config.enabled 
-                          ? 'bg-sakura-500' 
-                          : 'bg-gray-400 dark:bg-gray-600'
-                      }`}>
-                        <Server className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-medium text-gray-900 dark:text-white">
-                            {server.name}
-                          </h4>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            server.status === 'running' 
-                              ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300'
-                              : server.status === 'error'
-                              ? 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {server.status}
-                          </span>
-                          {!server.config.enabled && (
-                            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
-                              Disabled
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {server.config.description || 'No description'}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-500 font-mono">
-                          {server.config.type === 'stdio' 
-                            ? `${server.config.command} ${(server.config.args || []).join(' ')}`
-                            : server.config.url
-                          }
-                        </p>
-                        {server.error && (
-                          <p className="text-xs text-red-500 dark:text-red-400 mt-1">
-                            Error: {server.error}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {/* Server Controls */}
-                      {server.isRunning ? (
-                        <>
-                          <button
-                            onClick={() => handleMcpServerAction(server.name, 'restart')}
-                            className="p-2 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                            title="Restart server"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleMcpServerAction(server.name, 'stop')}
-                            className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                            title="Stop server"
-                          >
-                            <Square className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleMcpServerAction(server.name, 'start')}
-                          disabled={!server.config.enabled}
-                          className="p-2 text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          title="Start server"
-                        >
-                          <Play className="w-4 h-4" />
-                        </button>
-                      )}
-                      
-                      {/* Test Button */}
-                      <button
-                        onClick={() => testMcpServer(server.name)}
-                        disabled={testingMcpServer === server.name}
-                        className={`px-3 py-1 text-sm rounded transition-colors disabled:opacity-50 flex items-center gap-1 ${
-                          mcpTestResults[server.name] === 'success' 
-                            ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-600'
-                            : mcpTestResults[server.name] === 'error'
-                            ? 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-600'
-                            : 'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-700'
-                        }`}
-                      >
-                        {testingMcpServer === server.name ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                            Testing...
-                          </>
-                        ) : mcpTestResults[server.name] === 'success' ? (
-                          <>
-                            <CheckCircle className="w-3 h-3" />
-                            Available
-                          </>
-                        ) : mcpTestResults[server.name] === 'error' ? (
-                          <>
-                            <AlertCircle className="w-3 h-3" />
-                            Failed
-                          </>
-                        ) : (
-                          <>
-                            <Server className="w-3 h-3" />
-                            Test
-                          </>
-                        )}
-                      </button>
-                      
-                      <button
-                        onClick={() => handleEditMcpServer(server)}
-                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-                        title="Edit server"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      
-                      <button
-                        onClick={() => setShowDeleteMcpConfirm(server.name)}
-                        className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
-                        title="Delete server"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Server className="w-8 h-8 text-gray-400 dark:text-gray-600" />
-                </div>
-                <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No MCP servers configured</h4>
-                <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  Add MCP servers to extend AI capabilities with external tools and data sources
-                </p>
-                <button 
-                  onClick={() => setShowAddMcpModal(true)}
-                  className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
-                >
-                  Add Your First Server
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* MCP Templates Section */}
+    <div className="space-y-6 min-h-0">
+      {/* MCP Header */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
-          <FileText className="w-6 h-6 text-sakura-500" />
+          <Server className="w-6 h-6 text-sakura-500" />
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Server Templates
-            </h3>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Model Context Protocol (MCP)
+            </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Quick setup for popular MCP servers
+              Manage MCP servers, templates, and system diagnostics
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mcpTemplates.map((template) => (
-            <div
-              key={template.name}
-              className="p-4 bg-white/30 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h4 className="font-medium text-gray-900 dark:text-white">
-                    {template.displayName}
-                  </h4>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                    {template.category}
-                  </span>
-                </div>
-                <button
-                  onClick={() => addMcpServerFromTemplate(template)}
-                  className="px-3 py-1 bg-sakura-500 text-white text-sm rounded hover:bg-sakura-600 transition-colors"
-                >
-                  Use Template
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                {template.description}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-2">
-                {template.command} {template.args.join(' ')}
-              </p>
+        {/* Sub-tabs Navigation */}
+        <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-6">
+          <button
+            onClick={() => setActiveSubTab('servers')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeSubTab === 'servers'
+                ? 'bg-sakura-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Server className="w-4 h-4" />
+              Servers
             </div>
-          ))}
+          </button>
+          <button
+            onClick={() => setActiveSubTab('templates')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeSubTab === 'templates'
+                ? 'bg-sakura-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4" />
+              Templates
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('diagnosis')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeSubTab === 'diagnosis'
+                ? 'bg-sakura-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              Diagnosis
+            </div>
+          </button>
         </div>
       </div>
+
+      {/* Servers Tab */}
+      {activeSubTab === 'servers' && (
+        <div className="glassmorphic rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Server className="w-6 h-6 text-sakura-500" />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  MCP Servers
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Manage your Model Context Protocol servers
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleImportClaudeConfig}
+                className="px-4 py-2 bg-sakura-400 text-white rounded-lg hover:bg-sakura-500 transition-colors flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Import Claude Config
+              </button>
+              <button
+                onClick={() => {
+                  setEditingMcpServer(null);
+                  setNewMcpServerForm({
+                    name: '',
+                    type: 'stdio',
+                    command: '',
+                    args: [],
+                    env: {},
+                    url: '',
+                    headers: {},
+                    description: '',
+                    enabled: true
+                  });
+                  setShowAddMcpModal(true);
+                }}
+                className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Server
+              </button>
+            </div>
+          </div>
+
+          {/* MCP Servers List */}
+          {isLoadingMcp ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-sakura-500"></div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {mcpServers.length > 0 ? (
+                mcpServers.map((server) => (
+                  <div
+                    key={server.name}
+                    className={`p-4 rounded-lg border transition-all ${
+                      server.isRunning 
+                        ? 'border-green-300 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10 shadow-sm' 
+                        : 'border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30'
+                    } hover:bg-white/50 dark:hover:bg-gray-800/50`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                          server.isRunning 
+                            ? 'bg-green-500' 
+                            : server.config.enabled 
+                            ? 'bg-sakura-500' 
+                            : 'bg-gray-400 dark:bg-gray-600'
+                        }`}>
+                          <Server className="w-6 h-6 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-medium text-gray-900 dark:text-white">
+                              {server.name}
+                            </h4>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              server.status === 'running' 
+                                ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300'
+                                : server.status === 'error'
+                                ? 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {server.status}
+                            </span>
+                            {!server.config.enabled && (
+                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {server.config.description || 'No description'}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 font-mono">
+                            {server.config.type === 'stdio' 
+                              ? `${server.config.command} ${(server.config.args || []).join(' ')}`
+                              : server.config.url
+                            }
+                          </p>
+                          {server.error && (
+                            <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                              Error: {server.error}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {/* Server Controls */}
+                        {server.isRunning ? (
+                          <>
+                            <button
+                              onClick={() => handleMcpServerAction(server.name, 'restart')}
+                              className="p-2 text-sakura-500 hover:text-sakura-700 dark:text-sakura-400 dark:hover:text-sakura-300 transition-colors"
+                              title="Restart server"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleMcpServerAction(server.name, 'stop')}
+                              className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                              title="Stop server"
+                            >
+                              <Square className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleMcpServerAction(server.name, 'start')}
+                            disabled={!server.config.enabled}
+                            className="p-2 text-sakura-500 hover:text-sakura-700 dark:text-sakura-400 dark:hover:text-sakura-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Start server"
+                          >
+                            <Play className="w-4 h-4" />
+                          </button>
+                        )}
+                        
+                        {/* Test Button */}
+                        <button
+                          onClick={() => testMcpServer(server.name)}
+                          disabled={testingMcpServer === server.name}
+                          className={`px-3 py-1 text-sm rounded transition-colors disabled:opacity-50 flex items-center gap-1 ${
+                            mcpTestResults[server.name]?.status === 'success' 
+                              ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-600'
+                              : mcpTestResults[server.name]?.status === 'error'
+                              ? 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-600'
+                              : 'bg-sakura-100 dark:bg-sakura-800 text-sakura-700 dark:text-sakura-300 hover:bg-sakura-200 dark:hover:bg-sakura-700'
+                          }`}
+                        >
+                          {testingMcpServer === server.name ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-sakura-500 border-t-transparent rounded-full animate-spin"></div>
+                              Testing...
+                            </>
+                          ) : mcpTestResults[server.name]?.status === 'success' ? (
+                            <>
+                              <CheckCircle className="w-3 h-3" />
+                              {mcpTestResults[server.name]?.tools?.length ? 
+                                `${mcpTestResults[server.name]?.tools?.length} Tools` : 
+                                'Available'
+                              }
+                            </>
+                          ) : mcpTestResults[server.name]?.status === 'error' ? (
+                            <>
+                              <AlertCircle className="w-3 h-3" />
+                              Failed
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3" />
+                              Test
+                            </>
+                          )}
+                        </button>
+                        
+                        <button
+                          onClick={() => handleEditMcpServer(server)}
+                          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                          title="Edit server"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        
+                        <button
+                          onClick={() => setShowDeleteMcpConfirm(server.name)}
+                          className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                          title="Delete server"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tools List - Show when test results include tools */}
+                    {mcpTestResults[server.name]?.tools && mcpTestResults[server.name]?.tools?.length > 0 && (
+                      <div className="mt-4 p-4 bg-green-50/50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                        <h5 className="text-sm font-medium text-green-800 dark:text-green-300 mb-3 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Available Tools ({mcpTestResults[server.name]?.tools?.length || 0})
+                        </h5>
+                        <div className="space-y-3">
+                          {mcpTestResults[server.name]?.tools?.map((tool, index) => (
+                            <div key={index} className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-green-200/50 dark:border-green-700/50">
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                                  <span className="text-white text-xs font-bold">🔧</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h6 className="font-mono text-sm font-semibold text-green-700 dark:text-green-400">
+                                      {tool.name}
+                                    </h6>
+                                    <span className="px-2 py-0.5 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 text-xs rounded-full">
+                                      Tool
+                                    </span>
+                                  </div>
+                                  {tool.description && (
+                                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 leading-relaxed">
+                                      {tool.description}
+                                    </p>
+                                  )}
+                                  
+                                  {/* Input Schema */}
+                                  {tool.inputSchema && (
+                                    <div className="mt-2">
+                                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">
+                                        Parameters:
+                                      </span>
+                                      <div className="bg-gray-50/80 dark:bg-gray-900/40 rounded-md p-2 border border-gray-200/50 dark:border-gray-700/50">
+                                        {tool.inputSchema.properties ? (
+                                          <div className="space-y-1">
+                                            {Object.entries(tool.inputSchema.properties).map(([paramName, paramDef]: [string, any]) => (
+                                              <div key={paramName} className="flex items-start gap-2 text-xs">
+                                                <span className="font-mono text-blue-600 dark:text-blue-400 font-medium">
+                                                  {paramName}
+                                                </span>
+                                                <span className="text-gray-500 dark:text-gray-400">
+                                                  ({paramDef.type || 'any'})
+                                                </span>
+                                                {tool.inputSchema.required?.includes(paramName) && (
+                                                  <span className="text-red-500 text-xs">*</span>
+                                                )}
+                                                {paramDef.description && (
+                                                  <span className="text-gray-600 dark:text-gray-300 flex-1">
+                                                    - {paramDef.description}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                            {tool.inputSchema.required && tool.inputSchema.required.length > 0 && (
+                                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
+                                                * Required parameters
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            No parameters required
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Error Display - Show when test fails */}
+                    {mcpTestResults[server.name]?.status === 'error' && mcpTestResults[server.name]?.error && (
+                      <div className="mt-4 p-3 bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <h5 className="text-sm font-medium text-red-800 dark:text-red-300 mb-2 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          Test Failed
+                        </h5>
+                        <p className="text-sm text-red-700 dark:text-red-400">{mcpTestResults[server.name]?.error}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Server className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+                  </div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No MCP servers configured</h4>
+                  <p className="text-gray-500 dark:text-gray-400 mb-4">
+                    Add MCP servers to extend AI capabilities with external tools and data sources
+                  </p>
+                  <button 
+                    onClick={() => setShowAddMcpModal(true)}
+                    className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+                  >
+                    Add Your First Server
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Node.js Diagnosis Section */}
+      {activeSubTab === 'diagnosis' && (
+        <div className="glassmorphic rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 text-sakura-500" />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Node.js Diagnosis
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Check if Node.js and npm are properly installed for MCP servers
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={runNodeDiagnosis}
+              disabled={isRunningDiagnosis}
+              className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {isRunningDiagnosis ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Running...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Run Diagnosis
+                </>
+              )}
+            </button>
+          </div>
+
+          {showDiagnosis && nodeDiagnosis && (
+            <div className="space-y-4">
+              {/* Status Overview */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className={`p-3 rounded-lg border ${
+                  nodeDiagnosis.nodeAvailable 
+                    ? 'border-green-300 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10'
+                    : 'border-red-300 dark:border-red-600 bg-red-50/30 dark:bg-red-900/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {nodeDiagnosis.nodeAvailable ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <X className="w-5 h-5 text-red-500" />
+                    )}
+                    <span className="font-medium text-gray-900 dark:text-white">Node.js</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    {nodeDiagnosis.nodeAvailable ? 'Available' : 'Not found'}
+                  </p>
+                  {nodeDiagnosis.nodePath && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 font-mono mt-1 break-all">
+                      {nodeDiagnosis.nodePath}
+                    </p>
+                  )}
+                </div>
+
+                <div className={`p-3 rounded-lg border ${
+                  nodeDiagnosis.npmAvailable 
+                    ? 'border-green-300 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10'
+                    : 'border-red-300 dark:border-red-600 bg-red-50/30 dark:bg-red-900/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {nodeDiagnosis.npmAvailable ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <X className="w-5 h-5 text-red-500" />
+                    )}
+                    <span className="font-medium text-gray-900 dark:text-white">npm</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    {nodeDiagnosis.npmAvailable ? 'Available' : 'Not found'}
+                  </p>
+                  {nodeDiagnosis.npmPath && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 font-mono mt-1 break-all">
+                      {nodeDiagnosis.npmPath}
+                    </p>
+                  )}
+                </div>
+
+                <div className={`p-3 rounded-lg border ${
+                  nodeDiagnosis.npxAvailable 
+                    ? 'border-green-300 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10'
+                    : 'border-red-300 dark:border-red-600 bg-red-50/30 dark:bg-red-900/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {nodeDiagnosis.npxAvailable ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <X className="w-5 h-5 text-red-500" />
+                    )}
+                    <span className="font-medium text-gray-900 dark:text-white">npx</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    {nodeDiagnosis.npxAvailable ? 'Available' : 'Not found'}
+                  </p>
+                  {nodeDiagnosis.npxPath && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 font-mono mt-1 break-all">
+                      {nodeDiagnosis.npxPath}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Suggestions */}
+              {nodeDiagnosis.suggestions.length > 0 && (
+                <div className="p-4 bg-sakura-50/30 dark:bg-sakura-900/10 border border-sakura-300 dark:border-sakura-600 rounded-lg">
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-2">Recommendations:</h4>
+                  <ul className="space-y-1">
+                    {nodeDiagnosis.suggestions.map((suggestion, index) => (
+                      <li key={index} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2">
+                        <span className="text-sakura-500 mt-1">•</span>
+                        <span>{suggestion}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* PATH Information */}
+              <details className="group">
+                <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                  View PATH directories ({nodeDiagnosis.pathDirs.length} entries)
+                </summary>
+                <div className="mt-2 p-3 bg-gray-50/30 dark:bg-gray-800/30 rounded-lg">
+                  <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-none">
+                    {nodeDiagnosis.pathDirs.map((dir, index) => (
+                      <div key={index} className="text-xs font-mono text-gray-600 dark:text-gray-400 break-all">
+                        {dir}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MCP Templates Section */}
+      {activeSubTab === 'templates' && (
+        <div className="glassmorphic rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <FileText className="w-6 h-6 text-sakura-500" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Server Templates
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Quick setup for popular MCP servers
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mcpTemplates.map((template) => (
+              <div
+                key={template.name}
+                className="p-4 bg-white/30 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-medium text-gray-900 dark:text-white">
+                      {template.displayName}
+                    </h4>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                      {template.category}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => addMcpServerFromTemplate(template)}
+                    className="px-3 py-1 bg-sakura-500 text-white text-sm rounded hover:bg-sakura-600 transition-colors"
+                  >
+                    Use Template
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {template.description}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-2">
+                  {template.command} {template.args.join(' ')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* MCP Delete Confirmation Modal */}
       {showDeleteMcpConfirm && (
@@ -629,7 +1047,7 @@ const MCPSettings: React.FC = () => {
       {/* Add/Edit MCP Server Modal */}
       {showAddMcpModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-xl max-h-[90vh] overflow-y-auto scrollbar-none">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'}
