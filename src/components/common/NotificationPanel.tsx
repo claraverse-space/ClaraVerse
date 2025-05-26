@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, X, Volume2, VolumeX, Trash2, CheckCheck, TestTube } from 'lucide-react';
+import { Bell, Check, X, Volume2, VolumeX, Trash2, CheckCheck, TestTube, Activity, AlertCircle, Info, CheckCircle, Speaker } from 'lucide-react';
 import { notificationService, ClaraNotification } from '../../services/notificationService';
 
 interface NotificationPanelProps {
   className?: string;
+  onNavigateToClara?: () => void;
 }
 
-const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' }) => {
+const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '', onNavigateToClara }) => {
   const [notifications, setNotifications] = useState<ClaraNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -81,17 +82,31 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
     notificationService.markAllAsRead();
   };
 
+  const handleBackgroundNotificationClick = (notification: ClaraNotification) => {
+    // If it's a background Clara notification, navigate to Clara and mark as read
+    if (notification.title.includes('Clara Response Ready') && onNavigateToClara) {
+      onNavigateToClara();
+      handleMarkAsRead(notification.id);
+      setIsOpen(false);
+    }
+    // If it's the background service notification, navigate to Clara but don't mark as read
+    else if (notification.title.includes('Clara Assistant Active') && onNavigateToClara) {
+      onNavigateToClara();
+      setIsOpen(false);
+    }
+  };
+
   const getNotificationIcon = (type: ClaraNotification['type']) => {
     switch (type) {
       case 'completion':
-        return '✅';
+        return <CheckCircle className="w-4 h-4" />;
       case 'error':
-        return '❌';
+        return <AlertCircle className="w-4 h-4" />;
       case 'warning':
-        return '⚠️';
+        return <AlertCircle className="w-4 h-4" />;
       case 'info':
       default:
-        return 'ℹ️';
+        return <Info className="w-4 h-4" />;
     }
   };
 
@@ -107,6 +122,14 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
       default:
         return 'text-blue-600 dark:text-blue-400';
     }
+  };
+
+  const isBackgroundServiceNotification = (notification: ClaraNotification) => {
+    return notification.title.includes('Clara Assistant Active');
+  };
+
+  const isClaraResponseNotification = (notification: ClaraNotification) => {
+    return notification.title.includes('Clara Response Ready');
   };
 
   const formatTime = (timestamp: Date) => {
@@ -148,9 +171,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
 
       {/* Notification Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-h-96 glassmorphic rounded-lg shadow-xl border border-white/20 dark:border-gray-700/50 z-[9999] overflow-hidden backdrop-blur-xl animate-fadeIn">
+        <div className="absolute right-0 top-full mt-2 w-80 max-h-96 bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl border border-gray-200/50 dark:border-gray-700/50 z-[9999] overflow-hidden backdrop-blur-xl animate-fadeIn">
           {/* Header */}
-          <div className="p-4 border-b border-white/10 dark:border-gray-700/50 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200/30 dark:border-gray-700/30 flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 dark:text-white">
               Notifications
               {unreadCount > 0 && (
@@ -162,7 +185,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
             <div className="flex items-center gap-2">
               <button
                 onClick={handleToggleSound}
-                className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-700/50 transition-colors"
+                className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
                 title={soundEnabled ? 'Disable sound' : 'Enable sound'}
               >
                 {soundEnabled ? (
@@ -172,12 +195,16 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
                 )}
               </button>
               {soundEnabled && (
+                // add a tooltip to the button that says "Test completion sound"
                 <button
                   onClick={handleTestSound}
-                  className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-700/50 transition-colors"
+                  className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
                   title="Test completion sound"
+                  data-tooltip-id="test-sound-tooltip"
+                  data-tooltip-content="Test completion sound"
+                  data-tooltip-place="top"
                 >
-                  <TestTube className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  <Speaker className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 </button>
               )}
               <button
@@ -203,23 +230,23 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
                     );
                   }, 2000);
                 }}
-                className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-700/50 transition-colors"
+                className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
                 title="Demo notifications"
               >
-                <span className="text-xs">🎭</span>
+                <TestTube className="w-4 h-4 text-gray-600 dark:text-gray-400" />
               </button>
               {notifications.length > 0 && (
                 <>
                   <button
                     onClick={handleMarkAllAsRead}
-                    className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-700/50 transition-colors"
+                    className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
                     title="Mark all as read"
                   >
                     <CheckCheck className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                   </button>
                   <button
                     onClick={handleClearAll}
-                    className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-700/50 transition-colors"
+                    className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors"
                     title="Clear all"
                   >
                     <Trash2 className="w-4 h-4 text-gray-600 dark:text-gray-400" />
@@ -237,51 +264,109 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ className = '' })
                 <p>No notifications yet</p>
               </div>
             ) : (
-              notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-4 border-b border-white/5 dark:border-gray-700/30 last:border-b-0 hover:bg-white/5 dark:hover:bg-gray-700/20 transition-colors ${
-                    !notification.isRead ? 'bg-blue-50/20 dark:bg-blue-900/10 border-l-2 border-l-blue-400/50' : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg flex-shrink-0 mt-0.5">
-                      {getNotificationIcon(notification.type)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className={`font-medium text-sm ${getNotificationColor(notification.type)}`}>
-                          {notification.title}
-                        </h4>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {!notification.isRead && (
-                            <button
-                              onClick={() => handleMarkAsRead(notification.id)}
-                              className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-600/50 transition-colors"
-                              title="Mark as read"
-                            >
-                              <Check className="w-3 h-3 text-gray-500 dark:text-gray-400" />
-                            </button>
+              notifications.map((notification) => {
+                const isBackgroundService = isBackgroundServiceNotification(notification);
+                const isClaraResponse = isClaraResponseNotification(notification);
+                
+                return (
+                  <div
+                    key={notification.id}
+                    onClick={() => handleBackgroundNotificationClick(notification)}
+                    title={
+                      isClaraResponse 
+                        ? 'Click to go to Clara chat' 
+                        : isBackgroundService 
+                        ? 'Clara is running in background - click to go to Clara'
+                        : undefined
+                    }
+                    className={`p-4 border-b border-gray-200/30 dark:border-gray-700/30 last:border-b-0 hover:bg-gray-100/50 dark:hover:bg-gray-700/20 transition-colors ${
+                      !notification.isRead ? 'bg-blue-50/20 dark:bg-blue-900/10 border-l-2 border-l-blue-400/50' : ''
+                    } ${
+                      !notification.duration ? 'border-r-2 border-r-orange-400/50 bg-orange-50/10 dark:bg-orange-900/10' : ''
+                    } ${
+                      isBackgroundService 
+                        ? 'cursor-pointer hover:bg-green-50/20 dark:hover:bg-green-900/20 border-l-2 border-l-green-400/50 bg-green-50/10 dark:bg-green-900/10' 
+                        : isClaraResponse 
+                        ? 'cursor-pointer hover:bg-sakura-50/20 dark:hover:bg-sakura-900/20' 
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5 text-gray-600 dark:text-gray-400">
+                        {isBackgroundService ? <Activity className="w-4 h-4" /> : getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className={`font-medium text-sm ${
+                            isBackgroundService 
+                              ? 'text-green-600 dark:text-green-400' 
+                              : getNotificationColor(notification.type)
+                          }`}>
+                            {notification.title}
+                            {/* Persistent notification indicator */}
+                            {!notification.duration && (
+                              <span className="ml-2 text-xs text-orange-600 dark:text-orange-400">•</span>
+                            )}
+                            {/* Background service indicator */}
+                            {isBackgroundService && (
+                              <span className="ml-2 text-xs text-green-600 dark:text-green-400 animate-pulse">●</span>
+                            )}
+                          </h4>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {!notification.isRead && !isBackgroundService && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(notification.id);
+                                }}
+                                className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-600/50 transition-colors"
+                                title="Mark as read"
+                              >
+                                <Check className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                              </button>
+                            )}
+                            {!isBackgroundService && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveNotification(notification.id);
+                                }}
+                                className="p-1 rounded hover:bg-gray-100/50 dark:hover:bg-gray-600/50 transition-colors"
+                                title="Remove"
+                              >
+                                <X className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          {notification.message}
+                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatTime(notification.timestamp)}
+                          </p>
+                          {!notification.duration && (
+                            <span className="text-xs text-orange-600 dark:text-orange-400 font-medium" title="This notification requires manual dismissal">
+                              Persistent
+                            </span>
                           )}
-                          <button
-                            onClick={() => handleRemoveNotification(notification.id)}
-                            className="p-1 rounded hover:bg-white/10 dark:hover:bg-gray-600/50 transition-colors"
-                            title="Remove"
-                          >
-                            <X className="w-3 h-3 text-gray-500 dark:text-gray-400" />
-                          </button>
+                          {isBackgroundService && (
+                            <span className="text-xs text-green-600 dark:text-green-400 font-medium" title="Click to go to Clara">
+                              Background Service
+                            </span>
+                          )}
+                          {isClaraResponse && (
+                            <span className="text-xs text-sakura-600 dark:text-sakura-400 font-medium" title="Click to go to Clara">
+                              → Clara
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                        {formatTime(notification.timestamp)}
-                      </p>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

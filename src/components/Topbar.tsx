@@ -78,7 +78,7 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
           {theme === 'dark' && <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
           {theme === 'system' && <Monitor className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
         </button>
-        <NotificationPanel />
+        <NotificationPanel onNavigateToClara={() => onPageChange?.('clara')} />
         <UserProfileButton
           userName={userName || 'Profile'}
           onPageChange={onPageChange || (() => {})}

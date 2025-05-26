@@ -22,7 +22,8 @@ import { claraApiService } from '../services/claraApiService';
 import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs, validateProviderConfig } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
-import { addCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
+import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
+import { claraBackgroundService } from '../services/claraBackgroundService';
 
 // Import clear data utility
 import '../utils/clearClaraData';
@@ -82,7 +83,43 @@ console.log(greeting);`,
   return artifacts;
 };
 
+// Add a hook to detect if Clara is currently visible
+const useIsVisible = () => {
+  const [isVisible, setIsVisible] = useState(true);
+  
+  useEffect(() => {
+    const checkVisibility = () => {
+      // Check if the Clara container is visible
+      const claraContainer = document.querySelector('[data-clara-container]');
+      if (claraContainer) {
+        const isCurrentlyVisible = !claraContainer.classList.contains('hidden');
+        setIsVisible(isCurrentlyVisible);
+      }
+    };
+    
+    // Check initially
+    checkVisibility();
+    
+    // Set up observer for visibility changes
+    const observer = new MutationObserver(checkVisibility);
+    const claraContainer = document.querySelector('[data-clara-container]');
+    if (claraContainer) {
+      observer.observe(claraContainer, { 
+        attributes: true, 
+        attributeFilter: ['class'] 
+      });
+    }
+    
+    return () => observer.disconnect();
+  }, []);
+  
+  return isVisible;
+};
+
 const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
+  // Check if Clara is currently visible (for background operation)
+  const isVisible = useIsVisible();
+  
   // User and session state
   const [userName, setUserName] = useState<string>('');
   const [currentSession, setCurrentSession] = useState<ClaraChatSession | null>(null);
@@ -172,6 +209,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     };
     loadWallpaper();
   }, []);
+
+  // Track Clara's visibility state for background service
+  useEffect(() => {
+    claraBackgroundService.setBackgroundMode(!isVisible);
+  }, [isVisible]);
 
   // Load chat sessions on component mount
   useEffect(() => {
@@ -357,6 +399,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     setMessages(currentMessages);
     setIsLoading(true);
 
+    // Track background activity
+    if (!isVisible) {
+      claraBackgroundService.incrementBackgroundActivity();
+    }
+
     // Save user message to database
     try {
       await claraDB.addClaraMessage(currentSession.id, userMessage);
@@ -423,12 +470,23 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       try {
         await claraDB.addClaraMessage(currentSession.id, finalMessage);
         
-        // Add completion notification with chime
-        addCompletionNotification(
-          'Chat Response Complete',
-          `Clara has finished responding to your message.`,
-          4000
-        );
+        // Enhanced notification for background operation
+        if (!isVisible) {
+          // More prominent notification when Clara is in background
+          addBackgroundCompletionNotification(
+            'Clara Response Ready',
+            `Clara has finished responding to: "${content.slice(0, 40)}${content.length > 40 ? '...' : ''}"`
+          );
+          // Track background notification creation
+          claraBackgroundService.onBackgroundNotificationCreated();
+        } else {
+          // Standard notification when Clara is visible
+          addCompletionNotification(
+            'Chat Response Complete',
+            `Clara has finished responding to your message.`,
+            4000
+          );
+        }
       } catch (error) {
         console.error('Failed to save AI message:', error);
       }
@@ -541,8 +599,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }
     } finally {
       setIsLoading(false);
+      // Always decrement background activity when operation completes
+      if (!isVisible) {
+        claraBackgroundService.decrementBackgroundActivity();
+      }
     }
-  }, [currentSession, messages, sessionConfig]);
+  }, [currentSession, messages, sessionConfig, isVisible]);
 
   // Handle session selection
   const handleSelectSession = useCallback(async (sessionId: string) => {
@@ -923,6 +985,56 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }
     };
 
+    // Add background service debugging functions
+    (window as any).debugBackground = () => {
+      console.log('🔄 Clara Background Service Status:');
+      console.log(claraBackgroundService.getStatus());
+      console.log('Current visibility:', isVisible);
+    };
+
+    (window as any).testBackgroundChat = async () => {
+      console.log('🧪 Testing background chat...');
+      if (isVisible) {
+        console.log('⚠️ Clara is currently visible. Switch to another page to test background mode.');
+        return;
+      }
+      
+      // Simulate a background message
+      await handleSendMessage('This is a test message sent while Clara is in background mode.');
+    };
+
+    (window as any).testBackgroundNotification = () => {
+      console.log('🧪 Testing persistent background notification...');
+      addBackgroundCompletionNotification(
+        'Clara Response Ready',
+        'This is a persistent notification that requires manual dismissal. It will not auto-hide.'
+      );
+      claraBackgroundService.onBackgroundNotificationCreated();
+    };
+
+    (window as any).testBackgroundService = () => {
+      console.log('🧪 Testing Clara background service notification...');
+      // Simulate Clara going to background mode
+      claraBackgroundService.setBackgroundMode(true);
+      
+      // Simulate some background activity
+      setTimeout(() => {
+        claraBackgroundService.incrementBackgroundActivity();
+        console.log('📊 Added background activity');
+      }, 1000);
+      
+      setTimeout(() => {
+        claraBackgroundService.decrementBackgroundActivity();
+        console.log('📊 Removed background activity');
+      }, 3000);
+      
+      // Return to foreground after 5 seconds
+      setTimeout(() => {
+        claraBackgroundService.setBackgroundMode(false);
+        console.log('👁️ Returned to foreground');
+      }, 5000);
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -930,8 +1042,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).testNotifications;
       delete (window as any).testCompletionSound;
       delete (window as any).setupTestMCP;
+      delete (window as any).debugBackground;
+      delete (window as any).testBackgroundChat;
+      delete (window as any).testBackgroundNotification;
+      delete (window as any).testBackgroundService;
     };
-  }, [providers, models, sessionConfig, currentSession]);
+  }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
 
   // Initialize with a new session if none exists
   useEffect(() => {
@@ -949,7 +1065,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   }, [isLoadingSessions, sessions.length, currentSession, createNewSession]);
 
   return (
-    <div className="flex h-screen w-full relative">
+    <div className="flex h-screen w-full relative" data-clara-container>
       {/* Wallpaper */}
       {wallpaperUrl && (
         <div 

@@ -36,7 +36,9 @@ import {
   AlertCircle,
   Server,
   CheckCircle,
-  XCircle
+  XCircle,
+  Waves,
+  Cog
 } from 'lucide-react';
 
 // Import types
@@ -1149,6 +1151,18 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Streaming vs Tools mode state
+  const [isStreamingMode, setIsStreamingMode] = useState(
+    sessionConfig?.aiConfig?.features.enableStreaming ?? true
+  );
+
+  // Sync streaming mode state with session config changes
+  useEffect(() => {
+    if (sessionConfig?.aiConfig?.features) {
+      setIsStreamingMode(sessionConfig.aiConfig.features.enableStreaming ?? true);
+    }
+  }, [sessionConfig?.aiConfig?.features.enableStreaming]);
+
   // Default AI config if not provided
   const defaultAIConfig: ClaraAIConfig = {
     models: {
@@ -1541,49 +1555,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     adjustTextareaHeight();
   }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight]);
 
-  // Handle keyboard shortcuts
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
-
-  // Quick action handlers
-  const handleNewChat = useCallback(() => {
-    setInput('');
-    setFiles([]);
-    onNewChat?.();
-  }, [onNewChat]);
-
-  const triggerImageUpload = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.onchange = (e) => {
-      const target = e.target as HTMLInputElement;
-      if (target.files) {
-        handleFilesAdded(Array.from(target.files));
-      }
-    };
-    input.click();
-  }, [handleFilesAdded]);
-
-  const triggerDocumentUpload = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java';
-    input.multiple = true;
-    input.onchange = (e) => {
-      const target = e.target as HTMLInputElement;
-      if (target.files) {
-        handleFilesAdded(Array.from(target.files));
-      }
-    };
-    input.click();
-  }, [handleFilesAdded]);
-
   // Handle AI config changes
   const handleAIConfigChange = useCallback((newConfig: Partial<ClaraAIConfig>) => {
     // Ensure we have proper defaults for all required fields
@@ -1645,6 +1616,25 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     });
   }, [currentAIConfig, onConfigChange]);
 
+  // Handler to toggle between streaming and tools mode
+  const handleModeToggle = useCallback(() => {
+    const newStreamingMode = !isStreamingMode;
+    setIsStreamingMode(newStreamingMode);
+    
+    // Update AI config based on mode
+    const newConfig = {
+      ...currentAIConfig,
+      features: {
+        ...currentAIConfig.features,
+        enableStreaming: newStreamingMode,
+        enableTools: !newStreamingMode,
+        enableMCP: !newStreamingMode
+      }
+    };
+    
+    handleAIConfigChange(newConfig);
+  }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
+
   // Get current selected model for display
   const getCurrentModel = () => {
     if (currentAIConfig.features.autoModelSelection) {
@@ -1654,6 +1644,55 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     const textModel = models.find(m => m.id === currentAIConfig.models.text);
     return textModel?.name || 'No model selected';
   };
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+    
+    // Toggle streaming vs tools mode with Ctrl+M (or Cmd+M on Mac)
+    if (e.key === 'm' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleModeToggle();
+    }
+  }, [handleSend, handleModeToggle]);
+
+  // Quick action handlers
+  const handleNewChat = useCallback(() => {
+    setInput('');
+    setFiles([]);
+    onNewChat?.();
+  }, [onNewChat]);
+
+  const triggerImageUpload = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target.files) {
+        handleFilesAdded(Array.from(target.files));
+      }
+    };
+    input.click();
+  }, [handleFilesAdded]);
+
+  const triggerDocumentUpload = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target.files) {
+        handleFilesAdded(Array.from(target.files));
+      }
+    };
+    input.click();
+  }, [handleFilesAdded]);
 
   return (
     <div 
@@ -1750,16 +1789,45 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                       <Settings className="w-5 h-5" />
                     </button>
                   </Tooltip>
+
+                  {/* Streaming vs Tools Mode Toggle */}
+                  <Tooltip 
+                    content={isStreamingMode ? "Switch to Tools Mode (enables MCP & tools, disables streaming) - Ctrl+M" : "Switch to Streaming Mode (enables streaming, disables tools & MCP) - Ctrl+M"} 
+                    position="top"
+                  >
+                    <button
+                      onClick={handleModeToggle}
+                      className={`group p-2 rounded-lg transition-colors relative ${
+                        isStreamingMode 
+                          ? 'bg-blue-100 dark:bg-blue-100/20 text-blue-600 dark:text-blue-400' 
+                          : 'bg-green-100 dark:bg-green-100/20 text-green-600 dark:text-green-400'
+                      }`}
+                      disabled={isLoading}
+                    >
+                      {isStreamingMode ? (
+                        <Waves className="w-5 h-5" />
+                      ) : (
+                        <Cog className="w-5 h-5" />
+                      )}
+                    </button>
+                  </Tooltip>
                 </div>
 
                 {/* Right Side Actions */}
                 <div className="flex items-center gap-2">
-                  {/* MCP Status Indicator */}
-                  {currentAIConfig.features.enableMCP && (
-                    <Tooltip content={`MCP enabled with ${currentAIConfig.mcp?.enabledServers?.length || 0} servers`} position="top">
+                  {/* Mode Status Indicators */}
+                  {isStreamingMode ? (
+                    <Tooltip content="Streaming Mode: Real-time responses enabled" position="top">
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-600">
+                        <Waves className="w-3 h-3" />
+                        <span>Streaming</span>
+                      </div>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip content={`Tools Mode: MCP enabled with ${currentAIConfig.mcp?.enabledServers?.length || 0} servers`} position="top">
                       <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-600">
-                        <Server className="w-3 h-3" />
-                        <span>MCP</span>
+                        <Cog className="w-3 h-3" />
+                        <span>Tools</span>
                         {currentAIConfig.mcp?.enabledServers?.length && (
                           <span className="bg-green-200 dark:bg-green-800 px-1 rounded text-xs">
                             {currentAIConfig.mcp.enabledServers.length}

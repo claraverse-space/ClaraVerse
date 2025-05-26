@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Home, Bot, Settings, HelpCircle, ChevronRight, ImageIcon, Network, Server, BrainCircuit, Download, X } from 'lucide-react';
 import logo from '../assets/logo.png';
+import { claraBackgroundService } from '../services/claraBackgroundService';
 
 // Define the interface for the window object
 declare global {
@@ -51,6 +52,21 @@ interface DownloadProgress {
 const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<{ [fileName: string]: DownloadProgress }>({});
+  const [claraBackgroundActivity, setClaraBackgroundActivity] = useState(false);
+
+  // Listen for Clara background activity changes
+  useEffect(() => {
+    const unsubscribe = claraBackgroundService.onBackgroundModeChange((isBackground) => {
+      setClaraBackgroundActivity(isBackground && claraBackgroundService.hasBackgroundActivity());
+    });
+    
+    // Check initial state
+    setClaraBackgroundActivity(
+      claraBackgroundService.isInBackground() && claraBackgroundService.hasBackgroundActivity()
+    );
+    
+    return unsubscribe;
+  }, []);
 
   // Listen for download progress updates
   useEffect(() => {
@@ -197,7 +213,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
               <button 
                 onClick={() => onPageChange(item.id)}
                 data-page={item.id}
-                className={`w-full flex items-center rounded-lg transition-colors h-10 ${
+                className={`w-full flex items-center rounded-lg transition-colors h-10 relative ${
                   isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                 } ${
                   activePage === item.id
@@ -205,13 +221,23 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
                     : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
                 }`}
               >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <div className="relative">
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {/* Background activity indicator for Clara */}
+                  {item.id === 'clara' && claraBackgroundActivity && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  )}
+                </div>
                 <span 
                   className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${
                     isExpanded ? 'opacity-100 w-auto ml-3' : 'opacity-0 w-0'
                   }`}
                 >
                   {item.label}
+                  {/* Background activity text indicator when expanded */}
+                  {item.id === 'clara' && claraBackgroundActivity && isExpanded && (
+                    <span className="ml-2 text-xs text-green-500 font-medium">●</span>
+                  )}
                 </span>
               </button>
             </li>

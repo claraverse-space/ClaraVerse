@@ -74,9 +74,9 @@ function App() {
     if (activePage === 'assistant') {
       return <Assistant onPageChange={setActivePage} />;
     }
-    if (activePage === 'clara') {
-      return <ClaraAssistant onPageChange={setActivePage} />;
-    }
+    
+    // Clara is now always mounted but conditionally visible
+    // This allows it to run in the background
     
     if (activePage === 'app-creator') {
       const appId = localStorage.getItem('current_app_id');
@@ -159,7 +159,15 @@ function App() {
           {showOnboarding ? (
             <Onboarding onComplete={handleOnboardingComplete} />
           ) : (
-            renderContent()
+            <>
+              {/* Always render Clara in background - visible when activePage is 'clara' */}
+              <div className={activePage === 'clara' ? 'block' : 'hidden'} data-clara-container>
+                <ClaraAssistant onPageChange={setActivePage} />
+              </div>
+              
+              {/* Render other content when not on Clara page */}
+              {activePage !== 'clara' && renderContent()}
+            </>
           )}
         </div>
       </InterpreterProvider>

@@ -178,6 +178,19 @@ class NotificationService {
   }
 
   /**
+   * Add a persistent background completion notification (no auto-dismiss)
+   */
+  public addBackgroundCompletionNotification(title: string, message: string): string {
+    return this.addNotification({
+      type: 'completion',
+      title,
+      message,
+      duration: undefined, // No auto-dismiss
+      sound: true
+    });
+  }
+
+  /**
    * Add an error notification
    */
   public addErrorNotification(title: string, message: string, duration: number = 8000): string {
@@ -351,6 +364,9 @@ export const notificationService = new NotificationService();
 // Export convenience functions
 export const addCompletionNotification = (title: string, message: string, duration?: number) => 
   notificationService.addCompletionNotification(title, message, duration);
+
+export const addBackgroundCompletionNotification = (title: string, message: string) => 
+  notificationService.addBackgroundCompletionNotification(title, message);
 
 export const addErrorNotification = (title: string, message: string, duration?: number) => 
   notificationService.addErrorNotification(title, message, duration);
