@@ -165,7 +165,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
 
   return (
     <div
-      className={`glassmorphic h-full flex flex-col gap-6 transition-all duration-300 ease-in-out ${
+      className={`glassmorphic h-full flex flex-col gap-6 transition-all duration-300 ease-in-out z-[10000] ${
         isExpanded ? 'w-64' : 'w-20'
       }`}
       style={{ minWidth: isExpanded ? '16rem' : '5rem', maxWidth: isExpanded ? '16rem' : '5rem' }}

@@ -88,11 +88,18 @@ export class APIClient {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
 
-    const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+    // Use abort controller if available
+    const fetchOptions: RequestInit = {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined
-    });
+    };
+
+    if (this.abortController) {
+      fetchOptions.signal = this.abortController.signal;
+    }
+
+    const response = await fetch(`${this.config.baseUrl}${endpoint}`, fetchOptions);
 
     if (!response.ok) {
       // Try to parse the error response to get detailed error information
@@ -156,13 +163,28 @@ export class APIClient {
   }
 
   /**
-   * Aborts any ongoing stream requests.
+   * Aborts any ongoing stream requests or chat operations.
    */
   public abortStream(): void {
     if (this.abortController) {
+      console.log('🛑 [API-CLIENT] Aborting ongoing operation...');
       this.abortController.abort();
       this.abortController = null;
     }
+  }
+
+  /**
+   * Check if there's an ongoing operation that can be aborted
+   */
+  public isProcessing(): boolean {
+    return this.abortController !== null;
+  }
+
+  /**
+   * Alias for abortStream for better clarity when aborting any operation
+   */
+  public abort(): void {
+    this.abortStream();
   }
 
   /**
@@ -187,7 +209,20 @@ export class APIClient {
     tools?: Tool[],
     attempt: number = 1
   ): Promise<APIResponse> {
-    // No limit on attempts - keep trying until all problematic tools are removed
+    // Set maximum attempts to prevent infinite loops
+    const MAX_ATTEMPTS = 10;
+    
+    if (attempt > MAX_ATTEMPTS) {
+      console.error(`🚫 [DYNAMIC-TOOLS] Maximum attempts (${MAX_ATTEMPTS}) reached, aborting`);
+      throw new Error(`Maximum retry attempts (${MAX_ATTEMPTS}) exceeded. Unable to resolve tool validation errors.`);
+    }
+
+    // Check if operation was aborted
+    if (this.abortController?.signal.aborted) {
+      console.log(`🛑 [DYNAMIC-TOOLS] Operation aborted at attempt ${attempt}`);
+      throw new Error('Operation was aborted by user');
+    }
+
     let currentTools = tools ? [...tools] : undefined;
     
     // Filter out known problematic tools before starting
@@ -197,6 +232,11 @@ export class APIClient {
       if (currentTools.length < originalCount) {
         console.log(`🔧 [DYNAMIC-TOOLS] Filtered out ${originalCount - currentTools.length} known problematic tools, ${currentTools.length} remaining`);
       }
+    }
+    
+    // Set up abort controller for this request if not already set
+    if (!this.abortController) {
+      this.abortController = new AbortController();
     }
     
     const formattedTools = currentTools?.map(tool => this.formatTool(tool));
@@ -213,7 +253,13 @@ export class APIClient {
     }
 
     try {
-      console.log(`🔧 [DYNAMIC-TOOLS] Attempt ${attempt}: Sending request with ${formattedTools?.length || 0} tools`);
+      console.log(`🔧 [DYNAMIC-TOOLS] Attempt ${attempt}/${MAX_ATTEMPTS}: Sending request with ${formattedTools?.length || 0} tools`);
+      
+      // Check abort signal before making request
+      if (this.abortController.signal.aborted) {
+        throw new Error('Operation was aborted by user');
+      }
+      
       const response = await this.request('/chat/completions', 'POST', payload);
       
       console.log(`✅ [DYNAMIC-TOOLS] Request successful on attempt ${attempt}`);
@@ -226,6 +272,12 @@ export class APIClient {
         usage: response.usage
       };
     } catch (error: any) {
+      // Check if this is an abort error
+      if (error.name === 'AbortError' || error.message.includes('aborted') || this.abortController?.signal.aborted) {
+        console.log(`🛑 [DYNAMIC-TOOLS] Request aborted at attempt ${attempt}`);
+        throw new Error('Operation was aborted by user');
+      }
+
       console.log(`🔍 [DYNAMIC-TOOLS-DEBUG] Caught error:`, {
         message: error.message,
         status: error.status,
@@ -274,8 +326,19 @@ export class APIClient {
           }
         }
       } else if (isToolValidationError && (!currentTools || currentTools.length === 0)) {
-        console.warn(`⚠️ [DYNAMIC-TOOLS] Tool validation error but no tools to remove, sending without tools`);
-        // Send without tools
+        // This is the problematic case - tool validation error but no tools to remove
+        // This suggests the error is in the message format itself, not the tools
+        console.error(`🚫 [DYNAMIC-TOOLS] Tool validation error with no tools to remove. This suggests a message format issue.`);
+        console.error(`🚫 [DYNAMIC-TOOLS] Error details:`, error.message);
+        
+        // Don't retry indefinitely - throw the error after a few attempts
+        if (attempt >= 3) {
+          console.error(`🚫 [DYNAMIC-TOOLS] Giving up after ${attempt} attempts with message format error`);
+          throw new Error(`Tool validation error that cannot be resolved by removing tools: ${error.message}`);
+        }
+        
+        // Try once more without tools, but don't loop forever
+        console.warn(`⚠️ [DYNAMIC-TOOLS] Attempting once more without tools (attempt ${attempt + 1})`);
         return this.sendChatWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
       } else {
         // Not a tool validation error, re-throw the error
@@ -294,7 +357,20 @@ export class APIClient {
     tools?: Tool[],
     attempt: number = 1
   ): AsyncGenerator<APIResponse> {
-    // No limit on attempts - keep trying until all problematic tools are removed
+    // Set maximum attempts to prevent infinite loops
+    const MAX_ATTEMPTS = 10;
+    
+    if (attempt > MAX_ATTEMPTS) {
+      console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Maximum attempts (${MAX_ATTEMPTS}) reached, aborting`);
+      throw new Error(`Maximum retry attempts (${MAX_ATTEMPTS}) exceeded. Unable to resolve tool validation errors.`);
+    }
+
+    // Check if operation was aborted
+    if (this.abortController?.signal.aborted) {
+      console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Operation aborted at attempt ${attempt}`);
+      throw new Error('Operation was aborted by user');
+    }
+
     let currentTools = tools ? [...tools] : undefined;
     
     // Filter out known problematic tools before starting
@@ -331,7 +407,12 @@ export class APIClient {
     }
 
     try {
-      console.log(`🔧 [DYNAMIC-TOOLS-STREAM] Attempt ${attempt}: Sending stream request with ${formattedTools?.length || 0} tools`);
+      console.log(`🔧 [DYNAMIC-TOOLS-STREAM] Attempt ${attempt}/${MAX_ATTEMPTS}: Sending stream request with ${formattedTools?.length || 0} tools`);
+      
+      // Check abort signal before making request
+      if (signal.aborted) {
+        throw new Error('Operation was aborted by user');
+      }
       
       const streamResponse = await fetch(`${this.config.baseUrl}/chat/completions`, {
         method: "POST",
@@ -398,8 +479,19 @@ export class APIClient {
             }
           }
         } else if (isToolValidationError && (!currentTools || currentTools.length === 0)) {
-          console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Tool validation error but no tools to remove, sending without tools`);
-          // Send without tools
+          // This is the problematic case - tool validation error but no tools to remove
+          // This suggests the error is in the message format itself, not the tools
+          console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Tool validation error with no tools to remove. This suggests a message format issue.`);
+          console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Error details:`, errorMessage);
+          
+          // Don't retry indefinitely - throw the error after a few attempts
+          if (attempt >= 3) {
+            console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Giving up after ${attempt} attempts with message format error`);
+            throw new Error(`Tool validation error that cannot be resolved by removing tools: ${errorMessage}`);
+          }
+          
+          // Try once more without tools, but don't loop forever
+          console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Attempting once more without tools (attempt ${attempt + 1})`);
           yield* this.streamChatWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
           return;
         } else {
@@ -419,6 +511,12 @@ export class APIClient {
       const decoder = new TextDecoder();
 
       while (true) {
+        // Check abort signal during streaming
+        if (signal.aborted) {
+          console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Stream aborted during reading`);
+          throw new Error('Operation was aborted by user');
+        }
+
         const { value, done } = await reader.read();
         if (done) break;
 
@@ -465,6 +563,12 @@ export class APIClient {
         }
       }
     } catch (error: any) {
+      // Check if this is an abort error
+      if (error.name === 'AbortError' || error.message.includes('aborted') || signal.aborted) {
+        console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Request aborted at attempt ${attempt}`);
+        throw new Error('Operation was aborted by user');
+      }
+
       // Check if this is an OpenAI tool validation error that occurred during streaming
       const isToolValidationError = this.isOpenAIToolValidationError(error);
       
@@ -527,7 +631,11 @@ export class APIClient {
       message.includes('Invalid schema for function') ||
       message.includes('array schema missing items') ||
       message.includes('invalid_function_parameters') ||
+      message.includes('Image URLs are only allowed in messages with role') ||
+      message.includes('Invalid \'messages[') ||
+      message.includes('message with role \'tool\' contains an image URL') ||
       errorData?.error?.code === 'invalid_function_parameters' ||
+      errorData?.error?.code === 'invalid_value' ||
       errorData?.error?.type === 'invalid_request_error'
     );
     
@@ -549,6 +657,14 @@ export class APIClient {
       errorParam: errorData?.error?.param,
       fullErrorData: errorData
     });
+    
+    // Check if this is a message format error (not tool-specific)
+    if (message.includes('Image URLs are only allowed in messages with role') ||
+        message.includes('message with role \'tool\' contains an image URL') ||
+        message.includes('Invalid \'messages[')) {
+      console.log(`🔍 [INDEX-EXTRACT] This is a message format error, not tool-specific`);
+      return null;
+    }
     
     // Look for patterns like "tools[9].function.parameters"
     const toolIndexMatch = message.match(/tools\[(\d+)\]/);

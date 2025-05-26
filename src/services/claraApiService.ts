@@ -24,6 +24,7 @@ import { defaultTools, executeTool } from '../utils/claraTools';
 import { db } from '../db';
 import type { Tool } from '../db';
 import { claraMCPService } from './claraMCPService';
+import { addCompletionNotification, addErrorNotification, addInfoNotification } from './notificationService';
 
 /**
  * Chat request payload for Clara backend
@@ -430,6 +431,13 @@ export class ClaraApiService {
       if (isAutonomousMode) {
         console.log(`🤖 Autonomous agent mode enabled - using enhanced workflow`);
         
+        // Add notification for autonomous mode start
+        addInfoNotification(
+          'Autonomous Mode Activated',
+          'Clara is now operating in autonomous mode with enhanced capabilities.',
+          3000
+        );
+        
         // Enhanced system prompt with autonomous agent capabilities
         const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(systemPrompt, tools, agentContext);
 
@@ -497,6 +505,16 @@ export class ClaraApiService {
           config, 
           agentContext,
           onContentChunk
+        );
+
+        // Add completion notification for autonomous mode
+        const toolsUsed = result.metadata?.toolsUsed || [];
+        const agentSteps = result.metadata?.agentSteps || 1;
+        
+        addCompletionNotification(
+          'Autonomous Agent Complete',
+          `Completed in ${agentSteps} steps${toolsUsed.length > 0 ? ` using ${toolsUsed.length} tools` : ''}.`,
+          5000
         );
 
         return result;
@@ -1568,6 +1586,14 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
         if (step >= this.agentConfig.maxRetries) {
           console.log(`💥 Max retries reached, breaking out of agent loop`);
           
+          // Add error notification for max retries reached
+          addErrorNotification(
+            'Autonomous Mode Error',
+            `Maximum retries reached. Some operations may have failed.`,
+            8000
+          );
+          
+          // Provide a meaningful error message to the user
           // Provide a meaningful error message to the user
           const errorSummary = `I encountered repeated errors during execution. Here's what I was able to accomplish:\n\n`;
           let finalSummary = errorSummary;

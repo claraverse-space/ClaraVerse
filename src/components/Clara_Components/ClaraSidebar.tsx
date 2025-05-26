@@ -68,7 +68,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
 
   return (
     <div
-      className={`glassmorphic h-full flex flex-col transition-all duration-300 ${isExpanded ? 'w-80' : 'w-16'}`}
+      className={`glassmorphic h-full flex flex-col transition-all duration-300 z-[10000] ${isExpanded ? 'w-80' : 'w-16'}`}
       style={{ minWidth: isExpanded ? '20rem' : '4rem', maxWidth: isExpanded ? '20rem' : '4rem' }}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}

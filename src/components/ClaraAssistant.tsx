@@ -22,6 +22,7 @@ import { claraApiService } from '../services/claraApiService';
 import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs, validateProviderConfig } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
+import { addCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
 
 // Import clear data utility
 import '../utils/clearClaraData';
@@ -421,6 +422,13 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       // Save AI message to database
       try {
         await claraDB.addClaraMessage(currentSession.id, finalMessage);
+        
+        // Add completion notification with chime
+        addCompletionNotification(
+          'Chat Response Complete',
+          `Clara has finished responding to your message.`,
+          4000
+        );
       } catch (error) {
         console.error('Failed to save AI message:', error);
       }
@@ -516,6 +524,13 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         setMessages(prev => prev.map(msg => 
           msg.id === streamingMessageId ? errorMessage : msg
         ));
+
+        // Add error notification
+        addErrorNotification(
+          'Chat Error',
+          'Failed to generate response. Please try again.',
+          6000
+        );
 
         // Save error message to database
         try {
@@ -876,6 +891,23 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('Session MCP Config:', sessionConfig.aiConfig?.mcp);
     };
 
+    // Add notification testing functions
+    (window as any).testNotifications = () => {
+      console.log('🔔 Testing notification system...');
+      addCompletionNotification('Test Completion', 'This is a test completion notification with chime!');
+      setTimeout(() => {
+        addErrorNotification('Test Error', 'This is a test error notification.');
+      }, 2000);
+      setTimeout(() => {
+        addInfoNotification('Test Info', 'This is a test info notification.');
+      }, 4000);
+    };
+
+    (window as any).testCompletionSound = () => {
+      console.log('🔔 Testing completion chime...');
+      notificationService.testCompletionChime();
+    };
+
     (window as any).setupTestMCP = async () => {
       console.log('🔧 Setting up test MCP server...');
       const success = await claraMCPService.setupTestGitHubServer();
@@ -891,23 +923,13 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }
     };
 
-    (window as any).refreshMCP = async () => {
-      console.log('🔄 Refreshing MCP service...');
-      await claraMCPService.refresh();
-      console.log('📊 MCP status after refresh:', {
-        servers: claraMCPService.getRunningServers().length,
-        allServers: Array.from((claraMCPService as any).servers.values()).length,
-        tools: claraMCPService.getAvailableTools().length
-      });
-      console.log('🛠️ Available tools:', claraMCPService.getAvailableTools().map(t => `${t.server}:${t.name}`));
-    };
-
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
       delete (window as any).debugMCP;
+      delete (window as any).testNotifications;
+      delete (window as any).testCompletionSound;
       delete (window as any).setupTestMCP;
-      delete (window as any).refreshMCP;
     };
   }, [providers, models, sessionConfig, currentSession]);
 

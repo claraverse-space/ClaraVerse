@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Sun, Moon, Monitor, Clock } from 'lucide-react';
-import { useTheme } from '../hooks/useTheme';
+import { Sun, Moon, Monitor, Clock } from 'lucide-react';
+import { useTheme, ThemeMode } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
+import NotificationPanel from './common/NotificationPanel';
 import { db } from '../db';
 
 interface TopbarProps {
@@ -22,7 +23,9 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
     db.getPersonalInfo().then(info => {
       setPersonalInfo(info);
       if (info?.timezone) setTimezone(info.timezone);
-      if (info?.theme_preference) setTheme(info.theme_preference);
+      if (info?.theme_preference && (info.theme_preference === 'light' || info.theme_preference === 'dark' || info.theme_preference === 'system')) {
+        setTheme(info.theme_preference as ThemeMode);
+      }
     });
     return () => clearInterval(timer);
   }, [setTheme]);
@@ -32,7 +35,7 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
   const dayString = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone });
 
   // Helper to update theme everywhere
-  const handleThemeChange = (newTheme: string) => {
+  const handleThemeChange = (newTheme: ThemeMode) => {
     setTheme(newTheme);
     if (personalInfo) {
       db.updatePersonalInfo({ ...personalInfo, theme_preference: newTheme });
@@ -42,7 +45,7 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
 
   // Cycle through theme modes: light -> dark -> system -> light ...
   const cycleTheme = () => {
-    let newTheme;
+    let newTheme: ThemeMode;
     if (theme === 'light') newTheme = 'dark';
     else if (theme === 'dark') newTheme = 'system';
     else newTheme = 'light';
@@ -50,7 +53,7 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
   };
 
   return (
-    <div className="glassmorphic h-16 px-6 flex items-center justify-between relative">
+    <div className="glassmorphic h-16 px-6 flex items-center justify-between relative z-[10000]">
       <div className="flex-1" />
       {/* Center section - Project Title and Clock */}
       <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center min-w-[120px]">
@@ -75,9 +78,7 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
           {theme === 'dark' && <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
           {theme === 'system' && <Monitor className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
         </button>
-        <button className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors">
-          <Bell className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        </button>
+        <NotificationPanel />
         <UserProfileButton
           userName={userName || 'Profile'}
           onPageChange={onPageChange || (() => {})}
