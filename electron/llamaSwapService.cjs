@@ -98,23 +98,28 @@ class LlamaSwapService {
     const platform = os.platform();
     const arch = os.arch();
     
+    let platformDir;
     let binaryNames;
+    
     switch (platform) {
       case 'darwin':
+        platformDir = arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
         binaryNames = {
-          llamaSwap: arch === 'arm64' ? 'llama-swap-darwin-arm64' : 'llama-swap-darwin-amd64',
+          llamaSwap: 'llama-swap-darwin',
           llamaServer: 'llama-server'
         };
         break;
       case 'linux':
+        platformDir = 'linux-x64';
         binaryNames = {
-          llamaSwap: 'llama-swap-linux-amd64',
+          llamaSwap: 'llama-swap-linux',
           llamaServer: 'llama-server'
         };
         break;
       case 'win32':
+        platformDir = 'win32-x64';
         binaryNames = {
-          llamaSwap: 'llama-swap-windows-amd64.exe',
+          llamaSwap: 'llama-swap-win32-x64.exe',
           llamaServer: 'llama-server.exe'
         };
         break;
@@ -122,9 +127,11 @@ class LlamaSwapService {
         throw new Error(`Unsupported platform: ${platform}-${arch}`);
     }
     
+    const platformPath = path.join(this.baseDir, platformDir);
+    
     return {
-      llamaSwap: path.join(this.baseDir, binaryNames.llamaSwap),
-      llamaServer: path.join(this.baseDir, binaryNames.llamaServer)
+      llamaSwap: path.join(platformPath, binaryNames.llamaSwap),
+      llamaServer: path.join(platformPath, binaryNames.llamaServer)
     };
   }
 
@@ -406,6 +413,7 @@ models:
       //FIXME: Add --jinja paramater for all models
       // Add --jinja paramater for all models
       cmdLine += ` --jinja`;
+      cmdLine += ` --n-gpu-layers 30`;
       
       // Add mmproj parameter if a matching mmproj model is found
       if (matchingMmproj) {
@@ -760,4 +768,4 @@ ${cmdLine}
   }
 }
 
-module.exports = LlamaSwapService; 
+module.exports = LlamaSwapService;
