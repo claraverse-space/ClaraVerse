@@ -18,6 +18,7 @@ export interface OpenAIConfig {
   apiKey: string;
   baseUrl: string;
   type: 'ollama' | 'openai';
+  providerId?: string; // Add provider ID to config
 }
 
 interface APIResponse {
@@ -90,7 +91,8 @@ export class OllamaClient {
     this.config = {
       apiKey: config?.apiKey || '',
       baseUrl: baseUrl,
-      type: config?.type || 'ollama'
+      type: config?.type || 'ollama',
+      providerId: config?.providerId // Store provider ID
     };
   }
 
@@ -940,7 +942,7 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
     // Filter out known problematic tools before starting
     if (currentTools && currentTools.length > 0) {
       const originalCount = currentTools.length;
-      currentTools = this.filterOutProblematicTools(currentTools);
+      currentTools = this.filterOutProblematicTools(currentTools, this.config.providerId);
       if (currentTools.length < originalCount) {
         console.log(`🔧 [DYNAMIC-TOOLS-OLLAMA] Filtered out ${originalCount - currentTools.length} known problematic tools, ${currentTools.length} remaining`);
       }
@@ -1018,8 +1020,8 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
             console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing problematic tool at index ${problematicToolIndex}: ${removedTool.name}`);
             console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Error details:`, errorMessage);
             
-            // Store the problematic tool so it won't be loaded again
-            this.storeProblematicTool(removedTool, errorMessage);
+            // Store the problematic tool so it won't be loaded again for this specific provider
+            this.storeProblematicTool(removedTool, errorMessage, this.config.providerId);
             
             // Remove the problematic tool
             currentTools.splice(problematicToolIndex, 1);
@@ -1034,7 +1036,7 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
             if (currentTools.length > 0) {
               const removedTool = currentTools[0];
               console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing first tool as fallback: ${removedTool.name}`);
-              this.storeProblematicTool(removedTool, errorMessage);
+              this.storeProblematicTool(removedTool, errorMessage, this.config.providerId);
               currentTools.splice(0, 1);
               
               console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
@@ -1072,8 +1074,8 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
           console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing problematic tool at index ${problematicToolIndex}: ${removedTool.name}`);
           console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Error details:`, error.message);
           
-          // Store the problematic tool so it won't be loaded again
-          this.storeProblematicTool(removedTool, error.message);
+          // Store the problematic tool so it won't be loaded again for this specific provider
+          this.storeProblematicTool(removedTool, error.message, this.config.providerId);
           
           // Remove the problematic tool
           currentTools.splice(problematicToolIndex, 1);
@@ -1088,7 +1090,7 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
           if (currentTools.length > 0) {
             const removedTool = currentTools[0];
             console.warn(`⚠️ [DYNAMIC-TOOLS-OLLAMA] Removing first tool as fallback: ${removedTool.name}`);
-            this.storeProblematicTool(removedTool, error.message);
+            this.storeProblematicTool(removedTool, error.message, this.config.providerId);
             currentTools.splice(0, 1);
             
             console.log(`🔄 [DYNAMIC-TOOLS-OLLAMA] Retrying with ${currentTools.length} remaining tools...`);
@@ -1161,23 +1163,27 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
   }
 
   /**
-   * Store a problematic tool so it won't be loaded again
+   * Store a problematic tool so it won't be loaded again for this specific provider
    */
-  private storeProblematicTool(tool: any, errorMessage: string): void {
-    const toolKey = `${tool.name}:${tool.description}`;
+  private storeProblematicTool(tool: any, errorMessage: string, providerId?: string): void {
+    // Create provider-specific key
+    const providerPrefix = providerId || this.config.providerId || 'unknown';
+    const toolKey = `${providerPrefix}:${tool.name}:${tool.description}`;
     OllamaClient.problematicTools.add(toolKey);
     
-    console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Stored problematic tool: ${tool.name}`);
+    console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Stored problematic tool for provider ${providerPrefix}: ${tool.name}`);
     console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Error: ${errorMessage}`);
     console.log(`🚫 [PROBLEMATIC-TOOLS-OLLAMA] Total problematic tools: ${OllamaClient.problematicTools.size}`);
     
-    // Also store in localStorage for persistence across sessions
+    // Also store in localStorage for persistence across sessions with provider-specific key
     try {
-      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools-ollama') || '[]');
+      const storageKey = `clara-problematic-tools-${providerPrefix}`;
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
       const toolInfo = {
         name: tool.name,
         description: tool.description,
         error: errorMessage,
+        providerId: providerPrefix,
         timestamp: new Date().toISOString()
       };
       
@@ -1185,8 +1191,8 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
       const exists = stored.some((t: any) => t.name === tool.name && t.description === tool.description);
       if (!exists) {
         stored.push(toolInfo);
-        localStorage.setItem('clara-problematic-tools-ollama', JSON.stringify(stored));
-        console.log(`💾 [PROBLEMATIC-TOOLS-OLLAMA] Persisted to localStorage`);
+        localStorage.setItem(storageKey, JSON.stringify(stored));
+        console.log(`💾 [PROBLEMATIC-TOOLS-OLLAMA] Persisted to localStorage for provider ${providerPrefix}`);
       }
     } catch (error) {
       console.warn('Failed to store problematic tool in localStorage:', error);
@@ -1194,20 +1200,20 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
   }
 
   /**
-   * Filter out known problematic tools
+   * Filter out known problematic tools for the current provider
    */
-  private filterOutProblematicTools(tools: any[]): any[] {
-    // Load from localStorage on first use
-    if (OllamaClient.problematicTools.size === 0) {
-      this.loadProblematicToolsFromStorage();
-    }
+  private filterOutProblematicTools(tools: any[], providerId?: string): any[] {
+    const providerPrefix = providerId || this.config.providerId || 'unknown';
+    
+    // Load from localStorage on first use for this provider
+    this.loadProblematicToolsFromStorage(providerPrefix);
     
     const filtered = tools.filter(tool => {
-      const toolKey = `${tool.name}:${tool.description}`;
+      const toolKey = `${providerPrefix}:${tool.name}:${tool.description}`;
       const isProblematic = OllamaClient.problematicTools.has(toolKey);
       
       if (isProblematic) {
-        console.log(`🚫 [FILTER-OLLAMA] Skipping known problematic tool: ${tool.name}`);
+        console.log(`🚫 [FILTER-OLLAMA] Skipping known problematic tool for provider ${providerPrefix}: ${tool.name}`);
       }
       
       return !isProblematic;
@@ -1217,21 +1223,39 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
   }
 
   /**
-   * Load problematic tools from localStorage
+   * Load problematic tools from localStorage for a specific provider
    */
-  private loadProblematicToolsFromStorage(): void {
+  private loadProblematicToolsFromStorage(providerId: string): void {
     try {
-      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools-ollama') || '[]');
+      const storageKey = `clara-problematic-tools-${providerId}`;
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
       for (const toolInfo of stored) {
-        const toolKey = `${toolInfo.name}:${toolInfo.description}`;
+        const toolKey = `${providerId}:${toolInfo.name}:${toolInfo.description}`;
         OllamaClient.problematicTools.add(toolKey);
       }
       
       if (stored.length > 0) {
-        console.log(`📂 [PROBLEMATIC-TOOLS-OLLAMA] Loaded ${stored.length} problematic tools from localStorage`);
+        console.log(`📂 [PROBLEMATIC-TOOLS-OLLAMA] Loaded ${stored.length} problematic tools from localStorage for provider ${providerId}`);
       }
     } catch (error) {
-      console.warn('Failed to load problematic tools from localStorage:', error);
+      console.warn(`Failed to load problematic tools from localStorage for provider ${providerId}:`, error);
+    }
+  }
+
+  /**
+   * Clear all stored problematic tools for a specific provider (for debugging/reset)
+   */
+  public static clearProblematicToolsForProvider(providerId: string): void {
+    // Remove from memory
+    const keysToRemove = Array.from(OllamaClient.problematicTools).filter(key => key.startsWith(`${providerId}:`));
+    keysToRemove.forEach(key => OllamaClient.problematicTools.delete(key));
+    
+    try {
+      const storageKey = `clara-problematic-tools-${providerId}`;
+      localStorage.removeItem(storageKey);
+      console.log(`🗑️ [PROBLEMATIC-TOOLS-OLLAMA] Cleared all stored problematic tools for provider ${providerId}`);
+    } catch (error) {
+      console.warn(`Failed to clear problematic tools from localStorage for provider ${providerId}:`, error);
     }
   }
 
@@ -1241,8 +1265,19 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
   public static clearProblematicTools(): void {
     OllamaClient.problematicTools.clear();
     try {
+      // Clear all provider-specific storage keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clara-problematic-tools-')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Also clear the old global key for backward compatibility
       localStorage.removeItem('clara-problematic-tools-ollama');
-      console.log(`🗑️ [PROBLEMATIC-TOOLS-OLLAMA] Cleared all stored problematic tools`);
+      console.log(`🗑️ [PROBLEMATIC-TOOLS-OLLAMA] Cleared all stored problematic tools for all providers`);
     } catch (error) {
       console.warn('Failed to clear problematic tools from localStorage:', error);
     }
@@ -1255,3 +1290,5 @@ Your response MUST be a valid JSON object, properly formatted and parsable.`;
     return Array.from(OllamaClient.problematicTools);
   }
 }
+
+

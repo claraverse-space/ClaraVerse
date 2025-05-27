@@ -145,7 +145,8 @@ export class ClaraApiService {
   public updateProvider(provider: ClaraProvider) {
     this.currentProvider = provider;
     this.client = new AssistantAPIClient(provider.baseUrl || '', {
-      apiKey: provider.apiKey || ''
+      apiKey: provider.apiKey || '',
+      providerId: provider.id // Pass provider ID for tool error tracking
     });
   }
 
@@ -197,7 +198,8 @@ export class ClaraApiService {
       try {
         // Create temporary client for this provider
         const tempClient = new AssistantAPIClient(provider.baseUrl || '', {
-          apiKey: provider.apiKey || ''
+          apiKey: provider.apiKey || '',
+          providerId: provider.id // Pass provider ID for tool error tracking
         });
         
         const providerModels = await tempClient.listModels();
@@ -1102,7 +1104,8 @@ export class ClaraApiService {
   public async testProvider(provider: ClaraProvider): Promise<boolean> {
     try {
       const testClient = new AssistantAPIClient(provider.baseUrl || '', {
-        apiKey: provider.apiKey || ''
+        apiKey: provider.apiKey || '',
+        providerId: provider.id // Pass provider ID for tool error tracking
       });
       
       return await testClient.checkConnection();

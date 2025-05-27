@@ -1035,6 +1035,44 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }, 5000);
     };
 
+    // Add provider-specific debugging functions
+    (window as any).debugProblematicTools = (providerId?: string) => {
+      console.log('=== Provider-Specific Problematic Tools Debug ===');
+      if (providerId) {
+        console.log(`Problematic tools for provider ${providerId}:`);
+        const storageKey = `clara-problematic-tools-${providerId}`;
+        const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        console.log('Stored tools:', stored);
+      } else {
+        console.log('All provider-specific problematic tools:');
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('clara-problematic-tools-')) {
+            const stored = JSON.parse(localStorage.getItem(key) || '[]');
+            console.log(`${key}:`, stored);
+          }
+        }
+      }
+    };
+
+    (window as any).clearProblematicToolsForProvider = (providerId: string) => {
+      console.log(`🗑️ Clearing problematic tools for provider: ${providerId}`);
+      // Import the classes dynamically to access static methods
+      import('../utils/APIClient').then(({ APIClient }) => {
+        APIClient.clearProblematicToolsForProvider(providerId);
+      });
+      import('../utils/OllamaClient').then(({ OllamaClient }) => {
+        OllamaClient.clearProblematicToolsForProvider(providerId);
+      });
+    };
+
+    (window as any).testProviderSpecificToolError = () => {
+      console.log('🧪 Testing provider-specific tool error handling...');
+      console.log('Current provider:', sessionConfig.aiConfig?.provider);
+      console.log('This feature will now store problematic tools per provider instead of globally.');
+      console.log('Use debugProblematicTools() to see stored tools per provider.');
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -1046,6 +1084,9 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).testBackgroundChat;
       delete (window as any).testBackgroundNotification;
       delete (window as any).testBackgroundService;
+      delete (window as any).debugProblematicTools;
+      delete (window as any).clearProblematicToolsForProvider;
+      delete (window as any).testProviderSpecificToolError;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
 

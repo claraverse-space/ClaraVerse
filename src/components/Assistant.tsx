@@ -476,7 +476,8 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
       try {
         const newClient = new AssistantAPIClient(primaryProvider.baseUrl || '', {
-          apiKey: primaryProvider.apiKey || ''
+          apiKey: primaryProvider.apiKey || '',
+          providerId: primaryProvider.id // Pass provider ID for tool error tracking
         });
         setClient(newClient);
 

@@ -23,6 +23,7 @@ export interface RequestOptions {
 export interface APIConfig {
   apiKey: string;
   baseUrl: string;
+  providerId?: string;
 }
 
 interface APIResponse {
@@ -65,7 +66,8 @@ export class APIClient {
   constructor(baseUrl: string, config?: Partial<APIConfig>) {
     this.config = {
       apiKey: config?.apiKey || '',
-      baseUrl: baseUrl
+      baseUrl: baseUrl,
+      providerId: config?.providerId
     };
   }
 
@@ -228,7 +230,7 @@ export class APIClient {
     // Filter out known problematic tools before starting
     if (currentTools && currentTools.length > 0) {
       const originalCount = currentTools.length;
-      currentTools = this.filterOutProblematicTools(currentTools);
+      currentTools = this.filterOutProblematicTools(currentTools, this.config.providerId);
       if (currentTools.length < originalCount) {
         console.log(`🔧 [DYNAMIC-TOOLS] Filtered out ${originalCount - currentTools.length} known problematic tools, ${currentTools.length} remaining`);
       }
@@ -298,7 +300,7 @@ export class APIClient {
           console.warn(`⚠️ [DYNAMIC-TOOLS] Error details:`, error.message);
           
           // Store the problematic tool so it won't be loaded again
-          this.storeProblematicTool(removedTool, error.message);
+          this.storeProblematicTool(removedTool, error.message, this.config.providerId);
           
           // Remove the problematic tool
           currentTools.splice(problematicToolIndex, 1);
@@ -314,7 +316,7 @@ export class APIClient {
           if (currentTools.length > 0) {
             const removedTool = currentTools[0];
             console.warn(`⚠️ [DYNAMIC-TOOLS] Removing first tool as fallback: ${removedTool.name}`);
-            this.storeProblematicTool(removedTool, error.message);
+            this.storeProblematicTool(removedTool, error.message, this.config.providerId);
             currentTools.splice(0, 1);
             
             console.log(`🔄 [DYNAMIC-TOOLS] Retrying with ${currentTools.length} remaining tools...`);
@@ -376,7 +378,7 @@ export class APIClient {
     // Filter out known problematic tools before starting
     if (currentTools && currentTools.length > 0) {
       const originalCount = currentTools.length;
-      currentTools = this.filterOutProblematicTools(currentTools);
+      currentTools = this.filterOutProblematicTools(currentTools, this.config.providerId);
       if (currentTools.length < originalCount) {
         console.log(`🔧 [DYNAMIC-TOOLS-STREAM] Filtered out ${originalCount - currentTools.length} known problematic tools, ${currentTools.length} remaining`);
       }
@@ -449,7 +451,7 @@ export class APIClient {
             console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Error details:`, errorMessage);
             
             // Store the problematic tool so it won't be loaded again
-            this.storeProblematicTool(removedTool, errorMessage);
+            this.storeProblematicTool(removedTool, errorMessage, this.config.providerId);
             
             // Remove the problematic tool
             currentTools.splice(problematicToolIndex, 1);
@@ -465,7 +467,7 @@ export class APIClient {
             if (currentTools.length > 0) {
               const removedTool = currentTools[0];
               console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Removing first tool as fallback: ${removedTool.name}`);
-              this.storeProblematicTool(removedTool, errorMessage);
+              this.storeProblematicTool(removedTool, errorMessage, this.config.providerId);
               currentTools.splice(0, 1);
               
               console.log(`🔄 [DYNAMIC-TOOLS-STREAM] Retrying with ${currentTools.length} remaining tools...`);
@@ -813,23 +815,27 @@ export class APIClient {
   }
 
   /**
-   * Store a problematic tool so it won't be loaded again
+   * Store a problematic tool so it won't be loaded again for this specific provider
    */
-  private storeProblematicTool(tool: Tool, errorMessage: string): void {
-    const toolKey = `${tool.name}:${tool.description}`;
+  private storeProblematicTool(tool: Tool, errorMessage: string, providerId?: string): void {
+    // Create provider-specific key
+    const providerPrefix = providerId || 'unknown';
+    const toolKey = `${providerPrefix}:${tool.name}:${tool.description}`;
     APIClient.problematicTools.add(toolKey);
     
-    console.log(`🚫 [PROBLEMATIC-TOOLS] Stored problematic tool: ${tool.name}`);
+    console.log(`🚫 [PROBLEMATIC-TOOLS] Stored problematic tool for provider ${providerPrefix}: ${tool.name}`);
     console.log(`🚫 [PROBLEMATIC-TOOLS] Error: ${errorMessage}`);
     console.log(`🚫 [PROBLEMATIC-TOOLS] Total problematic tools: ${APIClient.problematicTools.size}`);
     
-    // Also store in localStorage for persistence across sessions
+    // Also store in localStorage for persistence across sessions with provider-specific key
     try {
-      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools') || '[]');
+      const storageKey = `clara-problematic-tools-${providerPrefix}`;
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
       const toolInfo = {
         name: tool.name,
         description: tool.description,
         error: errorMessage,
+        providerId: providerPrefix,
         timestamp: new Date().toISOString()
       };
       
@@ -837,8 +843,8 @@ export class APIClient {
       const exists = stored.some((t: any) => t.name === tool.name && t.description === tool.description);
       if (!exists) {
         stored.push(toolInfo);
-        localStorage.setItem('clara-problematic-tools', JSON.stringify(stored));
-        console.log(`💾 [PROBLEMATIC-TOOLS] Persisted to localStorage`);
+        localStorage.setItem(storageKey, JSON.stringify(stored));
+        console.log(`💾 [PROBLEMATIC-TOOLS] Persisted to localStorage for provider ${providerPrefix}`);
       }
     } catch (error) {
       console.warn('Failed to store problematic tool in localStorage:', error);
@@ -846,20 +852,20 @@ export class APIClient {
   }
 
   /**
-   * Filter out known problematic tools
+   * Filter out known problematic tools for the current provider
    */
-  private filterOutProblematicTools(tools: Tool[]): Tool[] {
-    // Load from localStorage on first use
-    if (APIClient.problematicTools.size === 0) {
-      this.loadProblematicToolsFromStorage();
-    }
+  private filterOutProblematicTools(tools: Tool[], providerId?: string): Tool[] {
+    const providerPrefix = providerId || 'unknown';
+    
+    // Load from localStorage on first use for this provider
+    this.loadProblematicToolsFromStorage(providerPrefix);
     
     const filtered = tools.filter(tool => {
-      const toolKey = `${tool.name}:${tool.description}`;
+      const toolKey = `${providerPrefix}:${tool.name}:${tool.description}`;
       const isProblematic = APIClient.problematicTools.has(toolKey);
       
       if (isProblematic) {
-        console.log(`🚫 [FILTER] Skipping known problematic tool: ${tool.name}`);
+        console.log(`🚫 [FILTER] Skipping known problematic tool for provider ${providerPrefix}: ${tool.name}`);
       }
       
       return !isProblematic;
@@ -869,21 +875,39 @@ export class APIClient {
   }
 
   /**
-   * Load problematic tools from localStorage
+   * Load problematic tools from localStorage for a specific provider
    */
-  private loadProblematicToolsFromStorage(): void {
+  private loadProblematicToolsFromStorage(providerId: string): void {
     try {
-      const stored = JSON.parse(localStorage.getItem('clara-problematic-tools') || '[]');
+      const storageKey = `clara-problematic-tools-${providerId}`;
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
       for (const toolInfo of stored) {
-        const toolKey = `${toolInfo.name}:${toolInfo.description}`;
+        const toolKey = `${providerId}:${toolInfo.name}:${toolInfo.description}`;
         APIClient.problematicTools.add(toolKey);
       }
       
       if (stored.length > 0) {
-        console.log(`📂 [PROBLEMATIC-TOOLS] Loaded ${stored.length} problematic tools from localStorage`);
+        console.log(`📂 [PROBLEMATIC-TOOLS] Loaded ${stored.length} problematic tools from localStorage for provider ${providerId}`);
       }
     } catch (error) {
-      console.warn('Failed to load problematic tools from localStorage:', error);
+      console.warn(`Failed to load problematic tools from localStorage for provider ${providerId}:`, error);
+    }
+  }
+
+  /**
+   * Clear all stored problematic tools for a specific provider (for debugging/reset)
+   */
+  public static clearProblematicToolsForProvider(providerId: string): void {
+    // Remove from memory
+    const keysToRemove = Array.from(APIClient.problematicTools).filter(key => key.startsWith(`${providerId}:`));
+    keysToRemove.forEach(key => APIClient.problematicTools.delete(key));
+    
+    try {
+      const storageKey = `clara-problematic-tools-${providerId}`;
+      localStorage.removeItem(storageKey);
+      console.log(`🗑️ [PROBLEMATIC-TOOLS] Cleared all stored problematic tools for provider ${providerId}`);
+    } catch (error) {
+      console.warn(`Failed to clear problematic tools from localStorage for provider ${providerId}:`, error);
     }
   }
 
@@ -893,8 +917,19 @@ export class APIClient {
   public static clearProblematicTools(): void {
     APIClient.problematicTools.clear();
     try {
+      // Clear all provider-specific storage keys
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clara-problematic-tools-')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Also clear the old global key for backward compatibility
       localStorage.removeItem('clara-problematic-tools');
-      console.log(`🗑️ [PROBLEMATIC-TOOLS] Cleared all stored problematic tools`);
+      console.log(`🗑️ [PROBLEMATIC-TOOLS] Cleared all stored problematic tools for all providers`);
     } catch (error) {
       console.warn('Failed to clear problematic tools from localStorage:', error);
     }

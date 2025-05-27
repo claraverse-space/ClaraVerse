@@ -365,7 +365,7 @@ const Settings = () => {
             
             <TabItem 
               id="api" 
-              label="API Configuration" 
+              label="AI Providers" 
               icon={<Globe className="w-5 h-5" />} 
               isActive={activeTab === 'api'} 
             />
@@ -375,6 +375,13 @@ const Settings = () => {
               label="Model Manager" 
               icon={<HardDrive className="w-5 h-5" />} 
               isActive={activeTab === 'models'} 
+            />
+
+            <TabItem 
+              id="mcp" 
+              label="MCP" 
+              icon={<Server className="w-5 h-5" />} 
+              isActive={activeTab === 'mcp'} 
             />
             
             <TabItem 
@@ -391,12 +398,7 @@ const Settings = () => {
               isActive={activeTab === 'personal'} 
             />
             
-            <TabItem 
-              id="mcp" 
-              label="MCP" 
-              icon={<Server className="w-5 h-5" />} 
-              isActive={activeTab === 'mcp'} 
-            />
+            
 
             
             {/* Save Status - Only visible when saving/saved/error */}
