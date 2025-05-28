@@ -1,15 +1,23 @@
 # Auto-generated llama-swap configuration
-# Models directory: /Users/badfy17g/.clara/llama-models
+# Models directory: /home/badboy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "qwen3:8b":
+  "qwen3:14b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-8B-Q4_K_M.gguf"
-      --port 9999 --jinja --n-gpu-layers 30
+      "/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17g/.clara/llama-models/Qwen3-14B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 100 --main-gpu 0 --no-mmap
+    ttl: 300
+
+  "llama32:3b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17g/.clara/llama-models/llama-3.2-3b-instruct-q4_k_m.gguf"
+      --port 9999 --jinja --n-gpu-layers 100 --main-gpu 0 --no-mmap
     ttl: 300
 
 groups:
@@ -17,4 +25,5 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "qwen3:8b"
+      - "qwen3:14b"
+      - "llama32:3b"
