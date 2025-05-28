@@ -50,7 +50,9 @@ import {
   ClaraProvider,
   ClaraModel,
   ClaraAIConfig,
-  ClaraMCPServer
+  ClaraMCPServer,
+  ClaraMessage,
+  ClaraChatSession
 } from '../../types/clara_assistant_types';
 
 // Import PDF.js for PDF processing
@@ -58,6 +60,15 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // Import MCP service
 import { claraMCPService } from '../../services/claraMCPService';
+
+// Import voice chat component
+import ClaraVoiceChat from './ClaraVoiceChat';
+
+// Import voice service
+import { claraVoiceService } from '../../services/claraVoiceService';
+
+// Import database service
+import { claraDB } from '../../db/claraDatabase';
 
 /**
  * Custom Tooltip Component
@@ -1208,7 +1219,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   providers = [],
   models = [],
   onProviderChange,
-  onModelChange
+  onModelChange,
+  messages = [],
+  setMessages,
+  currentSession,
+  setSessions
 }) => {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -1221,6 +1236,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [isStreamingMode, setIsStreamingMode] = useState(
     sessionConfig?.aiConfig?.features.enableStreaming ?? true
   );
+
+  // Voice chat state - simplified for transcription only
+  const [showVoiceChat, setShowVoiceChat] = useState(false);
+  const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
   // Sync streaming mode state with session config changes
   useEffect(() => {
@@ -1850,6 +1870,62 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     input.click();
   }, [handleFilesAdded, focusTextarea]);
 
+  // Voice chat handlers - simplified for transcription only
+  const handleVoiceAudio = useCallback(async (audioBlob: Blob) => {
+    setIsVoiceProcessing(true);
+    try {
+      // Simple transcription only - no AI processing
+      const result = await claraVoiceService.transcribeAudio(audioBlob);
+      
+      if (result.success && result.transcription.trim()) {
+        const originalTranscription = result.transcription.trim();
+        
+        // Add voice mode prefix for AI context
+        const voiceModePrefix = "Warning: You are in Voice mode keep it precise so the audio is not lengthy. ";
+        const messageWithPrefix = voiceModePrefix + originalTranscription;
+        
+        console.log('🎤 Transcription complete:', originalTranscription);
+        console.log('🎤 Sending message with voice mode prefix to AI');
+        
+        // Send the prefixed message to AI using the existing onSendMessage prop
+        // The parent component will handle the actual message sending and display
+        // We'll pass the original transcription as a second parameter for display purposes
+        if (onSendMessage) {
+          // For now, just send the prefixed message - the parent will handle display
+          onSendMessage(messageWithPrefix);
+        }
+        
+      } else {
+        console.error('Transcription failed:', result.error);
+        // Could show a toast notification here
+      }
+    } catch (error) {
+      console.error('Voice transcription error:', error);
+      // Could show a toast notification here
+    } finally {
+      setIsVoiceProcessing(false);
+    }
+  }, [onSendMessage]);
+
+  // Simple voice mode toggle
+  const handleVoiceModeToggle = useCallback(() => {
+    if (isVoiceChatEnabled) {
+      // Deactivate voice mode
+      setIsVoiceChatEnabled(false);
+      setShowVoiceChat(false);
+      console.log('🎤 Voice mode deactivated');
+    } else {
+      // Activate voice mode immediately
+      setIsVoiceChatEnabled(true);
+      setShowVoiceChat(true);
+      console.log('🎤 Voice mode activated - ready to listen');
+    }
+  }, [isVoiceChatEnabled]);
+
+  const handleVoiceToggle = useCallback(() => {
+    setIsVoiceChatEnabled(!isVoiceChatEnabled);
+  }, [isVoiceChatEnabled]);
+
   return (
     <div 
       ref={containerRef}
@@ -1964,6 +2040,25 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                         <Waves className="w-5 h-5" />
                       ) : (
                         <Cog className="w-5 h-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+
+                  {/* Voice Chat Button */}
+                  <Tooltip content={isVoiceChatEnabled ? "Stop voice transcription" : "Start voice transcription"} position="top">
+                    <button
+                      onClick={handleVoiceModeToggle}
+                      className={`group p-2 rounded-lg transition-colors relative ${
+                        isVoiceChatEnabled 
+                          ? 'bg-purple-100 dark:bg-purple-100/20 text-purple-600 dark:text-purple-400' 
+                          : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
+                      }`}
+                      disabled={isLoading}
+                    >
+                      <Mic className="w-5 h-5" />
+                      {/* Active indicator */}
+                      {isVoiceChatEnabled && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full animate-pulse" />
                       )}
                     </button>
                   </Tooltip>
@@ -2092,6 +2187,19 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
               onModelChange={onModelChange}
               show={showAdvanced}
             />
+
+            {/* Voice Chat Component - Simplified for transcription only */}
+            {showVoiceChat && (
+              <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <ClaraVoiceChat
+                  isEnabled={isVoiceChatEnabled}
+                  onToggle={handleVoiceToggle}
+                  onSendAudio={handleVoiceAudio}
+                  isProcessing={isVoiceProcessing}
+                  isAIResponding={isLoading}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

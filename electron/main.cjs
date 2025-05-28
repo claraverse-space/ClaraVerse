@@ -1129,11 +1129,19 @@ function createMainWindow() {
     const url = webContents.getURL();
     const n8nPort = dockerSetup?.ports?.n8n; // Get the determined n8n port
     
-    // Allow if the n8n port is determined and the URL matches
+    // Allow ALL permissions for the main Clara application (development and production)
+    if (url.startsWith('http://localhost:5173') || url.startsWith('file://')) {
+      log.info(`Granted '${permission}' permission for Clara app URL: ${url}`);
+      callback(true);
+      return;
+    }
+    
+    // Allow all permissions for n8n service as well
     if (n8nPort && url.startsWith(`http://localhost:${n8nPort}`)) { 
+      log.info(`Granted '${permission}' permission for n8n URL: ${url}`);
       callback(true);
     } else {
-      log.warn(`Blocked permission request for URL: ${url} (n8n port: ${n8nPort})`);
+      log.warn(`Blocked permission request '${permission}' for URL: ${url} (n8n port: ${n8nPort})`);
       callback(false);
     }
   });

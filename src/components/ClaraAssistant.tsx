@@ -428,13 +428,26 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     if (!content.trim() && (!attachments || attachments.length === 0)) return;
     if (!currentSession || !sessionConfig.aiConfig) return;
 
-    // Create user message
+    // Check if this is a voice message with the prefix
+    const voiceModePrefix = "Warning: You are in Voice mode keep it precise so the audio is not lengthy. ";
+    const isVoiceMessage = content.startsWith(voiceModePrefix);
+    
+    // For display purposes, use the content without the voice prefix
+    const displayContent = isVoiceMessage ? content.replace(voiceModePrefix, '') : content;
+    
+    // For AI processing, use the full content (including prefix if it's a voice message)
+    const aiContent = content;
+
+    // Create user message with display content (without voice prefix)
     const userMessage: ClaraMessage = {
       id: generateId(),
       role: 'user',
-      content: content,
+      content: displayContent, // Display without voice prefix
       timestamp: new Date(),
-      attachments: attachments
+      attachments: attachments,
+      metadata: {
+        isVoiceMessage: isVoiceMessage // Mark as voice message for potential styling
+      }
     };
 
     // Add user message to state and get current conversation
@@ -447,7 +460,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       claraBackgroundService.incrementBackgroundActivity();
     }
 
-    // Save user message to database
+    // Save user message to database (with display content only)
     try {
       await claraDB.addClaraMessage(currentSession.id, userMessage);
     } catch (error) {
@@ -479,8 +492,9 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         .filter(msg => msg.role !== 'system'); // Exclude system messages
 
       // Send message with streaming callback and conversation context
+      // Use aiContent (with voice prefix) for AI processing
       const aiMessage = await claraApiService.sendChatMessage(
-        content,
+        aiContent, // Send full content including voice prefix to AI
         sessionConfig.aiConfig,
         attachments,
         sessionConfig.systemPrompt,
@@ -516,9 +530,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         // Enhanced notification for background operation
         if (!isVisible) {
           // More prominent notification when Clara is in background
+          // Use display content for notifications (without voice prefix)
           addBackgroundCompletionNotification(
             'Clara Response Ready',
-            `Clara has finished responding to: "${content.slice(0, 40)}${content.length > 40 ? '...' : ''}"`
+            `Clara has finished responding to: "${displayContent.slice(0, 40)}${displayContent.length > 40 ? '...' : ''}"`
           );
           // Track background notification creation
           claraBackgroundService.onBackgroundNotificationCreated();
@@ -526,7 +541,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           // Standard notification when Clara is visible
           addCompletionNotification(
             'Chat Response Complete',
-            `Clara has finished responding to your message.`,
+            isVoiceMessage ? 'Clara has finished responding to your voice message.' : 'Clara has finished responding to your message.',
             4000
           );
         }
@@ -536,7 +551,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
       // Update session title if it's still "New Chat"
       if (currentSession.title === 'New Chat') {
-        const newTitle = content.slice(0, 50) + (content.length > 50 ? '...' : '');
+        // Use display content for session title (without voice prefix)
+        const newTitle = displayContent.slice(0, 50) + (displayContent.length > 50 ? '...' : '');
         const updatedSession = {
           ...currentSession,
           title: newTitle,

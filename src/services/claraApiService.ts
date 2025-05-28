@@ -2909,19 +2909,47 @@ RELEVANT_TOOLS:
 ESTIMATED_STEPS:
 [Number between 1-10]`;
 
-      // Make the planning request (non-streaming for clean parsing)
+      // ENHANCED: Include actual conversation history in planning messages
       const planningMessages: ChatMessage[] = [
         {
           role: 'system',
           content: 'You are a helpful AI assistant that analyzes tools and creates execution plans. Be concise and practical. Consider conversation history to avoid repetition and build upon previous work.'
-        },
-        {
-          role: 'user',
-          content: planningPrompt
         }
       ];
 
-      console.log(`📋 Making planning request with ${tools.length} tools and conversation context`);
+      // Add conversation history if provided (similar to how autonomous agent does it)
+      if (conversationHistory && conversationHistory.length > 0) {
+        // Convert Clara messages to ChatMessage format for planning context
+        // Take the last 10 messages to avoid overwhelming the planning model
+        const recentHistory = conversationHistory.slice(-10);
+        
+        for (const historyMessage of recentHistory) {
+          const chatMessage: ChatMessage = {
+            role: historyMessage.role,
+            content: historyMessage.content
+          };
+
+          // Add images if the message has image attachments
+          if (historyMessage.attachments) {
+            const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
+            if (imageAttachments.length > 0) {
+              chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+            }
+          }
+
+          planningMessages.push(chatMessage);
+        }
+        
+        console.log(`📋 Including ${recentHistory.length} conversation messages in planning context`);
+      }
+
+      // Add the planning prompt as the final user message
+      planningMessages.push({
+        role: 'user',
+        content: planningPrompt
+      });
+
+      console.log(`📋 Making planning request with ${tools.length} tools, ${planningMessages.length} messages, and full conversation context`);
       
       const planningResponse = await this.client.sendChat(modelId, planningMessages, {
         temperature: 0.6, // Lower temperature for more consistent planning
@@ -2935,10 +2963,10 @@ ESTIMATED_STEPS:
       const parsed = this.parsePlanningResponse(planningContent);
       
       if (onContentChunk) {
-        onContentChunk(`✅ **Plan created:** ${parsed.estimatedSteps} steps identified\n\n`);
+        onContentChunk(`✅ **Plan created with full conversation context:** ${parsed.estimatedSteps} steps identified\n\n`);
       }
 
-      console.log(`✅ Generated plan with conversation context:`, parsed);
+      console.log(`✅ Generated plan with full conversation context:`, parsed);
       return parsed;
 
     } catch (error) {
@@ -3031,16 +3059,24 @@ ESTIMATED_STEPS:
     let contextSummary = '';
     let toolUsageHistory = '';
     let recentMessages = '';
+    let userIntents = '';
     
     // Analyze tool usage patterns
     const toolsUsed = new Set<string>();
     const failedTools = new Set<string>();
     const successfulTools = new Set<string>();
+    const userQueries: string[] = [];
     
     // Get recent messages (last 10 for context)
     const recentMsgs = conversationHistory.slice(-10);
     
     for (const message of conversationHistory) {
+      // Collect user queries to understand intent progression
+      if (message.role === 'user') {
+        const query = message.content.length > 150 ? message.content.substring(0, 150) + '...' : message.content;
+        userQueries.push(query);
+      }
+      
       // Track tool usage from metadata
       if (message.metadata?.toolsUsed && Array.isArray(message.metadata.toolsUsed)) {
         for (const tool of message.metadata.toolsUsed) {
@@ -3059,9 +3095,20 @@ ESTIMATED_STEPS:
       }
     }
     
+    // Create user intent progression summary
+    if (userQueries.length > 0) {
+      userIntents += `\nUser intent progression (${userQueries.length} queries):\n`;
+      // Show last 3 user queries to understand the conversation flow
+      const recentQueries = userQueries.slice(-3);
+      recentQueries.forEach((query, index) => {
+        const position = userQueries.length - recentQueries.length + index + 1;
+        userIntents += `${position}. ${query}\n`;
+      });
+    }
+    
     // Create tool usage summary
     if (toolsUsed.size > 0) {
-      toolUsageHistory += `\nPrevious tool usage:\n`;
+      toolUsageHistory += `\nTool usage history:\n`;
       if (successfulTools.size > 0) {
         toolUsageHistory += `✅ Successfully used: ${Array.from(successfulTools).join(', ')}\n`;
       }
@@ -3070,23 +3117,33 @@ ESTIMATED_STEPS:
       }
     }
     
-    // Create recent messages summary
+    // Create recent messages summary with more detail
     if (recentMsgs.length > 0) {
-      recentMessages += `\nRecent conversation (last ${recentMsgs.length} messages):\n`;
+      recentMessages += `\nRecent conversation context (last ${recentMsgs.length} messages):\n`;
       for (let i = 0; i < recentMsgs.length; i++) {
         const msg = recentMsgs[i];
-        const preview = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content;
-        recentMessages += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${preview}\n`;
+        const preview = msg.content.length > 200 ? msg.content.substring(0, 200) + '...' : msg.content;
+        const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+        recentMessages += `[${timestamp}] ${msg.role === 'user' ? 'User' : 'Assistant'}: ${preview}\n`;
         
         // Add tool usage info if available
         if (msg.metadata?.toolsUsed && msg.metadata.toolsUsed.length > 0) {
-          recentMessages += `  └─ Used tools: ${msg.metadata.toolsUsed.join(', ')}\n`;
+          recentMessages += `  └─ Tools used: ${msg.metadata.toolsUsed.join(', ')}\n`;
+        }
+        
+        // Add error info if available
+        if (msg.metadata?.error) {
+          recentMessages += `  └─ ⚠️ Error occurred\n`;
         }
       }
     }
     
-    // Combine all context
-    contextSummary = `Conversation has ${conversationHistory.length} total messages.`;
+    // Combine all context with conversation statistics
+    contextSummary = `Conversation has ${conversationHistory.length} total messages (${userQueries.length} user queries).`;
+    
+    if (userIntents) {
+      contextSummary += userIntents;
+    }
     
     if (toolUsageHistory) {
       contextSummary += toolUsageHistory;
@@ -3096,8 +3153,20 @@ ESTIMATED_STEPS:
       contextSummary += recentMessages;
     }
     
-    if (!toolUsageHistory && !recentMessages) {
-      contextSummary += '\nNo significant tool usage or recent activity to consider.';
+    if (!toolUsageHistory && !recentMessages && !userIntents) {
+      contextSummary += '\nNo significant tool usage, user queries, or recent activity to consider.';
+    }
+    
+    // Add planning guidance based on conversation analysis
+    contextSummary += `\n\nPLANNING GUIDANCE:`;
+    if (successfulTools.size > 0) {
+      contextSummary += `\n- Consider reusing successful tools: ${Array.from(successfulTools).join(', ')}`;
+    }
+    if (failedTools.size > 0) {
+      contextSummary += `\n- Avoid or find alternatives to failed tools: ${Array.from(failedTools).join(', ')}`;
+    }
+    if (userQueries.length > 1) {
+      contextSummary += `\n- This is a multi-turn conversation - build upon previous context`;
     }
     
     return contextSummary;
@@ -3319,7 +3388,7 @@ ESTIMATED_STEPS:
     const isToolsMode = config.features.enableTools && !config.features.enableStreaming;
     
     // Model selection priority:
-    // 1. Vision model for images (streaming mode only)
+    // 1. Vision model for images (streaming mode only) 
     // 2. Code model for tools mode (better for complex reasoning and tool usage)
     // 3. Text model for streaming and general text
     
