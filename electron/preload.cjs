@@ -153,6 +153,8 @@ contextBridge.exposeInMainWorld('mcpService', {
   getTemplates: () => ipcRenderer.invoke('mcp-get-templates'),
   startAllEnabled: () => ipcRenderer.invoke('mcp-start-all-enabled'),
   stopAll: () => ipcRenderer.invoke('mcp-stop-all'),
+  startPreviouslyRunning: () => ipcRenderer.invoke('mcp-start-previously-running'),
+  saveRunningState: () => ipcRenderer.invoke('mcp-save-running-state'),
   importClaudeConfig: (configPath) => ipcRenderer.invoke('mcp-import-claude-config', configPath),
   executeToolCall: (toolCall) => ipcRenderer.invoke('mcp-execute-tool', toolCall),
   diagnoseNode: () => ipcRenderer.invoke('mcp-diagnose-node')

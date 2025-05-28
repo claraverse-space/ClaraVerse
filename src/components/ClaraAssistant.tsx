@@ -27,6 +27,12 @@ import { claraBackgroundService } from '../services/claraBackgroundService';
 
 // Import clear data utility
 import '../utils/clearClaraData';
+import { copyToClipboard } from '../utils/clipboard';
+
+// Import clipboard test functions for development
+if (process.env.NODE_ENV === 'development') {
+  import('../utils/clipboard.test');
+}
 
 interface ClaraAssistantProps {
   onPageChange: (page: string) => void;
@@ -129,6 +135,9 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // Session management state
   const [sessions, setSessions] = useState<ClaraChatSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [hasMoreSessions, setHasMoreSessions] = useState(true);
+  const [sessionPage, setSessionPage] = useState(0);
+  const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false);
   
   // Provider and model state
   const [providers, setProviders] = useState<ClaraProvider[]>([]);
@@ -149,7 +158,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       provider: '',
       parameters: {
         temperature: 0.7,
-        maxTokens: 1000,
+        maxTokens: 8000,
         topP: 1.0,
         topK: 40
       },
@@ -180,7 +189,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableChainOfThought: true,
         enableErrorLearning: true
       }
-    }
+    },
+    contextWindow: 50 // Include last 50 messages in conversation history
   });
 
   // Load user name from database
@@ -217,34 +227,45 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
   // Load chat sessions on component mount
   useEffect(() => {
-    const loadSessions = async () => {
+    const loadInitialSessions = async () => {
       setIsLoadingSessions(true);
       try {
-        // Debug data integrity
-        const integrity = await claraDB.debugDataIntegrity();
-        console.log('Clara data integrity check:', integrity);
+        console.log('🚀 Starting lightning-fast session loading...');
+        const startTime = performance.now();
         
-        // Clean up orphaned data if found
-        if (integrity.orphanedMessages > 0 || integrity.orphanedFiles > 0) {
-          console.log('Cleaning up orphaned data...');
-          await claraDB.cleanupOrphanedData();
-        }
+        // Load sessions WITHOUT messages first for instant UI
+        const recentSessions = await claraDB.getRecentClaraSessionsLight(20); // Load only 20 initially
+        console.log(`⚡ Loaded ${recentSessions.length} sessions in ${(performance.now() - startTime).toFixed(2)}ms`);
         
-        const recentSessions = await claraDB.getRecentClaraSessions(50);
-        console.log('Loaded sessions:', recentSessions.map(s => ({ id: s.id, title: s.title, messages: s.messages.length })));
         setSessions(recentSessions);
+        setSessionPage(1);
+        setHasMoreSessions(recentSessions.length === 20);
         
-        // If no current session and we have existing sessions, load the most recent one with its messages
+        // If no current session and we have existing sessions, load the most recent one
         if (!currentSession && recentSessions.length > 0) {
           const mostRecent = recentSessions[0];
-          // Ensure the session has its messages loaded
+          // Load messages for the most recent session only
           const sessionWithMessages = await claraDB.getClaraSession(mostRecent.id);
           if (sessionWithMessages) {
             setCurrentSession(sessionWithMessages);
             setMessages(sessionWithMessages.messages);
-            console.log('Auto-loaded most recent session:', sessionWithMessages.title, 'with', sessionWithMessages.messages.length, 'messages');
+            console.log('📝 Auto-loaded most recent session:', sessionWithMessages.title, 'with', sessionWithMessages.messages.length, 'messages');
           }
         }
+        
+        // Background cleanup (non-blocking)
+        setTimeout(async () => {
+          try {
+            const integrity = await claraDB.debugDataIntegrity();
+            if (integrity.orphanedMessages > 0 || integrity.orphanedFiles > 0) {
+              console.log('🧹 Cleaning up orphaned data in background...');
+              await claraDB.cleanupOrphanedData();
+            }
+          } catch (error) {
+            console.warn('Background cleanup failed:', error);
+          }
+        }, 1000);
+        
       } catch (error) {
         console.error('Failed to load chat sessions:', error);
       } finally {
@@ -252,8 +273,29 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }
     };
 
-    loadSessions();
+    loadInitialSessions();
   }, []);
+
+  // Load more sessions function for pagination
+  const loadMoreSessions = useCallback(async () => {
+    if (isLoadingMoreSessions || !hasMoreSessions) return;
+    
+    setIsLoadingMoreSessions(true);
+    try {
+      const moreSessions = await claraDB.getRecentClaraSessionsLight(20, sessionPage * 20);
+      if (moreSessions.length > 0) {
+        setSessions(prev => [...prev, ...moreSessions]);
+        setSessionPage(prev => prev + 1);
+        setHasMoreSessions(moreSessions.length === 20);
+      } else {
+        setHasMoreSessions(false);
+      }
+    } catch (error) {
+      console.error('Failed to load more sessions:', error);
+    } finally {
+      setIsLoadingMoreSessions(false);
+    }
+  }, [sessionPage, isLoadingMoreSessions, hasMoreSessions]);
 
   // Load providers and models
   useEffect(() => {
@@ -319,7 +361,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
               },
               parameters: {
                 temperature: 0.7,
-                maxTokens: 1000,
+                maxTokens: 4000,
                 topP: 1.0,
                 topK: 40
               },
@@ -337,7 +379,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enabledServers: [],
                 autoDiscoverTools: true,
                 maxToolCalls: 5
-              }
+              },
+              contextWindow: 50 // Include last 50 messages in conversation history
             };
 
             setSessionConfig(prev => ({
@@ -429,10 +472,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     setMessages(prev => [...prev, streamingMessage]);
 
     try {
-      // Get conversation context (last 15 messages including the current user message)
-      const contextWindow = 15;
+      // Get conversation context (configurable context window, default 50 messages)
+      const contextWindow = sessionConfig.aiConfig?.contextWindow || 50;
       const conversationHistory = currentMessages
-        .slice(-contextWindow)  // Take last 15 messages
+        .slice(-contextWindow)  // Take last N messages based on config
         .filter(msg => msg.role !== 'system'); // Exclude system messages
 
       // Send message with streaming callback and conversation context
@@ -766,7 +809,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           },
           parameters: {
             temperature: 0.7,
-            maxTokens: 1000,
+            maxTokens: 4000,
             topP: 1.0,
             topK: 40
           },
@@ -784,7 +827,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             enabledServers: [],
             autoDiscoverTools: true,
             maxToolCalls: 5
-          }
+          },
+          contextWindow: 50 // Include last 50 messages in conversation history
         };
         
         console.log('Created default config:', defaultConfig);
@@ -850,13 +894,14 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   }, [models]);
 
   // Handle message interactions
-  const handleCopyMessage = useCallback((content: string) => {
-    navigator.clipboard.writeText(content).then(() => {
+  const handleCopyMessage = useCallback(async (content: string) => {
+    const success = await copyToClipboard(content);
+    if (success) {
       // Could show a toast notification here
       console.log('Message copied:', content);
-    }).catch(err => {
-      console.error('Failed to copy message:', err);
-    });
+    } else {
+      console.error('Failed to copy message');
+    }
   }, []);
 
   const handleRetryMessage = useCallback((messageId: string) => {
@@ -1073,6 +1118,92 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('Use debugProblematicTools() to see stored tools per provider.');
     };
 
+    (window as any).testClaraPerformance = () => {
+      console.log('🚀 Clara Performance Test Results:');
+      console.log('Current loading strategy: Lazy loading with pagination');
+      console.log('Sessions loaded:', sessions.length);
+      console.log('Has more sessions:', hasMoreSessions);
+      console.log('Current session page:', sessionPage);
+      console.log('Loading states:', {
+        isLoadingSessions,
+        isLoadingMoreSessions,
+        isLoadingProviders
+      });
+      
+      // Test loading time
+      const startTime = performance.now();
+      setTimeout(() => {
+        const endTime = performance.now();
+        console.log(`UI responsiveness test: ${(endTime - startTime).toFixed(2)}ms`);
+      }, 0);
+    };
+
+    (window as any).testStreamingAutonomousExclusivity = () => {
+      console.log('🧪 Testing Streaming/Autonomous Agent Mutual Exclusivity...');
+      console.log('Current config:', {
+        streaming: sessionConfig.aiConfig?.features?.enableStreaming,
+        autonomous: sessionConfig.aiConfig?.autonomousAgent?.enabled,
+        tools: sessionConfig.aiConfig?.features?.enableTools,
+        mcp: sessionConfig.aiConfig?.features?.enableMCP
+      });
+      
+      // Test 1: Enable streaming should disable autonomous
+      console.log('\n📝 Test 1: Enabling streaming should disable autonomous agent');
+      const streamingConfig = {
+        ...sessionConfig.aiConfig,
+        features: {
+          ...sessionConfig.aiConfig?.features,
+          enableStreaming: true,
+          enableTools: false,
+          enableMCP: false
+        },
+        autonomousAgent: {
+          enabled: false,
+          maxRetries: sessionConfig.aiConfig?.autonomousAgent?.maxRetries || 3,
+          retryDelay: sessionConfig.aiConfig?.autonomousAgent?.retryDelay || 1000,
+          enableSelfCorrection: sessionConfig.aiConfig?.autonomousAgent?.enableSelfCorrection || true,
+          enableToolGuidance: sessionConfig.aiConfig?.autonomousAgent?.enableToolGuidance || true,
+          enableProgressTracking: sessionConfig.aiConfig?.autonomousAgent?.enableProgressTracking || true,
+          maxToolCalls: sessionConfig.aiConfig?.autonomousAgent?.maxToolCalls || 10,
+          confidenceThreshold: sessionConfig.aiConfig?.autonomousAgent?.confidenceThreshold || 0.7,
+          enableChainOfThought: sessionConfig.aiConfig?.autonomousAgent?.enableChainOfThought || true,
+          enableErrorLearning: sessionConfig.aiConfig?.autonomousAgent?.enableErrorLearning || true
+        }
+      };
+      
+      console.log('Expected streaming config:', {
+        streaming: streamingConfig.features?.enableStreaming,
+        autonomous: streamingConfig.autonomousAgent?.enabled,
+        tools: streamingConfig.features?.enableTools,
+        mcp: streamingConfig.features?.enableMCP
+      });
+      
+      // Test 2: Enable autonomous should disable streaming
+      console.log('\n📝 Test 2: Enabling autonomous agent should disable streaming');
+      const autonomousConfig = {
+        ...sessionConfig.aiConfig,
+        features: {
+          ...sessionConfig.aiConfig?.features,
+          enableStreaming: false,
+          enableTools: true,
+          enableMCP: true
+        },
+        autonomousAgent: {
+          ...sessionConfig.aiConfig?.autonomousAgent,
+          enabled: true
+        }
+      };
+      
+      console.log('Expected autonomous config:', {
+        streaming: autonomousConfig.features?.enableStreaming,
+        autonomous: autonomousConfig.autonomousAgent?.enabled,
+        tools: autonomousConfig.features?.enableTools,
+        mcp: autonomousConfig.features?.enableMCP
+      });
+      
+      console.log('\n✅ Mutual exclusivity test complete. Check the UI to verify behavior matches expected configs.');
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -1087,6 +1218,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).debugProblematicTools;
       delete (window as any).clearProblematicToolsForProvider;
       delete (window as any).testProviderSpecificToolError;
+      delete (window as any).testClaraPerformance;
+      delete (window as any).testStreamingAutonomousExclusivity;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
 
@@ -1140,6 +1273,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             messages={messages}
             userName={userName}
             isLoading={isLoading}
+            isInitializing={isLoadingSessions || isLoadingProviders}
             onRetryMessage={handleRetryMessage}
             onCopyMessage={handleCopyMessage}
             onEditMessage={handleEditMessage}
@@ -1165,9 +1299,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           sessions={sessions}
           currentSessionId={currentSession?.id}
           isLoading={isLoadingSessions}
+          isLoadingMore={isLoadingMoreSessions}
+          hasMoreSessions={hasMoreSessions}
           onSelectSession={handleSelectSession}
           onNewChat={handleNewChat}
           onSessionAction={handleSessionAction}
+          onLoadMore={loadMoreSessions}
         />
       </div>
     </div>

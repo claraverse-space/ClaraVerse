@@ -104,6 +104,18 @@ interface AgentExecutionContext {
   currentStep: number;
   maxSteps: number;
   progressLog: string[];
+  toolsSummary?: string; // Add tools summary to context
+  executionPlan?: string; // Add execution plan to context
+}
+
+/**
+ * Tools summary and plan generation result
+ */
+interface ToolsPlanResult {
+  summary: string;
+  plan: string;
+  relevantTools: string[];
+  estimatedSteps: number;
 }
 
 export class ClaraApiService {
@@ -291,8 +303,8 @@ export class ClaraApiService {
       // Process file attachments if any
       const processedAttachments = await this.processFileAttachments(attachments || []);
 
-      // Get the model from config - extract the actual model name after provider prefix
-      let modelId = config.models.text || 'llama2';
+      // Determine the appropriate model based on context and auto selection settings
+      let modelId = this.selectAppropriateModel(config, message, processedAttachments);
       
       // If the model ID includes the provider prefix (e.g., "ollama:qwen3:30b"), 
       // extract everything after the first colon to get the actual model name
@@ -506,6 +518,7 @@ export class ClaraApiService {
           tools, 
           config, 
           agentContext,
+          conversationHistory, // Pass conversation history to autonomous agent
           onContentChunk
         );
 
@@ -1164,41 +1177,51 @@ export class ClaraApiService {
   Optional: ${optionalParams.join(', ') || 'none'}`;
     }).join('\n');
 
-    const enhancedPrompt = `${originalPrompt || 'You are Clara, a helpful AI assistant.'} 
+    // Include tools summary and execution plan if available
+    const toolsSummarySection = context.toolsSummary ? `
+🎯 TOOLS SUMMARY:
+${context.toolsSummary}
 
-🤖 AUTONOMOUS AGENT MODE ACTIVATED 🤖
+📋 EXECUTION PLAN:
+${context.executionPlan || 'Plan will be determined based on your request.'}
+` : '';
+
+    const enhancedPrompt = `${originalPrompt || 'You are Clara, a helpful AI assistant.'}
+
+🚀 AUTONOMOUS AGENT MODE ACTIVATED 🚀
 
 You are now operating as an advanced autonomous agent with the following capabilities:
 
+${toolsSummarySection}
+
 CORE PRINCIPLES:
-1. **Persistence**: If a tool call fails, analyze the error and retry with corrected parameters
-2. **Self-Correction**: Learn from errors and adjust your approach automatically  
-3. **Tool Mastery**: Use tools effectively by carefully reading their descriptions and requirements
-4. **Progress Tracking**: Keep the user informed of your progress and reasoning
+1. **Follow the Plan**: Use the execution plan above as your guide, but adapt as needed based on results.
+2. **Context Awareness**: Remember what each tool call accomplished and build upon previous results.
+3. **Sequential Logic**: For terminal/command tools, run the command THEN check the output in the next step.
+4. **No Repetition**: Avoid calling the same tool with the same parameters repeatedly.
+5. **Result Chaining**: Use the output from one tool as input for the next when logical.
+
+TOOL EXECUTION STRATEGY:
+- **Step 1**: Execute the first tool in your plan
+- **Step 2**: Analyze the result and determine the next logical action
+- **Step 3**: If the result suggests a follow-up action (like checking command output), do it immediately
+- **Step 4**: Continue until the user's request is fully satisfied
+
+FALLBACK STRATEGY:
+- On first failure: parse the error, fix parameters, and retry.
+- If failures exceed ${this.agentConfig.maxRetries}: choose an alternative tool or approach.
+- If no suitable tool remains: provide the best answer possible with available information.
 
 AVAILABLE TOOLS:
 ${toolsList || 'No tools available'}
 
-TOOL USAGE GUIDELINES:
-- **Always double-check tool names** - they must match exactly (case-sensitive)
-- **Validate all required parameters** before making tool calls
-- **If a tool fails**, analyze the error message and retry with corrections
-- **Use descriptive reasoning** - explain what you're doing and why
-- **Chain tools logically** - use outputs from one tool as inputs to another when appropriate
-
-ERROR HANDLING PROTOCOL:
-1. If a tool call fails due to misspelling, immediately retry with the correct spelling
-2. If parameters are missing/invalid, retry with proper parameters
-3. If a tool doesn't exist, suggest alternatives or explain limitations
-4. Maximum ${this.agentConfig.maxRetries} retries per tool before moving to alternatives
-
 RESPONSE FORMAT:
-- Start with your reasoning and plan
-- Clearly indicate when you're using tools
-- Explain any errors and how you're fixing them
-- Provide a comprehensive final answer
+1. **Current Step**: Briefly state what you're doing now
+2. **Tool Usage**: Execute tools with clear purpose
+3. **Result Analysis**: Explain what the tool result means and what to do next
+4. **Final Answer**: Provide a clear, concise response to the user
 
-Remember: You are autonomous and capable. Take initiative, solve problems step by step, and don't give up easily!`;
+Remember: You are autonomous and intelligent. Chain tool results logically, avoid redundant calls, and always work toward completing the user's request efficiently.`;
 
     return enhancedPrompt;
   }
@@ -1212,6 +1235,7 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     tools: Tool[],
     config: ClaraAIConfig,
     context: AgentExecutionContext,
+    conversationHistory?: ClaraMessage[],
     onContentChunk?: (content: string) => void
   ): Promise<ClaraMessage> {
     const options = {
@@ -1235,13 +1259,69 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
 
     console.log(`🔍 Starting autonomous agent loop with maxSteps: ${context.maxSteps}`);
     
+    // STEP 1: Generate tools summary and execution plan if tools are available
+    if (tools.length > 0) {
+      try {
+        console.log(`🧠 Generating tools summary and plan for ${tools.length} tools`);
+        const planResult = await this.generateToolsSummaryAndPlan(
+          context.originalQuery,
+          tools,
+          modelId,
+          conversationHistory, // Use the conversation history parameter passed to this method
+          onContentChunk
+        );
+        
+        // Update context with planning results
+        context.toolsSummary = planResult.summary;
+        context.executionPlan = planResult.plan;
+        context.toolsAvailable = planResult.relevantTools;
+        
+        // Adjust max steps based on estimated steps from plan
+        const estimatedSteps = Math.max(planResult.estimatedSteps, 2); // Minimum 2 steps
+        const adjustedMaxSteps = Math.min(estimatedSteps + 2, this.agentConfig.maxToolCalls); // Add buffer, but respect limit
+        context.maxSteps = adjustedMaxSteps;
+        
+        console.log(`📋 Plan generated:`, {
+          summary: planResult.summary.substring(0, 100) + '...',
+          estimatedSteps: planResult.estimatedSteps,
+          adjustedMaxSteps,
+          relevantTools: planResult.relevantTools
+        });
+        
+        if (onContentChunk) {
+          onContentChunk(`📋 **Execution Plan:**\n${planResult.plan}\n\n`);
+        }
+        
+      } catch (planError) {
+        console.warn('⚠️ Failed to generate tools plan, continuing with default approach:', planError);
+        if (onContentChunk) {
+          onContentChunk('⚠️ **Planning failed, proceeding with adaptive approach...**\n\n');
+        }
+      }
+    }
+    
     // Ensure we always make at least one call, even if maxSteps is 0
     // If tools are available, ensure at least 2 steps (initial call + follow-up after tools)
     const minStepsNeeded = tools.length > 0 ? 2 : 1;
     const actualMaxSteps = Math.max(context.maxSteps, minStepsNeeded);
     console.log(`🔧 Adjusted maxSteps from ${context.maxSteps} to ${actualMaxSteps} (min needed: ${minStepsNeeded} due to ${tools.length} tools available)`);
 
-    // Main agent execution loop
+    // STEP 2: Update system prompt with planning information
+    const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(
+      conversationMessages[0]?.content, // Original system prompt
+      tools, 
+      context
+    );
+    
+    // Replace the first system message with enhanced prompt
+    if (conversationMessages.length > 0 && conversationMessages[0].role === 'system') {
+      conversationMessages[0] = {
+        ...conversationMessages[0],
+        content: enhancedSystemPrompt
+      };
+    }
+
+    // STEP 3: Main agent execution loop
     for (let step = 0; step < actualMaxSteps; step++) {
       context.currentStep = step;
       
@@ -1434,8 +1514,27 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
           console.log(`🔧 Tool call IDs:`, stepResponse.message.tool_calls.map((tc: any) => ({ id: tc.id, name: tc.function?.name })));
           console.log(`🔧 Already processed IDs:`, Array.from(processedToolCallIds));
           
+          // Show user-friendly tool execution message
+          const toolNames = stepResponse.message.tool_calls
+            .map((tc: any) => tc.function?.name)
+            .filter((name: string) => name)
+            .map((name: string) => {
+              // Convert tool names to user-friendly descriptions
+              if (name.includes('github')) return 'GitHub';
+              if (name.includes('file') || name.includes('read') || name.includes('write')) return 'file operations';
+              if (name.includes('terminal') || name.includes('command')) return 'terminal commands';
+              if (name.includes('search')) return 'search';
+              if (name.includes('web') || name.includes('http')) return 'web requests';
+              return name.replace(/^mcp_/, '').replace(/_/g, ' ');
+            });
+          
+          const uniqueToolNames = [...new Set(toolNames)];
+          const toolDescription = uniqueToolNames.length > 0 
+            ? uniqueToolNames.join(', ')
+            : 'tools';
+          
           if (onContentChunk) {
-            onContentChunk('\n\n🔧 **Executing tools...**\n\n');
+            onContentChunk(`\n🔧 **Using ${toolDescription}...**\n\n`);
           }
 
           // Add assistant message with tool calls
@@ -1518,8 +1617,16 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
           console.log(`🔧 After processing tools, conversation has ${conversationMessages.length} messages`);
           console.log(`🔧 Processed tool call IDs now:`, Array.from(processedToolCallIds));
 
+          // Show completion message with summary
+          const successCount = toolResults.filter(r => r.success).length;
+          const failCount = toolResults.filter(r => !r.success).length;
+          
           if (onContentChunk) {
-            onContentChunk('✅ **Tools executed successfully**\n\n');
+            if (failCount === 0) {
+              onContentChunk(`✅ **Completed successfully**\n\n`);
+            } else {
+              onContentChunk(`✅ **Completed** (${successCount} successful, ${failCount} failed)\n\n`);
+            }
           }
 
           console.log(`🔄 Continuing to next step after tool execution...`);
@@ -1597,7 +1704,6 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
           );
           
           // Provide a meaningful error message to the user
-          // Provide a meaningful error message to the user
           const errorSummary = `I encountered repeated errors during execution. Here's what I was able to accomplish:\n\n`;
           let finalSummary = errorSummary;
           
@@ -1634,11 +1740,21 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     console.log(`🎯 Autonomous agent execution completed. Response content length: ${responseContent.length}, Tool results: ${allToolResults.length}`);
     console.log(`🔚 Loop ended at step ${context.currentStep + 1}/${actualMaxSteps}`);
 
+    // Create user-friendly summary of tool results
+    let finalContent = responseContent;
+    if (allToolResults.length > 0) {
+      const toolSummary = this.createToolResultSummary(allToolResults);
+      if (toolSummary) {
+        // If we have a meaningful tool summary, append it to the response
+        finalContent += (finalContent ? '\n\n' : '') + toolSummary;
+      }
+    }
+
     // Create final Clara message with better error handling
     const claraMessage: ClaraMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'assistant',
-      content: responseContent || 'I completed the autonomous agent execution, but encountered some technical issues. Please try again or contact support if the problem persists.',
+      content: finalContent || 'I completed the autonomous agent execution, but encountered some technical issues. Please try again or contact support if the problem persists.',
       timestamp: new Date(),
       metadata: {
         model: `${config.provider}:${modelId}`,
@@ -1652,7 +1768,9 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
           total: allToolResults.length,
           successful: allToolResults.filter(r => r.success).length,
           failed: allToolResults.filter(r => !r.success).length
-        }
+        },
+        planningUsed: !!context.toolsSummary,
+        executionPlan: context.executionPlan
       }
     };
 
@@ -1722,8 +1840,9 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
             timestamp: new Date()
           };
 
+          // Only show retry message for attempts > 1, and make it less verbose
           if (onContentChunk && attempt > 1) {
-            onContentChunk(`🔄 **Retry ${attempt}/${this.agentConfig.maxRetries}** for ${functionName}\n`);
+            onContentChunk(`🔄 **Retrying...** (${attempt}/${this.agentConfig.maxRetries})\n`);
           }
 
           // Check if this is an MCP tool call
@@ -1823,8 +1942,9 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
           context.attempts.push(attemptRecord);
 
           if (success) {
+            // Only show success message for retries (not first attempt)
             if (onContentChunk && attempt > 1) {
-              onContentChunk(`✅ **Success** on attempt ${attempt}\n`);
+              onContentChunk(`✅ **Success**\n`);
             }
             break;
           }
@@ -1845,9 +1965,8 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
             timestamp: new Date()
           });
 
-          if (onContentChunk) {
-            onContentChunk(`❌ **Attempt ${attempt} failed**: ${lastError}\n`);
-          }
+          // Only show error details in console, not to user
+          console.error(`❌ Tool ${functionName} attempt ${attempt} failed:`, lastError);
         }
       }
 
@@ -1865,8 +1984,13 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
         console.log(`💥 Final failure for ${functionName}:`, finalResult);
         results.push(finalResult);
         
+        // Only show failure message if all retries failed, and make it user-friendly
         if (onContentChunk) {
-          onContentChunk(`💥 **Tool ${functionName} failed after ${this.agentConfig.maxRetries} attempts**: ${lastError}\n\n`);
+          const friendlyToolName = functionName
+            .replace(/^mcp_/, '')
+            .replace(/_/g, ' ')
+            .toLowerCase();
+          onContentChunk(`⚠️ **${friendlyToolName} failed** - will try alternative approach\n\n`);
         }
       }
     }
@@ -2706,6 +2830,517 @@ Remember: You are autonomous and capable. Take initiative, solve problems step b
     }
 
     return errors;
+  }
+
+  /**
+   * Generate tools summary and execution plan using LLM
+   */
+  private async generateToolsSummaryAndPlan(
+    userQuery: string,
+    tools: Tool[],
+    modelId: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void
+  ): Promise<ToolsPlanResult> {
+    if (!this.client) {
+      throw new Error('No API client configured');
+    }
+
+    try {
+      console.log(`🧠 Generating tools summary and plan for query: "${userQuery}"`);
+      
+      if (onContentChunk) {
+        onContentChunk('🧠 **Analyzing available tools and conversation history...**\n\n');
+      }
+
+      // Group tools by category/server for better organization
+      const toolsByCategory = this.groupToolsByCategory(tools);
+      
+      // Create a comprehensive tools description
+      const toolsDescription = this.createToolsDescription(toolsByCategory);
+      
+      // Create conversation history summary for context
+      const conversationContext = this.createConversationContextSummary(conversationHistory);
+      
+      // Create the planning prompt with conversation history
+      const planningPrompt = `You are an AI assistant tasked with analyzing available tools and creating an execution plan for a user query, taking into account the conversation history.
+
+USER QUERY: "${userQuery}"
+
+CONVERSATION CONTEXT:
+${conversationContext}
+
+AVAILABLE TOOLS:
+${toolsDescription}
+
+Your task is to:
+1. Create a CONCISE summary of the most relevant tools for this query
+2. Create a STEP-BY-STEP execution plan that considers the conversation history
+3. Identify which tools should be used in sequence
+4. Estimate how many steps this will take
+5. Consider what has already been done in the conversation to avoid repetition
+
+IMPORTANT GUIDELINES:
+- Focus ONLY on tools that are directly relevant to the user's query
+- Consider the conversation history - don't repeat actions that were already successful
+- If previous tool calls failed, plan alternative approaches
+- For terminal/command tools (like iTerm MCP), plan to run a command AND then check the output
+- For file operations, plan to read/write AND then verify the result
+- For API calls, plan to make the call AND then process the response
+- Keep the summary concise but informative
+- The plan should be logical and sequential
+- Avoid repetitive tool calls - each step should build on the previous
+- Reference previous conversation context when relevant
+
+Respond in this EXACT format:
+
+TOOLS_SUMMARY:
+[Concise summary of the most relevant tools available for this task]
+
+EXECUTION_PLAN:
+Step 1: [First action with specific tool, considering conversation history]
+Step 2: [Second action, often checking result of step 1]
+Step 3: [Continue logically...]
+[etc.]
+
+RELEVANT_TOOLS:
+[Comma-separated list of tool names that will likely be used]
+
+ESTIMATED_STEPS:
+[Number between 1-10]`;
+
+      // Make the planning request (non-streaming for clean parsing)
+      const planningMessages: ChatMessage[] = [
+        {
+          role: 'system',
+          content: 'You are a helpful AI assistant that analyzes tools and creates execution plans. Be concise and practical. Consider conversation history to avoid repetition and build upon previous work.'
+        },
+        {
+          role: 'user',
+          content: planningPrompt
+        }
+      ];
+
+      console.log(`📋 Making planning request with ${tools.length} tools and conversation context`);
+      
+      const planningResponse = await this.client.sendChat(modelId, planningMessages, {
+        temperature: 0.6, // Lower temperature for more consistent planning
+        max_tokens: 8000
+      });
+
+      const planningContent = planningResponse.message?.content || '';
+      console.log(`📋 Planning response received: ${planningContent.length} chars`);
+
+      // Parse the response
+      const parsed = this.parsePlanningResponse(planningContent);
+      
+      if (onContentChunk) {
+        onContentChunk(`✅ **Plan created:** ${parsed.estimatedSteps} steps identified\n\n`);
+      }
+
+      console.log(`✅ Generated plan with conversation context:`, parsed);
+      return parsed;
+
+    } catch (error) {
+      console.error('❌ Failed to generate tools summary and plan:', error);
+      
+      // Fallback to basic summary
+      const fallbackSummary = `Available tools: ${tools.map(t => t.name).join(', ')}`;
+      const fallbackPlan = `Step 1: Analyze the user's request\nStep 2: Use appropriate tools to fulfill the request\nStep 3: Provide results to the user`;
+      
+      return {
+        summary: fallbackSummary,
+        plan: fallbackPlan,
+        relevantTools: tools.slice(0, 5).map(t => t.name), // First 5 tools as fallback
+        estimatedSteps: 3
+      };
+    }
+  }
+
+  /**
+   * Group tools by category/server for better organization
+   */
+  private groupToolsByCategory(tools: Tool[]): Record<string, Tool[]> {
+    const categories: Record<string, Tool[]> = {};
+    
+    for (const tool of tools) {
+      let category = 'General';
+      
+      // Categorize based on tool name patterns
+      if (tool.name.startsWith('mcp_')) {
+        // Extract server name from MCP tool name (e.g., mcp_github_create_issue -> github)
+        const parts = tool.name.split('_');
+        if (parts.length >= 3) {
+          category = `MCP: ${parts[1].charAt(0).toUpperCase() + parts[1].slice(1)}`;
+        } else {
+          category = 'MCP: Unknown';
+        }
+      } else if (tool.name.includes('file') || tool.name.includes('read') || tool.name.includes('write')) {
+        category = 'File Operations';
+      } else if (tool.name.includes('terminal') || tool.name.includes('command') || tool.name.includes('shell')) {
+        category = 'Terminal/Commands';
+      } else if (tool.name.includes('web') || tool.name.includes('http') || tool.name.includes('api')) {
+        category = 'Web/API';
+      } else if (tool.name.includes('search') || tool.name.includes('find')) {
+        category = 'Search/Discovery';
+      }
+      
+      if (!categories[category]) {
+        categories[category] = [];
+      }
+      categories[category].push(tool);
+    }
+    
+    return categories;
+  }
+
+  /**
+   * Create a comprehensive but concise tools description
+   */
+  private createToolsDescription(toolsByCategory: Record<string, Tool[]>): string {
+    let description = '';
+    
+    for (const [category, tools] of Object.entries(toolsByCategory)) {
+      description += `\n${category}:\n`;
+      
+      for (const tool of tools) {
+        const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
+        const optionalParams = tool.parameters.filter(p => !p.required).map(p => p.name);
+        
+        description += `  • ${tool.name}: ${tool.description}\n`;
+        if (requiredParams.length > 0) {
+          description += `    Required: ${requiredParams.join(', ')}\n`;
+        }
+        if (optionalParams.length > 0 && optionalParams.length <= 3) { // Only show first 3 optional params
+          description += `    Optional: ${optionalParams.slice(0, 3).join(', ')}\n`;
+        }
+      }
+    }
+    
+    return description;
+  }
+
+  /**
+   * Create conversation context summary for planning
+   */
+  private createConversationContextSummary(conversationHistory?: ClaraMessage[]): string {
+    if (!conversationHistory || conversationHistory.length === 0) {
+      return 'No previous conversation history.';
+    }
+
+    let contextSummary = '';
+    let toolUsageHistory = '';
+    let recentMessages = '';
+    
+    // Analyze tool usage patterns
+    const toolsUsed = new Set<string>();
+    const failedTools = new Set<string>();
+    const successfulTools = new Set<string>();
+    
+    // Get recent messages (last 10 for context)
+    const recentMsgs = conversationHistory.slice(-10);
+    
+    for (const message of conversationHistory) {
+      // Track tool usage from metadata
+      if (message.metadata?.toolsUsed && Array.isArray(message.metadata.toolsUsed)) {
+        for (const tool of message.metadata.toolsUsed) {
+          toolsUsed.add(tool);
+          successfulTools.add(tool);
+        }
+      }
+      
+      // Track failed tools from error metadata
+      if (message.metadata?.error && message.content.includes('tool')) {
+        // Try to extract tool name from error context
+        const toolMatch = message.content.match(/tool[:\s]+([a-zA-Z_]+)/i);
+        if (toolMatch) {
+          failedTools.add(toolMatch[1]);
+        }
+      }
+    }
+    
+    // Create tool usage summary
+    if (toolsUsed.size > 0) {
+      toolUsageHistory += `\nPrevious tool usage:\n`;
+      if (successfulTools.size > 0) {
+        toolUsageHistory += `✅ Successfully used: ${Array.from(successfulTools).join(', ')}\n`;
+      }
+      if (failedTools.size > 0) {
+        toolUsageHistory += `❌ Previously failed: ${Array.from(failedTools).join(', ')}\n`;
+      }
+    }
+    
+    // Create recent messages summary
+    if (recentMsgs.length > 0) {
+      recentMessages += `\nRecent conversation (last ${recentMsgs.length} messages):\n`;
+      for (let i = 0; i < recentMsgs.length; i++) {
+        const msg = recentMsgs[i];
+        const preview = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content;
+        recentMessages += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${preview}\n`;
+        
+        // Add tool usage info if available
+        if (msg.metadata?.toolsUsed && msg.metadata.toolsUsed.length > 0) {
+          recentMessages += `  └─ Used tools: ${msg.metadata.toolsUsed.join(', ')}\n`;
+        }
+      }
+    }
+    
+    // Combine all context
+    contextSummary = `Conversation has ${conversationHistory.length} total messages.`;
+    
+    if (toolUsageHistory) {
+      contextSummary += toolUsageHistory;
+    }
+    
+    if (recentMessages) {
+      contextSummary += recentMessages;
+    }
+    
+    if (!toolUsageHistory && !recentMessages) {
+      contextSummary += '\nNo significant tool usage or recent activity to consider.';
+    }
+    
+    return contextSummary;
+  }
+
+  /**
+   * Parse the planning response from the LLM
+   */
+  private parsePlanningResponse(content: string): ToolsPlanResult {
+    const lines = content.split('\n');
+    let summary = '';
+    let plan = '';
+    let relevantTools: string[] = [];
+    let estimatedSteps = 3; // Default
+    
+    let currentSection = '';
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('TOOLS_SUMMARY:')) {
+        currentSection = 'summary';
+        continue;
+      } else if (trimmed.startsWith('EXECUTION_PLAN:')) {
+        currentSection = 'plan';
+        continue;
+      } else if (trimmed.startsWith('RELEVANT_TOOLS:')) {
+        currentSection = 'tools';
+        continue;
+      } else if (trimmed.startsWith('ESTIMATED_STEPS:')) {
+        currentSection = 'steps';
+        continue;
+      }
+      
+      if (currentSection === 'summary' && trimmed) {
+        summary += (summary ? '\n' : '') + trimmed;
+      } else if (currentSection === 'plan' && trimmed) {
+        plan += (plan ? '\n' : '') + trimmed;
+      } else if (currentSection === 'tools' && trimmed) {
+        relevantTools = trimmed.split(',').map(t => t.trim()).filter(t => t);
+      } else if (currentSection === 'steps' && trimmed) {
+        const match = trimmed.match(/(\d+)/);
+        if (match) {
+          estimatedSteps = Math.min(Math.max(parseInt(match[1]), 1), 10); // Clamp between 1-10
+        }
+      }
+    }
+    
+    // Fallbacks if parsing failed
+    if (!summary) {
+      summary = 'Tools available for completing your request.';
+    }
+    if (!plan) {
+      plan = 'Step 1: Analyze request\nStep 2: Execute appropriate tools\nStep 3: Provide results';
+    }
+    
+    return {
+      summary: summary.trim(),
+      plan: plan.trim(),
+      relevantTools,
+      estimatedSteps
+    };
+  }
+
+  /**
+   * Create user-friendly summary of tool results (hides technical details)
+   */
+  private createToolResultSummary(toolResults: any[]): string {
+    if (toolResults.length === 0) {
+      return '';
+    }
+
+    const successfulResults = toolResults.filter(r => r.success);
+    const failedResults = toolResults.filter(r => !r.success);
+    
+    let summary = '';
+    
+    // Add successful results in user-friendly format
+    if (successfulResults.length > 0) {
+      for (const result of successfulResults) {
+        if (result.result && typeof result.result === 'string') {
+          // For string results, add them directly but limit length
+          const content = result.result.length > 500 
+            ? result.result.substring(0, 500) + '...' 
+            : result.result;
+          summary += content + '\n\n';
+        } else if (result.result && typeof result.result === 'object') {
+          // For object results, try to extract meaningful information
+          if (result.toolName.includes('github')) {
+            summary += this.formatGitHubResult(result) + '\n\n';
+          } else if (result.toolName.includes('file') || result.toolName.includes('read')) {
+            summary += this.formatFileResult(result) + '\n\n';
+          } else if (result.toolName.includes('terminal') || result.toolName.includes('command')) {
+            summary += this.formatTerminalResult(result) + '\n\n';
+          } else {
+            // Generic object formatting
+            summary += this.formatGenericResult(result) + '\n\n';
+          }
+        }
+      }
+    }
+    
+    // Add failed results summary (without technical details)
+    if (failedResults.length > 0) {
+      summary += `\n⚠️ Some operations couldn't be completed (${failedResults.length} failed).`;
+    }
+    
+    return summary.trim();
+  }
+
+  /**
+   * Format GitHub-related tool results
+   */
+  private formatGitHubResult(result: any): string {
+    const data = result.result;
+    
+    if (result.toolName.includes('create_issue')) {
+      return `✅ Created GitHub issue: ${data.title || 'New Issue'} (#${data.number || 'N/A'})`;
+    } else if (result.toolName.includes('list_issues')) {
+      const issues = Array.isArray(data) ? data : [data];
+      return `📋 Found ${issues.length} GitHub issues:\n${issues.slice(0, 5).map((issue: any) => 
+        `• #${issue.number}: ${issue.title}`
+      ).join('\n')}`;
+    } else if (result.toolName.includes('create_pull_request')) {
+      return `✅ Created pull request: ${data.title || 'New PR'} (#${data.number || 'N/A'})`;
+    } else {
+      return `✅ GitHub operation completed successfully`;
+    }
+  }
+
+  /**
+   * Format file operation results
+   */
+  private formatFileResult(result: any): string {
+    const data = result.result;
+    
+    if (result.toolName.includes('read')) {
+      const content = typeof data === 'string' ? data : JSON.stringify(data);
+      const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
+      return `📄 File content:\n${preview}`;
+    } else if (result.toolName.includes('write') || result.toolName.includes('create')) {
+      return `✅ File operation completed successfully`;
+    } else {
+      return `📁 File operation completed`;
+    }
+  }
+
+  /**
+   * Format terminal/command results
+   */
+  private formatTerminalResult(result: any): string {
+    const data = result.result;
+    
+    if (typeof data === 'string') {
+      // Clean up terminal output
+      const cleanOutput = data
+        .replace(/\x1b\[[0-9;]*m/g, '') // Remove ANSI color codes
+        .trim();
+      
+      const preview = cleanOutput.length > 300 ? cleanOutput.substring(0, 300) + '...' : cleanOutput;
+      return `💻 Command output:\n\`\`\`\n${preview}\n\`\`\``;
+    } else {
+      return `💻 Command executed successfully`;
+    }
+  }
+
+  /**
+   * Format generic tool results
+   */
+  private formatGenericResult(result: any): string {
+    const data = result.result;
+    
+    if (typeof data === 'object' && data !== null) {
+      // Try to extract key information
+      const keys = Object.keys(data);
+      if (keys.includes('message')) {
+        return `✅ ${data.message}`;
+      } else if (keys.includes('status')) {
+        return `✅ Status: ${data.status}`;
+      } else if (keys.includes('result')) {
+        return `✅ Result: ${data.result}`;
+      } else {
+        // Show first few key-value pairs
+        const preview = keys.slice(0, 3).map(key => 
+          `${key}: ${String(data[key]).substring(0, 50)}`
+        ).join(', ');
+        return `✅ Operation completed: ${preview}`;
+      }
+    } else {
+      return `✅ Operation completed successfully`;
+    }
+  }
+
+  /**
+   * Select the appropriate model based on context and configuration
+   */
+  private selectAppropriateModel(
+    config: ClaraAIConfig, 
+    message: string, 
+    attachments: ClaraFileAttachment[]
+  ): string {
+    // If auto model selection is disabled, use the configured text model
+    if (!config.features.autoModelSelection) {
+      console.log('🔧 Auto model selection disabled, using text model:', config.models.text);
+      return config.models.text || 'llama2';
+    }
+
+    console.log('🤖 Auto model selection enabled, analyzing context...');
+    
+    // Check for images in attachments
+    const hasImages = attachments.some(att => att.type === 'image');
+    
+    // Check for code-related content
+    const hasCodeFiles = attachments.some(att => att.type === 'code');
+    const hasCodeKeywords = /\b(code|programming|function|class|variable|debug|compile|syntax|algorithm|script|development)\b/i.test(message);
+    const hasCodeContext = hasCodeFiles || hasCodeKeywords;
+    
+    // Check for tools mode (non-streaming mode typically uses tools)
+    const isToolsMode = config.features.enableTools && !config.features.enableStreaming;
+    
+    // Model selection priority:
+    // 1. Vision model for images (streaming mode only)
+    // 2. Code model for tools mode (better for complex reasoning and tool usage)
+    // 3. Text model for streaming and general text
+    
+    if (hasImages && config.models.vision && config.features.enableStreaming) {
+      console.log('📸 Images detected in streaming mode, using vision model:', config.models.vision);
+      return config.models.vision;
+    }
+    
+    if (isToolsMode && config.models.code) {
+      console.log('🛠️ Tools mode detected, using code model for better reasoning:', config.models.code);
+      return config.models.code;
+    }
+    
+    if (hasCodeContext && config.models.code && config.features.enableStreaming) {
+      console.log('💻 Code context detected in streaming mode, using code model:', config.models.code);
+      return config.models.code;
+    }
+    
+    // Default to text model for streaming and general text
+    console.log('📝 Using text model for general text/streaming:', config.models.text);
+    return config.models.text || 'llama2';
   }
 }
 

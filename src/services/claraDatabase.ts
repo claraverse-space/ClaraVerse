@@ -224,6 +224,25 @@ export class ClaraDatabaseService {
   }
 
   /**
+   * Get recent sessions WITHOUT messages (for lightning-fast loading)
+   */
+  async getRecentSessionsLight(limit: number = 20, offset: number = 0): Promise<ClaraChatSession[]> {
+    const sessionRecords = await indexedDBService.getAll<ClaraChatSessionRecord>(this.SESSIONS_STORE);
+    
+    // Convert to sessions and sort by updatedAt, then apply pagination
+    const sessions = sessionRecords
+      .map(this.recordToSession)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(offset, offset + limit);
+
+    // Return sessions with empty messages array (no database queries for messages)
+    return sessions.map(session => ({
+      ...session,
+      messages: [] // Empty array for fast loading
+    }));
+  }
+
+  /**
    * Get starred sessions
    */
   async getStarredSessions(): Promise<ClaraChatSession[]> {

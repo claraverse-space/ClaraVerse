@@ -279,25 +279,25 @@ const ProviderSelector: React.FC<{
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 min-w-[180px] justify-between"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 w-full max-w-[220px] min-w-[180px]"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {selectedProviderObj && (
             <>
               {React.createElement(getProviderIcon(selectedProviderObj.type), {
-                className: `w-4 h-4 ${getStatusColor(selectedProviderObj)}`
+                className: `w-4 h-4 flex-shrink-0 ${getStatusColor(selectedProviderObj)}`
               })}
-              <span className="text-gray-700 dark:text-gray-300 truncate">
+              <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={selectedProviderObj.name}>
                 {selectedProviderObj.name}
               </span>
             </>
           )}
         </div>
-        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-2 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full mt-2 left-0 w-full min-w-[280px] max-w-[400px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
           {providers.map((provider) => {
             const IconComponent = getProviderIcon(provider.type);
             return (
@@ -311,8 +311,9 @@ const ProviderSelector: React.FC<{
                   provider.id === selectedProvider ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
                 }`}
                 disabled={!provider.isEnabled}
+                title={`${provider.name} - ${provider.baseUrl}`} // Show full info on hover
               >
-                <IconComponent className={`w-4 h-4 ${getStatusColor(provider)}`} />
+                <IconComponent className={`w-4 h-4 flex-shrink-0 ${getStatusColor(provider)}`} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                     {provider.name}
@@ -321,7 +322,7 @@ const ProviderSelector: React.FC<{
                     {provider.baseUrl}
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   {provider.isPrimary && (
                     <CheckCircle className="w-3 h-3 text-green-500" />
                   )}
@@ -381,37 +382,53 @@ const ModelSelector: React.FC<{
     return 'text-gray-500';
   };
 
+  // Helper function to truncate model names intelligently
+  const truncateModelName = (name: string, maxLength: number = 25) => {
+    if (name.length <= maxLength) return name;
+    
+    // Try to keep important parts of the model name
+    // Remove common prefixes/suffixes that are less important
+    let truncated = name
+      .replace(/^(mannix\/|huggingface\/|microsoft\/|meta-llama\/|google\/)/i, '') // Remove common prefixes
+      .replace(/(-instruct|-chat|-base|-v\d+)$/i, ''); // Remove common suffixes
+    
+    if (truncated.length <= maxLength) return truncated;
+    
+    // If still too long, truncate from the end and add ellipsis
+    return truncated.substring(0, maxLength - 3) + '...';
+  };
+
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading || filteredModels.length === 0}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 min-w-[200px] justify-between"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 w-full max-w-[220px] min-w-[180px]"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {selectedModelObj ? (
             <>
               {React.createElement(getModelTypeIcon(modelType), {
-                className: `w-4 h-4 ${getModelTypeColor(selectedModelObj)}`
+                className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(selectedModelObj)}`
               })}
-              <span className="text-gray-700 dark:text-gray-300 truncate">
-                {selectedModelObj.name}
+              <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={selectedModelObj.name}>
+                {truncateModelName(selectedModelObj.name)}
               </span>
             </>
           ) : (
             <>
-              <Bot className="w-4 h-4 text-gray-400" />
-              <span className="text-gray-500 dark:text-gray-400">
-                {filteredModels.length === 0 ? 'No models available' : 'Select model'}
+              <Bot className="w-4 h-4 flex-shrink-0 text-gray-400" />
+              <span className="text-gray-500 dark:text-gray-400 truncate">
+                {filteredModels.length === 0 ? 'No models' : 'Select model'}
               </span>
             </>
           )}
         </div>
-        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && filteredModels.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute bottom-full mb-2 left-0 w-full min-w-[280px] max-w-[400px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
           {filteredModels.map((model) => (
             <button
               key={model.id}
@@ -422,19 +439,20 @@ const ModelSelector: React.FC<{
               className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                 model.id === selectedModel ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
               }`}
+              title={model.name} // Show full name on hover
             >
               {React.createElement(getModelTypeIcon(modelType), {
-                className: `w-4 h-4 ${getModelTypeColor(model)}`
+                className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(model)}`
               })}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {model.name}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{model.provider}</span>
-                  {model.supportsVision && <span>• Vision</span>}
-                  {model.supportsCode && <span>• Code</span>}
-                  {model.supportsTools && <span>• Tools</span>}
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 truncate">
+                  <span className="truncate">{model.provider}</span>
+                  {model.supportsVision && <span className="flex-shrink-0">• Vision</span>}
+                  {model.supportsCode && <span className="flex-shrink-0">• Code</span>}
+                  {model.supportsTools && <span className="flex-shrink-0">• Tools</span>}
                 </div>
               </div>
             </button>
@@ -581,7 +599,7 @@ const AdvancedOptions: React.FC<{
       </div>
 
       {/* Scrollable Content */}
-      <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+      <div className="max-h-96 overflow-y-auto">
         <div className="p-4 space-y-4">
           
           {/* Provider Selection */}
@@ -618,59 +636,76 @@ const AdvancedOptions: React.FC<{
             />
             
             {expandedSections.models && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Text Model
-                  </label>
-                  <ModelSelector
-                    models={models}
-                    selectedModel={aiConfig.models.text || ''}
-                    onModelChange={(modelId) => {
-                      onConfigChange?.({
-                        models: { ...aiConfig.models, text: modelId }
-                      });
-                      onModelChange?.(modelId, 'text');
-                    }}
-                    modelType="text"
-                    currentProvider={aiConfig.provider}
-                  />
-                </div>
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-3">
+                {/* Auto Model Selection Info */}
+                {aiConfig.features.autoModelSelection && (
+                  <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                      <strong>Auto Model Selection Active:</strong>
+                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                        <li><strong>Text Model:</strong> Streaming mode & general text</li>
+                        <li><strong>Vision Model:</strong> Images in streaming mode</li>
+                        <li><strong>Code Model:</strong> Tools mode & code context</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
                 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Vision Model
-                  </label>
-                  <ModelSelector
-                    models={models}
-                    selectedModel={aiConfig.models.vision || ''}
-                    onModelChange={(modelId) => {
-                      onConfigChange?.({
-                        models: { ...aiConfig.models, vision: modelId }
-                      });
-                      onModelChange?.(modelId, 'vision');
-                    }}
-                    modelType="vision"
-                    currentProvider={aiConfig.provider}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Code Model
-                  </label>
-                  <ModelSelector
-                    models={models}
-                    selectedModel={aiConfig.models.code || ''}
-                    onModelChange={(modelId) => {
-                      onConfigChange?.({
-                        models: { ...aiConfig.models, code: modelId }
-                      });
-                      onModelChange?.(modelId, 'code');
-                    }}
-                    modelType="code"
-                    currentProvider={aiConfig.provider}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Text Model
+                    </label>
+                    <ModelSelector
+                      models={models}
+                      selectedModel={aiConfig.models.text || ''}
+                      onModelChange={(modelId) => {
+                        onConfigChange?.({
+                          models: { ...aiConfig.models, text: modelId }
+                        });
+                        onModelChange?.(modelId, 'text');
+                      }}
+                      modelType="text"
+                      currentProvider={aiConfig.provider}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Vision Model
+                    </label>
+                    <ModelSelector
+                      models={models}
+                      selectedModel={aiConfig.models.vision || ''}
+                      onModelChange={(modelId) => {
+                        onConfigChange?.({
+                          models: { ...aiConfig.models, vision: modelId }
+                        });
+                        onModelChange?.(modelId, 'vision');
+                      }}
+                      modelType="vision"
+                      currentProvider={aiConfig.provider}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Code Model
+                    </label>
+                    <ModelSelector
+                      models={models}
+                      selectedModel={aiConfig.models.code || ''}
+                      onModelChange={(modelId) => {
+                        onConfigChange?.({
+                          models: { ...aiConfig.models, code: modelId }
+                        });
+                        onModelChange?.(modelId, 'code');
+                      }}
+                      modelType="code"
+                      currentProvider={aiConfig.provider}
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -742,7 +777,7 @@ const AdvancedOptions: React.FC<{
                   <span className="text-gray-600 dark:text-gray-400">Enable Tools</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-xs">
+                {/* <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
                     checked={aiConfig.features.enableRAG}
@@ -750,7 +785,7 @@ const AdvancedOptions: React.FC<{
                     className="rounded"
                   />
                   <span className="text-gray-600 dark:text-gray-400">Enable RAG</span>
-                </label>
+                </label> */}
 
                 <label className="flex items-center gap-2 text-xs">
                   <input
@@ -914,11 +949,17 @@ const AdvancedOptions: React.FC<{
               <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-900 dark:text-white">Enable Autonomous Agent</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className={`relative inline-flex items-center cursor-pointer ${
+                    aiConfig?.features?.enableStreaming ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}>
                     <input
                       type="checkbox"
                       checked={aiConfig?.autonomousAgent?.enabled || false}
+                      disabled={aiConfig?.features?.enableStreaming}
                       onChange={(e) => {
+                        // Don't allow changes when streaming is enabled
+                        if (aiConfig?.features?.enableStreaming) return;
+                        
                         const currentAutonomousAgent = aiConfig?.autonomousAgent || {
                           enabled: true,
                           maxRetries: 3,
@@ -932,12 +973,26 @@ const AdvancedOptions: React.FC<{
                           enableErrorLearning: true
                         };
                         
-                        onConfigChange?.({
+                        // When enabling autonomous agent, disable streaming mode
+                        // When disabling autonomous agent, keep streaming setting as is
+                        const newConfig: Partial<ClaraAIConfig> = {
                           autonomousAgent: {
                             ...currentAutonomousAgent,
                             enabled: e.target.checked
                           }
-                        });
+                        };
+                        
+                        // If enabling autonomous agent, also disable streaming and enable tools
+                        if (e.target.checked) {
+                          newConfig.features = {
+                            ...aiConfig?.features,
+                            enableStreaming: false,
+                            enableTools: true,
+                            enableMCP: true
+                          };
+                        }
+                        
+                        onConfigChange?.(newConfig);
                       }}
                       className="sr-only"
                     />
@@ -952,6 +1007,17 @@ const AdvancedOptions: React.FC<{
                     </div>
                   </label>
                 </div>
+
+                {/* Info note about streaming mode compatibility */}
+                {aiConfig?.features?.enableStreaming && (
+                  <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                      <strong>Note:</strong> Autonomous Agent mode is disabled when Streaming mode is active. 
+                      Switch to Tools mode to enable autonomous capabilities.
+                    </div>
+                  </div>
+                )}
 
                 {aiConfig?.autonomousAgent?.enabled && (
                   <div className="space-y-3 pl-4 border-l-2 border-sakura-200 dark:border-sakura-800">
@@ -1197,6 +1263,29 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, []);
 
+  // Focus management - focus textarea after operations
+  const focusTextarea = useCallback(() => {
+    // Use setTimeout to ensure DOM updates are complete
+    setTimeout(() => {
+      if (textareaRef.current && !textareaRef.current.disabled) {
+        textareaRef.current.focus();
+      }
+    }, 100);
+  }, []);
+
+  // Auto-focus when loading state changes (response completes)
+  useEffect(() => {
+    // When loading changes from true to false (response completed), focus the textarea
+    if (!isLoading) {
+      focusTextarea();
+    }
+  }, [isLoading, focusTextarea]);
+
+  // Auto-focus on component mount (initial load)
+  useEffect(() => {
+    focusTextarea();
+  }, [focusTextarea]);
+
   useEffect(() => {
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
@@ -1230,6 +1319,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       setDragCounter(0);
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         handleFilesAdded(Array.from(e.dataTransfer.files));
+        // Focus textarea after files are dropped
+        focusTextarea();
       }
     };
 
@@ -1242,7 +1333,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       container.removeEventListener('dragleave', handleDragLeave);
       container.removeEventListener('drop', handleDrop);
     };
-  }, [handleFilesAdded]);
+  }, [handleFilesAdded, focusTextarea]);
 
   // Convert File objects to ClaraFileAttachment with proper file reading
   const convertFilesToAttachments = useCallback(async (files: File[]): Promise<ClaraFileAttachment[]> => {
@@ -1553,7 +1644,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     setInput('');
     setFiles([]);
     adjustTextareaHeight();
-  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight]);
+    
+    // Focus the textarea after sending for immediate next input
+    focusTextarea();
+  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea]);
 
   // Handle AI config changes
   const handleAIConfigChange = useCallback((newConfig: Partial<ClaraAIConfig>) => {
@@ -1622,14 +1716,28 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     setIsStreamingMode(newStreamingMode);
     
     // Update AI config based on mode
-    const newConfig = {
+    const newConfig: Partial<ClaraAIConfig> = {
       ...currentAIConfig,
       features: {
         ...currentAIConfig.features,
         enableStreaming: newStreamingMode,
         enableTools: !newStreamingMode,
         enableMCP: !newStreamingMode
-      }
+      },
+      // When streaming mode is enabled, disable autonomous agent mode
+      // When tools mode is enabled, keep autonomous agent setting as is
+      autonomousAgent: newStreamingMode ? {
+        enabled: false,
+        maxRetries: currentAIConfig.autonomousAgent?.maxRetries || 3,
+        retryDelay: currentAIConfig.autonomousAgent?.retryDelay || 1000,
+        enableSelfCorrection: currentAIConfig.autonomousAgent?.enableSelfCorrection || true,
+        enableToolGuidance: currentAIConfig.autonomousAgent?.enableToolGuidance || true,
+        enableProgressTracking: currentAIConfig.autonomousAgent?.enableProgressTracking || true,
+        maxToolCalls: currentAIConfig.autonomousAgent?.maxToolCalls || 10,
+        confidenceThreshold: currentAIConfig.autonomousAgent?.confidenceThreshold || 0.7,
+        enableChainOfThought: currentAIConfig.autonomousAgent?.enableChainOfThought || true,
+        enableErrorLearning: currentAIConfig.autonomousAgent?.enableErrorLearning || true
+      } : currentAIConfig.autonomousAgent
     };
     
     handleAIConfigChange(newConfig);
@@ -1643,6 +1751,47 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     
     const textModel = models.find(m => m.id === currentAIConfig.models.text);
     return textModel?.name || 'No model selected';
+  };
+
+  // Get the model that would be selected in auto mode based on current context
+  const getAutoSelectedModel = () => {
+    if (!currentAIConfig.features.autoModelSelection) {
+      return null;
+    }
+
+    // Check for images in current files
+    const hasImages = files.some(file => file.type.startsWith('image/'));
+    
+    // Check for code-related content
+    const hasCodeFiles = files.some(file => {
+      const codeExtensions = ['.js', '.ts', '.tsx', '.jsx', '.py', '.cpp', '.c', '.java', '.go', '.rs', '.php', '.rb', '.swift', '.kt'];
+      return codeExtensions.some(ext => file.name.endsWith(ext));
+    });
+    const hasCodeKeywords = /\b(code|programming|function|class|variable|debug|compile|syntax|algorithm|script|development|coding|software)\b/i.test(input);
+    const hasCodeContext = hasCodeFiles || hasCodeKeywords;
+    
+    // Check for tools mode (non-streaming mode typically uses tools)
+    const isToolsMode = currentAIConfig.features.enableTools && !currentAIConfig.features.enableStreaming;
+    
+    // Model selection logic (same as in API service)
+    if (hasImages && currentAIConfig.models.vision && currentAIConfig.features.enableStreaming) {
+      const visionModel = models.find(m => m.id === currentAIConfig.models.vision);
+      return { type: 'vision', model: visionModel, reason: 'Images detected' };
+    }
+    
+    if (isToolsMode && currentAIConfig.models.code) {
+      const codeModel = models.find(m => m.id === currentAIConfig.models.code);
+      return { type: 'code', model: codeModel, reason: 'Tools mode' };
+    }
+    
+    if (hasCodeContext && currentAIConfig.models.code && currentAIConfig.features.enableStreaming) {
+      const codeModel = models.find(m => m.id === currentAIConfig.models.code);
+      return { type: 'code', model: codeModel, reason: 'Code context' };
+    }
+    
+    // Default to text model
+    const textModel = models.find(m => m.id === currentAIConfig.models.text);
+    return { type: 'text', model: textModel, reason: 'General text' };
   };
 
   // Handle keyboard shortcuts
@@ -1664,7 +1813,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     setInput('');
     setFiles([]);
     onNewChat?.();
-  }, [onNewChat]);
+    
+    // Focus the textarea after starting new chat
+    focusTextarea();
+  }, [onNewChat, focusTextarea]);
 
   const triggerImageUpload = useCallback(() => {
     const input = document.createElement('input');
@@ -1675,10 +1827,12 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       const target = e.target as HTMLInputElement;
       if (target.files) {
         handleFilesAdded(Array.from(target.files));
+        // Focus textarea after files are added
+        focusTextarea();
       }
     };
     input.click();
-  }, [handleFilesAdded]);
+  }, [handleFilesAdded, focusTextarea]);
 
   const triggerDocumentUpload = useCallback(() => {
     const input = document.createElement('input');
@@ -1689,10 +1843,12 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       const target = e.target as HTMLInputElement;
       if (target.files) {
         handleFilesAdded(Array.from(target.files));
+        // Focus textarea after files are added
+        focusTextarea();
       }
     };
     input.click();
-  }, [handleFilesAdded]);
+  }, [handleFilesAdded, focusTextarea]);
 
   return (
     <div 
@@ -1840,16 +1996,47 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                   {/* Model/Provider Selection */}
                   <div className="relative">
                     {currentAIConfig.features.autoModelSelection ? (
-                      <Tooltip content="Automatic model selection enabled" position="top">
+                      <Tooltip 
+                        content={(() => {
+                          const autoSelected = getAutoSelectedModel();
+                          if (autoSelected?.model) {
+                            return `Auto Mode: ${autoSelected.model.name} (${autoSelected.reason})`;
+                          }
+                          return "Automatic model selection enabled";
+                        })()} 
+                        position="top"
+                      >
                         <button
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-blue-300 dark:border-blue-600"
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-blue-300 dark:border-blue-600 w-full max-w-[220px] min-w-[180px]"
                           disabled={isLoading}
                         >
-                          <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-gray-700 dark:text-gray-300">
-                            Auto Mode
-                          </span>
-                          <Zap className="w-3 h-3 text-blue-500" />
+                          {(() => {
+                            const autoSelected = getAutoSelectedModel();
+                            const getModelIcon = () => {
+                              if (autoSelected?.type === 'vision') return ImageIcon;
+                              if (autoSelected?.type === 'code') return Zap;
+                              return Bot;
+                            };
+                            const getModelColor = () => {
+                              if (autoSelected?.type === 'vision') return 'text-purple-600 dark:text-purple-400';
+                              if (autoSelected?.type === 'code') return 'text-blue-600 dark:text-blue-400';
+                              return 'text-blue-600 dark:text-blue-400';
+                            };
+                            
+                            const IconComponent = getModelIcon();
+                            const modelName = autoSelected?.model?.name || 'Auto Mode';
+                            const truncatedName = modelName.length > 20 ? modelName.substring(0, 17) + '...' : modelName;
+                            
+                            return (
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <IconComponent className={`w-4 h-4 flex-shrink-0 ${getModelColor()}`} />
+                                <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={modelName}>
+                                  {truncatedName}
+                                </span>
+                                <Zap className="w-3 h-3 flex-shrink-0 text-blue-500" />
+                              </div>
+                            );
+                          })()}
                         </button>
                       </Tooltip>
                     ) : (
@@ -1864,7 +2051,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                         }}
                         modelType="text"
                         currentProvider={currentAIConfig.provider}
-                        isLoading={isLoading}
                       />
                     )}
                   </div>

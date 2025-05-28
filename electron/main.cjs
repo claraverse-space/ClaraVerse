@@ -938,6 +938,33 @@ function registerMCPHandlers() {
     }
   });
 
+  // Start previously running servers
+  ipcMain.handle('mcp-start-previously-running', async () => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      return await mcpService.startPreviouslyRunningServers();
+    } catch (error) {
+      log.error('Error starting previously running MCP servers:', error);
+      throw error;
+    }
+  });
+
+  // Save current running state
+  ipcMain.handle('mcp-save-running-state', async () => {
+    try {
+      if (!mcpService) {
+        throw new Error('MCP service not initialized');
+      }
+      mcpService.saveRunningState();
+      return true;
+    } catch (error) {
+      log.error('Error saving MCP server running state:', error);
+      throw error;
+    }
+  });
+
   // Execute MCP tool call
   ipcMain.handle('mcp-execute-tool', async (event, toolCall) => {
     try {
@@ -1036,6 +1063,24 @@ async function initializeApp() {
       mcpService = new MCPService();
       log.info('MCP service initialized successfully');
       splash.setStatus('MCP service initialized', 'success');
+      
+      // Auto-start previously running servers
+      splash.setStatus('Restoring MCP servers...', 'info');
+      try {
+        const restoreResults = await mcpService.startPreviouslyRunningServers();
+        const successCount = restoreResults.filter(r => r.success).length;
+        const totalCount = restoreResults.length;
+        
+        if (totalCount > 0) {
+          log.info(`Restored ${successCount}/${totalCount} previously running MCP servers`);
+          splash.setStatus(`Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+        } else {
+          splash.setStatus('No MCP servers to restore', 'info');
+        }
+      } catch (restoreError) {
+        log.error('Error restoring MCP servers:', restoreError);
+        splash.setStatus('Failed to restore some MCP servers', 'warning');
+      }
     } catch (mcpError) {
       splash.setStatus('MCP service initialization failed', 'warning');
       log.error('Error initializing MCP service:', mcpError);
@@ -1185,6 +1230,16 @@ app.whenReady().then(initializeApp);
 
 // Quit when all windows are closed
 app.on('window-all-closed', async () => {
+  // Save MCP server running state before stopping
+  if (mcpService) {
+    try {
+      log.info('Saving MCP server running state...');
+      mcpService.saveRunningState();
+    } catch (error) {
+      log.error('Error saving MCP server running state:', error);
+    }
+  }
+  
   // Stop llama-swap service
   if (llamaSwapService) {
     try {
@@ -1192,6 +1247,16 @@ app.on('window-all-closed', async () => {
       await llamaSwapService.stop();
     } catch (error) {
       log.error('Error stopping llama-swap service:', error);
+    }
+  }
+  
+  // Stop all MCP servers
+  if (mcpService) {
+    try {
+      log.info('Stopping all MCP servers...');
+      await mcpService.stopAllServers();
+    } catch (error) {
+      log.error('Error stopping MCP servers:', error);
     }
   }
   

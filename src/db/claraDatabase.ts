@@ -67,6 +67,13 @@ export class ClaraDatabase {
   }
 
   /**
+   * Get recent Clara chat sessions without messages (for fast loading)
+   */
+  async getRecentClaraSessionsLight(limit: number = 20, offset: number = 0): Promise<ClaraChatSession[]> {
+    return await claraDatabaseService.getRecentSessionsLight(limit, offset);
+  }
+
+  /**
    * Get all Clara chat sessions
    */
   async getAllClaraSessions(): Promise<ClaraChatSession[]> {

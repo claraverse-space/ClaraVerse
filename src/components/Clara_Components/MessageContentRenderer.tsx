@@ -15,6 +15,7 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Eye, EyeOff, ExternalLink, Code2 } from 'lucide-react';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface MessageContentRendererProps {
   content: string;
@@ -43,9 +44,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
     (children.trim().startsWith('<') && children.trim().endsWith('>'));
   
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(children);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(children);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
   
   const handleTogglePreview = () => {
@@ -88,12 +91,12 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
   return (
     <div className="relative group my-4" ref={previewRef}>
       {/* Code block header */}
-      <div className="flex items-center justify-between bg-gray-800 dark:bg-gray-900 text-gray-200 px-4 py-2 rounded-t-lg text-sm">
+      <div className="flex items-center justify-between bg-gray-50/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-t-lg text-sm backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Code2 className="w-4 h-4" />
           <span className="font-medium capitalize">{lang}</span>
           {isHtmlContent && (
-            <span className="text-xs bg-blue-600 px-2 py-1 rounded">
+            <span className="text-xs bg-blue-500/20 dark:bg-blue-400/20 text-blue-700 dark:text-blue-300 px-2 py-1 rounded border border-blue-300/30 dark:border-blue-500/30">
               HTML Preview Available
             </span>
           )}
@@ -103,7 +106,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
           {isHtmlContent && (
             <button
               onClick={handleTogglePreview}
-              className="flex items-center gap-1 px-2 py-1 hover:bg-gray-700 rounded transition-colors"
+              className="flex items-center gap-1 px-2 py-1 hover:bg-gray-200/70 dark:hover:bg-gray-600/50 rounded transition-colors"
               title={showPreview ? 'Show code' : 'Show preview'}
             >
               {showPreview ? <Code2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -113,7 +116,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
           
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 hover:bg-gray-700 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 hover:bg-gray-200/70 dark:hover:bg-gray-600/50 rounded transition-colors"
             title="Copy code"
           >
             <Copy className="w-4 h-4" />
@@ -150,6 +153,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
               borderTopRightRadius: 0,
               borderBottomLeftRadius: '0.5rem',
               borderBottomRightRadius: '0.5rem',
+              backgroundColor: isDark ? 'rgba(31, 41, 55, 0.9)' : 'rgba(249, 250, 251, 0.9)',
             }}
             codeTagProps={{
               style: {
