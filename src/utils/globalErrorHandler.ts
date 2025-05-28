@@ -5,18 +5,18 @@ export const setupGlobalErrorHandlers = () => {
     console.error('Unhandled promise rejection:', event.reason);
     
     // Show a user-friendly error message
-    showGlobalErrorMessage('An unexpected error occurred. Please refresh the page.');
+    // showGlobalErrorMessage('An unexpected error occurred. Please refresh the page.');
     
     // Prevent the default browser behavior (logging to console)
     event.preventDefault();
   });
-
+ 
   // Handle other JavaScript errors
   window.addEventListener('error', (event) => {
     console.error('Global JavaScript error:', event.error);
     
     // Show a user-friendly error message
-    showGlobalErrorMessage('An unexpected error occurred. Please refresh the page.');
+    // showGlobalErrorMessage('An unexpected error occurred. Please refresh the page.');
   });
 };
 

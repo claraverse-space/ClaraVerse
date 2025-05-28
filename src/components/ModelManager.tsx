@@ -30,23 +30,6 @@ interface DownloadProgress {
   totalSize: number;
 }
 
-// Extend window interface for model manager
-declare global {
-  interface Window {
-    modelManager?: {
-      searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: HuggingFaceModel[]; error?: string }>;
-      downloadModel: (modelId: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
-      getLocalModels: () => Promise<{ success: boolean; models: LocalModel[]; error?: string }>;
-      deleteLocalModel: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-      onDownloadProgress: (callback: (data: DownloadProgress) => void) => () => void;
-      stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
-    };
-    llamaSwap?: {
-      regenerateConfig: () => Promise<{ success: boolean; models: number; error?: string }>;
-    };
-  }
-}
-
 // ModelCard Component for Search Results
 interface ModelCardProps {
   model: HuggingFaceModel;
@@ -356,11 +339,6 @@ const ModelManager: React.FC = () => {
         if (localResult.success) {
           setLocalModels(localResult.models);
         }
-        
-        // Regenerate llama-swap config
-        if (window.llamaSwap?.regenerateConfig) {
-          await window.llamaSwap.regenerateConfig();
-        }
       } else {
         console.error('Download failed:', result.error);
       }
@@ -395,11 +373,6 @@ const ModelManager: React.FC = () => {
         const localResult = await window.modelManager.getLocalModels();
         if (localResult.success) {
           setLocalModels(localResult.models);
-        }
-        
-        // Regenerate llama-swap config
-        if (window.llamaSwap?.regenerateConfig) {
-          await window.llamaSwap.regenerateConfig();
         }
       } else {
         console.error('Delete failed:', result.error);

@@ -300,6 +300,20 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Get llama-swap service status with health check
+  ipcMain.handle('get-llama-swap-status-with-health', async () => {
+    try {
+      if (!llamaSwapService) {
+        return { isRunning: false, port: null, apiUrl: null };
+      }
+      
+      return await llamaSwapService.getStatusWithHealthCheck();
+    } catch (error) {
+      log.error('Error getting llama-swap status with health check:', error);
+      return { isRunning: false, port: null, apiUrl: null, error: error.message };
+    }
+  });
+
   // Get available models from llama-swap
   ipcMain.handle('get-llama-swap-models', async () => {
     try {

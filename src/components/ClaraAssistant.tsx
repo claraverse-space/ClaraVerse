@@ -458,7 +458,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     if (!currentSession || !sessionConfig.aiConfig) return;
 
     // Check if this is a voice message with the prefix
-    const voiceModePrefix = "Warning: You are in Voice mode keep it precise so the audio is not lengthy. ";
+    const voiceModePrefix = "Warning: You are in speech mode, make sure to reply in few lines:  \n";
     const isVoiceMessage = content.startsWith(voiceModePrefix);
     
     // For display purposes, use the content without the voice prefix
@@ -1256,6 +1256,35 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('\n✅ Mutual exclusivity test complete. Check the UI to verify behavior matches expected configs.');
     };
 
+    (window as any).testConversationHistory = () => {
+      console.log('🧪 Testing Conversation History Handling...');
+      console.log('Current session:', currentSession?.title);
+      console.log('Current messages count:', messages.length);
+      console.log('Context window setting:', sessionConfig.aiConfig?.contextWindow || 50);
+      
+      if (messages.length > 0) {
+        console.log('Recent messages:');
+        messages.slice(-5).forEach((msg, idx) => {
+          console.log(`  ${idx + 1}. [${msg.role}]: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+        });
+        
+        // Simulate what would be sent as conversation history
+        const contextWindow = sessionConfig.aiConfig?.contextWindow || 50;
+        const simulatedHistory = messages
+          .slice(-contextWindow)
+          .filter(msg => msg.role !== 'system');
+        
+        console.log(`\n📚 Simulated conversation history (${simulatedHistory.length} messages):`);
+        simulatedHistory.forEach((msg, idx) => {
+          console.log(`  ${idx + 1}. [${msg.role}]: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+        });
+        
+        console.log(`\n🔍 When sending a new message, ${simulatedHistory.length - 1} history messages would be included (excluding the current message)`);
+      } else {
+        console.log('No messages in current session to test with.');
+      }
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -1272,6 +1301,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).testProviderSpecificToolError;
       delete (window as any).testClaraPerformance;
       delete (window as any).testStreamingAutonomousExclusivity;
+      delete (window as any).testConversationHistory;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
 

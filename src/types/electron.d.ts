@@ -66,6 +66,7 @@ declare global {
       stop: () => Promise<{ success: boolean; error?: string }>;
       restart: () => Promise<{ success: boolean; message?: string; status?: any; error?: string }>;
       getStatus: () => Promise<{ isRunning: boolean; port: number | null; apiUrl: string | null; error?: string }>;
+      getStatusWithHealth: () => Promise<{ isRunning: boolean; port: number | null; apiUrl: string | null; isResponding?: boolean; healthCheck?: string; healthError?: string; error?: string }>;
       getModels: () => Promise<any[]>;
       getApiUrl: () => Promise<string | null>;
       regenerateConfig: () => Promise<{ success: boolean; models?: number; error?: string }>;

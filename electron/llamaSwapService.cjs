@@ -716,12 +716,60 @@ ${cmdLine}
   }
 
   getStatus() {
+    // First check if we have a process reference
+    const hasProcess = this.process && !this.process.killed;
+    
     return {
-      isRunning: this.isRunning,
+      isRunning: this.isRunning && hasProcess,
       port: this.port,
       pid: this.process?.pid,
-      apiUrl: `http://localhost:${this.port}`
+      apiUrl: `http://localhost:${this.port}`,
+      processExists: hasProcess,
+      flagStatus: this.isRunning
     };
+  }
+
+  // Add a new method to check if service is actually responding
+  async getStatusWithHealthCheck() {
+    const basicStatus = this.getStatus();
+    
+    // If we think it's not running, return early
+    if (!basicStatus.isRunning) {
+      return basicStatus;
+    }
+    
+    // Try to make a quick health check
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+      
+      const response = await fetch(`http://localhost:${this.port}/v1/models`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      return {
+        ...basicStatus,
+        isResponding: response.ok,
+        healthCheck: 'passed'
+      };
+    } catch (error) {
+      return {
+        ...basicStatus,
+        isResponding: false,
+        healthCheck: 'failed',
+        healthError: error.message
+      };
+    }
   }
 
   async getModels() {

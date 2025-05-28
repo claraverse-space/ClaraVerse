@@ -1883,7 +1883,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         const originalTranscription = result.transcription.trim();
         
         // Add voice mode prefix for AI context
-        const voiceModePrefix = "Warning: You are in Voice mode keep it precise so the audio is not lengthy. ";
+        const voiceModePrefix = "Warning: You are in speech mode, make sure to reply in few lines:  \n";
         const messageWithPrefix = voiceModePrefix + originalTranscription;
         
         console.log('🎤 Transcription complete:', originalTranscription);
@@ -1941,243 +1941,251 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       <div className="max-w-4xl mx-auto">
         <div className="p-6 flex justify-center">
           <div className="max-w-3xl w-full relative">
-            {/* Main Input Container */}
-            <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
-              
-              {/* File Upload Area */}
-              <FileUploadArea
-                files={files}
-                onFilesAdded={handleFilesAdded}
-                onFileRemoved={handleFileRemoved}
-                isProcessing={isLoading}
+            {/* Main Input Container - Conditionally render chat input OR voice chat */}
+            {showVoiceChat ? (
+              /* Voice Chat Mode - Same size as input container */
+              <ClaraVoiceChat
+                isEnabled={isVoiceChatEnabled}
+                onToggle={handleVoiceToggle}
+                onSendAudio={handleVoiceAudio}
+                isProcessing={isVoiceProcessing}
+                isAIResponding={isLoading}
+                autoTTSText={autoTTSText}
+                autoTTSTrigger={autoTTSTrigger}
+                onBackToChat={() => {
+                  setShowVoiceChat(false);
+                  setIsVoiceChatEnabled(false);
+                  focusTextarea();
+                }}
               />
-
-              {/* Input Field */}
-              <div className={files.length > 0 ? 'mt-3' : ''}>
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask me anything..."
-                  className="w-full border-0 outline-none focus:outline-none focus:ring-0 resize-none bg-transparent text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
-                  style={{
-                    height: 'auto',
-                    minHeight: '24px',
-                    maxHeight: '250px',
-                    overflowY: 'auto',
-                    padding: '0',
-                    borderRadius: '0'
-                  }}
-                  disabled={isLoading}
+            ) : (
+              /* Chat Input Mode */
+              <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
+                
+                {/* File Upload Area */}
+                <FileUploadArea
+                  files={files}
+                  onFilesAdded={handleFilesAdded}
+                  onFileRemoved={handleFileRemoved}
+                  isProcessing={isLoading}
                 />
-              </div>
 
-              {/* Bottom Actions */}
-              <div className="flex justify-between items-center mt-4">
-                {/* Left Side Actions */}
-                <div className="flex items-center gap-2">
-                  {/* New Chat Button */}
-                  <Tooltip content="Start a new conversation" position="top">
-                    <button
-                      onClick={handleNewChat}
-                      className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                      disabled={isLoading}
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </Tooltip>
-                  
-                  {/* Image Upload Button */}
-                  <Tooltip content="Upload images for analysis" position="top">
-                    <button 
-                      onClick={triggerImageUpload}
-                      className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                      disabled={isLoading}
-                    >
-                      <ImageIcon className="w-5 h-5" />
-                    </button>
-                  </Tooltip>
-
-                  {/* Document Upload Button */}
-                  <Tooltip content="Upload documents, PDFs, and code files" position="top">
-                    <button
-                      onClick={triggerDocumentUpload}
-                      className="group p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400 transition-colors relative"
-                      disabled={isLoading}
-                    >
-                      <File className="w-5 h-5" />
-                    </button>
-                  </Tooltip>
-
-                  {/* Advanced Settings Toggle */}
-                  <Tooltip content="Configure AI models and parameters" position="top">
-                    <button
-                      onClick={() => setShowAdvanced(!showAdvanced)}
-                      className={`group p-2 rounded-lg transition-colors relative ${
-                        showAdvanced 
-                          ? 'bg-sakura-100 dark:bg-sakura-100/20 text-sakura-600 dark:text-sakura-400' 
-                          : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      <Settings className="w-5 h-5" />
-                    </button>
-                  </Tooltip>
-
-                  {/* Streaming vs Tools Mode Toggle */}
-                  <Tooltip 
-                    content={isStreamingMode ? "Switch to Tools Mode (enables MCP & tools, disables streaming) - Ctrl+M" : "Switch to Streaming Mode (enables streaming, disables tools & MCP) - Ctrl+M"} 
-                    position="top"
-                  >
-                    <button
-                      onClick={handleModeToggle}
-                      className={`group p-2 rounded-lg transition-colors relative ${
-                        isStreamingMode 
-                          ? 'bg-blue-100 dark:bg-blue-100/20 text-blue-600 dark:text-blue-400' 
-                          : 'bg-green-100 dark:bg-green-100/20 text-green-600 dark:text-green-400'
-                      }`}
-                      disabled={isLoading}
-                    >
-                      {isStreamingMode ? (
-                        <Waves className="w-5 h-5" />
-                      ) : (
-                        <Cog className="w-5 h-5" />
-                      )}
-                    </button>
-                  </Tooltip>
-
-                  {/* Voice Chat Button */}
-                  <Tooltip content={isVoiceChatEnabled ? "Stop voice transcription" : "Start voice transcription"} position="top">
-                    <button
-                      onClick={handleVoiceModeToggle}
-                      className={`group p-2 rounded-lg transition-colors relative ${
-                        isVoiceChatEnabled 
-                          ? 'bg-purple-100 dark:bg-purple-100/20 text-purple-600 dark:text-purple-400' 
-                          : 'hover:bg-sakura-50 dark:hover:bg-sakura-100/5 text-gray-600 dark:text-gray-400'
-                      }`}
-                      disabled={isLoading}
-                    >
-                      <Mic className="w-5 h-5" />
-                      {/* Active indicator */}
-                      {isVoiceChatEnabled && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full animate-pulse" />
-                      )}
-                    </button>
-                  </Tooltip>
+                {/* Input Field */}
+                <div className={files.length > 0 ? 'mt-3' : ''}>
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask me anything..."
+                    className="w-full border-0 outline-none focus:outline-none focus:ring-0 resize-none bg-transparent text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                    style={{
+                      height: 'auto',
+                      minHeight: '24px',
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      padding: '0',
+                      borderRadius: '0'
+                    }}
+                    disabled={isLoading}
+                  />
                 </div>
 
-                {/* Right Side Actions */}
-                <div className="flex items-center gap-2">
-                  {/* Mode Status Indicators */}
-                  {isStreamingMode ? (
-                    <Tooltip content="Streaming Mode: Real-time responses enabled" position="top">
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-600">
-                        <Waves className="w-3 h-3" />
-                        <span>Streaming</span>
-                      </div>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip content={`Tools Mode: MCP enabled with ${currentAIConfig.mcp?.enabledServers?.length || 0} servers`} position="top">
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-600">
-                        <Cog className="w-3 h-3" />
-                        <span>Tools</span>
-                        {currentAIConfig.mcp?.enabledServers?.length && (
-                          <span className="bg-green-200 dark:bg-green-800 px-1 rounded text-xs">
-                            {currentAIConfig.mcp.enabledServers.length}
-                          </span>
-                        )}
-                      </div>
-                    </Tooltip>
-                  )}
+                {/* Bottom Actions - Redesigned for better UX */}
+                <div className="flex justify-between items-center mt-4">
+                  {/* Left Side - File & Content Actions */}
+                  <div className="flex items-center">
+                    {/* File Upload Group */}
+                    <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1 mr-3">
+                      <Tooltip content="Upload images" position="top">
+                        <button 
+                          onClick={triggerImageUpload}
+                          className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <ImageIcon className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      
+                      <Tooltip content="Upload documents & code" position="top">
+                        <button
+                          onClick={triggerDocumentUpload}
+                          className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <File className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    </div>
 
-                  {/* Model/Provider Selection */}
-                  <div className="relative">
-                    {currentAIConfig.features.autoModelSelection ? (
+                    {/* Voice Input */}
+                    <Tooltip content="Voice input" position="top">
+                      <button
+                        onClick={handleVoiceModeToggle}
+                        className={`p-2 rounded-lg transition-colors mr-3 ${
+                          isVoiceChatEnabled 
+                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        }`}
+                        disabled={isLoading}
+                      >
+                        <Mic className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+
+                    {/* New Chat */}
+                    <Tooltip content="New conversation" position="top">
+                      <button
+                        onClick={handleNewChat}
+                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
+                        disabled={isLoading}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+                  </div>
+
+                  {/* Center - Mode & Model Selection */}
+                  <div className="flex items-center gap-3">
+                    {/* Mode Toggle */}
+                    <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1">
                       <Tooltip 
-                        content={(() => {
-                          const autoSelected = getAutoSelectedModel();
-                          if (autoSelected?.model) {
-                            return `Auto Mode: ${autoSelected.model.name} (${autoSelected.reason})`;
-                          }
-                          return "Automatic model selection enabled";
-                        })()} 
+                        content={isStreamingMode ? "Switch to Tools Mode - Ctrl+M" : "Switch to Streaming Mode - Ctrl+M"} 
                         position="top"
                       >
                         <button
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-blue-300 dark:border-blue-600 w-full max-w-[220px] min-w-[180px]"
+                          onClick={handleModeToggle}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            isStreamingMode 
+                              ? 'bg-blue-500 text-white shadow-sm' 
+                              : 'bg-green-500 text-white shadow-sm'
+                          }`}
                           disabled={isLoading}
                         >
-                          {(() => {
-                            const autoSelected = getAutoSelectedModel();
-                            const getModelIcon = () => {
-                              if (autoSelected?.type === 'vision') return ImageIcon;
-                              if (autoSelected?.type === 'code') return Zap;
-                              return Bot;
-                            };
-                            const getModelColor = () => {
-                              if (autoSelected?.type === 'vision') return 'text-purple-600 dark:text-purple-400';
-                              if (autoSelected?.type === 'code') return 'text-blue-600 dark:text-blue-400';
-                              return 'text-blue-600 dark:text-blue-400';
-                            };
-                            
-                            const IconComponent = getModelIcon();
-                            const modelName = autoSelected?.model?.name || 'Auto Mode';
-                            const truncatedName = modelName.length > 20 ? modelName.substring(0, 17) + '...' : modelName;
-                            
-                            return (
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <IconComponent className={`w-4 h-4 flex-shrink-0 ${getModelColor()}`} />
-                                <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={modelName}>
-                                  {truncatedName}
+                          {isStreamingMode ? (
+                            <>
+                              <Waves className="w-3 h-3" />
+                              <span>Streaming</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cog className="w-3 h-3" />
+                              <span>Tools</span>
+                              {currentAIConfig.mcp?.enabledServers?.length && (
+                                <span className="bg-white/20 px-1 rounded text-xs">
+                                  {currentAIConfig.mcp.enabledServers.length}
                                 </span>
-                                <Zap className="w-3 h-3 flex-shrink-0 text-blue-500" />
-                              </div>
-                            );
-                          })()}
+                              )}
+                            </>
+                          )}
+                        </button>
+                      </Tooltip>
+                    </div>
+
+                    {/* Model Selection */}
+                    <div className="relative">
+                      {currentAIConfig.features.autoModelSelection ? (
+                        <Tooltip 
+                          content={(() => {
+                            const autoSelected = getAutoSelectedModel();
+                            if (autoSelected?.model) {
+                              return `Auto Mode: ${autoSelected.model.name} (${autoSelected.reason})`;
+                            }
+                            return "Automatic model selection enabled";
+                          })()} 
+                          position="top"
+                        >
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs bg-white/70 dark:bg-gray-800/70 border border-blue-200 dark:border-blue-700 min-w-[140px]">
+                            {(() => {
+                              const autoSelected = getAutoSelectedModel();
+                              const getModelIcon = () => {
+                                if (autoSelected?.type === 'vision') return ImageIcon;
+                                if (autoSelected?.type === 'code') return Zap;
+                                return Bot;
+                              };
+                              const getModelColor = () => {
+                                if (autoSelected?.type === 'vision') return 'text-purple-600 dark:text-purple-400';
+                                if (autoSelected?.type === 'code') return 'text-blue-600 dark:text-blue-400';
+                                return 'text-blue-600 dark:text-blue-400';
+                              };
+                              
+                              const IconComponent = getModelIcon();
+                              const modelName = autoSelected?.model?.name || 'Auto Mode';
+                              const truncatedName = modelName.length > 15 ? modelName.substring(0, 12) + '...' : modelName;
+                              
+                              return (
+                                <>
+                                  <IconComponent className={`w-3 h-3 flex-shrink-0 ${getModelColor()}`} />
+                                  <span className="text-gray-700 dark:text-gray-300 truncate text-xs font-medium" title={modelName}>
+                                    {truncatedName}
+                                  </span>
+                                  <Zap className="w-3 h-3 flex-shrink-0 text-blue-500" />
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </Tooltip>
+                      ) : (
+                        <ModelSelector
+                          models={models}
+                          selectedModel={currentAIConfig.models.text || ''}
+                          onModelChange={(modelId) => {
+                            handleAIConfigChange({
+                              models: { ...currentAIConfig.models, text: modelId }
+                            });
+                            onModelChange?.(modelId, 'text');
+                          }}
+                          modelType="text"
+                          currentProvider={currentAIConfig.provider}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Side - Settings & Send */}
+                  <div className="flex items-center gap-2">
+                    {/* Settings */}
+                    <Tooltip content="Advanced settings" position="top">
+                      <button
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          showAdvanced 
+                            ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-400' 
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+
+                    {/* Send/Stop Button */}
+                    {isLoading ? (
+                      <Tooltip content="Stop generating" position="top">
+                        <button
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium text-sm"
+                          onClick={onStop}
+                          disabled={!onStop}
+                        >
+                          <Square className="w-4 h-4" fill="white" />
+                          <span>Stop</span>
                         </button>
                       </Tooltip>
                     ) : (
-                      <ModelSelector
-                        models={models}
-                        selectedModel={currentAIConfig.models.text || ''}
-                        onModelChange={(modelId) => {
-                          handleAIConfigChange({
-                            models: { ...currentAIConfig.models, text: modelId }
-                          });
-                          onModelChange?.(modelId, 'text');
-                        }}
-                        modelType="text"
-                        currentProvider={currentAIConfig.provider}
-                      />
+                      <Tooltip content="Send message (Enter)" position="top">
+                        <button
+                          onClick={handleSend}
+                          disabled={!input.trim() && files.length === 0}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
+                        >
+                          <Send className="w-4 h-4" />
+                          <span>Send</span>
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
-
-                  {/* Send Button */}
-                  {isLoading ? (
-                    <Tooltip content="Stop generating response" position="top">
-                      <button
-                        className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-                        onClick={onStop}
-                        disabled={!onStop}
-                      >
-                        <Square className="w-4 h-4" fill="white" />
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      </button>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip content="Send message (Enter)" position="top">
-                      <button
-                        onClick={handleSend}
-                        disabled={!input.trim() && files.length === 0}
-                        className="p-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <Send className="w-5 h-5" />
-                      </button>
-                    </Tooltip>
-                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Advanced Options */}
             <AdvancedOptions
@@ -2189,21 +2197,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
               onModelChange={onModelChange}
               show={showAdvanced}
             />
-
-            {/* Voice Chat Component - Simplified for transcription only */}
-            {showVoiceChat && (
-              <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                <ClaraVoiceChat
-                  isEnabled={isVoiceChatEnabled}
-                  onToggle={handleVoiceToggle}
-                  onSendAudio={handleVoiceAudio}
-                  isProcessing={isVoiceProcessing}
-                  isAIResponding={isLoading}
-                  autoTTSText={autoTTSText}
-                  autoTTSTrigger={autoTTSTrigger}
-                />
-              </div>
-            )}
           </div>
         </div>
       </div>

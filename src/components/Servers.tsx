@@ -15,28 +15,6 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { db } from '../db';
 
-// Define the electronAPI interface to fix TypeScript errors
-declare global {
-  interface Window {
-    electronAPI?: {
-      getContainers: () => Promise<ContainerInfo[]>;
-      containerAction: (containerId: string, action: 'start' | 'stop' | 'restart' | 'remove') => Promise<{ success: boolean; error?: string }>;
-      createContainer: (containerConfig: any) => Promise<{ success: boolean; id?: string; error?: string }>;
-      getContainerStats: (containerId: string) => Promise<{ cpu: string; memory: string; network: string }>;
-      getContainerLogs: (containerId: string) => Promise<string>;
-    };
-    llamaSwap?: {
-      start: () => Promise<{ success: boolean; status: any; error?: string }>;
-      stop: () => Promise<{ success: boolean; error?: string }>;
-      restart: () => Promise<{ success: boolean; status: any; error?: string }>;
-      getStatus: () => Promise<{ isRunning: boolean; port: number; pid?: number; apiUrl: string }>;
-      getModels: () => Promise<any[]>;
-      getApiUrl: () => Promise<string | null>;
-      regenerateConfig: () => Promise<{ success: boolean; models: number; error?: string }>;
-    };
-  }
-}
-
 interface ServerProps {
   onPageChange?: (page: string) => void;
 }
@@ -1096,8 +1074,20 @@ const Servers: React.FC<ServerProps> = ({ onPageChange }) => {
   // Llama-swap service management functions
   const fetchLlamaSwapStatus = async () => {
     try {
-      if (window.llamaSwap?.getStatus) {
+      if (window.llamaSwap?.getStatusWithHealth) {
+        const status = await window.llamaSwap.getStatusWithHealth();
+        console.log('LLM Service Status (with health check):', status);
+        setLlamaSwapStatus(status);
+        
+        // If running, fetch models
+        if (status.isRunning && window.llamaSwap?.getModels) {
+          const models = await window.llamaSwap.getModels();
+          setLlamaSwapModels(models);
+        }
+      } else if (window.llamaSwap?.getStatus) {
+        // Fallback to basic status
         const status = await window.llamaSwap.getStatus();
+        console.log('LLM Service Status (basic):', status);
         setLlamaSwapStatus(status);
         
         // If running, fetch models
