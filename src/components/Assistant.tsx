@@ -55,6 +55,124 @@ interface AssistantProps {
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
+// Clara Migration Modal Component
+const ClaraMigrationModal: React.FC<{ 
+  onNavigateToClara: () => void;
+  onDismiss: () => void;
+}> = ({ onNavigateToClara, onDismiss }) => {
+  const [showModal, setShowModal] = useState(() => {
+    // Check if user has previously dismissed the modal
+    const dismissed = localStorage.getItem('clara_migration_modal_dismissed');
+    console.log('Clara Migration Modal - dismissed status:', dismissed);
+    
+    // For debugging - temporarily clear the dismissed status
+    // localStorage.removeItem('clara_migration_modal_dismissed');
+    
+    const shouldShow = dismissed !== 'true';
+    console.log('Clara Migration Modal - should show:', shouldShow);
+    return shouldShow;
+  });
+
+  console.log('Clara Migration Modal - rendering, showModal:', showModal);
+
+  const handleDismiss = () => {
+    console.log('Clara Migration Modal - dismissing');
+    setShowModal(false);
+    localStorage.setItem('clara_migration_modal_dismissed', 'true');
+    onDismiss();
+  };
+
+  const handleNavigate = () => {
+    console.log('Clara Migration Modal - navigating to Clara');
+    localStorage.setItem('clara_migration_modal_dismissed', 'true');
+    onDismiss();
+    onNavigateToClara();
+  };
+
+  if (!showModal) {
+    console.log('Clara Migration Modal - not showing because showModal is false');
+    return null;
+  }
+
+  console.log('Clara Migration Modal - rendering modal content');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4" style={{ zIndex: 99999, pointerEvents: 'auto' }}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-auto overflow-hidden border border-gray-200 dark:border-gray-700 relative z-[100000]" style={{ zIndex: 100000, pointerEvents: 'auto' }}>
+        {/* Close button */}
+        <button
+          onClick={handleDismiss}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors z-10 cursor-pointer"
+          aria-label="Close modal"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Clara Image */}
+        <div className="flex justify-center pt-6 pb-4">
+          <div className="relative">
+            <img 
+              src="/mascot/Tips_Clara.png" 
+              alt="Clara" 
+              className="w-24 h-24 object-contain"
+              onError={(e) => {
+                // Fallback to src/assets path if public path fails
+                e.currentTarget.src = "/src/assets/mascot/Tips_Clara.png";
+              }}
+            />
+            {/* Speech bubble pointer */}
+            <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white dark:border-t-gray-800"></div>
+          </div>
+        </div>
+
+        {/* Modal Content */}
+        <div className="px-6 pb-6">
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">
+              Hi there! 👋
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+              We've closed support for this previous chat UI. There's a brand new, more powerful Clara Assistant waiting for you!
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-r from-sakura-50 to-purple-50 dark:from-sakura-900/20 dark:to-purple-900/20 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+              ✨ What's New:
+            </h3>
+            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+              <li>• Enhanced AI capabilities</li>
+              <li>• Better file processing</li>
+              <li>• Improved user experience</li>
+              <li>• Advanced tool integration</li>
+            </ul>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleDismiss}
+              className="flex-1 px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors text-sm cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
+            >
+              Maybe Later
+            </button>
+            <button
+              onClick={handleNavigate}
+              className="flex-1 bg-gradient-to-r from-sakura-500 to-purple-500 hover:from-sakura-600 hover:to-purple-600 text-white px-6 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105 shadow-lg cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
+            >
+              Let's Go! 🚀
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
   const { isInterpreterMode } = useInterpreter();
   const { primaryProvider, loading: providersLoading } = useProviders();
@@ -114,6 +232,19 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       toolModel: '',
       ragModel: ''
     };
+  });
+
+  // Track if Clara migration modal is visible
+  const [isClaraMigrationModalVisible, setIsClaraMigrationModalVisible] = useState(() => {
+    const dismissed = localStorage.getItem('clara_migration_modal_dismissed');
+    console.log('Assistant component - Clara modal dismissed status:', dismissed);
+    
+    // For debugging - uncomment this line to force show the modal
+    localStorage.removeItem('clara_migration_modal_dismissed');
+    
+    const shouldShow = dismissed !== 'true';
+    console.log('Assistant component - Clara modal should show:', shouldShow);
+    return shouldShow;
   });
 
   // Initialize or get temporary collection names from localStorage
@@ -658,8 +789,26 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
 
   const [showModelConfig, setShowModelConfig] = useState(false);
 
+  // Handler to navigate to the new Clara assistant
+  const handleNavigateToClara = () => {
+    console.log('Navigating to Clara assistant');
+    onPageChange('clara');
+  };
+
+  console.log('Assistant component rendering - isClaraMigrationModalVisible:', isClaraMigrationModalVisible);
+
   return (
     <div className="relative flex h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100/10">
+      {/* Clara Migration Modal */}
+      <ClaraMigrationModal onNavigateToClara={handleNavigateToClara} onDismiss={() => setIsClaraMigrationModalVisible(false)} />
+      
+      {/* Debug div to test rendering */}
+      {isClaraMigrationModalVisible && (
+        <div className="fixed top-4 right-4 bg-red-500 text-white p-2 rounded z-[99998]">
+          DEBUG: Modal should be visible
+        </div>
+      )}
+      
       {/* Wallpaper */}
       {wallpaperUrl && (
         <div 
@@ -676,16 +825,18 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
       )}
       {/* Only show sidebar when not in interpreter mode */}
       {!isInterpreterMode && (
-        <AssistantSidebar
-          activeChat={activeChat}
-          onChatSelect={setActiveChat}
-          chats={chats}
-          onOpenSettings={() => setShowSettings(true)}
-          onNavigateHome={handleNavigateHome}
-        />
+        <div style={{ pointerEvents: isClaraMigrationModalVisible ? 'none' : 'auto' }}>
+          <AssistantSidebar
+            activeChat={activeChat}
+            onChatSelect={setActiveChat}
+            chats={chats}
+            onOpenSettings={() => setShowSettings(true)}
+            onNavigateHome={handleNavigateHome}
+          />
+        </div>
       )}
 
-      <div className={`flex-1 flex flex-col ${isInterpreterMode ? 'pl-0' : ''}`}>
+      <div className={`flex-1 flex flex-col ${isInterpreterMode ? 'pl-0' : ''}`} style={{ pointerEvents: isClaraMigrationModalVisible ? 'none' : 'auto' }}>
         {!isInterpreterMode ? (
           <>
             <AssistantHeader
@@ -749,7 +900,7 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           activeAutoModel={activeAutoModel}
         />
 
-        {showImageWarning && images.length > 0 && (
+        {showImageWarning && images.length > 0 && !isClaraMigrationModalVisible && (
           <div className="px-6">
             <div className="max-w-3xl mx-auto">
               <ImageWarning onClose={() => setShowImageWarning(false)} />
@@ -757,27 +908,29 @@ const Assistant: React.FC<AssistantProps> = ({ onPageChange }) => {
           </div>
         )}
 
-        <AssistantModals
-          showSettings={showSettings}
-          setShowSettings={setShowSettings}
-          isStreaming={isStreaming}
-          setIsStreaming={setIsStreaming}
-          showPullModal={showPullModal}
-          setShowPullModal={setShowPullModal}
-          showKnowledgeBase={showKnowledgeBase}
-          setShowKnowledgeBase={setShowKnowledgeBase}
-          showToolModal={showToolModal}
-          setShowToolModal={setShowToolModal}
-          client={client}
-          selectedModel={selectedModel}
-          models={models}
-          showModelConfig={showModelConfig}
-          setShowModelConfig={setShowModelConfig}
-          handleModelConfigSave={handleModelConfigSave}
-          modelSelectionConfig={modelSelectionConfig}
-          showOnboarding={showOnboarding}
-          setShowOnboarding={setShowOnboarding}
-        />
+        {!isClaraMigrationModalVisible && (
+          <AssistantModals
+            showSettings={showSettings}
+            setShowSettings={setShowSettings}
+            isStreaming={isStreaming}
+            setIsStreaming={setIsStreaming}
+            showPullModal={showPullModal}
+            setShowPullModal={setShowPullModal}
+            showKnowledgeBase={showKnowledgeBase}
+            setShowKnowledgeBase={setShowKnowledgeBase}
+            showToolModal={showToolModal}
+            setShowToolModal={setShowToolModal}
+            client={client}
+            selectedModel={selectedModel}
+            models={models}
+            showModelConfig={showModelConfig}
+            setShowModelConfig={setShowModelConfig}
+            handleModelConfigSave={handleModelConfigSave}
+            modelSelectionConfig={modelSelectionConfig}
+            showOnboarding={showOnboarding}
+            setShowOnboarding={setShowOnboarding}
+          />
+        )}
       </div>
     </div>
   );

@@ -23,6 +23,17 @@ export interface ElectronAPI {
   stopN8N: () => Promise<void>;
   getPythonPort: () => Promise<number>;
   checkPythonBackend: () => Promise<boolean>;
+  checkDockerServices: () => Promise<{
+    dockerAvailable: boolean;
+    n8nAvailable: boolean;
+    pythonAvailable: boolean;
+    message?: string;
+    ports?: {
+      python: number;
+      n8n: number;
+      ollama: number;
+    };
+  }>;
   restartInterpreterContainer: () => Promise<{ success: boolean; error?: string }>;
   checkForUpdates: () => Promise<void>;
   clipboard: {

@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Home, Bot, Settings, HelpCircle, ChevronRight, ImageIcon, Network, Server, BrainCircuit, Download, X } from 'lucide-react';
 import logo from '../assets/logo.png';
-import { claraBackgroundService } from '../services/claraBackgroundService';
-
-// Define the interface for the window object
-declare global {
-  interface Window {
-    modelManager?: {
-      searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: HuggingFaceModel[]; error?: string }>;
-      downloadModel: (modelId: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
-      getLocalModels: () => Promise<{ success: boolean; models: LocalModel[]; error?: string }>;
-      deleteLocalModel: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-      onDownloadProgress: (callback: (progress: DownloadProgress) => void) => (() => void);
-      stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
-    };
-  }
-}
 
 interface HuggingFaceModel {
   id: string;
@@ -49,23 +34,62 @@ interface DownloadProgress {
   totalSize: number;
 }
 
+// Add interface for Docker services status
+interface DockerServicesStatus {
+  dockerAvailable: boolean;
+  n8nAvailable: boolean;
+  pythonAvailable: boolean;
+  message?: string;
+  ports?: {
+    python: number;
+    n8n: number;
+    ollama: number;
+  };
+}
+
 const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeDownloads, setActiveDownloads] = useState<{ [fileName: string]: DownloadProgress }>({});
+  const [activeDownloads, setActiveDownloads] = useState<Record<string, DownloadProgress>>({});
   const [claraBackgroundActivity, setClaraBackgroundActivity] = useState(false);
+  const [dockerServices, setDockerServices] = useState<DockerServicesStatus>({
+    dockerAvailable: false,
+    n8nAvailable: false,
+    pythonAvailable: false
+  });
 
   // Listen for Clara background activity changes
   useEffect(() => {
-    const unsubscribe = claraBackgroundService.onBackgroundModeChange((isBackground) => {
-      setClaraBackgroundActivity(isBackground && claraBackgroundService.hasBackgroundActivity());
-    });
-    
-    // Check initial state
-    setClaraBackgroundActivity(
-      claraBackgroundService.isInBackground() && claraBackgroundService.hasBackgroundActivity()
-    );
-    
-    return unsubscribe;
+    const handleClaraActivity = (event: CustomEvent) => {
+      setClaraBackgroundActivity(event.detail.active);
+    };
+
+    window.addEventListener('clara-background-activity', handleClaraActivity as EventListener);
+    return () => window.removeEventListener('clara-background-activity', handleClaraActivity as EventListener);
+  }, []);
+
+  // Check Docker services status
+  useEffect(() => {
+    const checkDockerServices = async () => {
+      try {
+        if ((window.electron as any)?.checkDockerServices) {
+          const status = await (window.electron as any).checkDockerServices();
+          setDockerServices(status);
+        }
+      } catch (error) {
+        console.error('Failed to check Docker services:', error);
+        setDockerServices({
+          dockerAvailable: false,
+          n8nAvailable: false,
+          pythonAvailable: false,
+          message: 'Failed to check Docker services'
+        });
+      }
+    };
+
+    checkDockerServices();
+    // Check periodically every 30 seconds
+    const interval = setInterval(checkDockerServices, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Listen for download progress updates
@@ -170,7 +194,10 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'apps' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
-    { icon: Network, label: 'Workflows', id: 'n8n' },
+    // Only show n8n if Docker services are available
+    ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 
+      ? [{ icon: Network, label: 'Workflows', id: 'n8n' }] 
+      : [])
   ];
 
   const bottomMenuItems = [

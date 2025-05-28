@@ -72,39 +72,6 @@ function registerDockerContainerHandlers() {
     }
   });
 
-  // Add handler for restarting interpreter container
-  ipcMain.handle('restartInterpreterContainer', async () => {
-    try {
-      if (!dockerSetup || !dockerSetup.docker) {
-        throw new Error('Docker setup not initialized');
-      }
-      
-      log.info('Restarting interpreter container...');
-      
-      // Check if container exists
-      try {
-        // Stop and remove the interpreter container
-        const container = await dockerSetup.docker.getContainer('clara_interpreter');
-        log.info('Stopping interpreter container...');
-        await container.stop();
-        log.info('Removing interpreter container...');
-        await container.remove();
-      } catch (containerError) {
-        log.error('Error handling existing container:', containerError);
-        // Continue even if container doesn't exist or can't be stopped/removed
-      }
-      
-      // Start a new container
-      log.info('Starting new interpreter container...');
-      await dockerSetup.startContainer(dockerSetup.containers.interpreter);
-      log.info('Interpreter container restarted successfully');
-      return { success: true };
-    } catch (error) {
-      log.error('Error restarting interpreter container:', error);
-      return { success: false, error: error.message };
-    }
-  });
-
   // Container actions (start, stop, restart, remove)
   ipcMain.handle('container-action', async (_event, { containerId, action }) => {
     try {
@@ -1028,15 +995,9 @@ async function initializeApp() {
     });
 
     if (!success) {
-      splash.setStatus('Docker setup incomplete. Please start Docker Desktop and restart the application.', 'error');
-      dialog.showMessageBox(null, {
-        type: 'info',
-        title: 'Docker Setup',
-        message: 'Please start Docker Desktop and restart the application.',
-        buttons: ['OK']
-      });
-      app.quit();
-      return;
+      splash.setStatus('Docker not available. Some features may be limited.', 'warning');
+      log.warn('Docker setup incomplete. Continuing without Docker services.');
+      // Continue with app initialization even without Docker
     }
 
     // Initialize llama-swap service
@@ -1335,6 +1296,49 @@ ipcMain.handle('check-python-backend', async () => {
   } catch (error) {
     log.error('Error checking Python backend:', error);
     return { status: 'error', message: error.message };
+  }
+});
+
+// IPC handler to check Docker and service availability
+ipcMain.handle('check-docker-services', async () => {
+  try {
+    if (!dockerSetup) {
+      return { 
+        dockerAvailable: false, 
+        n8nAvailable: false,
+        pythonAvailable: false,
+        message: 'Docker setup not initialized' 
+      };
+    }
+
+    const dockerRunning = await dockerSetup.isDockerRunning();
+    if (!dockerRunning) {
+      return { 
+        dockerAvailable: false, 
+        n8nAvailable: false,
+        pythonAvailable: false,
+        message: 'Docker is not running' 
+      };
+    }
+
+    // Check individual services
+    const n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
+    const pythonRunning = await dockerSetup.isPythonRunning().catch(() => false);
+
+    return {
+      dockerAvailable: true,
+      n8nAvailable: n8nRunning,
+      pythonAvailable: pythonRunning,
+      ports: dockerSetup.ports
+    };
+  } catch (error) {
+    log.error('Error checking Docker services:', error);
+    return { 
+      dockerAvailable: false, 
+      n8nAvailable: false,
+      pythonAvailable: false,
+      message: error.message 
+    };
   }
 });
 
