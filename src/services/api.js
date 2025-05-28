@@ -105,8 +105,8 @@ class PythonApi {
   async detectPortByProbing() {
     console.log('Detecting backend port by probing...');
     
-    // Try common ports in our range
-    const ports = [8099, 8100, 8098, 8097, 8000, 8080];
+    // Try common ports in our range, including 5001 where the backend is currently running
+    const ports = [5001, 8099, 8100, 8098, 8097, 8000, 8080];
     
     for (const port of ports) {
       try {

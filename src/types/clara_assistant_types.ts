@@ -552,6 +552,18 @@ export interface ClaraInputProps {
   
   /** Callback when model changes */
   onModelChange?: (modelId: string, type: 'text' | 'vision' | 'code') => void;
+
+  /** Current messages in the conversation (for voice mode) */
+  messages?: ClaraMessage[];
+  
+  /** Callback to set messages (for voice mode) */
+  setMessages?: React.Dispatch<React.SetStateAction<ClaraMessage[]>>;
+  
+  /** Current chat session (for voice mode) */
+  currentSession?: ClaraChatSession | null;
+  
+  /** Callback to set sessions (for voice mode) */
+  setSessions?: React.Dispatch<React.SetStateAction<ClaraChatSession[]>>;
 }
 
 // ================================

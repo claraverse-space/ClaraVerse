@@ -58,6 +58,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
+    "@ricky0123/vad-web": "^0.0.24",
     "@saintno/comfyui-sdk": "^0.2.45",
     "@supabase/supabase-js": "^2.49.4",
     "@types/crypto-js": "^4.2.2",
