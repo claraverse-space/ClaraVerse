@@ -27,8 +27,7 @@ const validChannels = [
   'python-status',
   'update-available',
   'update-downloaded',
-  'download-progress',
-  'restartInterpreterContainer'
+  'download-progress'
 ];
 
 // Add explicit logging for debugging
@@ -49,6 +48,7 @@ contextBridge.exposeInMainWorld('electron', {
   getServicePorts: () => ipcRenderer.invoke('get-service-ports'),
   getPythonPort: () => ipcRenderer.invoke('get-python-port'),
   checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
+  checkDockerServices: () => ipcRenderer.invoke('check-docker-services'),
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -83,19 +83,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeAllListeners(channel);
     }
   },
-  getWorkflowsPath: () => ipcRenderer.invoke('getWorkflowsPath'),
-  // Ensure this handler is properly exposed with explicit error handling
-  restartInterpreterContainer: async () => {
-    console.log('Invoking restartInterpreterContainer from preload...');
-    try {
-      const result = await ipcRenderer.invoke('restartInterpreterContainer');
-      console.log('restartInterpreterContainer result:', result);
-      return result;
-    } catch (error) {
-      console.error('Error in restartInterpreterContainer:', error);
-      throw error;
-    }
-  }
+  getWorkflowsPath: () => ipcRenderer.invoke('getWorkflowsPath')
 });
 
 // Add Docker container management API
@@ -108,7 +96,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getContainerStats: (containerId) => 
     ipcRenderer.invoke('get-container-stats', containerId),
   getContainerLogs: (containerId) => 
-    ipcRenderer.invoke('get-container-logs', containerId)
+    ipcRenderer.invoke('get-container-logs', containerId),
+  pullImage: (image) => ipcRenderer.invoke('pull-image', image),
+  createNetwork: (networkConfig) => ipcRenderer.invoke('create-network', networkConfig),
+  listNetworks: () => ipcRenderer.invoke('list-networks'),
+  removeNetwork: (networkId) => ipcRenderer.invoke('remove-network', networkId),
+  getImages: () => ipcRenderer.invoke('get-images'),
+  removeImage: (imageId) => ipcRenderer.invoke('remove-image', imageId),
+  pruneContainers: () => ipcRenderer.invoke('prune-containers'),
+  pruneImages: () => ipcRenderer.invoke('prune-images'),
+  getDockerInfo: () => ipcRenderer.invoke('get-docker-info'),
+  getDockerVersion: () => ipcRenderer.invoke('get-docker-version')
 });
 
 // Add llama-swap service API
