@@ -34,3 +34,13 @@ accelerate
 # Text-to-Speech
 gtts
 pyttsx3
+
+# spaCy for NLP (required by Kokoro/misaki)
+spacy>=3.4.0
+
+# Kokoro TTS
+kokoro>=0.9.4
+kokoro-onnx>=0.4.9
+soundfile>=0.12.1
+misaki[en]>=0.1.0
+onnxruntime>=1.16.0

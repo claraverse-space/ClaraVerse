@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Square, Play } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, Square, Play, VolumeIcon } from 'lucide-react';
+
+// Import TTS service for health monitoring
+import { claraTTSService } from '../../services/claraTTSService';
 
 // VAD (Voice Activity Detection) using @ricky0123/vad-web
 // This is a SOTA VAD model that runs entirely in the browser
@@ -24,6 +27,8 @@ interface ClaraVoiceChatProps {
   isAIResponding?: boolean; // AI is generating a response
   isStreaming?: boolean;
   streamingText?: string;
+  autoTTSText?: string; // Text to automatically speak when provided
+  autoTTSTrigger?: {text: string, timestamp: number} | null; // Trigger with timestamp to ensure re-triggering
 }
 
 // Audio visualization component
@@ -203,7 +208,9 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   isProcessing,
   isAIResponding = false,
   isStreaming = false,
-  streamingText = ''
+  streamingText = '',
+  autoTTSText = '',
+  autoTTSTrigger = null
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -211,6 +218,13 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   const [vadReady, setVadReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+  
+  // TTS health monitoring state
+  const [isTTSHealthy, setIsTTSHealthy] = useState(false);
+  
+  // Auto TTS state
+  const [autoTTSEnabled, setAutoTTSEnabled] = useState(false);
+  const [isAutoTTSPlaying, setIsAutoTTSPlaying] = useState(false);
   
   // Audio refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -225,6 +239,9 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   const isInitializingRef = useRef<boolean>(false);
   const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Add ref to track processed auto TTS triggers to prevent repetition
+  const processedTriggerRef = useRef<{text: string, timestamp: number} | null>(null);
+  
   // Refs to track current state for VAD callbacks (to prevent stale closure issues)
   const isProcessingAudioRef = useRef<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
@@ -232,6 +249,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   const isEnabledRef = useRef<boolean>(false);
   const isListeningRef = useRef<boolean>(false);
   const isManualRecordingRef = useRef<boolean>(false);
+  const isAutoTTSPlayingRef = useRef<boolean>(false);
   
   // Manual recording state (fallback when VAD fails)
   const [isManualRecording, setIsManualRecording] = useState(false);
@@ -436,6 +454,26 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     checkPermissionStatus();
   }, []);
 
+  // TTS health monitoring - hide microphone when TTS backend is unhealthy
+  useEffect(() => {
+    console.log('🔊 Setting up TTS health monitoring for voice chat...');
+    
+    const unsubscribe = claraTTSService.onHealthChange((isHealthy) => {
+      setIsTTSHealthy(isHealthy);
+      console.log(`🔊 TTS health changed in voice chat: ${isHealthy ? 'healthy' : 'unhealthy'}`);
+      
+      if (!isHealthy) {
+        console.log('🔊 TTS backend unhealthy - voice features may be limited');
+      }
+    });
+    
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('🔊 Cleaning up TTS health monitoring for voice chat');
+      unsubscribe();
+    };
+  }, []);
+
   // Auto-request permission and initialize VAD when voice mode is enabled
   useEffect(() => {
     const initializeVoiceMode = async () => {
@@ -456,12 +494,12 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
         return;
       }
       
-      // Voice mode enabled - check if AI is responding
-      if (isAIRespondingRef.current) {
-        // AI is responding - pause voice detection
+      // Voice mode enabled - check if AI is responding or auto TTS is playing
+      if (isAIRespondingRef.current || isAutoTTSPlayingRef.current) {
+        // AI is responding or auto TTS is playing - pause voice detection
         if (vadRef.current && isListeningRef.current) {
           vadRef.current.pause();
-          console.log('🎤 VAD paused (AI is responding)');
+          console.log('🎤 VAD paused (AI is responding or auto TTS is playing)');
           setIsListening(false);
           setAudioLevel(0);
           cleanupAudioResources();
@@ -509,7 +547,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     };
 
     initializeVoiceMode();
-  }, [isEnabled, permissionStatus, vadReady, isAIResponding]);
+  }, [isEnabled, permissionStatus, vadReady, isAIResponding, isAutoTTSPlaying]);
 
   // Initialize VAD only after permission is granted
   useEffect(() => {
@@ -598,8 +636,8 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
             
             // OPTIMIZED: Faster auto-restart with reduced delay and better conditions
             setTimeout(async () => {
-              // CRITICAL: Check all conditions before restarting
-              if (isEnabledRef.current && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isProcessingRef.current && !isAIRespondingRef.current) {
+              // CRITICAL: Check all conditions before restarting (including auto TTS)
+              if (isEnabledRef.current && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isProcessingRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
                 try {
                   console.log('🎤 Auto-restarting VAD after speech processing...');
                   await setupAudioAnalyser(); // Ensure audio analyser is ready
@@ -617,7 +655,8 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
                   isListening: isListeningRef.current,
                   isProcessingAudio: isProcessingAudioRef.current,
                   isProcessing: isProcessingRef.current,
-                  isAIResponding: isAIRespondingRef.current
+                  isAIResponding: isAIRespondingRef.current,
+                  isAutoTTSPlaying: isAutoTTSPlayingRef.current
                 });
               }
             }, 200); // REDUCED from 1000ms to 200ms for much faster restart
@@ -820,6 +859,23 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     // This will be used to play audio responses from Clara
   }, [onReceiveAudio]);
 
+  // Toggle auto TTS
+  const toggleAutoTTS = useCallback(() => {
+    setAutoTTSEnabled(prev => {
+      const newValue = !prev;
+      console.log(`🔊 Auto TTS ${newValue ? 'enabled' : 'disabled'}`);
+      
+      // If disabling and currently playing, stop TTS
+      if (!newValue && isAutoTTSPlaying) {
+        claraTTSService.stopPlayback();
+        setIsAutoTTSPlaying(false);
+        setIsSpeaking(false);
+      }
+      
+      return newValue;
+    });
+  }, [isAutoTTSPlaying]);
+
   // Manual restart function for when VAD gets stuck
   const restartVAD = useCallback(async () => {
     // Prevent multiple simultaneous restarts
@@ -875,6 +931,121 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     }
   }, [vadReady, setupAudioAnalyser, cleanupAudioResources, monitorAudioLevel]);
 
+  // Auto TTS effect - process autoTTSTrigger when enabled
+  useEffect(() => {
+    const processAutoTTS = async () => {
+      console.log('🔊 Auto TTS effect triggered:', {
+        autoTTSEnabled,
+        hasAutoTTSTrigger: !!autoTTSTrigger,
+        isTTSHealthy,
+        autoTTSTrigger: autoTTSTrigger ? {
+          text: autoTTSTrigger.text.slice(0, 50) + '...',
+          timestamp: autoTTSTrigger.timestamp
+        } : null,
+        processedTrigger: processedTriggerRef.current
+      });
+
+      // Only process if auto TTS is enabled and we have a trigger
+      if (!autoTTSEnabled || !autoTTSTrigger || !isTTSHealthy) {
+        console.log('🔊 Auto TTS skipped:', {
+          autoTTSEnabled,
+          hasAutoTTSTrigger: !!autoTTSTrigger,
+          isTTSHealthy
+        });
+        return;
+      }
+
+      // Check if this trigger was already processed to prevent repetition
+      if (processedTriggerRef.current && 
+          processedTriggerRef.current.text === autoTTSTrigger.text && 
+          processedTriggerRef.current.timestamp === autoTTSTrigger.timestamp) {
+        console.log('🔊 Auto TTS trigger already processed, skipping...');
+        return;
+      }
+
+      // Mark this trigger as processed before starting TTS
+      processedTriggerRef.current = {
+        text: autoTTSTrigger.text,
+        timestamp: autoTTSTrigger.timestamp
+      };
+
+      console.log('🔊 Processing auto TTS trigger:', autoTTSTrigger.text.slice(0, 50) + '...');
+
+      try {
+        // Pause voice detection during TTS
+        if (vadRef.current && isListeningRef.current) {
+          vadRef.current.pause();
+          console.log('🎤 VAD paused for auto TTS');
+          setIsListening(false);
+          setAudioLevel(0);
+          cleanupAudioResources();
+        }
+
+        // Stop manual recording if active
+        if (isManualRecordingRef.current) {
+          stopManualRecording();
+        }
+
+        setIsAutoTTSPlaying(true);
+        setIsSpeaking(true);
+
+        // Clean the content for TTS (remove markdown, etc.)
+        const cleanContent = autoTTSTrigger.text
+          .replace(/<think>[\s\S]*?<\/think>/gi, '') // Remove <think> tags and their content
+          .replace(/<[^>]*>/g, '') // Remove any other HTML/XML tags
+          .replace(/```[\s\S]*?```/g, '[code block]') // Replace code blocks
+          .replace(/`([^`]+)`/g, '$1') // Remove inline code backticks
+          .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markdown
+          .replace(/\*([^*]+)\*/g, '$1') // Remove italic markdown
+          .replace(/#{1,6}\s+/g, '') // Remove headers
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with text
+          .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+
+        if (!cleanContent) {
+          console.warn('🔊 No content to synthesize after cleaning');
+          return;
+        }
+
+        console.log('🔊 Starting auto TTS synthesis...');
+        await claraTTSService.synthesizeAndPlay({
+          text: cleanContent,
+          engine: 'kokoro',
+          voice: 'af_sarah',
+          speed: 1.0,
+          language: 'en'
+        });
+
+        console.log('🔊 Auto TTS playback completed');
+
+      } catch (error) {
+        console.error('🔊 Auto TTS error:', error);
+        // Don't show error to user for auto TTS failures, just log it
+      } finally {
+        setIsAutoTTSPlaying(false);
+        setIsSpeaking(false);
+
+        // Resume voice detection after TTS with a short delay
+        setTimeout(async () => {
+          if (isEnabledRef.current && vadReady && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
+            try {
+              console.log('🎤 Resuming VAD after auto TTS...');
+              await setupAudioAnalyser();
+              await vadRef.current.start();
+              console.log('🎤 VAD resumed after auto TTS');
+              monitorAudioLevel();
+            } catch (error) {
+              console.error('🎤 Failed to resume VAD after auto TTS:', error);
+            }
+          }
+        }, 500); // 500ms delay to ensure TTS has fully stopped
+      }
+    };
+
+    processAutoTTS();
+  }, [autoTTSTrigger, autoTTSEnabled, isTTSHealthy, vadReady, setupAudioAnalyser, monitorAudioLevel]);
+
   // VAD health check - automatically restart if stuck - OPTIMIZED FOR SPEED
   useEffect(() => {
     // Clear any existing health check
@@ -888,13 +1059,13 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     
     // REDUCED from 10 seconds to 2 seconds for faster response
     healthCheckIntervalRef.current = setInterval(() => {
-      // Check if VAD should be listening but isn't (and we're not processing and AI is not responding)
-      if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isManualRecordingRef.current && !isInitializingRef.current && !isAIRespondingRef.current) {
+      // Check if VAD should be listening but isn't (and we're not processing, AI is not responding, and auto TTS is not playing)
+      if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isManualRecordingRef.current && !isInitializingRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
         console.log('🔍 VAD health check: Should be listening but isn\'t - auto-restarting...');
         restartVAD();
-      } else if (isAIRespondingRef.current && isListeningRef.current) {
-        // If AI is responding and we're still listening, pause VAD immediately
-        console.log('🔍 VAD health check: AI is responding, pausing VAD...');
+      } else if ((isAIRespondingRef.current || isAutoTTSPlayingRef.current) && isListeningRef.current) {
+        // If AI is responding or auto TTS is playing and we're still listening, pause VAD immediately
+        console.log('🔍 VAD health check: AI is responding or auto TTS is playing, pausing VAD...');
         if (vadRef.current) {
           vadRef.current.pause();
           setIsListening(false);
@@ -917,17 +1088,17 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
 
   // IMMEDIATE VAD restart when AI response completes - NEW EFFECT
   useEffect(() => {
-    // When AI stops responding, immediately check if we should restart VAD
-    if (!isAIResponding && isEnabled && vadReady && !isListening && !isProcessingAudio && !isManualRecording && !isInitializingRef.current) {
+    // When AI stops responding, immediately check if we should restart VAD (but not if auto TTS is playing)
+    if (!isAIResponding && isEnabled && vadReady && !isListening && !isProcessingAudio && !isManualRecording && !isInitializingRef.current && !isAutoTTSPlaying) {
       console.log('🚀 AI response completed - immediately restarting VAD...');
       // Use a very short delay to ensure state has settled
       setTimeout(() => {
-        if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isAIRespondingRef.current) {
+        if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
           restartVAD();
         }
       }, 50); // Only 50ms delay for immediate response
     }
-  }, [isAIResponding, isEnabled, vadReady, isListening, isProcessingAudio, isManualRecording, restartVAD]);
+  }, [isAIResponding, isEnabled, vadReady, isListening, isProcessingAudio, isManualRecording, isAutoTTSPlaying, restartVAD]);
 
   // Debug effect to monitor VAD state transitions
   useEffect(() => {
@@ -939,16 +1110,17 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       isProcessing,
       isAIResponding,
       isManualRecording,
+      isAutoTTSPlaying,
       isInitializing: isInitializingRef.current,
       vadExists: !!vadRef.current,
       timestamp: new Date().toISOString()
     });
-  }, [isEnabled, vadReady, isListening, isProcessingAudio, isProcessing, isAIResponding, isManualRecording]);
+  }, [isEnabled, vadReady, isListening, isProcessingAudio, isProcessing, isAIResponding, isManualRecording, isAutoTTSPlaying]);
 
   // AGGRESSIVE immediate restart - triggers on any state change that should enable listening
   useEffect(() => {
     // If all conditions are met for listening but we're not listening, restart immediately
-    if (isEnabled && vadReady && !isListening && !isProcessingAudio && !isAIResponding && !isManualRecording && !isInitializingRef.current && vadRef.current) {
+    if (isEnabled && vadReady && !isListening && !isProcessingAudio && !isAIResponding && !isManualRecording && !isInitializingRef.current && !isAutoTTSPlaying && vadRef.current) {
       console.log('🚀 All conditions met for listening - immediate restart...');
       // Immediate restart without delay
       const immediateRestart = async () => {
@@ -965,7 +1137,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       };
       immediateRestart();
     }
-  }, [isEnabled, vadReady, isListening, isProcessingAudio, isAIResponding, isManualRecording, setupAudioAnalyser, monitorAudioLevel, restartVAD]);
+  }, [isEnabled, vadReady, isListening, isProcessingAudio, isAIResponding, isManualRecording, isAutoTTSPlaying, setupAudioAnalyser, monitorAudioLevel, restartVAD]);
 
   // Cleanup effect when component unmounts or voice mode is disabled
   useEffect(() => {
@@ -1062,7 +1234,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     }
   };
 
-  // Update refs when state changes
+  // Update refs when state changes to prevent stale closure issues
   useEffect(() => {
     isProcessingAudioRef.current = isProcessingAudio;
   }, [isProcessingAudio]);
@@ -1086,6 +1258,11 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   useEffect(() => {
     isManualRecordingRef.current = isManualRecording;
   }, [isManualRecording]);
+
+  // Add missing ref update for auto TTS
+  useEffect(() => {
+    isAutoTTSPlayingRef.current = isAutoTTSPlaying;
+  }, [isAutoTTSPlaying]);
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
@@ -1189,6 +1366,8 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
             <Mic className="w-8 h-8 text-green-500" />
           ) : isSpeaking ? (
             <Volume2 className="w-8 h-8 text-purple-500" />
+          ) : !isTTSHealthy ? (
+            <MicOff className="w-8 h-8 text-red-400" />
           ) : (
             <MicOff className="w-8 h-8 text-gray-400" />
           )}
@@ -1197,7 +1376,9 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
 
       {/* Status Text */}
       <div className="text-center">
-        {error ? (
+        {!isTTSHealthy ? (
+          <p className="text-red-500 text-sm">🔊 Voice features unavailable - TTS backend offline</p>
+        ) : error ? (
           <p className="text-red-500 text-sm">{error}</p>
         ) : permissionStatus === 'requesting' ? (
           <p className="text-blue-600 text-sm">Requesting microphone permission...</p>
@@ -1216,7 +1397,9 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
             🎤 Listening... (speak now)
           </p>
         ) : isSpeaking ? (
-          <p className="text-purple-600 text-sm">🔊 Clara is speaking...</p>
+          <p className="text-purple-600 text-sm">
+            🔊 {isAutoTTSPlaying ? 'Auto TTS: Clara is speaking...' : 'Clara is speaking...'}
+          </p>
         ) : isEnabled && !vadReady && !isInitializingRef.current ? (
           <p className="text-blue-600 text-sm">🎤 Initializing voice detection...</p>
         ) : isEnabled && !vadReady && isInitializingRef.current ? (
@@ -1246,6 +1429,25 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
 
       {/* Controls */}
       <div className="flex space-x-2">
+        {/* Auto TTS Toggle Button */}
+        {isTTSHealthy && (
+          <button
+            onClick={toggleAutoTTS}
+            className={`px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+              autoTTSEnabled 
+                ? 'bg-purple-500 hover:bg-purple-600 text-white' 
+                : 'bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
+            }`}
+            title={autoTTSEnabled ? 'Disable Auto TTS' : 'Enable Auto TTS'}
+          >
+            <Volume2 className="w-4 h-4" />
+            <span className="text-sm">Auto TTS</span>
+            {isAutoTTSPlaying && (
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+            )}
+          </button>
+        )}
+
         {/* Only show stop speaking button when Clara is speaking */}
         {isSpeaking && (
           <button
@@ -1290,6 +1492,14 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
             permissionStatus === 'requesting' ? '⏳ Requesting...' :
             '❓ Not Set'
           }</span>
+          <span>•</span>
+          <span>TTS Backend: {isTTSHealthy ? '✅ Ready' : '❌ Offline'}</span>
+          {isTTSHealthy && (
+            <>
+              <span>•</span>
+              <span>Auto TTS: {autoTTSEnabled ? '✅ Enabled' : '❌ Disabled'}</span>
+            </>
+          )}
         </div>
         {error && (
           <div className="mt-2">

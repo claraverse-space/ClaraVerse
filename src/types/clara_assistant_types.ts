@@ -564,6 +564,12 @@ export interface ClaraInputProps {
   
   /** Callback to set sessions (for voice mode) */
   setSessions?: React.Dispatch<React.SetStateAction<ClaraChatSession[]>>;
+  
+  /** Latest AI response text for auto TTS */
+  autoTTSText?: string;
+  
+  /** Auto TTS trigger with timestamp to ensure re-triggering */
+  autoTTSTrigger?: {text: string, timestamp: number} | null;
 }
 
 // ================================
