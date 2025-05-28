@@ -47,6 +47,8 @@ import {
 import ClaraArtifactRenderer from './clara_assistant_artifact_renderer';
 import MessageContentRenderer from './MessageContentRenderer';
 import { ElectronAPI } from '../../types/electron';
+import { copyToClipboard } from '../../utils/clipboard';
+import { useSmoothScroll } from '../../hooks/useSmoothScroll';
 
 /**
  * Thinking content parser and utilities
@@ -364,29 +366,14 @@ const useCopyWithToast = () => {
     setTimeout(() => setToast(null), 1500);
   }, []);
 
-  const copyToClipboard = useCallback(async (text: string) => {
-    try {
-      const electronClipboard = (window.electron as any)?.clipboard;
-      if (electronClipboard && typeof electronClipboard.writeText === 'function') {
-        electronClipboard.writeText(text);
-        showToast('Copied!');
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        showToast('Copied!');
-      } else {
-        // Fallback for older browsers
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        showToast('Copied!');
-      }
-    } catch (err) {
+  const copyToClipboardWithToast = useCallback(async (text: string) => {
+    const success = await copyToClipboard(text);
+    if (success) {
+      showToast('Copied!');
+    } else {
       showToast('Could not copy', 'error');
-      console.error('Failed to copy:', err);
     }
+    return success;
   }, [showToast]);
 
   // Toast JSX
@@ -397,7 +384,7 @@ const useCopyWithToast = () => {
     </div>
   ) : null;
 
-  return { copyToClipboard, Toast };
+  return { copyToClipboard: copyToClipboardWithToast, Toast };
 };
 
 /**
@@ -582,6 +569,14 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   } | null>(null);
   const messageRef = useRef<HTMLDivElement>(null);
   const { Toast } = useCopyWithToast();
+  
+  // Use the smooth scroll hook for better streaming behavior
+  const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
+    debounceMs: 150,
+    behavior: 'smooth',
+    block: 'end',
+    adaptiveScrolling: true
+  });
 
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
@@ -630,12 +625,30 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     return '';
   };
 
-  // Auto-scroll effect for streaming messages
+  // Improved auto-scroll effect for streaming messages with better responsiveness
   useEffect(() => {
-    if (message.metadata?.isStreaming && messageRef.current) {
-      messageRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (!messageRef.current || message.role !== 'assistant') return;
+    
+    const isStreaming = message.metadata?.isStreaming;
+    const contentLength = message.content.length;
+    
+    if (isStreaming) {
+      if (contentLength < 20) {
+        // Scroll immediately when streaming starts
+        scrollToElementImmediate(messageRef.current);
+      } else {
+        // Use adaptive debounced scroll during streaming
+        scrollToElementDebounced(messageRef.current, 150);
+      }
+    } else if (contentLength > 0) {
+      // Scroll immediately when streaming completes
+      setTimeout(() => {
+        if (messageRef.current) {
+          scrollToElementImmediate(messageRef.current);
+        }
+      }, 50);
     }
-  }, [message.content, message.metadata?.isStreaming]);
+  }, [message.metadata?.isStreaming, message.content.length, message.role, scrollToElementDebounced, scrollToElementImmediate]);
 
   const handleArtifactToggle = (artifactId: string) => {
     setExpandedArtifacts(prev => ({

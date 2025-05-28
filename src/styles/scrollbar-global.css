@@ -1,0 +1,129 @@
+/* Global Scrollbar Hiding for Clara Application */
+/* This file ensures no scrollbars are visible anywhere in the application */
+
+/* Universal scrollbar hiding - applies to all elements */
+* {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* Internet Explorer 10+ */
+}
+
+*::-webkit-scrollbar {
+  display: none !important; /* Safari, Chrome, and other WebKit browsers */
+}
+
+/* Specific targeting for common scrollable elements */
+html, body {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+html::-webkit-scrollbar, 
+body::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Target all overflow classes used by Tailwind CSS */
+.overflow-auto,
+.overflow-x-auto,
+.overflow-y-auto,
+.overflow-scroll,
+.overflow-x-scroll,
+.overflow-y-scroll {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.overflow-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Target common HTML elements that might have scrollbars */
+div, section, article, main, aside, nav, header, footer,
+ul, ol, li, table, tbody, thead, tr, td, th,
+textarea, pre, code, iframe, form, fieldset,
+.container, .content, .wrapper, .panel, .sidebar,
+.modal, .dialog, .dropdown, .menu, .list {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+div::-webkit-scrollbar, section::-webkit-scrollbar, article::-webkit-scrollbar,
+main::-webkit-scrollbar, aside::-webkit-scrollbar, nav::-webkit-scrollbar,
+header::-webkit-scrollbar, footer::-webkit-scrollbar, ul::-webkit-scrollbar,
+ol::-webkit-scrollbar, li::-webkit-scrollbar, table::-webkit-scrollbar,
+tbody::-webkit-scrollbar, thead::-webkit-scrollbar, tr::-webkit-scrollbar,
+td::-webkit-scrollbar, th::-webkit-scrollbar, textarea::-webkit-scrollbar,
+pre::-webkit-scrollbar, code::-webkit-scrollbar, iframe::-webkit-scrollbar,
+form::-webkit-scrollbar, fieldset::-webkit-scrollbar,
+.container::-webkit-scrollbar, .content::-webkit-scrollbar,
+.wrapper::-webkit-scrollbar, .panel::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar, .modal::-webkit-scrollbar,
+.dialog::-webkit-scrollbar, .dropdown::-webkit-scrollbar,
+.menu::-webkit-scrollbar, .list::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Target React and framework-specific containers */
+#root, #app, .app, .react-app,
+[data-reactroot], [data-react-helmet] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+#root::-webkit-scrollbar, #app::-webkit-scrollbar,
+.app::-webkit-scrollbar, .react-app::-webkit-scrollbar,
+[data-reactroot]::-webkit-scrollbar, [data-react-helmet]::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Target Clara-specific components */
+[class*="clara"], [id*="clara"],
+[class*="chat"], [id*="chat"],
+[class*="sidebar"], [id*="sidebar"],
+[class*="dashboard"], [id*="dashboard"] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+[class*="clara"]::-webkit-scrollbar, [id*="clara"]::-webkit-scrollbar,
+[class*="chat"]::-webkit-scrollbar, [id*="chat"]::-webkit-scrollbar,
+[class*="sidebar"]::-webkit-scrollbar, [id*="sidebar"]::-webkit-scrollbar,
+[class*="dashboard"]::-webkit-scrollbar, [id*="dashboard"]::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Utility class for explicit scrollbar hiding */
+.no-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Override any third-party library scrollbars */
+.monaco-editor .monaco-scrollable-element > .scrollbar,
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider,
+.CodeMirror-scrollbar-filler,
+.CodeMirror-gutter-filler,
+.CodeMirror-hscrollbar,
+.CodeMirror-vscrollbar {
+  display: none !important;
+}
+
+/* Ensure scroll functionality is maintained */
+.scroll-container {
+  overflow: auto;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.scroll-container::-webkit-scrollbar {
+  display: none !important;
+} 

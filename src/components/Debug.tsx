@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Terminal, Send, RefreshCw, CheckCircle2, XCircle, Copy, CheckCheck, ImagePlus, X, Image as ImageIcon } from 'lucide-react';
 import { OllamaClient } from '../utils';
 import { db } from '../db';
+import ErrorTester from './ErrorTester';
 
 interface UploadedImage {
   id: string;
@@ -288,6 +289,11 @@ Environment="OLLAMA_ORIGINS=*"`;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Error Testing Panel - Development Only */}
+      {import.meta.env.DEV && (
+        <ErrorTester />
+      )}
+      
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <Terminal className="w-6 h-6 text-sakura-500" />

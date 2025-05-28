@@ -420,10 +420,7 @@ const Settings = () => {
         </div>
 
         {/* Content area */}
-        <div className="flex-1 space-y-6 py-2 pb-6 max-w-4xl overflow-y-auto overflow-x-hidden scrollbar-none" style={{
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none'
-        }}>
+        <div className="flex-1 space-y-6 py-2 pb-6 max-w-4xl overflow-y-auto overflow-x-hidden">
           {/* Personal Information Tab */}
           {activeTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">

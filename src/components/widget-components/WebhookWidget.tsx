@@ -92,7 +92,7 @@ const WebhookWidget: React.FC<WebhookWidgetProps> = ({ id, name, url, onRemove }
         {url}
       </div>
       
-      <div className="flex-grow overflow-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+      <div className="flex-grow overflow-auto">
         <div className="text-xs sm:text-sm text-gray-800 dark:text-gray-200 min-h-0">
           {loading && (
             <div className="flex items-center justify-center py-4">

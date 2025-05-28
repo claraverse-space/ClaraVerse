@@ -1,6 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
 @import 'prismjs/themes/prism.css';
 @import 'prismjs/themes/prism-dark.css';
+
+/* Import global scrollbar hiding first to ensure it takes precedence */
+@import './styles/scrollbar-global.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -148,7 +152,7 @@
   width: auto;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - Global hiding with optional thin scrollbar utility */
 .scrollbar-thin {
   scrollbar-width: thin;
 }
@@ -163,6 +167,26 @@
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
   @apply bg-gray-400/50 dark:bg-gray-600/50 rounded-full;
+}
+
+/* Global scrollbar hiding - Override any existing scrollbar styles */
+* {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari and Opera */
+}
+
+/* Hide scrollbar but maintain functionality - Enhanced version */
+.scrollbar-none {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari and Opera */
 }
 
 /* Smooth scrolling */
@@ -338,16 +362,6 @@ textarea {
 .sidebar-expanded .sidebar-icon,
 .glassmorphic:hover .sidebar-icon {
   opacity: 1;
-}
-
-/* Hide scrollbar but maintain functionality */
-.scrollbar-none {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
-}
-
-.scrollbar-none::-webkit-scrollbar {
-  display: none; /* Chrome, Safari and Opera */
 }
 
 /* Enhanced prose styling for markdown content */

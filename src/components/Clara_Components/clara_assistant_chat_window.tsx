@@ -25,7 +25,12 @@ import {
   Search,
   Bot,
   ArrowDown,
-  RefreshCw
+  RefreshCw,
+  Loader2,
+  Brain,
+  CheckCircle,
+  XCircle,
+  AlertCircle
 } from 'lucide-react';
 
 // Import types and components
@@ -35,6 +40,7 @@ import {
   ClaraProcessingState
 } from '../../types/clara_assistant_types';
 import ClaraMessageBubble from './clara_assistant_message_bubble';
+import { useSmoothScroll } from '../../hooks/useSmoothScroll';
 
 /**
  * Welcome screen component displayed when there are no messages
@@ -150,6 +156,54 @@ const WelcomeScreen: React.FC<{
 };
 
 /**
+ * Loading screen component displayed when Clara is initializing
+ */
+const LoadingScreen: React.FC<{
+  userName?: string;
+}> = ({ userName }) => {
+  return (
+    <div className="flex items-center justify-center h-full p-8">
+      <div className="max-w-md text-center">
+        {/* Loading Animation */}
+        <div className="w-20 h-20 bg-gradient-to-br from-purple-500 via-pink-500 to-sakura-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg animate-pulse">
+          <Bot className="w-10 h-10 text-white" />
+        </div>
+        
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+          Initializing Clara...
+        </h2>
+        
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          {userName ? `Welcome back, ${userName}! ` : ''}
+          Setting up your AI assistant and loading your chat history.
+        </p>
+
+        {/* Loading Steps */}
+        <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-2 h-2 bg-sakura-500 rounded-full animate-bounce"></div>
+            <span>Loading chat sessions...</span>
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <span>Initializing AI models...</span>
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <span>Preparing workspace...</span>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-6 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+          <div className="bg-gradient-to-r from-purple-500 to-sakura-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Scroll to bottom button
  */
 const ScrollToBottomButton: React.FC<{
@@ -225,6 +279,7 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
   messages,
   userName,
   isLoading = false,
+  isInitializing = false,
   onRetryMessage,
   onCopyMessage,
   onEditMessage
@@ -235,20 +290,46 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [processingState, setProcessingState] = useState<ClaraProcessingState>('idle');
 
+  // Use the smooth scroll hook for better streaming behavior
+  const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
+    debounceMs: 150,
+    behavior: 'smooth',
+    block: 'end'
+  });
+
   // Auto-scroll to bottom when new messages arrive (if user is near bottom)
   const scrollToBottom = useCallback((force = false) => {
-    if (messagesEndRef.current && (isNearBottom || force)) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'end' 
-      });
+    if (!messagesEndRef.current) return;
+    
+    if (force || isNearBottom) {
+      scrollToElementImmediate(messagesEndRef.current);
     }
-  }, [isNearBottom]);
+  }, [isNearBottom, scrollToElementImmediate]);
 
-  // Effect to handle auto-scrolling
+  // Effect to handle auto-scrolling - improved for streaming
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, scrollToBottom]);
+    const lastMessage = messages[messages.length - 1];
+    const isStreaming = lastMessage?.metadata?.isStreaming;
+    
+    if (isStreaming) {
+      // During streaming, use shorter debounce for better responsiveness
+      if (messagesEndRef.current) {
+        scrollToElementDebounced(messagesEndRef.current, 250);
+      }
+    } else {
+      // For new messages or when streaming ends, scroll immediately
+      scrollToBottom();
+    }
+  }, [messages.length, scrollToBottom, scrollToElementDebounced]);
+
+  // Additional effect to handle streaming content updates with moderate debounce
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.metadata?.isStreaming && lastMessage.content && messagesEndRef.current) {
+      // Use moderate debounce for content updates during streaming
+      scrollToElementDebounced(messagesEndRef.current, 300);
+    }
+  }, [messages[messages.length - 1]?.content, scrollToElementDebounced]);
 
   // Handle scroll events to show/hide scroll button
   const handleScroll = useCallback(() => {
@@ -314,8 +395,10 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
       style={{ scrollBehavior: 'smooth' }}
     >
       <div className="max-w-4xl mx-auto">
-        {/* Welcome screen when no messages */}
-        {messages.length === 0 ? (
+        {/* Loading screen when Clara is initializing */}
+        {isInitializing ? (
+          <LoadingScreen userName={userName} />
+        ) : /* Welcome screen when no messages */ messages.length === 0 ? (
           <WelcomeScreen userName={userName} />
         ) : (
           <div className="space-y-5">

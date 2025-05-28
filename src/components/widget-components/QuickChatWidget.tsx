@@ -205,7 +205,7 @@ const QuickChatWidget: React.FC<QuickChatWidgetProps> = ({ id, onRemove }) => {
         </div>
       ) : (
         <div className="flex-grow flex flex-col min-h-0">
-          <div className="flex-grow overflow-y-auto space-y-2 sm:space-y-3 mb-3 sm:mb-4 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+          <div className="flex-grow overflow-y-auto space-y-2 sm:space-y-3 mb-3 sm:mb-4">
             {messages.map((message, index) => (
               <div
                 key={index}

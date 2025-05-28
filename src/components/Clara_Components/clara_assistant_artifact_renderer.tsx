@@ -28,8 +28,11 @@ import {
   Maximize2,
   Minimize2,
   Play,
-  Square
+  Square,
+  Image as ImageIcon
 } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Import types
 import { 
@@ -37,6 +40,7 @@ import {
   ClaraArtifactRendererProps,
   ClaraArtifactType 
 } from '../../types/clara_assistant_types';
+import { copyToClipboard } from '../../utils/clipboard';
 
 /**
  * Simple syntax highlighter for code blocks
@@ -289,13 +293,11 @@ const ClaraArtifactRenderer: React.FC<ClaraArtifactRendererProps> = ({
   };
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(artifact.content);
+    const success = await copyToClipboard(artifact.content);
+    if (success) {
       setCopied(true);
       onCopy?.(artifact.content);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy artifact content:', error);
     }
   };
 

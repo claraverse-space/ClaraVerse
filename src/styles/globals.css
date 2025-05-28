@@ -6,6 +6,16 @@
   height: 100%;
 }
 
+/* Global scrollbar hiding - Apply to all scrollable elements */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
 /* Scrollbar hiding utilities */
 .scrollbar-none {
   scrollbar-width: none; /* Firefox */
@@ -17,14 +27,39 @@
 }
 
 /* Hide scrollbars globally for specific containers */
-.overflow-y-auto.scrollbar-none,
-.overflow-auto.scrollbar-none {
+.overflow-y-auto,
+.overflow-auto,
+.overflow-x-auto,
+.overflow-y-scroll,
+.overflow-x-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.overflow-y-auto.scrollbar-none::-webkit-scrollbar,
-.overflow-auto.scrollbar-none::-webkit-scrollbar {
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbars for common HTML elements */
+html, body, div, section, article, main, aside, nav, header, footer,
+ul, ol, li, table, tbody, thead, tr, td, th,
+textarea, pre, code, iframe {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar, body::-webkit-scrollbar, div::-webkit-scrollbar,
+section::-webkit-scrollbar, article::-webkit-scrollbar, main::-webkit-scrollbar,
+aside::-webkit-scrollbar, nav::-webkit-scrollbar, header::-webkit-scrollbar,
+footer::-webkit-scrollbar, ul::-webkit-scrollbar, ol::-webkit-scrollbar,
+li::-webkit-scrollbar, table::-webkit-scrollbar, tbody::-webkit-scrollbar,
+thead::-webkit-scrollbar, tr::-webkit-scrollbar, td::-webkit-scrollbar,
+th::-webkit-scrollbar, textarea::-webkit-scrollbar, pre::-webkit-scrollbar,
+code::-webkit-scrollbar, iframe::-webkit-scrollbar {
   display: none;
 }
 

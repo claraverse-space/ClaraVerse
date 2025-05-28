@@ -19,14 +19,21 @@ class MCPService {
         this.config = JSON.parse(configData);
       } else {
         this.config = {
-          mcpServers: {}
+          mcpServers: {},
+          lastRunningServers: [] // Track which servers were running when app was closed
         };
         this.saveConfig();
+      }
+      
+      // Ensure lastRunningServers exists for backward compatibility
+      if (!this.config.lastRunningServers) {
+        this.config.lastRunningServers = [];
       }
     } catch (error) {
       log.error('Error loading MCP config:', error);
       this.config = {
-        mcpServers: {}
+        mcpServers: {},
+        lastRunningServers: []
       };
     }
   }
@@ -40,24 +47,39 @@ class MCPService {
   }
 
   async addServer(serverConfig) {
-    const { name, type, command, args, env, description } = serverConfig;
+    const { name, type, command, args, env, description, url, headers } = serverConfig;
     
     if (this.config.mcpServers[name]) {
       throw new Error(`MCP server '${name}' already exists`);
     }
 
+    const serverType = type || 'stdio';
+    
+    // Validate required fields based on server type
+    if (serverType === 'remote') {
+      if (!url) {
+        throw new Error('URL is required for remote MCP servers');
+      }
+    } else if (serverType === 'stdio') {
+      if (!command) {
+        throw new Error('Command is required for stdio MCP servers');
+      }
+    }
+
     this.config.mcpServers[name] = {
-      type: type || 'stdio',
+      type: serverType,
       command,
       args: args || [],
       env: env || {},
+      url,
+      headers: headers || {},
       description: description || '',
       enabled: true,
       createdAt: new Date().toISOString()
     };
 
     this.saveConfig();
-    log.info(`Added MCP server: ${name}`);
+    log.info(`Added MCP server: ${name} (type: ${serverType})`);
     return true;
   }
 
@@ -226,6 +248,34 @@ class MCPService {
     }
 
     try {
+      // Handle remote servers differently
+      if (serverConfig.type === 'remote') {
+        log.info(`Connecting to remote MCP server: ${name} at ${serverConfig.url}`);
+        
+        // Test the connection to the remote server
+        const response = await fetch(serverConfig.url, {
+          method: 'GET',
+          headers: serverConfig.headers || {}
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Remote server not accessible: HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const serverInfo = {
+          name,
+          config: serverConfig,
+          startedAt: new Date(),
+          status: 'running',
+          type: 'remote'
+        };
+        
+        this.servers.set(name, serverInfo);
+        log.info(`Connected to remote MCP server: ${name}`);
+        return serverInfo;
+      }
+      
+      // Handle stdio servers (existing logic)
       const { command, args = [], env = {} } = serverConfig;
       
       // Check if command exists before trying to start
@@ -257,7 +307,8 @@ class MCPService {
         name,
         config: serverConfig,
         startedAt: new Date(),
-        status: 'starting'
+        status: 'starting',
+        type: 'stdio'
       };
 
       this.servers.set(name, serverInfo);
@@ -310,6 +361,14 @@ class MCPService {
     try {
       log.info(`Stopping MCP server: ${name}`);
       
+      // Handle remote servers differently
+      if (serverInfo.type === 'remote') {
+        this.servers.delete(name);
+        log.info(`Disconnected from remote MCP server: ${name}`);
+        return true;
+      }
+      
+      // Handle stdio servers (existing logic)
       // Send SIGTERM first
       serverInfo.process.kill('SIGTERM');
       
@@ -467,6 +526,15 @@ class MCPService {
   getServerTemplates() {
     return [
       {
+        name: 'remote-server',
+        displayName: 'Remote MCP Server',
+        description: 'Connect to a remote MCP server via HTTP',
+        type: 'remote',
+        url: 'http://localhost:3000/mcp',
+        headers: {},
+        category: 'Remote'
+      },
+      {
         name: 'filesystem',
         displayName: 'File System',
         description: 'Access and manipulate files and directories',
@@ -538,6 +606,75 @@ class MCPService {
           GITHUB_PERSONAL_ACCESS_TOKEN: 'your-github-token'
         }
       },
+      {
+        name: 'figma',
+        displayName: 'Figma',
+        description: 'Read, comment and analyse Figma designs',
+        command: 'npx',
+        args: ['figma-mcp'],
+        type: 'stdio',
+        category: 'Design',
+        env: {
+          FIGMA_API_KEY: 'your-figma-api-key'
+        }
+      },
+      {
+        name: 'everything',
+        displayName: 'Everything (Demo)',
+        description: 'Showcase server exercising all MCP features',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-everything'],
+        type: 'stdio',
+        category: 'Demo'
+      },
+      {
+        name: 'memory',
+        displayName: 'Persistent Memory',
+        description: 'Knowledge-graph based long-term memory store',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-memory'],
+        type: 'stdio',
+        category: 'AI'
+      },
+      {
+        name: 'sequential-thinking',
+        displayName: 'Sequential Thinking',
+        description: 'Structured multi-step reasoning tools',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-sequential-thinking'],
+        type: 'stdio',
+        category: 'AI'
+      },
+      {
+        name: 'searxng',
+        displayName: 'SearxNG Search',
+        description: 'Privacy-focused meta-search through SearxNG',
+        command: 'npx',
+        args: ['mcp-searxng'],
+        type: 'stdio',
+        category: 'Search',
+        env: {
+          SEARXNG_URL: 'http://localhost:8080'
+        }
+      },
+      {
+        name: 'hyper-shell',
+        displayName: 'Shell Access',
+        description: 'Secure shell and OS-level command execution',
+        command: 'npx',
+        args: ['hyper-mcp-shell'],
+        type: 'stdio',
+        category: 'System'
+      },
+      {
+        name: 'sqlite',
+        displayName: 'SQLite Database',
+        description: 'Query and manipulate SQLite databases',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-sqlite', '/path/to/database.db'],
+        type: 'stdio',
+        category: 'Database'
+      },  
       {
         name: 'slack',
         displayName: 'Slack',
@@ -615,8 +752,12 @@ class MCPService {
         return await this.listToolsFromServer(serverName, callId);
       }
 
-      // For now, we'll implement basic MCP protocol communication
-      // This is a simplified implementation - a full MCP client would handle the complete protocol
+      // Handle remote servers differently
+      if (serverInfo.type === 'remote') {
+        return await this.executeRemoteToolCall(serverInfo, toolName, args, callId);
+      }
+
+      // For stdio servers, use the existing implementation
       const mcpRequest = {
         jsonrpc: '2.0',
         id: callId,
@@ -762,6 +903,60 @@ class MCPService {
         };
       }
 
+      // Handle remote servers differently
+      if (serverInfo.type === 'remote') {
+        const mcpRequest = {
+          jsonrpc: '2.0',
+          id: callId,
+          method: 'tools/list',
+          params: {}
+        };
+
+        log.info(`[${serverName}] Sending remote tools/list request:`, mcpRequest);
+
+        const response = await fetch(serverInfo.config.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...serverInfo.config.headers
+          },
+          body: JSON.stringify(mcpRequest)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const responseData = await response.json();
+        log.info(`[${serverName}] Remote tools/list response:`, responseData);
+
+        if (responseData.error) {
+          return {
+            callId,
+            success: false,
+            error: responseData.error.message || 'Failed to list tools'
+          };
+        }
+
+        const tools = responseData.result?.tools || [];
+        return {
+          callId,
+          success: true,
+          content: [{ 
+            type: 'json', 
+            text: JSON.stringify(tools),
+            data: tools 
+          }],
+          metadata: {
+            server: serverName,
+            tool: 'tools/list',
+            executedAt: new Date().toISOString(),
+            type: 'remote'
+          }
+        };
+      }
+
+      // Handle stdio servers (existing logic)
       const mcpRequest = {
         jsonrpc: '2.0',
         id: callId,
@@ -814,7 +1009,8 @@ class MCPService {
                       metadata: {
                         server: serverName,
                         tool: 'tools/list',
-                        executedAt: new Date().toISOString()
+                        executedAt: new Date().toISOString(),
+                        type: 'stdio'
                       }
                     });
                   }
@@ -862,6 +1058,117 @@ class MCPService {
         error: error.message || 'Unknown error occurred'
       };
     }
+  }
+
+  // Execute tool call on remote MCP server
+  async executeRemoteToolCall(serverInfo, toolName, args, callId) {
+    try {
+      const { config } = serverInfo;
+      const mcpRequest = {
+        jsonrpc: '2.0',
+        id: callId,
+        method: 'tools/call',
+        params: {
+          name: toolName,
+          arguments: args
+        }
+      };
+
+      log.info(`[${serverInfo.name}] Sending remote MCP request:`, mcpRequest);
+
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...config.headers
+        },
+        body: JSON.stringify(mcpRequest)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const responseData = await response.json();
+      log.info(`[${serverInfo.name}] Remote MCP response:`, responseData);
+
+      if (responseData.error) {
+        return {
+          callId,
+          success: false,
+          error: responseData.error.message || 'Remote MCP tool execution failed'
+        };
+      }
+
+      return {
+        callId,
+        success: true,
+        content: responseData.result?.content || [{ type: 'text', text: JSON.stringify(responseData.result) }],
+        metadata: {
+          server: serverInfo.name,
+          tool: toolName,
+          executedAt: new Date().toISOString(),
+          type: 'remote'
+        }
+      };
+
+    } catch (error) {
+      log.error(`Error executing remote MCP tool call:`, error);
+      return {
+        callId,
+        success: false,
+        error: error.message || 'Remote MCP tool execution failed'
+      };
+    }
+  }
+
+  /**
+   * Save the current running state of all servers
+   */
+  saveRunningState() {
+    try {
+      this.config.lastRunningServers = Array.from(this.servers.keys());
+      this.saveConfig();
+      log.info(`Saved running state: ${this.config.lastRunningServers.length} servers were running`);
+    } catch (error) {
+      log.error('Error saving running state:', error);
+    }
+  }
+
+  /**
+   * Start all servers that were running when the app was last closed
+   */
+  async startPreviouslyRunningServers() {
+    const results = [];
+    const previouslyRunning = this.config.lastRunningServers || [];
+    
+    log.info(`Attempting to restore ${previouslyRunning.length} previously running servers:`, previouslyRunning);
+    
+    for (const serverName of previouslyRunning) {
+      // Check if the server still exists in config
+      if (!this.config.mcpServers[serverName]) {
+        log.warn(`Previously running server '${serverName}' no longer exists in config`);
+        continue;
+      }
+      
+      // Check if the server is enabled
+      if (!this.config.mcpServers[serverName].enabled) {
+        log.info(`Previously running server '${serverName}' is now disabled, skipping`);
+        continue;
+      }
+      
+      try {
+        await this.startServer(serverName);
+        results.push({ name: serverName, success: true });
+        log.info(`Successfully restored server: ${serverName}`);
+      } catch (error) {
+        log.error(`Failed to restore MCP server '${serverName}':`, error);
+        results.push({ name: serverName, success: false, error: error.message });
+      }
+    }
+    
+    log.info(`Restored ${results.filter(r => r.success).length}/${previouslyRunning.length} previously running servers`);
+    return results;
   }
 }
 

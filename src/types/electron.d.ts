@@ -81,6 +81,8 @@ declare global {
       getTemplates: () => Promise<MCPServerTemplate[]>;
       startAllEnabled: () => Promise<{ name: string; success: boolean; error?: string }[]>;
       stopAll: () => Promise<{ name: string; success: boolean; error?: string }[]>;
+      startPreviouslyRunning: () => Promise<{ name: string; success: boolean; error?: string }[]>;
+      saveRunningState: () => Promise<boolean>;
       importClaudeConfig: (configPath: string) => Promise<{ imported: number; errors: any[] }>;
       executeToolCall: (toolCall: any) => Promise<any>;
       diagnoseNode: () => Promise<{

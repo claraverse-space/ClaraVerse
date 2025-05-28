@@ -77,6 +77,22 @@
   }
 }
 
+/* Blob animation for error page background */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.6s ease-out forwards;
 }
@@ -105,6 +121,11 @@
   animation: slideInLeft 0.5s ease-out forwards;
 }
 
+/* Blob animation class */
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
 /* Animation delays */
 .delay-100 {
   animation-delay: 100ms;
@@ -124,6 +145,19 @@
 
 .delay-500 {
   animation-delay: 500ms;
+}
+
+/* Additional animation delays for blob effects */
+.animation-delay-1000 {
+  animation-delay: 1000ms;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2000ms;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4000ms;
 }
 
 /* Glassmorphic effect */

@@ -48,7 +48,7 @@ interface MCPServerTemplate {
   displayName: string;
   description: string;
   command: string;
-  args: string[];
+  args?: string[];
   type: 'stdio' | 'remote';
   category: string;
   env?: Record<string, string>;
@@ -232,6 +232,13 @@ const MCPSettings: React.FC = () => {
       // Refresh servers list
       const servers = await window.mcpService.getServers();
       setMcpServers(servers);
+      
+      // Save the current running state after any server action
+      try {
+        await window.mcpService.saveRunningState();
+      } catch (saveError) {
+        console.warn('Failed to save running state:', saveError);
+      }
     } catch (error) {
       console.error(`Error ${action}ing MCP server:`, error);
       alert(`Failed to ${action} MCP server. Please try again.`);
@@ -414,7 +421,7 @@ const MCPSettings: React.FC = () => {
       name: template.name,
       type: template.type,
       command: template.command,
-      args: template.args,
+      args: template.args || [],
       env: template.env || {},
       url: '',
       headers: {},
@@ -516,13 +523,13 @@ const MCPSettings: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
+              {/* <button
                 onClick={handleImportClaudeConfig}
                 className="px-4 py-2 bg-sakura-400 text-white rounded-lg hover:bg-sakura-500 transition-colors flex items-center gap-2"
               >
                 <Upload className="w-4 h-4" />
                 Import Claude Config
-              </button>
+              </button> */}
               <button
                 onClick={() => {
                   setEditingMcpServer(null);
@@ -698,14 +705,14 @@ const MCPSettings: React.FC = () => {
                     </div>
 
                     {/* Tools List - Show when test results include tools */}
-                    {mcpTestResults[server.name]?.tools && mcpTestResults[server.name]?.tools?.length > 0 && (
+                    {(mcpTestResults[server.name]?.tools?.length ?? 0) > 0 && (
                       <div className="mt-4 p-4 bg-green-50/50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                         <h5 className="text-sm font-medium text-green-800 dark:text-green-300 mb-3 flex items-center gap-2">
                           <CheckCircle className="w-4 h-4" />
                           Available Tools ({mcpTestResults[server.name]?.tools?.length || 0})
                         </h5>
                         <div className="space-y-3">
-                          {mcpTestResults[server.name]?.tools?.map((tool, index) => (
+                          {(mcpTestResults[server.name]?.tools || []).map((tool, index) => (
                             <div key={index} className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-green-200/50 dark:border-green-700/50">
                               <div className="flex items-start gap-3">
                                 <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
@@ -993,7 +1000,7 @@ const MCPSettings: React.FC = () => {
                   {template.description}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-2">
-                  {template.command} {template.args.join(' ')}
+                  {template.command} {template.args?.join(' ') || ''}
                 </p>
               </div>
             ))}
@@ -1198,7 +1205,11 @@ const MCPSettings: React.FC = () => {
               </button>
               <button
                 onClick={editingMcpServer ? handleUpdateMcpServer : handleAddMcpServer}
-                disabled={!newMcpServerForm.name.trim() || (!newMcpServerForm.command.trim() && newMcpServerForm.type === 'stdio') || (!newMcpServerForm.url.trim() && newMcpServerForm.type === 'remote')}
+                disabled={
+                  !newMcpServerForm.name?.trim() || 
+                  (newMcpServerForm.type === 'stdio' && !newMcpServerForm.command?.trim()) || 
+                  (newMcpServerForm.type === 'remote' && !newMcpServerForm.url?.trim())
+                }
                 className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
                 <Check className="w-4 h-4" />

@@ -361,8 +361,8 @@ export interface ClaraAIConfig {
   /** Model configurations for different tasks */
   models: {
     text: string;
-    vision: string;
-    code: string;
+    vision?: string;
+    code?: string;
   };
   
   /** Model parameters */
@@ -384,10 +384,30 @@ export interface ClaraAIConfig {
   };
   
   /** MCP configuration */
-  mcp?: ClaraMCPConfig;
+  mcp?: {
+    enableTools: boolean;
+    enableResources: boolean;
+    enabledServers: string[];
+    autoDiscoverTools: boolean;
+    maxToolCalls: number;
+  };
     
   /** Autonomous agent configuration */
-  autonomousAgent?: ClaraAutonomousAgentConfig;
+  autonomousAgent?: {
+    enabled: boolean;
+    maxRetries: number;
+    retryDelay: number;
+    enableSelfCorrection: boolean;
+    enableToolGuidance: boolean;
+    enableProgressTracking: boolean;
+    maxToolCalls: number;
+    confidenceThreshold: number;
+    enableChainOfThought: boolean;
+    enableErrorLearning: boolean;
+  };
+  
+  /** Context window size */
+  contextWindow?: number;
 }
 
 /**
@@ -395,7 +415,7 @@ export interface ClaraAIConfig {
  */
 export interface ClaraSessionConfig {
   /** AI configuration */
-  aiConfig?: ClaraAIConfig;
+  aiConfig: ClaraAIConfig;
   
   /** Legacy: AI model preferences */
   modelPreferences?: {
@@ -418,6 +438,9 @@ export interface ClaraSessionConfig {
   
   /** Custom system prompt */
   systemPrompt?: string;
+  
+  /** Number of messages to include in conversation history */
+  contextWindow?: number;
 }
 
 // ================================
@@ -436,6 +459,9 @@ export interface ClaraChatWindowProps {
   
   /** Whether Clara is currently processing */
   isLoading?: boolean;
+  
+  /** Whether Clara is initializing (loading sessions, providers, etc.) */
+  isInitializing?: boolean;
   
   /** Callback when user wants to retry a message */
   onRetryMessage?: (messageId: string) => void;

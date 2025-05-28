@@ -6,18 +6,24 @@ interface ClaraSidebarProps {
   sessions?: ClaraChatSession[];
   currentSessionId?: string;
   isLoading?: boolean;
+  isLoadingMore?: boolean;
+  hasMoreSessions?: boolean;
   onSelectSession?: (sessionId: string) => void;
   onNewChat?: () => void;
   onSessionAction?: (sessionId: string, action: 'star' | 'archive' | 'delete') => void;
+  onLoadMore?: () => void;
 }
 
 const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   sessions = [],
   currentSessionId,
   isLoading = false,
+  isLoadingMore = false,
+  hasMoreSessions = false,
   onSelectSession = () => {},
   onNewChat = () => {},
-  onSessionAction = () => {}
+  onSessionAction = () => {},
+  onLoadMore = () => {}
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [filter, setFilter] = useState<'all' | 'starred' | 'archived'>('all');
@@ -65,6 +71,18 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
     const preview = lastMessage.content.slice(0, 50);
     return preview + (lastMessage.content.length > 50 ? '...' : '');
   };
+
+  // Skeleton loading component
+  const SessionSkeleton = () => (
+    <div className="flex items-start gap-3 py-3 rounded-lg px-3 animate-pulse">
+      <div className="w-5 h-5 bg-gray-300 dark:bg-gray-600 rounded flex-shrink-0 mt-0.5"></div>
+      <div className="flex-1 min-w-0">
+        <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-3/4 mb-2"></div>
+        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full mb-1"></div>
+        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -125,10 +143,13 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
 
           {/* Chat History List */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
+          <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                Loading chats...
+              <div className="px-2 space-y-1">
+                {/* Show skeleton loaders while loading */}
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <SessionSkeleton key={index} />
+                ))}
               </div>
             ) : filteredSessions.length === 0 ? (
               <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
@@ -200,14 +221,40 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
                             <span>•</span>
                             <span>{getMessageCount(session)} messages</span>
                           </div>
-                          {session.isStarred && (
-                            <Star className="w-3 h-3 text-yellow-500 fill-current" />
-                          )}
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
+                
+                {/* Load More Button */}
+                {hasMoreSessions && (
+                  <div className="px-3 py-2">
+                    <button
+                      onClick={onLoadMore}
+                      disabled={isLoadingMore}
+                      className="w-full py-2 px-4 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoadingMore ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                          Loading more...
+                        </div>
+                      ) : (
+                        'Load more chats'
+                      )}
+                    </button>
+                  </div>
+                )}
+                
+                {/* Loading more skeleton */}
+                {isLoadingMore && (
+                  <div className="space-y-1">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <SessionSkeleton key={`loading-${index}`} />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
