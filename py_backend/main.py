@@ -29,6 +29,9 @@ from langchain_community.document_loaders import TextLoader  # Fixed import
 # Import Speech2Text
 from Speech2Text import Speech2Text
 
+# Import Text2Speech
+from Text2Speech import Text2Speech
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -251,6 +254,23 @@ def get_speech2text():
     
     return speech2text_instance
 
+# Text2Speech instance cache
+text2speech_instance = None
+
+def get_text2speech():
+    """Create or retrieve the Text2Speech instance from cache"""
+    global text2speech_instance
+    
+    if text2speech_instance is None:
+        # Use auto engine selection for maximum compatibility
+        text2speech_instance = Text2Speech(
+            engine="auto",
+            language="en",
+            slow=False
+        )
+    
+    return text2speech_instance
+
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
     query: str
@@ -268,6 +288,12 @@ class SearchRequest(BaseModel):
 class CollectionCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+class TTSRequest(BaseModel):
+    text: str
+    language: Optional[str] = "en"
+    engine: Optional[str] = None  # "gtts", "pyttsx3", or None for current engine
+    slow: Optional[bool] = False
 
 @app.get("/")
 def read_root():
@@ -851,6 +877,157 @@ async def transcribe_audio(
         logger.error(f"Error transcribing audio: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error transcribing audio: {str(e)}")
+
+# Text-to-Speech endpoints
+@app.post("/synthesize")
+async def synthesize_text(request: TTSRequest):
+    """Synthesize text to speech and return audio as bytes"""
+    try:
+        # Validate text input
+        if not request.text or not request.text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        
+        # Get Text2Speech instance
+        t2s = get_text2speech()
+        
+        # Update settings if provided
+        if request.language and request.language != t2s.language:
+            t2s.set_language(request.language)
+        
+        if request.slow is not None:
+            t2s.set_speed(request.slow)
+        
+        # If a specific engine is requested and different from current
+        if request.engine and request.engine != t2s.engine:
+            # Create a new instance with the requested engine
+            t2s = Text2Speech(
+                engine=request.engine,
+                language=request.language or "en",
+                slow=request.slow or False
+            )
+        
+        # Generate speech
+        audio_bytes = t2s.synthesize_to_bytes(request.text.strip())
+        
+        # Return audio as response
+        from fastapi.responses import Response
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "attachment; filename=speech.mp3",
+                "Content-Length": str(len(audio_bytes))
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error synthesizing text: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error synthesizing text: {str(e)}")
+
+@app.post("/synthesize/file")
+async def synthesize_text_to_file(
+    text: str = Form(...),
+    language: Optional[str] = Form("en"),
+    engine: Optional[str] = Form(None),
+    slow: Optional[bool] = Form(False),
+    filename: Optional[str] = Form("speech.mp3")
+):
+    """Synthesize text to speech and return as downloadable file"""
+    try:
+        # Validate text input
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        
+        # Get Text2Speech instance
+        t2s = get_text2speech()
+        
+        # Update settings if provided
+        if language and language != t2s.language:
+            t2s.set_language(language)
+        
+        if slow is not None:
+            t2s.set_speed(slow)
+        
+        # If a specific engine is requested and different from current
+        if engine and engine != t2s.engine:
+            # Create a new instance with the requested engine
+            t2s = Text2Speech(
+                engine=engine,
+                language=language or "en",
+                slow=slow or False
+            )
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # Generate speech to file
+            output_path = t2s.synthesize_to_file(text.strip(), temp_path)
+            
+            # Read the file
+            with open(output_path, 'rb') as f:
+                audio_bytes = f.read()
+            
+            # Clean up temp file
+            os.unlink(output_path)
+            
+            # Return as downloadable file
+            from fastapi.responses import Response
+            return Response(
+                content=audio_bytes,
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Length": str(len(audio_bytes))
+                }
+            )
+            
+        except Exception as e:
+            # Clean up temp file on error
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+            raise e
+        
+    except Exception as e:
+        logger.error(f"Error synthesizing text to file: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error synthesizing text to file: {str(e)}")
+
+@app.get("/tts/languages")
+async def get_tts_languages():
+    """Get available languages for text-to-speech"""
+    try:
+        t2s = get_text2speech()
+        languages = t2s.get_available_languages()
+        
+        return {
+            "engine": t2s.engine,
+            "current_language": t2s.language,
+            "available_languages": languages
+        }
+    except Exception as e:
+        logger.error(f"Error getting TTS languages: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting TTS languages: {str(e)}")
+
+@app.get("/tts/status")
+async def get_tts_status():
+    """Get current TTS engine status and configuration"""
+    try:
+        t2s = get_text2speech()
+        
+        return {
+            "engine": t2s.engine,
+            "language": t2s.language,
+            "slow": t2s.slow,
+            "available_engines": []
+        }
+    except Exception as e:
+        logger.error(f"Error getting TTS status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting TTS status: {str(e)}")
 
 # Handle graceful shutdown
 def handle_exit(signum, frame):

@@ -30,3 +30,7 @@ torch
 transformers
 safetensors
 accelerate
+
+# Text-to-Speech
+gtts
+pyttsx3
