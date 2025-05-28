@@ -29,6 +29,9 @@ import { claraBackgroundService } from '../services/claraBackgroundService';
 import '../utils/clearClaraData';
 import { copyToClipboard } from '../utils/clipboard';
 
+// Import TTS service
+import { claraTTSService } from '../services/claraTTSService';
+
 // Import clipboard test functions for development
 if (process.env.NODE_ENV === 'development') {
   import('../utils/clipboard.test');
@@ -131,6 +134,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const [currentSession, setCurrentSession] = useState<ClaraChatSession | null>(null);
   const [messages, setMessages] = useState<ClaraMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Auto TTS state - track latest AI response for voice synthesis
+  const [latestAIResponse, setLatestAIResponse] = useState<string>('');
+  const [autoTTSTrigger, setAutoTTSTrigger] = useState<{text: string, timestamp: number} | null>(null);
   
   // Session management state
   const [sessions, setSessions] = useState<ClaraChatSession[]>([]);
@@ -402,6 +409,28 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     loadProvidersAndModels();
   }, []);
 
+  // Initialize TTS service
+  useEffect(() => {
+    const initializeTTS = async () => {
+      try {
+        console.log('🔊 Starting TTS service health monitoring...');
+        // Force an initial health check
+        const isHealthy = await claraTTSService.forceHealthCheck();
+        console.log(`✅ TTS service health check complete: ${isHealthy ? 'healthy' : 'unhealthy'}`);
+      } catch (error) {
+        console.warn('⚠️ TTS service health check failed:', error);
+        // TTS is optional, so we don't throw an error
+      }
+    };
+
+    initializeTTS();
+    
+    // Cleanup TTS service on unmount
+    return () => {
+      claraTTSService.destroy();
+    };
+  }, []);
+
   // Create new session
   const createNewSession = useCallback(async (): Promise<ClaraChatSession> => {
     try {
@@ -522,6 +551,13 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       setMessages(prev => prev.map(msg => 
         msg.id === streamingMessageId ? finalMessage : msg
       ));
+
+      // Update latest AI response for auto TTS
+      setLatestAIResponse(finalMessage.content);
+      setAutoTTSTrigger({
+        text: finalMessage.content,
+        timestamp: Date.now()
+      });
 
       // Save AI message to database
       try {
@@ -1307,6 +1343,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             onModelChange={handleModelChange}
             onStop={handleStop}
             onNewChat={handleNewChat}
+            autoTTSText={latestAIResponse}
+            autoTTSTrigger={autoTTSTrigger}
           />
         </div>
 

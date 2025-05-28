@@ -10,7 +10,7 @@ import argparse
 from datetime import datetime
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import shutil
@@ -262,11 +262,13 @@ def get_text2speech():
     global text2speech_instance
     
     if text2speech_instance is None:
-        # Use auto engine selection for maximum compatibility
+        # Initialize with auto engine selection (will prefer Kokoro if available)
         text2speech_instance = Text2Speech(
             engine="auto",
             language="en",
-            slow=False
+            slow=False,
+            voice="af_sarah",
+            speed=1.0
         )
     
     return text2speech_instance
@@ -292,8 +294,10 @@ class CollectionCreate(BaseModel):
 class TTSRequest(BaseModel):
     text: str
     language: Optional[str] = "en"
-    engine: Optional[str] = None  # "gtts", "pyttsx3", or None for current engine
+    engine: Optional[str] = None  # "gtts", "pyttsx3", "kokoro", "kokoro-onnx", or None for current engine
     slow: Optional[bool] = False
+    voice: Optional[str] = "af_sarah"  # Voice for Kokoro engines
+    speed: Optional[float] = 1.0  # Speed for Kokoro engines (0.5-2.0)
 
 @app.get("/")
 def read_root():
@@ -881,49 +885,48 @@ async def transcribe_audio(
 # Text-to-Speech endpoints
 @app.post("/synthesize")
 async def synthesize_text(request: TTSRequest):
-    """Synthesize text to speech and return audio as bytes"""
+    """
+    Synthesize text to speech and return audio data.
+    Supports multiple TTS engines including Kokoro for high-quality neural TTS.
+    """
     try:
-        # Validate text input
-        if not request.text or not request.text.strip():
-            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        logger.info(f"TTS request: text='{request.text[:50]}...', engine={request.engine}, voice={request.voice}, speed={request.speed}")
         
         # Get Text2Speech instance
         t2s = get_text2speech()
         
-        # Update settings if provided
-        if request.language and request.language != t2s.language:
-            t2s.set_language(request.language)
-        
-        if request.slow is not None:
-            t2s.set_speed(request.slow)
-        
-        # If a specific engine is requested and different from current
+        # If specific engine requested, create new instance with those settings
         if request.engine and request.engine != t2s.engine:
-            # Create a new instance with the requested engine
+            logger.info(f"Creating new TTS instance with engine: {request.engine}")
             t2s = Text2Speech(
                 engine=request.engine,
                 language=request.language or "en",
-                slow=request.slow or False
+                slow=request.slow or False,
+                voice=request.voice or "af_sarah",
+                speed=request.speed or 1.0
             )
         
         # Generate speech
-        audio_bytes = t2s.synthesize_to_bytes(request.text.strip())
+        audio_bytes = t2s.synthesize_to_bytes(request.text)
         
-        # Return audio as response
-        from fastapi.responses import Response
+        # Determine content type based on engine
+        if request.engine in ["kokoro", "kokoro-onnx"]:
+            content_type = "audio/wav"
+        else:
+            content_type = "audio/mpeg"
+        
         return Response(
             content=audio_bytes,
-            media_type="audio/mpeg",
+            media_type=content_type,
             headers={
-                "Content-Disposition": "attachment; filename=speech.mp3",
-                "Content-Length": str(len(audio_bytes))
+                "Content-Disposition": "attachment; filename=speech.wav" if request.engine in ["kokoro", "kokoro-onnx"] else "attachment; filename=speech.mp3"
             }
         )
         
     except Exception as e:
-        logger.error(f"Error synthesizing text: {e}")
+        logger.error(f"Error in TTS synthesis: {e}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Error synthesizing text: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {str(e)}")
 
 @app.post("/synthesize/file")
 async def synthesize_text_to_file(
@@ -931,71 +934,75 @@ async def synthesize_text_to_file(
     language: Optional[str] = Form("en"),
     engine: Optional[str] = Form(None),
     slow: Optional[bool] = Form(False),
+    voice: Optional[str] = Form("af_sarah"),
+    speed: Optional[float] = Form(1.0),
     filename: Optional[str] = Form("speech.mp3")
 ):
-    """Synthesize text to speech and return as downloadable file"""
+    """
+    Synthesize text to speech and return as downloadable file.
+    Supports multiple TTS engines including Kokoro for high-quality neural TTS.
+    """
     try:
-        # Validate text input
-        if not text or not text.strip():
-            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        logger.info(f"TTS file request: text='{text[:50]}...', engine={engine}, voice={voice}, speed={speed}")
         
         # Get Text2Speech instance
         t2s = get_text2speech()
         
-        # Update settings if provided
-        if language and language != t2s.language:
-            t2s.set_language(language)
-        
-        if slow is not None:
-            t2s.set_speed(slow)
-        
         # If a specific engine is requested and different from current
         if engine and engine != t2s.engine:
-            # Create a new instance with the requested engine
+            logger.info(f"Creating new TTS instance with engine: {engine}")
             t2s = Text2Speech(
                 engine=engine,
                 language=language or "en",
-                slow=slow or False
+                slow=slow or False,
+                voice=voice or "af_sarah",
+                speed=speed or 1.0
             )
         
+        # Determine file extension based on engine
+        if engine in ["kokoro", "kokoro-onnx"]:
+            file_ext = ".wav"
+            content_type = "audio/wav"
+        else:
+            file_ext = ".mp3"
+            content_type = "audio/mpeg"
+        
+        # Ensure filename has correct extension
+        if not filename.endswith(file_ext):
+            filename = os.path.splitext(filename)[0] + file_ext
+        
         # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
             temp_path = temp_file.name
         
         try:
             # Generate speech to file
-            output_path = t2s.synthesize_to_file(text.strip(), temp_path)
+            output_path = t2s.synthesize_to_file(text, temp_path)
             
             # Read the file
             with open(output_path, 'rb') as f:
-                audio_bytes = f.read()
+                audio_data = f.read()
             
-            # Clean up temp file
-            os.unlink(output_path)
-            
-            # Return as downloadable file
-            from fastapi.responses import Response
             return Response(
-                content=audio_bytes,
-                media_type="audio/mpeg",
+                content=audio_data,
+                media_type=content_type,
                 headers={
                     "Content-Disposition": f"attachment; filename={filename}",
-                    "Content-Length": str(len(audio_bytes))
+                    "Content-Length": str(len(audio_data))
                 }
             )
             
-        except Exception as e:
-            # Clean up temp file on error
+        finally:
+            # Clean up temp file
             try:
                 os.unlink(temp_path)
             except:
                 pass
-            raise e
         
     except Exception as e:
-        logger.error(f"Error synthesizing text to file: {e}")
+        logger.error(f"Error in TTS file synthesis: {e}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Error synthesizing text to file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TTS file synthesis failed: {str(e)}")
 
 @app.get("/tts/languages")
 async def get_tts_languages():
@@ -1028,6 +1035,53 @@ async def get_tts_status():
     except Exception as e:
         logger.error(f"Error getting TTS status: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting TTS status: {str(e)}")
+
+@app.get("/tts/voices")
+async def get_tts_voices():
+    """Get available voices for TTS engines"""
+    try:
+        voices = {
+            "kokoro_voices": {
+                "af_sarah": "American Female - Sarah (warm, friendly)",
+                "af_nicole": "American Female - Nicole (professional)",
+                "af_sky": "American Female - Sky (energetic)",
+                "am_adam": "American Male - Adam (deep, authoritative)",
+                "am_michael": "American Male - Michael (casual)",
+                "bf_emma": "British Female - Emma (elegant)",
+                "bf_isabella": "British Female - Isabella (sophisticated)",
+                "bm_george": "British Male - George (distinguished)",
+                "bm_lewis": "British Male - Lewis (modern)"
+            },
+            "pyttsx3_voices": "System dependent - use /tts/status to see available voices",
+            "gtts_languages": [
+                "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "hi", "ar"
+            ]
+        }
+        
+        # Try to get actual pyttsx3 voices if available
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            system_voices = engine.getProperty('voices')
+            if system_voices:
+                voices["pyttsx3_voices"] = [
+                    {
+                        "id": voice.id,
+                        "name": voice.name,
+                        "languages": getattr(voice, 'languages', []),
+                        "gender": getattr(voice, 'gender', 'unknown')
+                    }
+                    for voice in system_voices
+                ]
+            engine.stop()
+        except:
+            pass
+        
+        return voices
+        
+    except Exception as e:
+        logger.error(f"Error getting TTS voices: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting TTS voices: {str(e)}")
 
 # Handle graceful shutdown
 def handle_exit(signum, frame):

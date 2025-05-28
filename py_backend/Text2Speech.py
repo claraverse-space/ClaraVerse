@@ -2,8 +2,10 @@ import os
 import logging
 import tempfile
 import io
-from typing import Optional, Union
+from typing import Optional, Union, List, Dict
 from pathlib import Path
+import asyncio
+import threading
 
 # Import TTS libraries
 try:
@@ -18,34 +20,75 @@ try:
 except ImportError:
     PYTTSX3_AVAILABLE = False
 
+# Import Kokoro TTS libraries
+try:
+    from kokoro import KPipeline
+    import soundfile as sf
+    import torch
+    KOKORO_AVAILABLE = True
+except ImportError:
+    KOKORO_AVAILABLE = False
+
+try:
+    from kokoro_onnx import Kokoro
+    import numpy as np
+    KOKORO_ONNX_AVAILABLE = True
+except ImportError:
+    KOKORO_ONNX_AVAILABLE = False
+
 logger = logging.getLogger("clara-text2speech")
 
 class Text2Speech:
-    def __init__(self, engine="auto", language="en", slow=False):
+    def __init__(self, engine="auto", language="en", slow=False, voice="af_sarah", speed=1.0):
         """
         Initialize the Text2Speech processor.
         
         Args:
-            engine: TTS engine to use ("gtts", "pyttsx3", or "auto" for automatic selection)
+            engine: TTS engine to use ("gtts", "pyttsx3", "kokoro", "kokoro-onnx", or "auto")
             language: Language code for speech synthesis (default: "en")
             slow: Whether to use slow speech rate (only for gTTS)
+            voice: Voice to use for Kokoro engines (default: "af_sarah")
+            speed: Speech speed for Kokoro engines (default: 1.0)
         """
         self.language = language
         self.slow = slow
         self.engine = engine
+        self.voice = voice
+        self.speed = speed
         
-        logger.info(f"Initializing Text2Speech with engine={engine}, language={language}")
+        logger.info(f"Initializing Text2Speech with engine={engine}, language={language}, voice={voice}")
         
         # Determine which engine to use
         if engine == "auto":
-            if GTTS_AVAILABLE:
+            # Prefer Kokoro for best quality, fallback to others
+            if KOKORO_AVAILABLE:
+                self.engine = "kokoro"
+                logger.info("Using Kokoro engine (high-quality neural TTS)")
+            elif GTTS_AVAILABLE:
                 self.engine = "gtts"
                 logger.info("Using gTTS engine (online)")
             elif PYTTSX3_AVAILABLE:
                 self.engine = "pyttsx3"
                 logger.info("Using pyttsx3 engine (offline)")
             else:
-                raise RuntimeError("No TTS engines available. Please install gtts or pyttsx3.")
+                raise RuntimeError("No TTS engines available. Please install gtts, pyttsx3, or kokoro.")
+        elif engine == "kokoro":
+            if not KOKORO_AVAILABLE:
+                raise RuntimeError("Kokoro not available. Please install kokoro package.")
+            self.engine = "kokoro"
+        elif engine == "kokoro-onnx":
+            try:
+                # For now, disable kokoro-onnx as it requires manual model setup
+                # TODO: Implement proper model downloading and setup for kokoro-onnx
+                logger.warning("Kokoro ONNX requires manual model setup. Falling back to regular Kokoro.")
+                raise RuntimeError("Kokoro ONNX not properly configured. Use 'kokoro' engine instead.")
+                
+                # Initialize Kokoro ONNX (will download models if needed)
+                # self.kokoro_onnx = Kokoro(model_path="path/to/model", voices_path="path/to/voices")
+                # logger.info("Kokoro ONNX engine initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Kokoro ONNX engine: {e}")
+                raise
         elif engine == "gtts":
             if not GTTS_AVAILABLE:
                 raise RuntimeError("gTTS not available. Please install gtts package.")
@@ -55,10 +98,13 @@ class Text2Speech:
                 raise RuntimeError("pyttsx3 not available. Please install pyttsx3 package.")
             self.engine = "pyttsx3"
         else:
-            raise ValueError(f"Unknown engine: {engine}. Use 'gtts', 'pyttsx3', or 'auto'.")
+            raise ValueError(f"Unknown engine: {engine}. Use 'gtts', 'pyttsx3', 'kokoro', 'kokoro-onnx', or 'auto'.")
         
-        # Initialize pyttsx3 engine if needed
+        # Initialize engines
         self.pyttsx3_engine = None
+        self.kokoro_pipeline = None
+        self.kokoro_onnx = None
+        
         if self.engine == "pyttsx3":
             try:
                 self.pyttsx3_engine = pyttsx3.init()
@@ -68,6 +114,43 @@ class Text2Speech:
                 logger.info("pyttsx3 engine initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize pyttsx3 engine: {e}")
+                raise
+        
+        elif self.engine == "kokoro":
+            try:
+                # Map language codes to Kokoro language codes
+                lang_map = {
+                    'en': 'a',  # American English
+                    'en-us': 'a',  # American English
+                    'en-gb': 'b',  # British English
+                    'es': 'e',  # Spanish
+                    'fr': 'f',  # French
+                    'hi': 'h',  # Hindi
+                    'it': 'i',  # Italian
+                    'ja': 'j',  # Japanese
+                    'pt': 'p',  # Portuguese
+                    'zh': 'z',  # Chinese
+                }
+                kokoro_lang = lang_map.get(self.language, 'a')
+                
+                self.kokoro_pipeline = KPipeline(lang_code=kokoro_lang)
+                logger.info(f"Kokoro pipeline initialized successfully with language: {kokoro_lang}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Kokoro pipeline: {e}")
+                raise
+        
+        elif self.engine == "kokoro-onnx":
+            try:
+                # For now, disable kokoro-onnx as it requires manual model setup
+                # TODO: Implement proper model downloading and setup for kokoro-onnx
+                logger.warning("Kokoro ONNX requires manual model setup. Falling back to regular Kokoro.")
+                raise RuntimeError("Kokoro ONNX not properly configured. Use 'kokoro' engine instead.")
+                
+                # Initialize Kokoro ONNX (will download models if needed)
+                # self.kokoro_onnx = Kokoro(model_path="path/to/model", voices_path="path/to/voices")
+                # logger.info("Kokoro ONNX engine initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Kokoro ONNX engine: {e}")
                 raise
     
     def synthesize_to_file(self, text: str, output_path: str) -> str:
@@ -88,6 +171,10 @@ class Text2Speech:
                 return self._gtts_to_file(text, output_path)
             elif self.engine == "pyttsx3":
                 return self._pyttsx3_to_file(text, output_path)
+            elif self.engine == "kokoro":
+                return self._kokoro_to_file(text, output_path)
+            elif self.engine == "kokoro-onnx":
+                return self._kokoro_onnx_to_file(text, output_path)
             else:
                 raise ValueError(f"Unknown engine: {self.engine}")
                 
@@ -112,11 +199,123 @@ class Text2Speech:
                 return self._gtts_to_bytes(text)
             elif self.engine == "pyttsx3":
                 return self._pyttsx3_to_bytes(text)
+            elif self.engine == "kokoro":
+                return self._kokoro_to_bytes(text)
+            elif self.engine == "kokoro-onnx":
+                return self._kokoro_onnx_to_bytes(text)
             else:
                 raise ValueError(f"Unknown engine: {self.engine}")
                 
         except Exception as e:
             logger.error(f"Error synthesizing text to bytes: {e}")
+            raise
+    
+    def _kokoro_to_file(self, text: str, output_path: str) -> str:
+        """Generate speech using Kokoro and save to file"""
+        try:
+            if self.kokoro_pipeline is None:
+                raise RuntimeError("Kokoro pipeline not initialized")
+            
+            logger.info(f"Generating Kokoro TTS for text: {text[:50]}...")
+            
+            # Generate audio using Kokoro
+            generator = self.kokoro_pipeline(text, voice=self.voice, speed=self.speed)
+            
+            # Kokoro returns a generator, we need to collect all audio chunks
+            audio_chunks = []
+            for i, (gs, ps, audio) in enumerate(generator):
+                audio_chunks.append(audio)
+                logger.debug(f"Generated chunk {i}: {gs}")
+            
+            if audio_chunks:
+                # Concatenate all audio chunks
+                full_audio = torch.cat(audio_chunks, dim=0) if len(audio_chunks) > 1 else audio_chunks[0]
+                
+                # Save to file using soundfile
+                sf.write(output_path, full_audio.numpy(), 24000)
+                logger.info(f"Kokoro audio saved to: {output_path}")
+                return output_path
+            else:
+                raise RuntimeError("No audio generated by Kokoro")
+                
+        except Exception as e:
+            logger.error(f"Kokoro error: {e}")
+            raise
+    
+    def _kokoro_to_bytes(self, text: str) -> bytes:
+        """Generate speech using Kokoro and return as bytes"""
+        try:
+            # Use a temporary file approach for Kokoro
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_path = temp_file.name
+            
+            try:
+                # Generate to temp file
+                self._kokoro_to_file(text, temp_path)
+                
+                # Read the file as bytes
+                with open(temp_path, 'rb') as f:
+                    audio_bytes = f.read()
+                
+                logger.info("Kokoro audio generated as bytes")
+                return audio_bytes
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Kokoro error: {e}")
+            raise
+    
+    def _kokoro_onnx_to_file(self, text: str, output_path: str) -> str:
+        """Generate speech using Kokoro ONNX and save to file"""
+        try:
+            if self.kokoro_onnx is None:
+                raise RuntimeError("Kokoro ONNX engine not initialized")
+            
+            logger.info(f"Generating Kokoro ONNX TTS for text: {text[:50]}...")
+            
+            # Generate audio using Kokoro ONNX
+            audio = self.kokoro_onnx.generate(text, voice=self.voice, speed=self.speed)
+            
+            # Save to file
+            sf.write(output_path, audio, 24000)
+            logger.info(f"Kokoro ONNX audio saved to: {output_path}")
+            return output_path
+                
+        except Exception as e:
+            logger.error(f"Kokoro ONNX error: {e}")
+            raise
+    
+    def _kokoro_onnx_to_bytes(self, text: str) -> bytes:
+        """Generate speech using Kokoro ONNX and return as bytes"""
+        try:
+            # Use a temporary file approach for Kokoro ONNX
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_path = temp_file.name
+            
+            try:
+                # Generate to temp file
+                self._kokoro_onnx_to_file(text, temp_path)
+                
+                # Read the file as bytes
+                with open(temp_path, 'rb') as f:
+                    audio_bytes = f.read()
+                
+                logger.info("Kokoro ONNX audio generated as bytes")
+                return audio_bytes
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Kokoro ONNX error: {e}")
             raise
     
     def _gtts_to_file(self, text: str, output_path: str) -> str:

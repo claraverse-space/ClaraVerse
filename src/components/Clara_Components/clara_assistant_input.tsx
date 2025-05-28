@@ -1223,7 +1223,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   messages = [],
   setMessages,
   currentSession,
-  setSessions
+  setSessions,
+  autoTTSText = '',
+  autoTTSTrigger = null
 }) => {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -2197,6 +2199,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                   onSendAudio={handleVoiceAudio}
                   isProcessing={isVoiceProcessing}
                   isAIResponding={isLoading}
+                  autoTTSText={autoTTSText}
+                  autoTTSTrigger={autoTTSTrigger}
                 />
               </div>
             )}

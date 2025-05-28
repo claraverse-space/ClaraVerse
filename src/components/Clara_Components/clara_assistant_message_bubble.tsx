@@ -34,7 +34,10 @@ import {
   X,
   Eye,
   FileCode,
-  FileImage
+  FileImage,
+  Volume2,
+  VolumeX,
+  Loader2
 } from 'lucide-react';
 
 // Import types and components
@@ -49,6 +52,9 @@ import MessageContentRenderer from './MessageContentRenderer';
 import { ElectronAPI } from '../../types/electron';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useSmoothScroll } from '../../hooks/useSmoothScroll';
+
+// Import TTS service
+import { claraTTSService } from '../../services/claraTTSService';
 
 /**
  * Thinking content parser and utilities
@@ -396,7 +402,22 @@ const MessageActions: React.FC<{
   onCopy?: (content: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
   onRetry?: (messageId: string) => void;
-}> = ({ message, isEditable = false, onCopy, onEdit, onRetry }) => {
+  // TTS props
+  isTTSHealthy?: boolean;
+  isTTSPlaying?: boolean;
+  isTTSLoading?: boolean;
+  onTTSToggle?: () => void;
+}> = ({ 
+  message, 
+  isEditable = false, 
+  onCopy, 
+  onEdit, 
+  onRetry,
+  isTTSHealthy = false,
+  isTTSPlaying = false,
+  isTTSLoading = false,
+  onTTSToggle
+}) => {
   const [copied, setCopied] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const { copyToClipboard } = useCopyWithToast();
@@ -425,6 +446,24 @@ const MessageActions: React.FC<{
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
+      {/* TTS button (for assistant messages) */}
+      {message.role === 'assistant' && isTTSHealthy && onTTSToggle && !message.metadata?.isStreaming && (
+        <button
+          onClick={onTTSToggle}
+          disabled={isTTSLoading}
+          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+          title={isTTSPlaying ? "Stop speaking" : "Read aloud"}
+        >
+          {isTTSLoading ? (
+            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          ) : isTTSPlaying ? (
+            <VolumeX className="w-4 h-4 text-blue-500" />
+          ) : (
+            <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          )}
+        </button>
+      )}
+
       {/* Copy button */}
       <button
         onClick={handleCopy}
@@ -570,6 +609,11 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   const messageRef = useRef<HTMLDivElement>(null);
   const { Toast } = useCopyWithToast();
   
+  // TTS state
+  const [isTTSHealthy, setIsTTSHealthy] = useState(false);
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+  const [isTTSLoading, setIsTTSLoading] = useState(false);
+  
   // Use the smooth scroll hook for better streaming behavior
   const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
     debounceMs: 150,
@@ -624,6 +668,81 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     
     return '';
   };
+
+  // Subscribe to TTS health status
+  useEffect(() => {
+    const unsubscribe = claraTTSService.onHealthChange((isHealthy) => {
+      setIsTTSHealthy(isHealthy);
+    });
+    
+    return unsubscribe;
+  }, []);
+
+  // TTS functionality
+  const handleTTSToggle = useCallback(async () => {
+    if (!isAssistant || !responseContent.trim()) return;
+    
+    if (isTTSPlaying) {
+      // Stop current playback
+      claraTTSService.stopPlayback();
+      setIsTTSPlaying(false);
+      return;
+    }
+    
+    try {
+      setIsTTSLoading(true);
+      
+      // Clean the content for TTS (remove markdown, etc.)
+      const cleanContent = responseContent
+        .replace(/```[\s\S]*?```/g, '[code block]') // Replace code blocks
+        .replace(/`([^`]+)`/g, '$1') // Remove inline code backticks
+        .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markdown
+        .replace(/\*([^*]+)\*/g, '$1') // Remove italic markdown
+        .replace(/#{1,6}\s+/g, '') // Remove headers
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with text
+        .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines
+        .trim();
+      
+      if (!cleanContent) {
+        console.warn('No content to synthesize');
+        return;
+      }
+      
+      setIsTTSPlaying(true);
+      
+      await claraTTSService.synthesizeAndPlay({
+        text: cleanContent,
+        engine: 'kokoro',
+        voice: 'af_sarah',
+        speed: 1.0,
+        language: 'en'
+      });
+      
+    } catch (error) {
+      console.error('TTS playback error:', error);
+      // Don't show error to user for TTS failures, just log it
+    } finally {
+      setIsTTSLoading(false);
+      setIsTTSPlaying(false);
+    }
+  }, [isAssistant, responseContent, isTTSPlaying]);
+
+  // Stop TTS when component unmounts or message changes
+  useEffect(() => {
+    return () => {
+      if (isTTSPlaying) {
+        claraTTSService.stopPlayback();
+      }
+    };
+  }, []);
+
+  // Stop TTS when message content changes (for streaming)
+  useEffect(() => {
+    if (message.metadata?.isStreaming && isTTSPlaying) {
+      claraTTSService.stopPlayback();
+      setIsTTSPlaying(false);
+    }
+  }, [message.content, message.metadata?.isStreaming, isTTSPlaying]);
 
   // Improved auto-scroll effect for streaming messages with better responsiveness
   useEffect(() => {
@@ -713,6 +832,10 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
             onCopy={onCopy}
             onEdit={onEdit}
             onRetry={onRetry}
+            isTTSHealthy={isTTSHealthy}
+            isTTSPlaying={isTTSPlaying}
+            isTTSLoading={isTTSLoading}
+            onTTSToggle={handleTTSToggle}
           />
         </div>
 

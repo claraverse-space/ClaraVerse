@@ -25,6 +25,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache/pip/*
 
+# Install spaCy and download the English model explicitly
+RUN pip install spacy>=3.4.0 && \
+    python -m spacy download en_core_web_sm && \
+    python -c "import spacy; nlp = spacy.load('en_core_web_sm'); print('✅ spaCy model loaded successfully')" && \
+    rm -rf /root/.cache/pip/*
+
 # Copy application code
 COPY . .
 
