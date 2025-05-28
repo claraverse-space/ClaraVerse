@@ -466,8 +466,12 @@ export class ClaraApiService {
 
         // Add conversation history if provided
         if (conversationHistory && conversationHistory.length > 0) {
-          // Convert Clara messages to ChatMessage format, excluding the last message since it's the current one
+          // Convert Clara messages to ChatMessage format
+          // The conversationHistory already includes the current user message at the end,
+          // so we exclude it since we'll add it separately with the correct content (including voice prefix)
           const historyMessages = conversationHistory.slice(0, -1);
+          console.log(`📚 Adding ${historyMessages.length} history messages to context (total history: ${conversationHistory.length})`);
+          
           for (const historyMessage of historyMessages) {
             const chatMessage: ChatMessage = {
               role: historyMessage.role,
@@ -484,32 +488,35 @@ export class ClaraApiService {
 
             messages.push(chatMessage);
           }
+        } else {
+          console.log('📚 No conversation history provided');
         }
 
         // Add the current user message
-        const currentMessage = conversationHistory && conversationHistory.length > 0 
-          ? conversationHistory[conversationHistory.length - 1] 
-          : null;
-
         const userMessage: ChatMessage = {
           role: 'user',
-          content: currentMessage?.content || message
+          content: message  // Always use the message parameter, not conversation history content
         };
 
         // Add images if any attachments are images
         const imageAttachments = processedAttachments.filter(att => att.type === 'image');
         if (imageAttachments.length > 0) {
           userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
-        } else if (currentMessage?.attachments) {
-          const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
-          if (historyImageAttachments.length > 0) {
-            userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+        } else if (conversationHistory && conversationHistory.length > 0) {
+          // Check the last message in conversation history for images
+          const currentMessage = conversationHistory[conversationHistory.length - 1];
+          if (currentMessage?.attachments) {
+            const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
+            if (historyImageAttachments.length > 0) {
+              userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+            }
           }
         }
 
         messages.push(userMessage);
 
         console.log(`🚀 Starting autonomous agent execution with ${messages.length} messages and ${tools.length} tools`);
+        console.log(`📝 Final message breakdown: ${messages.filter(m => m.role === 'system').length} system, ${messages.filter(m => m.role === 'user').length} user, ${messages.filter(m => m.role === 'assistant').length} assistant`);
 
         // Execute autonomous agent workflow
         const result = await this.executeAutonomousAgent(
@@ -569,32 +576,36 @@ export class ClaraApiService {
 
             messages.push(chatMessage);
           }
+          console.log(`📚 Added ${conversationHistory.length - 1} history messages to standard chat context`);
+        } else {
+          console.log('📚 No conversation history provided for standard chat');
         }
 
         // Add the current user message
-        const currentMessage = conversationHistory && conversationHistory.length > 0 
-          ? conversationHistory[conversationHistory.length - 1] 
-          : null;
-
         const userMessage: ChatMessage = {
           role: 'user',
-          content: currentMessage?.content || message
+          content: message  // Always use the message parameter, not conversation history content
         };
 
         // Add images if any attachments are images
         const imageAttachments = processedAttachments.filter(att => att.type === 'image');
         if (imageAttachments.length > 0) {
           userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
-        } else if (currentMessage?.attachments) {
-          const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
-          if (historyImageAttachments.length > 0) {
-            userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+        } else if (conversationHistory && conversationHistory.length > 0) {
+          // Check the last message in conversation history for images
+          const currentMessage = conversationHistory[conversationHistory.length - 1];
+          if (currentMessage?.attachments) {
+            const historyImageAttachments = currentMessage.attachments.filter(att => att.type === 'image');
+            if (historyImageAttachments.length > 0) {
+              userMessage.images = historyImageAttachments.map(att => att.base64 || att.url || '');
+            }
           }
         }
 
         messages.push(userMessage);
 
         console.log(`💬 Starting standard chat execution with ${messages.length} messages and ${tools.length} tools`);
+        console.log(`📝 Final message breakdown: ${messages.filter(m => m.role === 'system').length} system, ${messages.filter(m => m.role === 'user').length} user, ${messages.filter(m => m.role === 'assistant').length} assistant`);
 
         // Execute standard chat workflow
         const result = await this.executeStandardChat(

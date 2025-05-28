@@ -115,6 +115,7 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   stop: () => ipcRenderer.invoke('stop-llama-swap'),
   restart: () => ipcRenderer.invoke('restart-llama-swap'),
   getStatus: () => ipcRenderer.invoke('get-llama-swap-status'),
+  getStatusWithHealth: () => ipcRenderer.invoke('get-llama-swap-status-with-health'),
   getModels: () => ipcRenderer.invoke('get-llama-swap-models'),
   getApiUrl: () => ipcRenderer.invoke('get-llama-swap-api-url'),
   regenerateConfig: () => ipcRenderer.invoke('regenerate-llama-swap-config'),

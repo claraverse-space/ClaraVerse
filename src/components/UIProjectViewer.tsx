@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, Maximize, Minimize, X, Terminal, RefreshCw, Edit, Eye, Copy, Download, Share2 } from 'lucide-react';
+import { ArrowLeft, Maximize, Minimize, X, Terminal, RefreshCw, Edit, Eye, Copy, Download } from 'lucide-react';
 import { uiBuilderService, UIBuilderProject } from '../services/UIBuilderService';
+import Sidebar from './Sidebar';
+import Topbar from './Topbar';
 
 interface UIProjectViewerProps {
   onPageChange: (page: string) => void;
@@ -48,25 +50,11 @@ const UIProjectViewer: React.FC<UIProjectViewerProps> = ({ onPageChange }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [showDevToolsTooltip, setShowDevToolsTooltip] = useState(false);
   const [previewError, setPreviewError] = useState<{message: string; line: number; column: number} | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<any>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  
-  // Add states for tooltips
-  const [tooltips, setTooltips] = useState<Record<string, boolean>>({
-    back: false,
-    refresh: false,
-    edit: false,
-    fullscreen: false,
-    devtools: false,
-    copy: false,
-    share: false,
-    download: false
-  });
   
   // Define the updatePreview function
   const updatePreview = useCallback(() => {
@@ -276,47 +264,6 @@ ${jsContent}`;
     URL.revokeObjectURL(url);
   };
 
-  const handleShare = () => {
-    if (!project) return;
-    
-    const toastEl = document.createElement('div');
-    toastEl.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl z-50 max-w-md w-full';
-    toastEl.innerHTML = `
-      <h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Share "${project.name || 'UI Project'}"</h3>
-      <p class="mb-4 text-gray-700 dark:text-gray-300">You can export this project to share it with others.</p>
-      <div class="flex justify-end">
-        <button id="share-close" class="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors">Close</button>
-      </div>
-    `;
-    
-    // Create a semi-transparent backdrop
-    const backdropEl = document.createElement('div');
-    backdropEl.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
-    
-    document.body.appendChild(backdropEl);
-    document.body.appendChild(toastEl);
-    
-    document.getElementById('share-close')?.addEventListener('click', () => {
-      document.body.removeChild(toastEl);
-      document.body.removeChild(backdropEl);
-    });
-    
-    backdropEl.addEventListener('click', () => {
-      document.body.removeChild(toastEl);
-      document.body.removeChild(backdropEl);
-    });
-  };
-
-  // Show tooltip handler
-  const handleShowTooltip = (key: string) => {
-    setTooltips(prev => ({ ...prev, [key]: true }));
-  };
-  
-  // Hide tooltip handler
-  const handleHideTooltip = (key: string) => {
-    setTooltips(prev => ({ ...prev, [key]: false }));
-  };
-
   if (isLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-gray-900">
@@ -340,200 +287,139 @@ ${jsContent}`;
   }
 
   return (
-    <div 
-      ref={containerRef}
-      className="fixed inset-0 bg-white flex flex-col"
-    >
-      {/* Improved uniform control bar that fades out when not hovered */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/40 to-transparent p-2 opacity-0 hover:opacity-100 transition-opacity duration-300">
-        <div className="flex justify-between items-center px-2">
-          <div className="flex items-center gap-2">
-            {/* Back button */}
-            <button 
-              onClick={handleBack}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
-              title="Back to Apps"
-              onMouseEnter={() => handleShowTooltip('back')}
-              onMouseLeave={() => handleHideTooltip('back')}
-            >
-              <ArrowLeft size={18} />
-              {tooltips.back && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Back to Apps
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
-            </button>
-            
-            {project && (
-              <div className="ml-2 text-white text-sm font-medium truncate max-w-[150px] md:max-w-[300px]">
-                {project.name}
+    <div className="flex h-screen bg-gradient-to-br from-white via-sakura-50/80 to-blue-50/80 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Sidebar */}
+      <Sidebar activePage="apps" onPageChange={onPageChange} />
+      
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar */}
+        <Topbar 
+          userName="User"
+          onPageChange={onPageChange}
+        />
+        
+        {/* Project Status Bar */}
+        <div className="h-14 glassmorphic flex items-center justify-between px-6 backdrop-blur-xl">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-3 h-3 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full animate-pulse shadow-lg shadow-emerald-400/30"></div>
+                <div className="absolute inset-0 w-3 h-3 bg-emerald-400 rounded-full animate-ping opacity-20"></div>
               </div>
-            )}
+              <div>
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                  {project?.name || "UI Project"}
+                </span>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Project Viewer • Clara Apps
+                </div>
+              </div>
+            </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Refresh button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Apps
+            </button>
+            
+            <div className="w-px h-5 bg-gray-300/50 dark:bg-gray-600/50"></div>
+            
             <button 
               onClick={updatePreview}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
               title="Refresh Preview"
-              onMouseEnter={() => handleShowTooltip('refresh')}
-              onMouseLeave={() => handleHideTooltip('refresh')}
             >
-              <RefreshCw size={18} />
-              {tooltips.refresh && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Refresh Preview
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
+              <RefreshCw className="w-4 h-4" />
+              Refresh
             </button>
             
-            {/* Edit button */}
             <button 
               onClick={handleEdit}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
               title="Edit Project"
-              onMouseEnter={() => handleShowTooltip('edit')}
-              onMouseLeave={() => handleHideTooltip('edit')}
             >
-              <Edit size={18} />
-              {tooltips.edit && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Edit Project
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
+              <Edit className="w-4 h-4" />
+              Edit
             </button>
             
-            {/* Copy Code button */}
             <button 
               onClick={handleCopyCode}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
               title="Copy Code"
-              onMouseEnter={() => handleShowTooltip('copy')}
-              onMouseLeave={() => handleHideTooltip('copy')}
             >
-              <Copy size={18} />
-              {tooltips.copy && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Copy Code
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
+              <Copy className="w-4 h-4" />
+              Copy
             </button>
             
-            {/* Download HTML button */}
             <button 
               onClick={handleDownload}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30 transition-all duration-200"
               title="Download HTML"
-              onMouseEnter={() => handleShowTooltip('download')}
-              onMouseLeave={() => handleHideTooltip('download')}
             >
-              <Download size={18} />
-              {tooltips.download && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Download HTML
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
+              <Download className="w-4 h-4" />
+              Download
             </button>
-            
-            {/* Share button */}
-            <button 
-              onClick={handleShare}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
-              title="Share Project"
-              onMouseEnter={() => handleShowTooltip('share')}
-              onMouseLeave={() => handleHideTooltip('share')}
-            >
-              <Share2 size={18} />
-              {tooltips.share && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  Share Project
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
-            </button>
-            
-            {/* DevTools button - only shown in Electron mode */}
-            {isElectron && (
-              <button 
-                onClick={handleOpenDevTools}
-                className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
-                title="Open DevTools"
-                onMouseEnter={() => handleShowTooltip('devtools')}
-                onMouseLeave={() => handleHideTooltip('devtools')}
-              >
-                <Terminal size={18} />
-                {tooltips.devtools && (
-                  <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                    Open DevTools
-                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                  </div>
-                )}
-              </button>
-            )}
             
             {/* Fullscreen button */}
             <button 
               onClick={toggleFullscreen}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
               title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-              onMouseEnter={() => handleShowTooltip('fullscreen')}
-              onMouseLeave={() => handleHideTooltip('fullscreen')}
             >
-              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-              {tooltips.fullscreen && (
-                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs font-medium px-2.5 py-1.5 rounded-md whitespace-nowrap">
-                  {isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                </div>
-              )}
-            </button>
-            
-            {/* Close button */}
-            <button 
-              onClick={handleBack}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors relative"
-              title="Close"
-            >
-              <X size={18} />
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              {isFullscreen ? "Exit" : "Fullscreen"}
             </button>
           </div>
         </div>
-      </div>
-      
-      {/* Project content - taking the full screen */}
-      <div className="flex-1 overflow-hidden">
-        {previewError && (
-          <div className="absolute top-0 left-0 right-0 z-50 bg-red-500 text-white px-4 py-2 text-sm">
-            Error on line {previewError.line}: {previewError.message}
-          </div>
-        )}
         
-        {isElectron ? (
-          <webview
-            ref={webviewRef}
-            src={window.electron?.isDev ? './preview.html' : '../preview.html'}
-            style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
-            allowpopups={true}
-            nodeintegration={true}
-            webpreferences="contextIsolation=false, webSecurity=false, allowRunningInsecureContent=true, nodeIntegration=true"
-            disablewebsecurity={true}
-            partition="persist:preview"
-          />
-        ) : (
-          <iframe
-            ref={iframeRef}
-            src="./preview.html"
-            className="w-full h-full border-none bg-white"
-            sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
-            title="Preview"
-          />
-        )}
+        {/* Preview Content Area */}
+        <div 
+          ref={containerRef}
+          className="flex-1 relative overflow-hidden glassmorphic"
+        >
+          {previewError && (
+            <div className="absolute top-0 left-0 right-0 z-50 bg-gradient-to-r from-red-500 to-pink-500 text-white px-6 py-4 text-sm flex items-center gap-3 shadow-lg">
+              <span className="font-medium">Error on line {previewError.line}: {previewError.message}</span>
+            </div>
+          )}
+          
+          {isElectron ? (
+            <webview
+              ref={webviewRef}
+              src="./preview.html"
+              style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
+              allowpopups={true}
+              nodeintegration={true}
+              webpreferences="contextIsolation=false, webSecurity=false, allowRunningInsecureContent=true, nodeIntegration=true"
+              disablewebsecurity={true}
+              partition="persist:preview"
+            />
+          ) : (
+            <iframe
+              ref={iframeRef}
+              src="./preview.html"
+              className="w-full h-full border-none bg-white rounded-lg shadow-lg"
+              sandbox="allow-scripts allow-modals allow-forms allow-same-origin allow-popups"
+              title="Preview"
+            />
+          )}
+          
+          {/* DevTools button - floating in bottom right for Electron */}
+          {isElectron && (
+            <button 
+              onClick={handleOpenDevTools}
+              className="absolute bottom-4 right-4 p-3 rounded-full bg-gray-800/80 text-white hover:bg-gray-700/80 transition-colors shadow-lg backdrop-blur-sm"
+              title="Open DevTools"
+            >
+              <Terminal className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

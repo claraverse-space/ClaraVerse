@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Square, Play, VolumeIcon } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, ArrowLeft, Waves, Radio, Zap, Sparkles, Heart, MessageSquare } from 'lucide-react';
 
 // Import TTS service for health monitoring
 import { claraTTSService } from '../../services/claraTTSService';
 
 // VAD (Voice Activity Detection) using @ricky0123/vad-web
-// This is a SOTA VAD model that runs entirely in the browser
 interface VADOptions {
   onSpeechStart: () => void;
   onSpeechEnd: (audio: Float32Array) => void;
@@ -23,22 +22,33 @@ interface ClaraVoiceChatProps {
   onToggle: () => void;
   onSendAudio: (audioBlob: Blob) => Promise<void>;
   onReceiveAudio?: (audioUrl: string) => void;
-  isProcessing: boolean; // Voice transcription processing
-  isAIResponding?: boolean; // AI is generating a response
+  isProcessing: boolean;
+  isAIResponding?: boolean;
   isStreaming?: boolean;
   streamingText?: string;
-  autoTTSText?: string; // Text to automatically speak when provided
-  autoTTSTrigger?: {text: string, timestamp: number} | null; // Trigger with timestamp to ensure re-triggering
+  autoTTSText?: string;
+  autoTTSTrigger?: {text: string, timestamp: number} | null;
+  onBackToChat?: () => void; // New prop to go back to chat mode
 }
 
-// Audio visualization component
-const AudioVisualizer: React.FC<{ 
+// Compact Audio Visualizer for the input bar
+const CompactAudioVisualizer: React.FC<{ 
   isListening: boolean; 
   isSpeaking: boolean; 
   audioLevel: number;
   isProcessing: boolean;
   isAIResponding?: boolean;
-}> = ({ isListening, isSpeaking, audioLevel, isProcessing, isAIResponding = false }) => {
+  isTTSHealthy?: boolean;
+  isAutoTTSPlaying?: boolean;
+}> = ({ 
+  isListening, 
+  isSpeaking, 
+  audioLevel, 
+  isProcessing, 
+  isAIResponding = false,
+  isTTSHealthy = false,
+  isAutoTTSPlaying = false
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
 
@@ -49,157 +59,111 @@ const AudioVisualizer: React.FC<{
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const draw = () => {
+    const draw = (timestamp: number) => {
       const width = canvas.width;
       const height = canvas.height;
       
+      // Clear canvas
       ctx.clearRect(0, 0, width, height);
       
-      // Center circle
       const centerX = width / 2;
       const centerY = height / 2;
-      const baseRadius = 30;
+      const time = timestamp * 0.001;
       
       if (isProcessing) {
-        // Processing animation - pulsing circle
-        const time = Date.now() * 0.005;
-        const pulseRadius = baseRadius + Math.sin(time) * 10;
-        
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, pulseRadius, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(59, 130, 246, ${0.3 + Math.sin(time) * 0.2})`;
-        ctx.fill();
-        
-        // Outer ring
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, pulseRadius + 15, 0, 2 * Math.PI);
-        ctx.strokeStyle = `rgba(59, 130, 246, ${0.2 + Math.sin(time * 1.5) * 0.1})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-      } else if (isAIResponding) {
-        // AI responding animation - rotating gradient circle with thinking dots
-        const time = Date.now() * 0.003;
-        
-        // Main pulsing circle
-        const pulseRadius = baseRadius + Math.sin(time * 2) * 8;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, pulseRadius, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(168, 85, 247, ${0.4 + Math.sin(time * 2) * 0.2})`;
-        ctx.fill();
-        
-        // Rotating thinking dots around the circle
-        const dots = 8;
-        for (let i = 0; i < dots; i++) {
-          const angle = (time + i * 0.5) % (2 * Math.PI);
-          const dotRadius = pulseRadius + 20;
-          const x = centerX + Math.cos(angle) * dotRadius;
-          const y = centerY + Math.sin(angle) * dotRadius;
-          const dotSize = 3 + Math.sin(time * 3 + i) * 2;
-          
-          ctx.beginPath();
-          ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
-          ctx.fillStyle = `rgba(168, 85, 247, ${0.6 + Math.sin(time * 2 + i) * 0.3})`;
-          ctx.fill();
-        }
-        
-        // Inner thinking indicator
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius * 0.6, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(168, 85, 247, ${0.2 + Math.sin(time * 4) * 0.1})`;
-        ctx.fill();
-        
-      } else if (isListening) {
-        // Listening animation - audio level visualization
-        const radius = baseRadius + audioLevel * 20;
-        
-        // Main circle
+        // Processing: Simple pulsing circle
+        const radius = 8 + Math.sin(time * 4) * 3;
+        ctx.fillStyle = '#3b82f6';
+        ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.3;
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(34, 197, 94, ${0.4 + audioLevel * 0.3})`;
         ctx.fill();
+        ctx.globalAlpha = 1;
         
-        // Audio bars around the circle
-        const bars = 12;
+      } else if (isAIResponding) {
+        // AI Responding: Purple pulsing
+        const radius = 8 + Math.sin(time * 2) * 4;
+        ctx.fillStyle = '#a855f7';
+        ctx.globalAlpha = 0.7 + Math.sin(time * 2) * 0.2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        
+      } else if (isListening) {
+        // Listening: Green bars based on audio level
+        const bars = 5;
+        const barWidth = 3;
+        const spacing = 2;
+        const totalWidth = bars * barWidth + (bars - 1) * spacing;
+        const startX = centerX - totalWidth / 2;
+        
+        ctx.fillStyle = '#22c55e';
         for (let i = 0; i < bars; i++) {
-          const angle = (i / bars) * 2 * Math.PI;
-          const barHeight = 5 + audioLevel * 15 + Math.random() * 5;
-          const x1 = centerX + Math.cos(angle) * (radius + 10);
-          const y1 = centerY + Math.sin(angle) * (radius + 10);
-          const x2 = centerX + Math.cos(angle) * (radius + 10 + barHeight);
-          const y2 = centerY + Math.sin(angle) * (radius + 10 + barHeight);
+          const barHeight = 4 + audioLevel * 12 + Math.sin(time * 8 + i) * 3;
+          const x = startX + i * (barWidth + spacing);
+          const y = centerY - barHeight / 2;
           
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.strokeStyle = `rgba(34, 197, 94, ${0.6 + audioLevel * 0.4})`;
-          ctx.lineWidth = 3;
-          ctx.stroke();
+          ctx.globalAlpha = 0.7 + Math.sin(time * 6 + i) * 0.2;
+          ctx.fillRect(x, y, barWidth, barHeight);
         }
+        ctx.globalAlpha = 1;
         
-      } else if (isSpeaking) {
-        // Speaking animation - wave pattern
-        const time = Date.now() * 0.01;
-        const waves = 3;
+      } else if (isSpeaking || isAutoTTSPlaying) {
+        // Speaking: Pink wave
+        const amplitude = 6;
+        const frequency = 0.1;
         
-        for (let w = 0; w < waves; w++) {
+        ctx.strokeStyle = '#ec4899';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
           ctx.beginPath();
-          const waveRadius = baseRadius + w * 15;
-          const opacity = 0.4 - w * 0.1;
-          
-          for (let i = 0; i <= 360; i += 5) {
-            const angle = (i * Math.PI) / 180;
-            const waveOffset = Math.sin(time + w * 2 + i * 0.02) * 8;
-            const x = centerX + Math.cos(angle) * (waveRadius + waveOffset);
-            const y = centerY + Math.sin(angle) * (waveRadius + waveOffset);
-            
-            if (i === 0) {
+        
+        for (let x = 0; x < width; x += 2) {
+          const y = centerY + Math.sin(x * frequency + time * 4) * amplitude;
+          if (x === 0) {
               ctx.moveTo(x, y);
             } else {
               ctx.lineTo(x, y);
             }
           }
-          
-          ctx.closePath();
-          ctx.strokeStyle = `rgba(147, 51, 234, ${opacity})`;
-          ctx.lineWidth = 2;
           ctx.stroke();
-        }
+        ctx.globalAlpha = 1;
         
       } else {
-        // Idle state - simple circle
+        // Idle: Simple dot
+        const radius = isTTSHealthy ? 4 : 4;
+        ctx.fillStyle = isTTSHealthy ? '#6b7280' : '#ef4444';
+        ctx.globalAlpha = 0.5 + Math.sin(time * 2) * 0.2;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(107, 114, 128, 0.3)';
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(107, 114, 128, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
       
       animationRef.current = requestAnimationFrame(draw);
     };
     
-    draw();
+    animationRef.current = requestAnimationFrame(draw);
     
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isListening, isSpeaking, audioLevel, isProcessing, isAIResponding]);
+  }, [isListening, isSpeaking, audioLevel, isProcessing, isAIResponding, isTTSHealthy, isAutoTTSPlaying]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={200}
-      height={200}
-      className="w-32 h-32"
+      width={80}
+      height={24}
+      className="w-20 h-6"
     />
   );
 };
 
-// Main voice chat component
+// Main compact voice chat component
 const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   isEnabled,
   onToggle,
@@ -210,7 +174,8 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   isStreaming = false,
   streamingText = '',
   autoTTSText = '',
-  autoTTSTrigger = null
+  autoTTSTrigger = null,
+  onBackToChat
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -250,6 +215,10 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   const isListeningRef = useRef<boolean>(false);
   const isManualRecordingRef = useRef<boolean>(false);
   const isAutoTTSPlayingRef = useRef<boolean>(false);
+  const autoTTSEnabledRef = useRef<boolean>(false);
+  
+  // Add ref to prevent VAD destruction during restart operations
+  const isRestartingVADRef = useRef<boolean>(false);
   
   // Manual recording state (fallback when VAD fails)
   const [isManualRecording, setIsManualRecording] = useState(false);
@@ -258,7 +227,6 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   
   // Permission state
   const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'granted' | 'denied' | 'requesting'>('unknown');
-  const [showPermissionRequest, setShowPermissionRequest] = useState(false);
   
   // Detect if we're running in Electron
   const isElectron = typeof window !== 'undefined' && window.process && window.process.type;
@@ -427,7 +395,6 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
         setError('Microphone access denied. Please allow microphone access in your browser settings.');
       } else {
         setPermissionStatus('unknown');
-        setShowPermissionRequest(true);
       }
 
       // Listen for permission changes
@@ -436,7 +403,6 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
         if (permission.state === 'granted') {
           setPermissionStatus('granted');
           setError(null);
-          setShowPermissionRequest(false);
         } else if (permission.state === 'denied') {
           setPermissionStatus('denied');
           setError('Microphone access denied. Please allow microphone access in your browser settings.');
@@ -445,16 +411,75 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     } catch (error) {
       console.warn('Could not check permission status:', error);
       setPermissionStatus('unknown');
-      setShowPermissionRequest(true);
     }
   };
 
-  // Check permissions on mount
-  useEffect(() => {
-    checkPermissionStatus();
-  }, []);
+  // Convert Float32Array to Blob
+  const convertFloat32ArrayToBlob = async (float32Array: Float32Array): Promise<Blob | null> => {
+    try {
+      // Create audio context for conversion
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+      const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
+      audioBuffer.copyToChannel(float32Array, 0);
+      
+      // Convert to WAV format
+      const wavBlob = await audioBufferToWav(audioBuffer);
+      return wavBlob;
+    } catch (error) {
+      console.error('Error converting audio:', error);
+      return null;
+    }
+  };
 
-  // TTS health monitoring - hide microphone when TTS backend is unhealthy
+  // Convert AudioBuffer to WAV Blob
+  const audioBufferToWav = (audioBuffer: AudioBuffer): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const numberOfChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const format = 1; // PCM
+      const bitDepth = 16;
+      
+      const bytesPerSample = bitDepth / 8;
+      const blockAlign = numberOfChannels * bytesPerSample;
+      
+      const buffer = audioBuffer.getChannelData(0);
+      const arrayBuffer = new ArrayBuffer(44 + buffer.length * bytesPerSample);
+      const view = new DataView(arrayBuffer);
+      
+      // WAV header
+      const writeString = (offset: number, string: string) => {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      };
+      
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + buffer.length * bytesPerSample, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, format, true);
+      view.setUint16(22, numberOfChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * blockAlign, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitDepth, true);
+      writeString(36, 'data');
+      view.setUint32(40, buffer.length * bytesPerSample, true);
+      
+      // Convert float samples to 16-bit PCM
+      let offset = 44;
+      for (let i = 0; i < buffer.length; i++) {
+        const sample = Math.max(-1, Math.min(1, buffer[i]));
+        view.setInt16(offset, sample * 0x7FFF, true);
+        offset += 2;
+      }
+      
+      resolve(new Blob([arrayBuffer], { type: 'audio/wav' }));
+    });
+  };
+
+  // TTS health monitoring
   useEffect(() => {
     console.log('🔊 Setting up TTS health monitoring for voice chat...');
     
@@ -474,80 +499,10 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     };
   }, []);
 
-  // Auto-request permission and initialize VAD when voice mode is enabled
+  // Check permissions on mount
   useEffect(() => {
-    const initializeVoiceMode = async () => {
-      // Only proceed if voice mode is enabled
-      if (!isEnabledRef.current) {
-        // Voice mode disabled - stop everything
-        if (vadRef.current && isListeningRef.current) {
-          vadRef.current.pause();
-          console.log('🎤 VAD stopped (voice mode disabled)');
-          setIsListening(false);
-          setAudioLevel(0);
-          cleanupAudioResources();
-        }
-        if (isManualRecordingRef.current) {
-          stopManualRecording();
-        }
-        setIsProcessingAudio(false);
-        return;
-      }
-      
-      // Voice mode enabled - check if AI is responding or auto TTS is playing
-      if (isAIRespondingRef.current || isAutoTTSPlayingRef.current) {
-        // AI is responding or auto TTS is playing - pause voice detection
-        if (vadRef.current && isListeningRef.current) {
-          vadRef.current.pause();
-          console.log('🎤 VAD paused (AI is responding or auto TTS is playing)');
-          setIsListening(false);
-          setAudioLevel(0);
-          cleanupAudioResources();
-        }
-        if (isManualRecordingRef.current) {
-          stopManualRecording();
-        }
-        return;
-      }
-      
-      // If we don't have permission yet, request it automatically
-      if (permissionStatus !== 'granted') {
-        console.log('🎤 Voice mode enabled but no microphone permission - requesting automatically...');
-        const granted = await requestMicrophonePermission();
-        if (!granted) {
-          console.log('🎤 Microphone permission denied, voice mode cannot start');
-          return;
-        }
-        // Permission will be set by requestMicrophonePermission, which will trigger VAD initialization
-        return;
-      }
-      
-      // If we have permission but VAD isn't ready, wait for it
-      if (permissionStatus === 'granted' && !vadReady && !isInitializingRef.current) {
-        console.log('🎤 Permission granted, waiting for VAD to initialize...');
-        return;
-      }
-      
-      // If everything is ready, start listening
-      if (vadReady && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current) {
-        try {
-          console.log('🎤 Auto-starting VAD (voice mode enabled)');
-          await setupAudioAnalyser();
-          await vadRef.current.start();
-          console.log('🎤 VAD auto-started successfully');
-          monitorAudioLevel();
-        } catch (error) {
-          console.error('🎤 Failed to auto-start VAD:', error);
-          // Fallback to manual recording
-          if (permissionStatus === 'granted') {
-            await startManualRecording();
-          }
-        }
-      }
-    };
-
-    initializeVoiceMode();
-  }, [isEnabled, permissionStatus, vadReady, isAIResponding, isAutoTTSPlaying]);
+    checkPermissionStatus();
+  }, []);
 
   // Initialize VAD only after permission is granted
   useEffect(() => {
@@ -561,6 +516,12 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       // Only initialize if we have permission
       if (permissionStatus !== 'granted') {
         console.log('🎤 Waiting for microphone permission before initializing VAD');
+        return;
+      }
+
+      // Don't reinitialize if VAD is already ready and working
+      if (vadReady && vadRef.current) {
+        console.log('🎤 VAD already initialized and ready, skipping...');
         return;
       }
 
@@ -634,49 +595,105 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
             // Mark processing as complete
             setIsProcessingAudio(false);
             
-            // OPTIMIZED: Faster auto-restart with reduced delay and better conditions
-            setTimeout(async () => {
-              // CRITICAL: Check all conditions before restarting (including auto TTS)
-              if (isEnabledRef.current && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isProcessingRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
+            // Improved auto-restart logic with better state checking
+            const restartVAD = async () => {
+              // Wait a bit longer to ensure all state updates are complete
+              await new Promise(resolve => setTimeout(resolve, 300));
+              
+              // Check if Auto TTS is enabled - if not, don't auto-restart (manual mode)
+              if (!autoTTSEnabledRef.current) {
+                console.log('🎤 Auto TTS disabled - switching to manual mode (no auto-restart)');
+                // Don't restart VAD automatically when Auto TTS is off
+                // User needs to manually restart voice mode
+                return;
+              }
+              
+              // Mark that we're restarting to prevent cleanup
+              isRestartingVADRef.current = true;
+              
+              // Double-check all conditions before restarting (only when Auto TTS is enabled)
+              const canRestart = (
+                isEnabledRef.current && 
+                vadRef.current && 
+                vadReady &&
+                !isListeningRef.current && 
+                !isProcessingAudioRef.current && 
+                !isProcessingRef.current && 
+                !isAIRespondingRef.current && 
+                !isAutoTTSPlayingRef.current
+              );
+              
+              if (canRestart) {
                 try {
-                  console.log('🎤 Auto-restarting VAD after speech processing...');
-                  await setupAudioAnalyser(); // Ensure audio analyser is ready
+                  console.log('🎤 Auto-restarting VAD after speech processing (Auto TTS enabled)...');
+                  
+                  // Light cleanup - only stop existing streams, don't destroy audio context
+                  if (streamRef.current) {
+                    streamRef.current.getTracks().forEach(track => track.stop());
+                    streamRef.current = null;
+                  }
+                  setAudioLevel(0);
+                  
+                  // Small delay to ensure cleanup is complete
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  
+                  // Setup fresh audio analyser and restart VAD
+                  await setupAudioAnalyser();
                   await vadRef.current.start();
+                  
                   console.log('🎤 VAD auto-restarted successfully');
+                  
+                  // Start monitoring audio level
                   monitorAudioLevel();
+                  
                 } catch (restartError) {
                   console.error('🎤 Failed to auto-restart VAD:', restartError);
-                  // If auto-restart fails, user can manually restart
+                  
+                  // If VAD restart fails, try manual recording as fallback
+                  if (permissionStatus === 'granted') {
+                    console.log('🎤 Falling back to manual recording mode');
+                    try {
+                      await startManualRecording();
+                    } catch (manualError) {
+                      console.error('🎤 Manual recording fallback also failed:', manualError);
+                    }
+                  }
                 }
               } else {
-                console.log('🎤 Skipping VAD auto-restart - conditions not met:', {
-                  isEnabled: isEnabledRef.current,
+                console.log('🎤 Cannot restart VAD - conditions not met:', {
+                  enabled: isEnabledRef.current,
                   vadExists: !!vadRef.current,
-                  isListening: isListeningRef.current,
-                  isProcessingAudio: isProcessingAudioRef.current,
-                  isProcessing: isProcessingRef.current,
-                  isAIResponding: isAIRespondingRef.current,
-                  isAutoTTSPlaying: isAutoTTSPlayingRef.current
+                  vadReady,
+                  listening: isListeningRef.current,
+                  processingAudio: isProcessingAudioRef.current,
+                  processing: isProcessingRef.current,
+                  aiResponding: isAIRespondingRef.current,
+                  autoTTSPlaying: isAutoTTSPlayingRef.current
                 });
               }
-            }, 200); // REDUCED from 1000ms to 200ms for much faster restart
+              
+              // Clear restart flag
+              isRestartingVADRef.current = false;
+            };
+            
+            // Execute restart logic
+            restartVAD();
           },
           onVADMisfire: () => {
             console.log('🎤 VAD misfire - false positive detected');
             setIsListening(false);
             setAudioLevel(0);
-            // Don't restart on misfire, let it continue listening
           },
           // Improved VAD parameters for better speech detection
-          positiveSpeechThreshold: 0.6,    // Slightly lower threshold for better sensitivity
-          negativeSpeechThreshold: 0.15,   // Lower threshold for better speech end detection
-          redemptionFrames: 8,              // Fewer frames for faster response
-          frameSamples: 1536,               // Keep default frame size
-          preSpeechPadFrames: 1,            // Less padding for faster start
-          minSpeechFrames: 4                // Fewer frames required to confirm speech
+          positiveSpeechThreshold: 0.6,
+          negativeSpeechThreshold: 0.15,
+          redemptionFrames: 8,
+          frameSamples: 1536,
+          preSpeechPadFrames: 1,
+          minSpeechFrames: 4
         });
         
-        clearTimeout(timeoutId); // Clear timeout if successful
+        clearTimeout(timeoutId);
         vadRef.current = vad;
         setVadReady(true);
         console.log('✅ VAD initialized successfully');
@@ -691,500 +708,148 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       }
     };
 
-    // Initialize VAD when we have permission
+    // Only initialize VAD when we have permission and it's not already ready
     if (permissionStatus === 'granted' && !vadReady && !isInitializingRef.current) {
       initializeVAD();
     }
 
     return () => {
-      // Cleanup on unmount or permission change
-      if (vadRef.current) {
+      // Only cleanup on unmount or when permission is actually lost
+      // Don't cleanup if we're in the middle of a restart operation
+      if (!isRestartingVADRef.current && vadRef.current && permissionStatus !== 'granted') {
+        console.log('🎤 Cleaning up VAD due to permission loss');
         vadRef.current.pause();
         vadRef.current.destroy();
         vadRef.current = null;
         setVadReady(false);
-      }
-      cleanupAudioResources();
-      isInitializingRef.current = false;
-    };
-  }, [permissionStatus]); // Only depend on permission status
-
-  // Convert Float32Array to Blob
-  const convertFloat32ArrayToBlob = async (float32Array: Float32Array): Promise<Blob | null> => {
-    try {
-      // Create audio context for conversion
-      const audioContext = new AudioContext({ sampleRate: 16000 });
-      const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
-      audioBuffer.copyToChannel(float32Array, 0);
-      
-      // Convert to WAV format
-      const wavBlob = await audioBufferToWav(audioBuffer);
-      return wavBlob;
-    } catch (error) {
-      console.error('Error converting audio:', error);
-      return null;
-    }
-  };
-
-  // Convert AudioBuffer to WAV Blob
-  const audioBufferToWav = (audioBuffer: AudioBuffer): Promise<Blob> => {
-    return new Promise((resolve) => {
-      const numberOfChannels = audioBuffer.numberOfChannels;
-      const sampleRate = audioBuffer.sampleRate;
-      const format = 1; // PCM
-      const bitDepth = 16;
-      
-      const bytesPerSample = bitDepth / 8;
-      const blockAlign = numberOfChannels * bytesPerSample;
-      
-      const buffer = audioBuffer.getChannelData(0);
-      const arrayBuffer = new ArrayBuffer(44 + buffer.length * bytesPerSample);
-      const view = new DataView(arrayBuffer);
-      
-      // WAV header
-      const writeString = (offset: number, string: string) => {
-        for (let i = 0; i < string.length; i++) {
-          view.setUint8(offset + i, string.charCodeAt(i));
-        }
-      };
-      
-      writeString(0, 'RIFF');
-      view.setUint32(4, 36 + buffer.length * bytesPerSample, true);
-      writeString(8, 'WAVE');
-      writeString(12, 'fmt ');
-      view.setUint32(16, 16, true);
-      view.setUint16(20, format, true);
-      view.setUint16(22, numberOfChannels, true);
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate * blockAlign, true);
-      view.setUint16(32, blockAlign, true);
-      view.setUint16(34, bitDepth, true);
-      writeString(36, 'data');
-      view.setUint32(40, buffer.length * bytesPerSample, true);
-      
-      // Convert float samples to 16-bit PCM
-      let offset = 44;
-      for (let i = 0; i < buffer.length; i++) {
-        const sample = Math.max(-1, Math.min(1, buffer[i]));
-        view.setInt16(offset, sample * 0x7FFF, true);
-        offset += 2;
+      } else if (isRestartingVADRef.current) {
+        console.log('🎤 Skipping VAD cleanup - restart in progress');
+      } else if (permissionStatus === 'granted' && vadRef.current) {
+        console.log('🎤 Preserving VAD instance - permission still granted');
       }
       
-      resolve(new Blob([arrayBuffer], { type: 'audio/wav' }));
-    });
-  };
-
-  // Start/stop voice chat
-  const toggleVoiceChat = async () => {
-    // Check if we need to request permission first
-    if (permissionStatus === 'unknown' || permissionStatus === 'denied') {
-      const granted = await requestMicrophonePermission();
-      if (!granted) {
-        return; // Don't proceed if permission denied
-      }
-    }
-
-    if (!vadReady && !isEnabled) {
-      // If VAD is not ready, use manual recording as fallback
-      if (isManualRecording) {
-        stopManualRecording();
-      } else {
-        await startManualRecording();
-      }
-      onToggle();
-      return;
-    }
-
-    if (!vadReady) {
-      setError('Voice detection not ready');
-      return;
-    }
-
-    try {
-      if (isEnabled && vadRef.current) {
-        // Start listening
-        await setupAudioAnalyser(); // Setup audio monitoring
-        await vadRef.current.start();
-        console.log('🎤 Started listening');
-        monitorAudioLevel();
-      } else if (vadRef.current) {
-        // Stop listening
-        vadRef.current.pause();
-        console.log('🎤 Stopped listening');
-        setIsListening(false);
-        setAudioLevel(0);
-        cleanupAudioResources(); // Cleanup audio resources
+      // Only cleanup audio resources if permission is lost
+      if (permissionStatus !== 'granted') {
+        cleanupAudioResources();
       }
       
-      onToggle();
-    } catch (error) {
-      console.error('Error toggling voice chat:', error);
-      setError('Failed to toggle voice chat');
-    }
-  };
-
-  // Play received audio
-  const playAudio = useCallback(async (audioUrl: string) => {
-    try {
-      setIsSpeaking(true);
-      
-      if (audioElementRef.current) {
-        audioElementRef.current.pause();
-      }
-      
-      const audio = new Audio(audioUrl);
-      audioElementRef.current = audio;
-      
-      audio.onended = () => {
-        setIsSpeaking(false);
-        audioElementRef.current = null;
-      };
-      
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        audioElementRef.current = null;
-        console.error('Error playing audio');
-      };
-      
-      await audio.play();
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      setIsSpeaking(false);
-    }
-  }, []);
-
-  // Handle received audio
-  useEffect(() => {
-    // Set up the audio playback handler when onReceiveAudio prop changes
-    // This will be used to play audio responses from Clara
-  }, [onReceiveAudio]);
-
-  // Toggle auto TTS
-  const toggleAutoTTS = useCallback(() => {
-    setAutoTTSEnabled(prev => {
-      const newValue = !prev;
-      console.log(`🔊 Auto TTS ${newValue ? 'enabled' : 'disabled'}`);
-      
-      // If disabling and currently playing, stop TTS
-      if (!newValue && isAutoTTSPlaying) {
-        claraTTSService.stopPlayback();
-        setIsAutoTTSPlaying(false);
-        setIsSpeaking(false);
-      }
-      
-      return newValue;
-    });
-  }, [isAutoTTSPlaying]);
-
-  // Manual restart function for when VAD gets stuck
-  const restartVAD = useCallback(async () => {
-    // Prevent multiple simultaneous restarts
-    if (isInitializingRef.current) {
-      console.log('🔄 VAD restart already in progress, skipping...');
-      return;
-    }
-    
-    // Don't restart if AI is responding
-    if (isAIRespondingRef.current) {
-      console.log('🔄 VAD restart skipped - AI is responding');
-      return;
-    }
-    
-    console.log('🔄 Manually restarting VAD...');
-    isInitializingRef.current = true;
-    
-    try {
-      // Stop current VAD immediately
-      if (vadRef.current) {
-        vadRef.current.pause();
-        setIsListening(false);
-        setAudioLevel(0);
-      }
-      
-      // Cleanup audio resources immediately
-      cleanupAudioResources();
-      
-      // Reset processing state
-      setIsProcessingAudio(false);
-      
-      // Minimal wait for cleanup - reduced from 500ms to 100ms
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Restart if enabled and VAD is ready and AI is not responding
-      if (isEnabledRef.current && vadReady && vadRef.current && !isAIRespondingRef.current) {
-        try {
-          console.log('🎤 Setting up audio analyser for restart...');
-          await setupAudioAnalyser();
-          console.log('🎤 Starting VAD after restart...');
-          await vadRef.current.start();
-          console.log('🎤 VAD manually restarted successfully');
-          monitorAudioLevel();
-        } catch (error) {
-          console.error('Failed to restart VAD:', error);
-          setError('Failed to restart voice detection. Try refreshing the page.');
-        }
-      } else {
-        console.log('🎤 Cannot restart VAD - enabled:', isEnabledRef.current, 'vadReady:', vadReady, 'vadRef exists:', !!vadRef.current, 'AI responding:', isAIRespondingRef.current);
-      }
-    } finally {
-      isInitializingRef.current = false;
-    }
-  }, [vadReady, setupAudioAnalyser, cleanupAudioResources, monitorAudioLevel]);
-
-  // Auto TTS effect - process autoTTSTrigger when enabled
-  useEffect(() => {
-    const processAutoTTS = async () => {
-      console.log('🔊 Auto TTS effect triggered:', {
-        autoTTSEnabled,
-        hasAutoTTSTrigger: !!autoTTSTrigger,
-        isTTSHealthy,
-        autoTTSTrigger: autoTTSTrigger ? {
-          text: autoTTSTrigger.text.slice(0, 50) + '...',
-          timestamp: autoTTSTrigger.timestamp
-        } : null,
-        processedTrigger: processedTriggerRef.current
-      });
-
-      // Only process if auto TTS is enabled and we have a trigger
-      if (!autoTTSEnabled || !autoTTSTrigger || !isTTSHealthy) {
-        console.log('🔊 Auto TTS skipped:', {
-          autoTTSEnabled,
-          hasAutoTTSTrigger: !!autoTTSTrigger,
-          isTTSHealthy
-        });
-        return;
-      }
-
-      // Check if this trigger was already processed to prevent repetition
-      if (processedTriggerRef.current && 
-          processedTriggerRef.current.text === autoTTSTrigger.text && 
-          processedTriggerRef.current.timestamp === autoTTSTrigger.timestamp) {
-        console.log('🔊 Auto TTS trigger already processed, skipping...');
-        return;
-      }
-
-      // Mark this trigger as processed before starting TTS
-      processedTriggerRef.current = {
-        text: autoTTSTrigger.text,
-        timestamp: autoTTSTrigger.timestamp
-      };
-
-      console.log('🔊 Processing auto TTS trigger:', autoTTSTrigger.text.slice(0, 50) + '...');
-
-      try {
-        // Pause voice detection during TTS
-        if (vadRef.current && isListeningRef.current) {
-          vadRef.current.pause();
-          console.log('🎤 VAD paused for auto TTS');
-          setIsListening(false);
-          setAudioLevel(0);
-          cleanupAudioResources();
-        }
-
-        // Stop manual recording if active
-        if (isManualRecordingRef.current) {
-          stopManualRecording();
-        }
-
-        setIsAutoTTSPlaying(true);
-        setIsSpeaking(true);
-
-        // Clean the content for TTS (remove markdown, etc.)
-        const cleanContent = autoTTSTrigger.text
-          .replace(/<think>[\s\S]*?<\/think>/gi, '') // Remove <think> tags and their content
-          .replace(/<[^>]*>/g, '') // Remove any other HTML/XML tags
-          .replace(/```[\s\S]*?```/g, '[code block]') // Replace code blocks
-          .replace(/`([^`]+)`/g, '$1') // Remove inline code backticks
-          .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markdown
-          .replace(/\*([^*]+)\*/g, '$1') // Remove italic markdown
-          .replace(/#{1,6}\s+/g, '') // Remove headers
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with text
-          .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines
-          .replace(/\s+/g, ' ') // Normalize whitespace
-          .trim();
-
-        if (!cleanContent) {
-          console.warn('🔊 No content to synthesize after cleaning');
-          return;
-        }
-
-        console.log('🔊 Starting auto TTS synthesis...');
-        await claraTTSService.synthesizeAndPlay({
-          text: cleanContent,
-          engine: 'kokoro',
-          voice: 'af_sarah',
-          speed: 1.0,
-          language: 'en'
-        });
-
-        console.log('🔊 Auto TTS playback completed');
-
-      } catch (error) {
-        console.error('🔊 Auto TTS error:', error);
-        // Don't show error to user for auto TTS failures, just log it
-      } finally {
-        setIsAutoTTSPlaying(false);
-        setIsSpeaking(false);
-
-        // Resume voice detection after TTS with a short delay
-        setTimeout(async () => {
-          if (isEnabledRef.current && vadReady && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
-            try {
-              console.log('🎤 Resuming VAD after auto TTS...');
-              await setupAudioAnalyser();
-              await vadRef.current.start();
-              console.log('🎤 VAD resumed after auto TTS');
-              monitorAudioLevel();
-            } catch (error) {
-              console.error('🎤 Failed to resume VAD after auto TTS:', error);
-            }
-          }
-        }, 500); // 500ms delay to ensure TTS has fully stopped
+      // Reset initialization flag only if permission is lost
+      if (permissionStatus !== 'granted') {
+        isInitializingRef.current = false;
       }
     };
+  }, [permissionStatus]); // Keep only permissionStatus as dependency
 
-    processAutoTTS();
-  }, [autoTTSTrigger, autoTTSEnabled, isTTSHealthy, vadReady, setupAudioAnalyser, monitorAudioLevel]);
-
-  // VAD health check - automatically restart if stuck - OPTIMIZED FOR SPEED
-  useEffect(() => {
-    // Clear any existing health check
-    if (healthCheckIntervalRef.current) {
-      clearInterval(healthCheckIntervalRef.current);
-      healthCheckIntervalRef.current = null;
-    }
-    
-    // Only start health check if voice mode is enabled and VAD is ready
-    if (!isEnabled || !vadReady) return;
-    
-    // REDUCED from 10 seconds to 2 seconds for faster response
-    healthCheckIntervalRef.current = setInterval(() => {
-      // Check if VAD should be listening but isn't (and we're not processing, AI is not responding, and auto TTS is not playing)
-      if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isManualRecordingRef.current && !isInitializingRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
-        console.log('🔍 VAD health check: Should be listening but isn\'t - auto-restarting...');
-        restartVAD();
-      } else if ((isAIRespondingRef.current || isAutoTTSPlayingRef.current) && isListeningRef.current) {
-        // If AI is responding or auto TTS is playing and we're still listening, pause VAD immediately
-        console.log('🔍 VAD health check: AI is responding or auto TTS is playing, pausing VAD...');
-        if (vadRef.current) {
-          vadRef.current.pause();
-          setIsListening(false);
-          setAudioLevel(0);
-          cleanupAudioResources();
-        }
-        if (isManualRecordingRef.current) {
-          stopManualRecording();
-        }
-      }
-    }, 2000); // REDUCED from 10000ms to 2000ms for much faster response
-    
-    return () => {
-      if (healthCheckIntervalRef.current) {
-        clearInterval(healthCheckIntervalRef.current);
-        healthCheckIntervalRef.current = null;
-      }
-    };
-  }, [isEnabled, vadReady, isAIResponding, restartVAD]);
-
-  // IMMEDIATE VAD restart when AI response completes - NEW EFFECT
-  useEffect(() => {
-    // When AI stops responding, immediately check if we should restart VAD (but not if auto TTS is playing)
-    if (!isAIResponding && isEnabled && vadReady && !isListening && !isProcessingAudio && !isManualRecording && !isInitializingRef.current && !isAutoTTSPlaying) {
-      console.log('🚀 AI response completed - immediately restarting VAD...');
-      // Use a very short delay to ensure state has settled
-      setTimeout(() => {
-        if (isEnabledRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
-          restartVAD();
-        }
-      }, 50); // Only 50ms delay for immediate response
-    }
-  }, [isAIResponding, isEnabled, vadReady, isListening, isProcessingAudio, isManualRecording, isAutoTTSPlaying, restartVAD]);
-
-  // Debug effect to monitor VAD state transitions
-  useEffect(() => {
-    console.log('🔍 VAD State Change:', {
-      isEnabled,
-      vadReady,
-      isListening,
-      isProcessingAudio,
-      isProcessing,
-      isAIResponding,
-      isManualRecording,
-      isAutoTTSPlaying,
-      isInitializing: isInitializingRef.current,
-      vadExists: !!vadRef.current,
-      timestamp: new Date().toISOString()
-    });
-  }, [isEnabled, vadReady, isListening, isProcessingAudio, isProcessing, isAIResponding, isManualRecording, isAutoTTSPlaying]);
-
-  // AGGRESSIVE immediate restart - triggers on any state change that should enable listening
-  useEffect(() => {
-    // If all conditions are met for listening but we're not listening, restart immediately
-    if (isEnabled && vadReady && !isListening && !isProcessingAudio && !isAIResponding && !isManualRecording && !isInitializingRef.current && !isAutoTTSPlaying && vadRef.current) {
-      console.log('🚀 All conditions met for listening - immediate restart...');
-      // Immediate restart without delay
-      const immediateRestart = async () => {
-        try {
-          await setupAudioAnalyser();
-          await vadRef.current!.start();
-          console.log('🎤 Immediate VAD restart successful');
-          monitorAudioLevel();
-        } catch (error) {
-          console.error('🎤 Immediate restart failed:', error);
-          // Fall back to regular restart mechanism
-          setTimeout(() => restartVAD(), 100);
-        }
-      };
-      immediateRestart();
-    }
-  }, [isEnabled, vadReady, isListening, isProcessingAudio, isAIResponding, isManualRecording, isAutoTTSPlaying, setupAudioAnalyser, monitorAudioLevel, restartVAD]);
-
-  // Cleanup effect when component unmounts or voice mode is disabled
+  // Separate cleanup effect for component unmount
   useEffect(() => {
     return () => {
       // Cleanup when component unmounts
-      console.log('🎤 Voice chat component unmounting - cleaning up all resources...');
+      console.log('🎤 Voice chat component unmounting - cleaning up VAD...');
       
-      // Clear health check interval
-      if (healthCheckIntervalRef.current) {
-        clearInterval(healthCheckIntervalRef.current);
-        healthCheckIntervalRef.current = null;
-      }
-      
-      // Stop and destroy VAD
       if (vadRef.current) {
         vadRef.current.pause();
         vadRef.current.destroy();
         vadRef.current = null;
       }
       
-      // Cleanup audio resources
       cleanupAudioResources();
-      
-      // Stop manual recording
-      if (manualRecorder && manualRecorder.state === 'recording') {
-        manualRecorder.stop();
-      }
-      
-      // Reset all refs and state
       isInitializingRef.current = false;
       setVadReady(false);
-      setIsListening(false);
-      setIsProcessingAudio(false);
-      setIsManualRecording(false);
-      
-      console.log('🎤 Voice chat component cleanup complete');
     };
-  }, []); // Empty dependency array - only run on unmount
+  }, []); // Empty dependency array - only runs on unmount
 
-  // Stop speaking
-  const stopSpeaking = () => {
-    if (audioElementRef.current) {
-      audioElementRef.current.pause();
-      audioElementRef.current = null;
-      setIsSpeaking(false);
+  // Auto-request permission and initialize VAD when voice mode is enabled
+  useEffect(() => {
+    const initializeVoiceMode = async () => {
+      // Only proceed if voice mode is enabled
+      if (!isEnabledRef.current) {
+        // Voice mode disabled - stop everything
+        if (vadRef.current && isListeningRef.current) {
+          vadRef.current.pause();
+          console.log('🎤 VAD stopped (voice mode disabled)');
+          setIsListening(false);
+          setAudioLevel(0);
+          cleanupAudioResources();
+        }
+        if (isManualRecordingRef.current) {
+          stopManualRecording();
+        }
+        setIsProcessingAudio(false);
+        return;
+      }
+      
+      // Voice mode enabled - check if AI is responding or auto TTS is playing
+      if (isAIRespondingRef.current || isAutoTTSPlayingRef.current) {
+        // AI is responding or auto TTS is playing - pause voice detection
+        if (vadRef.current && isListeningRef.current) {
+          vadRef.current.pause();
+          console.log('🎤 VAD paused (AI is responding or auto TTS is playing)');
+          setIsListening(false);
+          setAudioLevel(0);
+          cleanupAudioResources();
+        }
+        if (isManualRecordingRef.current) {
+        stopManualRecording();
+      }
+      return;
     }
-  };
+
+      // If we don't have permission yet, request it automatically
+      if (permissionStatus !== 'granted') {
+        console.log('🎤 Voice mode enabled but no microphone permission - requesting automatically...');
+        const granted = await requestMicrophonePermission();
+        if (!granted) {
+          console.log('🎤 Microphone permission denied, voice mode cannot start');
+      return;
+    }
+        return;
+      }
+      
+      // If we have permission but VAD isn't ready, wait for it
+      if (permissionStatus === 'granted' && !vadReady && !isInitializingRef.current) {
+        console.log('🎤 Permission granted, waiting for VAD to initialize...');
+        return;
+      }
+      
+      // If everything is ready, start listening
+      if (vadReady && vadRef.current && !isListeningRef.current && !isProcessingAudioRef.current && !isProcessingRef.current) {
+        try {
+          console.log('🎤 Auto-starting VAD (voice mode enabled)');
+          
+          // Light cleanup - only stop existing streams, don't destroy audio context
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          setAudioLevel(0);
+          
+          // Small delay to ensure cleanup is complete
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Setup fresh audio analyser and start VAD
+          await setupAudioAnalyser();
+          await vadRef.current.start();
+          
+          console.log('🎤 VAD auto-started successfully');
+          monitorAudioLevel();
+          
+    } catch (error) {
+          console.error('🎤 Failed to auto-start VAD:', error);
+          // Fallback to manual recording
+          if (permissionStatus === 'granted') {
+            console.log('🎤 Falling back to manual recording mode');
+            try {
+              await startManualRecording();
+            } catch (manualError) {
+              console.error('🎤 Manual recording fallback also failed:', manualError);
+            }
+          }
+        }
+      }
+    };
+
+    initializeVoiceMode();
+  }, [isEnabled, permissionStatus, vadReady, isAIResponding, isAutoTTSPlaying, isProcessing]);
 
   // Manual recording functions
   const startManualRecording = async () => {
@@ -1193,7 +858,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       if (permissionStatus !== 'granted') {
         const granted = await requestMicrophonePermission();
         if (!granted) {
-          return;
+      return;
         }
       }
 
@@ -1230,7 +895,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
       manualRecorder.stop();
       setManualRecorder(null);
       setIsManualRecording(false);
-      setIsListening(false);
+        setIsListening(false);
     }
   };
 
@@ -1259,262 +924,564 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
     isManualRecordingRef.current = isManualRecording;
   }, [isManualRecording]);
 
-  // Add missing ref update for auto TTS
   useEffect(() => {
     isAutoTTSPlayingRef.current = isAutoTTSPlaying;
   }, [isAutoTTSPlaying]);
 
-  return (
-    <div className="flex flex-col items-center space-y-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-      {/* Permission Request UI */}
-      {showPermissionRequest && permissionStatus !== 'granted' && (
-        <div className="w-full max-w-md p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <Mic className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                Microphone Access Required
-              </h3>
-              <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                {isElectron 
-                  ? 'Voice chat needs microphone access. This app may need permission in your system settings.'
-                  : 'Voice chat needs access to your microphone to detect speech and record audio.'
+  useEffect(() => {
+    autoTTSEnabledRef.current = autoTTSEnabled;
+  }, [autoTTSEnabled]);
+
+  // Auto TTS effect - process autoTTSTrigger when enabled
+  useEffect(() => {
+    const processAutoTTS = async () => {
+      // Only process if auto TTS is enabled and we have a trigger
+      if (!autoTTSEnabled || !autoTTSTrigger || !isTTSHealthy) {
+        return;
+      }
+
+      // Check if this trigger was already processed to prevent repetition
+      if (processedTriggerRef.current && 
+          processedTriggerRef.current.text === autoTTSTrigger.text && 
+          processedTriggerRef.current.timestamp === autoTTSTrigger.timestamp) {
+        return;
+      }
+
+      // Mark this trigger as processed before starting TTS
+      processedTriggerRef.current = {
+        text: autoTTSTrigger.text,
+        timestamp: autoTTSTrigger.timestamp
+      };
+
+      try {
+        // Pause voice detection during TTS
+        if (vadRef.current && isListeningRef.current) {
+          vadRef.current.pause();
+          setIsListening(false);
+          setAudioLevel(0);
+          cleanupAudioResources();
+        }
+
+        // Stop manual recording if active
+        if (isManualRecordingRef.current) {
+          stopManualRecording();
+        }
+
+        setIsAutoTTSPlaying(true);
+        setIsSpeaking(true);
+
+        // Clean the content for TTS
+        const cleanContent = autoTTSTrigger.text
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/```[\s\S]*?```/g, '[code block]')
+          .replace(/`([^`]+)`/g, '$1')
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/#{1,6}\s+/g, '')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanContent) {
+          return;
+        }
+
+        await claraTTSService.synthesizeAndPlay({
+          text: cleanContent,
+          engine: 'kokoro',
+          voice: 'af_sarah',
+          speed: 1.0,
+          language: 'en'
+        });
+
+      } catch (error) {
+        console.error('🔊 Auto TTS error:', error);
+      } finally {
+        setIsAutoTTSPlaying(false);
+        setIsSpeaking(false);
+
+        // Resume voice detection after TTS with improved restart logic
+        const restartAfterTTS = async () => {
+          // Wait a bit longer to ensure all state updates are complete
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Mark that we're restarting to prevent cleanup
+          isRestartingVADRef.current = true;
+          
+          // Double-check all conditions before restarting
+          const canRestart = (
+            isEnabledRef.current && 
+            vadReady && 
+            vadRef.current && 
+            !isListeningRef.current && 
+            !isProcessingAudioRef.current && 
+            !isAIRespondingRef.current && 
+            !isAutoTTSPlayingRef.current
+          );
+          
+          if (canRestart) {
+            try {
+              console.log('🎤 Restarting VAD after auto TTS...');
+              
+              // Light cleanup - only stop existing streams, don't destroy audio context
+              if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+              }
+              setAudioLevel(0);
+              
+              // Small delay to ensure cleanup is complete
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              // Setup fresh audio analyser and restart VAD
+              await setupAudioAnalyser();
+              await vadRef.current.start();
+              
+              console.log('🎤 VAD restarted successfully after auto TTS');
+              monitorAudioLevel();
+              
+            } catch (error) {
+              console.error('🎤 Failed to resume VAD after auto TTS:', error);
+              
+              // If VAD restart fails, try manual recording as fallback
+              if (permissionStatus === 'granted') {
+                console.log('🎤 Falling back to manual recording mode after TTS');
+                try {
+                  await startManualRecording();
+                } catch (manualError) {
+                  console.error('🎤 Manual recording fallback also failed after TTS:', manualError);
                 }
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 flex space-x-2">
+              }
+            }
+          } else {
+            console.log('🎤 Cannot restart VAD after TTS - conditions not met:', {
+              enabled: isEnabledRef.current,
+              vadReady,
+              vadExists: !!vadRef.current,
+              listening: isListeningRef.current,
+              processingAudio: isProcessingAudioRef.current,
+              aiResponding: isAIRespondingRef.current,
+              autoTTSPlaying: isAutoTTSPlayingRef.current
+            });
+          }
+          
+          // Clear restart flag
+          isRestartingVADRef.current = false;
+        };
+        
+        // Execute restart logic
+        restartAfterTTS();
+      }
+    };
+
+    processAutoTTS();
+  }, [autoTTSTrigger, autoTTSEnabled, isTTSHealthy, vadReady, setupAudioAnalyser, monitorAudioLevel]);
+
+  // Cleanup effect when component unmounts
+  useEffect(() => {
+    // Add debug function to window for troubleshooting
+    (window as any).debugVoiceChat = () => {
+      console.log('🎤 Voice Chat Debug Info:');
+      console.log('- isEnabled:', isEnabled);
+      console.log('- vadReady:', vadReady);
+      console.log('- vadRef.current:', !!vadRef.current);
+      console.log('- isListening:', isListening);
+      console.log('- isProcessingAudio:', isProcessingAudio);
+      console.log('- isProcessing:', isProcessing);
+      console.log('- isAIResponding:', isAIResponding);
+      console.log('- isAutoTTSPlaying:', isAutoTTSPlaying);
+      console.log('- permissionStatus:', permissionStatus);
+      console.log('- error:', error);
+      console.log('- isTTSHealthy:', isTTSHealthy);
+      console.log('- autoTTSEnabled:', autoTTSEnabled);
+      console.log('- isInitializing:', isInitializingRef.current);
+      console.log('- isRestartingVAD:', isRestartingVADRef.current);
+      console.log('- Status text:', getStatusText());
+      
+      // Try to restart VAD if it's stuck
+      if (isEnabled && vadReady && vadRef.current && !isListening && !isProcessingAudio && !isProcessing && !isAIResponding && !isAutoTTSPlaying) {
+        console.log('🎤 Attempting to restart stuck VAD...');
+        const forceRestart = async () => {
+          try {
+            // Light cleanup - only stop existing streams
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(track => track.stop());
+              streamRef.current = null;
+            }
+            setAudioLevel(0);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await setupAudioAnalyser();
+            await vadRef.current.start();
+            monitorAudioLevel();
+            console.log('✅ VAD force restart successful');
+          } catch (error) {
+            console.error('❌ VAD force restart failed:', error);
+          }
+        };
+        forceRestart();
+      }
+    };
+    
+    // Add function to force reinitialize VAD
+    (window as any).forceReinitializeVAD = async () => {
+      console.log('🎤 Force reinitializing VAD...');
+      
+      // Reset all flags and state
+      isInitializingRef.current = false;
+      isRestartingVADRef.current = false;
+      
+      // Cleanup existing VAD
+        if (vadRef.current) {
+          vadRef.current.pause();
+        vadRef.current.destroy();
+        vadRef.current = null;
+      }
+      
+      setVadReady(false);
+          setIsListening(false);
+          setAudioLevel(0);
+      setError(null);
+      
+      // Force reinitialize
+      if (permissionStatus === 'granted') {
+        try {
+          console.log('🎤 Starting forced VAD reinitialization...');
+          
+          // Add timeout to prevent infinite loading
+          const timeoutId = setTimeout(() => {
+            console.error('❌ Forced VAD initialization timeout');
+            setError('VAD initialization timed out. Please refresh the page.');
+            isInitializingRef.current = false;
+          }, 30000);
+          
+          isInitializingRef.current = true;
+          
+          // Dynamic import of VAD library
+          const { MicVAD } = await import('@ricky0123/vad-web');
+          
+          const vad = await MicVAD.new({
+            onSpeechStart: () => {
+              console.log('🎤 Speech started');
+              setIsListening(true);
+              audioChunksRef.current = [];
+            },
+            onSpeechEnd: async (audio: Float32Array) => {
+              console.log('🎤 Speech ended');
+              
+              if (isProcessingAudioRef.current || isProcessingRef.current || isAIRespondingRef.current) {
+                console.log('🎤 Ignoring speech end - already processing or AI responding');
+                setIsListening(false);
+                setAudioLevel(0);
+                return;
+              }
+              
+              setIsListening(false);
+              setAudioLevel(0);
+              setIsProcessingAudio(true);
+              
+              if (vadRef.current) {
+                vadRef.current.pause();
+                console.log('🎤 VAD paused for processing');
+              }
+              
+              const audioBlob = await convertFloat32ArrayToBlob(audio);
+              if (audioBlob) {
+                try {
+                  await onSendAudio(audioBlob);
+                  console.log('🎤 Audio sent successfully');
+                } catch (error: unknown) {
+                  console.error('🎤 Error sending audio:', error);
+                }
+              }
+              
+              setIsProcessingAudio(false);
+              
+              // Auto-restart logic
+              setTimeout(async () => {
+                if (isEnabledRef.current && vadRef.current && vadReady && !isListeningRef.current && !isProcessingAudioRef.current && !isProcessingRef.current && !isAIRespondingRef.current && !isAutoTTSPlayingRef.current) {
+                  try {
+                    await setupAudioAnalyser();
+                    await vadRef.current.start();
+                    monitorAudioLevel();
+                    console.log('🎤 VAD auto-restarted after forced init');
+                  } catch (error) {
+                    console.error('🎤 Failed to restart VAD after forced init:', error);
+                  }
+                }
+              }, 500);
+            },
+            onVADMisfire: () => {
+              console.log('🎤 VAD misfire - false positive detected');
+              setIsListening(false);
+              setAudioLevel(0);
+            },
+            positiveSpeechThreshold: 0.6,
+            negativeSpeechThreshold: 0.15,
+            redemptionFrames: 8,
+            frameSamples: 1536,
+            preSpeechPadFrames: 1,
+            minSpeechFrames: 4
+          });
+          
+          clearTimeout(timeoutId);
+          vadRef.current = vad;
+          setVadReady(true);
+          isInitializingRef.current = false;
+          
+          console.log('✅ Forced VAD reinitialization successful');
+          
+          // Auto-start if enabled
+          if (isEnabledRef.current) {
+        try {
+          await setupAudioAnalyser();
+              await vad.start();
+          monitorAudioLevel();
+              console.log('🎤 VAD auto-started after forced init');
+        } catch (error) {
+              console.error('🎤 Failed to auto-start VAD after forced init:', error);
+            }
+          }
+          
+        } catch (error) {
+          console.error('❌ Forced VAD reinitialization failed:', error);
+          setError(`Forced VAD reinitialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          setVadReady(false);
+          isInitializingRef.current = false;
+        }
+      } else {
+        console.log('❌ Cannot force reinitialize VAD - no microphone permission');
+      }
+    };
+    
+    return () => {
+      // Cleanup when component unmounts
+      console.log('🎤 Voice chat component unmounting - cleaning up all resources...');
+      
+      // Remove debug functions
+      delete (window as any).debugVoiceChat;
+      delete (window as any).forceReinitializeVAD;
+      
+      // Clear health check interval
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+        healthCheckIntervalRef.current = null;
+      }
+      
+      // Stop and destroy VAD
+      if (vadRef.current) {
+        vadRef.current.pause();
+        vadRef.current.destroy();
+        vadRef.current = null;
+      }
+      
+      // Cleanup audio resources
+      cleanupAudioResources();
+      
+      // Stop manual recording
+      if (manualRecorder && manualRecorder.state === 'recording') {
+        manualRecorder.stop();
+      }
+      
+      // Reset all refs and state
+      isInitializingRef.current = false;
+      setVadReady(false);
+      setIsListening(false);
+      setIsProcessingAudio(false);
+      setIsManualRecording(false);
+      
+      console.log('🎤 Voice chat component cleanup complete');
+    };
+  }, []);
+
+  // Get status text for compact display
+  const getStatusText = () => {
+    if (!isTTSHealthy) return 'TTS offline';
+    if (error) return 'Error';
+    if (permissionStatus === 'requesting') return 'Requesting mic...';
+    if (permissionStatus === 'denied') return 'Mic denied';
+    if (permissionStatus !== 'granted') return 'Need mic access';
+    if (isProcessingAudio) return 'Converting...';
+    if (isProcessing) return 'Processing...';
+    if (isListening) return `Listening... ${Math.round(audioLevel * 100)}%`;
+    if (isSpeaking) return isAutoTTSPlaying ? 'Auto TTS' : 'Speaking';
+    if (isEnabled && !vadReady && isInitializingRef.current) return 'Loading...';
+    if (isEnabled && !vadReady && !isInitializingRef.current) return 'Initializing...';
+    if (isEnabled && vadReady && isAIResponding) return 'Voice paused';
+    if (isEnabled && vadReady && !isListening && !isAIResponding && !isProcessingAudio && !isProcessing) {
+      // Check if we're in manual mode (Auto TTS disabled)
+      if (!autoTTSEnabledRef.current) {
+        return 'Manual mode - Click to restart';
+      }
+      // Auto mode (Auto TTS enabled)
+      if (vadRef.current) {
+        return 'Ready to listen';
+      } else {
+        return 'VAD not ready';
+      }
+    }
+    if (isEnabled || isManualRecording) return vadReady ? 'Ready' : 'Manual mode';
+    return 'Click to start';
+  };
+
+  // Get status color
+  const getStatusColor = () => {
+    if (!isTTSHealthy || error || permissionStatus === 'denied') return 'text-red-500';
+    if (permissionStatus === 'requesting' || isProcessingAudio || isProcessing) return 'text-blue-500';
+    if (isListening) return 'text-green-500';
+    if (isSpeaking) return 'text-sakura-500';
+    if (isEnabled && vadReady && !autoTTSEnabledRef.current && !isListening && !isAIResponding && !isProcessingAudio && !isProcessing) {
+      return 'text-gray-500'; // Grey for manual mode
+    }
+    if (isEnabled) return 'text-purple-500';
+    return 'text-gray-500';
+  };
+
+  // Toggle auto TTS
+  const toggleAutoTTS = useCallback(() => {
+    setAutoTTSEnabled(prev => {
+      const newValue = !prev;
+      console.log(`🔊 Auto TTS ${newValue ? 'enabled' : 'disabled'}`);
+      
+      // If disabling and currently playing, stop TTS
+      if (!newValue && isAutoTTSPlaying) {
+        claraTTSService.stopPlayback();
+        setIsAutoTTSPlaying(false);
+        setIsSpeaking(false);
+      }
+      
+      return newValue;
+    });
+  }, [isAutoTTSPlaying]);
+
+  // Stop speaking
+  const stopSpeaking = () => {
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current = null;
+      setIsSpeaking(false);
+    }
+    if (isAutoTTSPlaying) {
+      claraTTSService.stopPlayback();
+      setIsAutoTTSPlaying(false);
+    }
+  };
+
+  return (
+    <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
+      {/* Voice Mode Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
             <button
-              onClick={requestMicrophonePermission}
-              disabled={permissionStatus === 'requesting'}
-              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white text-xs rounded font-medium transition-colors"
-            >
-              {permissionStatus === 'requesting' ? 'Requesting...' : 'Grant Permission'}
+            onClick={onBackToChat}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
+            title="Back to chat mode"
+          >
+            <ArrowLeft className="w-5 h-5" />
             </button>
-            <button
-              onClick={() => setShowPermissionRequest(false)}
-              className="px-3 py-1 bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 text-xs rounded font-medium transition-colors"
-            >
-              Later
-            </button>
+          <div className="flex items-center gap-2">
+            <Mic className="w-5 h-5 text-purple-500" />
+            <span className="font-medium text-gray-700 dark:text-gray-300">Voice Mode</span>
           </div>
         </div>
-      )}
-
-      {/* Permission Denied UI */}
-      {permissionStatus === 'denied' && (
-        <div className="w-full max-w-md p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <MicOff className="w-6 h-6 text-red-600 dark:text-red-400" />
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-                Microphone Access Denied
-              </h3>
-              <p className="text-xs text-red-700 dark:text-red-300 mt-1">
-                {isElectron 
-                  ? 'Please enable microphone permissions for this app in your system settings (Privacy & Security → Microphone).'
-                  : 'To use voice chat, please allow microphone access in your browser settings.'
-                }
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 flex space-x-2">
+        
+        {/* Auto TTS Toggle */}
+        {isTTSHealthy && (
             <button
-              onClick={() => {
-                setPermissionStatus('unknown');
-                setShowPermissionRequest(true);
-                setError(null);
-              }}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded font-medium transition-colors"
-            >
-              Try Again
-            </button>
-            {isElectron && (
-              <button
-                onClick={() => {
-                  // Open system preferences (this would need to be implemented in the main process)
-                  if ((window.electronAPI as any).openSystemPreferences) {
-                    (window.electronAPI as any).openSystemPreferences('privacy');
-                  }
-                }}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded font-medium transition-colors"
-              >
-                Open Settings
+            onClick={toggleAutoTTS}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              autoTTSEnabled 
+                ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-400' 
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+            }`}
+            title={autoTTSEnabled ? 'Disable Auto TTS' : 'Enable Auto TTS'}
+          >
+            <Volume2 className="w-4 h-4" />
+            <span>Auto TTS</span>
+            {isAutoTTSPlaying && (
+              <div className="w-2 h-2 bg-sakura-500 rounded-full animate-pulse"></div>
+            )}
               </button>
             )}
           </div>
-        </div>
-      )}
 
-      {/* Audio Visualizer */}
-      <div className="relative">
-        <AudioVisualizer
+      {/* Main Voice Interface */}
+      <div className="flex items-center gap-4">
+        {/* Voice Visualizer */}
+        <div className="flex-shrink-0">
+          <CompactAudioVisualizer
           isListening={isListening}
           isSpeaking={isSpeaking}
           audioLevel={audioLevel}
           isProcessing={isProcessing}
           isAIResponding={isAIResponding}
-        />
-        
-        {/* Status overlay */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          {isProcessing ? (
-            <div className="text-blue-500">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          ) : isListening ? (
-            <Mic className="w-8 h-8 text-green-500" />
-          ) : isSpeaking ? (
-            <Volume2 className="w-8 h-8 text-purple-500" />
-          ) : !isTTSHealthy ? (
-            <MicOff className="w-8 h-8 text-red-400" />
-          ) : (
-            <MicOff className="w-8 h-8 text-gray-400" />
-          )}
-        </div>
+            isTTSHealthy={isTTSHealthy}
+            isAutoTTSPlaying={isAutoTTSPlaying}
+          />
       </div>
 
       {/* Status Text */}
-      <div className="text-center">
-        {!isTTSHealthy ? (
-          <p className="text-red-500 text-sm">🔊 Voice features unavailable - TTS backend offline</p>
-        ) : error ? (
-          <p className="text-red-500 text-sm">{error}</p>
-        ) : permissionStatus === 'requesting' ? (
-          <p className="text-blue-600 text-sm">Requesting microphone permission...</p>
-        ) : permissionStatus === 'denied' ? (
-          <p className="text-red-500 text-sm">Microphone access denied</p>
-        ) : permissionStatus !== 'granted' ? (
-          <p className="text-yellow-600 text-sm">
-            {isEnabled ? 'Voice mode enabled - requesting microphone access...' : 'Microphone permission required'}
-          </p>
-        ) : isProcessingAudio ? (
-          <p className="text-orange-600 text-sm">🎵 Converting audio...</p>
-        ) : isProcessing ? (
-          <p className="text-blue-600 text-sm">Processing your voice...</p>
-        ) : isListening ? (
-          <p className="text-green-600 text-sm">
-            🎤 Listening... (speak now)
-          </p>
-        ) : isSpeaking ? (
-          <p className="text-purple-600 text-sm">
-            🔊 {isAutoTTSPlaying ? 'Auto TTS: Clara is speaking...' : 'Clara is speaking...'}
-          </p>
-        ) : isEnabled && !vadReady && !isInitializingRef.current ? (
-          <p className="text-blue-600 text-sm">🎤 Initializing voice detection...</p>
-        ) : isEnabled && !vadReady && isInitializingRef.current ? (
-          <p className="text-blue-600 text-sm">🎤 Loading voice detection engine...</p>
-        ) : isEnabled && vadReady && isAIResponding ? (
-          <p className="text-orange-600 text-sm">🎤 Voice paused (Clara is responding)</p>
-        ) : isEnabled && vadReady && !isListening && !isAIResponding ? (
-          <p className="text-yellow-600 text-sm">🎤 Ready - starting voice detection...</p>
-        ) : isEnabled || isManualRecording ? (
-          <p className="text-blue-600 text-sm">
-            {vadReady ? '🎤 Ready - speak to activate' : '🎤 Voice mode active (manual recording)'}
-          </p>
-        ) : (
-          <p className="text-gray-400 text-sm">Click microphone to start voice mode</p>
-        )}
+        <div className="flex-1 min-w-0">
+          <div className={`text-sm font-medium ${getStatusColor()}`}>
+            {getStatusText()}
       </div>
-
-      {/* Streaming Text Display */}
       {isStreaming && streamingText && (
-        <div className="max-w-md p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            {streamingText}
-            <span className="animate-pulse">|</span>
-          </p>
+            <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">
+              {streamingText.slice(0, 50)}...
         </div>
       )}
+        </div>
 
-      {/* Controls */}
-      <div className="flex space-x-2">
-        {/* Auto TTS Toggle Button */}
-        {isTTSHealthy && (
-          <button
-            onClick={toggleAutoTTS}
-            className={`px-3 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-              autoTTSEnabled 
-                ? 'bg-purple-500 hover:bg-purple-600 text-white' 
-                : 'bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
-            }`}
-            title={autoTTSEnabled ? 'Disable Auto TTS' : 'Enable Auto TTS'}
-          >
-            <Volume2 className="w-4 h-4" />
-            <span className="text-sm">Auto TTS</span>
-            {isAutoTTSPlaying && (
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            )}
-          </button>
-        )}
-
-        {/* Only show stop speaking button when Clara is speaking */}
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Stop Speaking Button */}
         {isSpeaking && (
           <button
             onClick={stopSpeaking}
-            className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+              className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+              title="Stop speaking"
           >
-            <VolumeX className="w-4 h-4 inline mr-2" />
-            Stop Speaking
+              <VolumeX className="w-4 h-4" />
           </button>
         )}
         
-        {/* Manual restart button when VAD is stuck or having issues */}
-        {isEnabled && vadReady && (isListening || error) && (
+          {/* Main Voice Toggle */}
           <button
-            onClick={restartVAD}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+            onClick={onToggle}
+            className={`p-2 rounded-lg transition-colors ${
+              isEnabled 
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+            }`}
+            title={isEnabled ? 'Stop voice mode' : 'Start voice mode'}
           >
-            🔄 Restart Voice Detection
+            {isEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </button>
-        )}
-        
-        {/* Show permission request button only when needed */}
-        {permissionStatus !== 'granted' && !showPermissionRequest && (
-          <button
-            onClick={() => setShowPermissionRequest(true)}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-          >
-            <Mic className="w-4 h-4 inline mr-2" />
-            Enable Microphone
-          </button>
-        )}
+        </div>
       </div>
 
-      {/* System Status */}
-      <div className="text-xs text-gray-500 text-center">
-        <div className="flex items-center justify-center space-x-2">
-          <span>Voice Detection: {vadReady ? '✅ Ready' : '⏳ Loading...'}</span>
-          <span>•</span>
-          <span>Microphone: {
-            permissionStatus === 'granted' ? '✅ Ready' :
-            permissionStatus === 'denied' ? '❌ Blocked' :
-            permissionStatus === 'requesting' ? '⏳ Requesting...' :
-            '❓ Not Set'
-          }</span>
-          <span>•</span>
-          <span>TTS Backend: {isTTSHealthy ? '✅ Ready' : '❌ Offline'}</span>
-          {isTTSHealthy && (
-            <>
-              <span>•</span>
-              <span>Auto TTS: {autoTTSEnabled ? '✅ Enabled' : '❌ Disabled'}</span>
-            </>
-          )}
+      {/* Error Message */}
+      {error && (
+        <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
         </div>
-        {error && (
-          <div className="mt-2">
+      )}
+
+      {/* Permission Request */}
+      {permissionStatus !== 'granted' && permissionStatus !== 'requesting' && (
+        <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
+            Microphone access required for voice mode
+        </div>
             <button
-              onClick={() => {
-                setError(null);
-                setVadReady(true); // Allow bypass
-              }}
-              className="px-2 py-1 text-xs bg-yellow-500 hover:bg-yellow-600 text-white rounded"
-            >
-              Continue without Voice Detection
+            onClick={requestMicrophonePermission}
+            className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm rounded-lg font-medium transition-colors"
+          >
+            Grant Permission
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 };
