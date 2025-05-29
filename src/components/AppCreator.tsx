@@ -2,6 +2,9 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import {
   Check,
   X,
+  Loader,
+  AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 import { addEdge, useNodesState, useEdgesState, Node, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
@@ -56,6 +59,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const [messageHistory, setMessageHistory] = useState<any[]>([]);
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, 'running' | 'completed' | 'error'>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   // Sidebar resizing state
   const [sidebarWidth, setSidebarWidth] = useState(300);
@@ -261,6 +265,47 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
     [reactFlowInstance, setNodes, isDark, toolItems]
   );
 
+  // Add cleanup for stuck drag states
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsDragging(false);
+        setSelectedTool(null);
+      }
+    };
+
+    const handleClickOutside = () => {
+      // Clear dragging state if clicking outside
+      if (isDragging) {
+        setTimeout(() => {
+          setIsDragging(false);
+          setSelectedTool(null);
+        }, 100);
+      }
+    };
+
+    // Auto-cleanup stuck drag state after 30 seconds
+    let dragTimeout: NodeJS.Timeout | null = null;
+    if (isDragging) {
+      dragTimeout = setTimeout(() => {
+        setIsDragging(false);
+        setSelectedTool(null);
+        showNotification('error', 'Drag operation timed out');
+      }, 30000); // 30 second timeout
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('click', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('click', handleClickOutside);
+      if (dragTimeout) {
+        clearTimeout(dragTimeout);
+      }
+    };
+  }, [isDragging]);
+
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, tool: any) => {
     event.dataTransfer.setData('application/reactflow', tool.id);
     event.dataTransfer.effectAllowed = 'move';
@@ -269,8 +314,11 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   };
 
   const onDragEnd = () => {
-    setSelectedTool(null);
-    setIsDragging(false);
+    // Add small delay to prevent race conditions
+    setTimeout(() => {
+      setSelectedTool(null);
+      setIsDragging(false);
+    }, 100);
   };
 
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -389,6 +437,14 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
   const handleTestApp = async () => {
     setIsExecuting(true);
     setNodeStatuses({});  // Reset node statuses
+    
+    // Add a timeout to prevent infinite hanging
+    const timeoutId = setTimeout(() => {
+      setIsExecuting(false);
+      setNodeStatuses({});
+      showNotification('error', 'Execution timed out after 60 seconds');
+    }, 60000); // 60 second timeout
+
     try {
       const plan = generateExecutionPlan(nodes, edges);
       const updateNodeOutput = (nodeId: string, output: any) => {
@@ -445,11 +501,17 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
       };
 
       await executeFlow(plan, updateNodeOutput, handleUiUpdate, updateNodeStatus);
+      clearTimeout(timeoutId); // Clear timeout on successful completion
       setIsSuccess(true);
+      showNotification('success', 'App executed successfully!');
     } catch (error) {
-      // ...existing error handling...
+      clearTimeout(timeoutId); // Clear timeout on error
+      console.error('Error during execution:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown execution error';
+      showNotification('error', `Execution failed: ${errorMessage}`);
     } finally {
       setIsExecuting(false);
+      setNodeStatuses({});
     }
   };
 
@@ -652,7 +714,7 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
 
   return (
     <OllamaProvider>
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
         <TopBar
           onPageChange={onPageChange}
           handleOpenSaveModal={handleOpenSaveModal}
@@ -666,11 +728,105 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
           onImportApp={handleImportApp}
           hasUnsavedChanges={hasUnsavedChanges}
         />
+        
+        {/* Enhanced execution overlay */}
+        {isExecuting && (
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-40 flex items-center justify-center">
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl p-8 shadow-2xl border border-white/20 dark:border-gray-700/50 max-w-md mx-4 relative">
+              {/* Close/Cancel button */}
+              <button
+                onClick={() => {
+                  setIsExecuting(false);
+                  setNodeStatuses({});
+                }}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 group"
+                title="Cancel execution"
+              >
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
+              </button>
+
+              <div className="flex items-center gap-4 mb-4">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-white animate-pulse" />
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 animate-ping opacity-20"></div>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Executing Workflow</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Processing your app...</p>
+                </div>
+              </div>
+              
+              {/* Execution progress */}
+              <div className="space-y-3 mb-6">
+                {Object.entries(nodeStatuses).map(([nodeId, status]) => {
+                  const node = nodes.find(n => n.id === nodeId);
+                  if (!node) return null;
+                  
+                  return (
+                    <div key={nodeId} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                      <div className={`w-3 h-3 rounded-full ${
+                        status === 'running' ? 'bg-blue-500 animate-pulse' :
+                        status === 'completed' ? 'bg-green-500' :
+                        status === 'error' ? 'bg-red-500' : 'bg-gray-300'
+                      }`} />
+                      <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                        {node.data.label || node.data.tool?.name || 'Node'}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        status === 'running' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
+                        status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' :
+                        status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {status}
+                      </span>
+                    </div>
+                  );
+                })}
+                
+                {/* Show message if no nodes are being tracked */}
+                {Object.keys(nodeStatuses).length === 0 && (
+                  <div className="text-center py-4">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Preparing execution...
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setIsExecuting(false);
+                    setNodeStatuses({});
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200 font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    // Force stop and reset
+                    setIsExecuting(false);
+                    setNodeStatuses({});
+                    showNotification('error', 'Execution stopped by user');
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-xl hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors duration-200 font-medium text-sm"
+                >
+                  Force Stop
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-1 overflow-hidden">
           <div
             ref={sidebarRef}
             style={{ width: sidebarWidth }}
-            className="relative flex-shrink-0 border-r border-gray-200 dark:border-gray-700"
+            className="relative flex-shrink-0 border-r border-gray-200/50 dark:border-gray-700/50 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm"
           >
             <ToolsSidebar
               toolItems={toolItems}
@@ -679,41 +835,83 @@ const AppCreator: React.FC<AppCreatorProps> = ({ onPageChange, appId }) => {
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
             />
-            <div onMouseDown={handleMouseDown} className="absolute right-0 top-0 h-full w-2 cursor-ew-resize z-10" />
+            <div 
+              onMouseDown={handleMouseDown} 
+              className="absolute right-0 top-0 h-full w-2 cursor-ew-resize z-10 hover:bg-blue-500/20 transition-colors duration-200 group"
+            >
+              <div className="w-0.5 h-full bg-gray-300 dark:bg-gray-600 mx-auto group-hover:bg-blue-500 transition-colors duration-200" />
+            </div>
           </div>
-          <FlowCanvas
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            setReactFlowInstance={setReactFlowInstance}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            flowStyles={flowStyles}
-            isDark={isDark}
-            reactFlowWrapper={reactFlowWrapper}
-            selectedTool={selectedTool}
-            isDragging={isDragging}
-            isValidConnection={isValidConnection}
-            minimapStyle={minimapStyle}
-            minimapNodeColor={minimapNodeColor}
-            nodeStatuses={nodeStatuses}
-          />
+          
+          <div className="flex-1 relative">
+            <FlowCanvas
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              setReactFlowInstance={setReactFlowInstance}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={nodeTypes}
+              flowStyles={flowStyles}
+              isDark={isDark}
+              reactFlowWrapper={reactFlowWrapper}
+              selectedTool={selectedTool}
+              isDragging={isDragging}
+              isValidConnection={isValidConnection}
+              minimapStyle={minimapStyle}
+              minimapNodeColor={minimapNodeColor}
+              nodeStatuses={nodeStatuses}
+            />
+          </div>
         </div>
         {notification.visible && (
           <div
-            className={`fixed bottom-6 right-6 py-3 px-4 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform ${
-              notification.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-            }`}
+            className={`fixed bottom-6 right-6 py-4 px-6 rounded-2xl shadow-2xl flex items-center gap-4 transition-all duration-500 transform backdrop-blur-xl border z-50
+              ${notification.visible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-2 opacity-0 scale-95'}
+              ${
+                notification.type === 'success' 
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400/20 shadow-green-500/25' 
+                  : 'bg-gradient-to-r from-red-500 to-rose-500 text-white border-red-400/20 shadow-red-500/25'
+              }
+            `}
+            style={{
+              background: notification.type === 'success' 
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+            }}
           >
-            {notification.type === 'success' ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-            <p className="font-medium">{notification.message}</p>
-            <button onClick={() => setNotification((prev) => ({ ...prev, visible: false }))} className="ml-2 opacity-70 hover:opacity-100">
-              <X className="h-4 w-4" />
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm
+              ${notification.type === 'success' ? 'bg-white/20' : 'bg-white/20'}
+            `}>
+              {notification.type === 'success' ? (
+                <Check className="h-5 w-5 animate-in zoom-in-75 duration-300" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 animate-in zoom-in-75 duration-300" />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-sm leading-tight">{notification.message}</p>
+              <div className="text-xs opacity-80 mt-1">
+                {notification.type === 'success' ? 'Action completed' : 'Please try again'}
+              </div>
+            </div>
+            <button 
+              onClick={() => setNotification((prev) => ({ ...prev, visible: false }))} 
+              className="ml-2 p-1 rounded-full hover:bg-white/20 transition-colors duration-200 group"
+            >
+              <X className="h-4 w-4 group-hover:rotate-90 transition-transform duration-200" />
             </button>
+            
+            {/* Progress bar animation */}
+            <div className="absolute bottom-0 left-0 h-1 bg-white/30 rounded-full">
+              <div 
+                className="h-full bg-white rounded-full transition-all duration-3000 ease-linear"
+                style={{ width: notification.visible ? '0%' : '100%' }}
+              />
+            </div>
           </div>
         )}
         {debugOpen && executionJson && <DebugModal jsonData={executionJson} onClose={closeDebug} />}

@@ -354,7 +354,7 @@ const Settings = () => {
         />
       )}
       
-      <div className="flex max-w-6xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
+      <div className="flex max-w-7xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
         {/* Sidebar with tabs */}
         <div className="w-64 shrink-0">
           <div className="glassmorphic rounded-xl p-4 space-y-2 sticky top-4">
@@ -420,7 +420,9 @@ const Settings = () => {
         </div>
 
         {/* Content area */}
-        <div className="flex-1 space-y-6 py-2 pb-6 max-w-4xl overflow-y-auto overflow-x-hidden">
+        <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${
+          activeTab === 'models' ? '' : 'max-w-4xl'
+        }`}>
           {/* Personal Information Tab */}
           {activeTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">
@@ -545,51 +547,90 @@ const Settings = () => {
                       return (
                         <div
                           key={provider.id}
-                          className={`p-4 rounded-lg border transition-all ${
+                          className={`group relative p-5 rounded-xl border transition-all duration-300 ${
                             provider.isPrimary 
-                              ? 'border-sakura-300 dark:border-sakura-600 bg-sakura-50/30 dark:bg-sakura-900/10 shadow-sm' 
-                              : 'border-gray-200 dark:border-gray-700 bg-white/30 dark:bg-gray-800/30'
-                          } hover:bg-white/50 dark:hover:bg-gray-800/50`}
+                              ? 'border-sakura-200 dark:border-sakura-700 bg-gradient-to-br from-sakura-50/50 to-white/50 dark:from-sakura-900/20 dark:to-gray-800/50 shadow-lg shadow-sakura-100/50 dark:shadow-sakura-900/20' 
+                              : 'border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/40 hover:border-gray-300/80 dark:hover:border-gray-600/80'
+                          } hover:shadow-lg hover:shadow-gray-100/50 dark:hover:shadow-gray-900/20 backdrop-blur-sm`}
                         >
+                          {/* Primary indicator - subtle glow */}
+                          {provider.isPrimary && (
+                            <div className="absolute -inset-0.5 bg-gradient-to-r from-sakura-400/20 to-sakura-600/20 rounded-xl blur-sm -z-10"></div>
+                          )}
+                          
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            <div className="flex items-center gap-4 flex-1">
+                              <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-300 ${
                                 provider.isEnabled 
-                                  ? 'bg-sakura-500' 
-                                  : 'bg-gray-400 dark:bg-gray-600'
+                                  ? provider.isPrimary
+                                    ? 'bg-sakura-100/80 dark:bg-sakura-900/40 border-2 border-sakura-200 dark:border-sakura-700' 
+                                    : 'bg-sakura-50/60 dark:bg-sakura-900/20 border border-sakura-200/50 dark:border-sakura-700/50'
+                                  : 'bg-gray-100/80 dark:bg-gray-700/80 border border-gray-200 dark:border-gray-600'
                               }`}>
-                                <ProviderIcon className="w-6 h-6 text-white" />
+                                <ProviderIcon className={`w-7 h-7 ${
+                                  provider.isEnabled 
+                                    ? 'text-sakura-600 dark:text-sakura-400' 
+                                    : 'text-gray-500 dark:text-gray-400'
+                                }`} />
+                                {provider.isPrimary && (
+                                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                                    <Check className="w-3 h-3 text-white" />
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium text-gray-900 dark:text-white">
+                              
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-1">
+                                  <h4 className={`font-semibold transition-colors ${
+                                    provider.isPrimary 
+                                      ? 'text-gray-900 dark:text-white' 
+                                      : 'text-gray-800 dark:text-gray-200'
+                                  }`}>
                                     {provider.name}
                                   </h4>
+                                  {provider.isPrimary && (
+                                    <span className="px-2.5 py-1 bg-gradient-to-r from-emerald-100 to-emerald-50 dark:from-emerald-900/30 dark:to-emerald-800/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full border border-emerald-200/50 dark:border-emerald-700/50">
+                                      Default
+                                    </span>
+                                  )}
                                   {!provider.isEnabled && (
-                                    <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs rounded-full">
+                                    <span className="px-2.5 py-1 bg-gray-100/80 dark:bg-gray-800/80 text-gray-600 dark:text-gray-400 text-xs font-medium rounded-full">
                                       Disabled
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                                <p className="text-sm text-gray-600 dark:text-gray-400 font-mono truncate">
                                   {provider.baseUrl || 'No URL configured'}
                                 </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-500 capitalize">
+                                <p className="text-xs text-gray-500 dark:text-gray-500 capitalize font-medium">
                                   {provider.type.replace('-', ' ')}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              {/* Primary Toggle */}
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={provider.isPrimary}
-                                  onChange={(e) => handleSetPrimary(provider.id, e.target.checked)}
+                            
+                            <div className="flex items-center gap-4 ml-4">
+                              {/* Elegant Default Toggle */}
+                              <div className="flex flex-col items-center gap-1">
+                                <button
+                                  onClick={() => handleSetPrimary(provider.id, !provider.isPrimary)}
                                   disabled={!provider.isEnabled}
-                                  className="w-4 h-4 text-green-500 rounded border-gray-300 focus:ring-green-500 disabled:opacity-50"
-                                />
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Default</span>
+                                  className={`relative w-12 h-6 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-sakura-300 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    provider.isPrimary
+                                      ? 'bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-lg shadow-emerald-500/25'
+                                      : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                  }`}
+                                >
+                                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                                    provider.isPrimary ? 'translate-x-6' : 'translate-x-0'
+                                  }`}>
+                                    {provider.isPrimary && (
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                    )}
+                                  </div>
+                                </button>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                  Default
+                                </span>
                               </div>
                               
                               {/* Test Button for Ollama */}
@@ -597,12 +638,12 @@ const Settings = () => {
                                 <button
                                   onClick={() => testOllamaConnection(provider.id, provider.baseUrl!)}
                                   disabled={testingProvider === provider.id}
-                                  className={`px-3 py-1 text-sm rounded transition-colors disabled:opacity-50 flex items-center gap-1 ${
+                                  className={`px-3 py-2 text-sm rounded-lg transition-all duration-200 disabled:opacity-50 flex items-center gap-2 font-medium ${
                                     testResults[provider.id] === 'success' 
-                                      ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-600'
+                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/50 shadow-sm'
                                       : testResults[provider.id] === 'error'
-                                      ? 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-600'
-                                      : 'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-700'
+                                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700/50 shadow-sm'
+                                      : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700/50'
                                   }`}
                                 >
                                   {testingProvider === provider.id ? (
@@ -631,7 +672,7 @@ const Settings = () => {
                               
                               <button
                                 onClick={() => handleEditProvider(provider)}
-                                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                                className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-100/50 dark:hover:bg-gray-700/50"
                                 title="Edit provider"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -640,7 +681,7 @@ const Settings = () => {
                               {provider.type !== 'claras-pocket' && (
                                 <button
                                   onClick={() => setShowDeleteConfirm(provider.id)}
-                                  className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                  className="p-2.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-red-50/50 dark:hover:bg-red-900/20"
                                   title="Delete provider"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -677,61 +718,6 @@ const Settings = () => {
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     URL for your ComfyUI instance for image generation
                   </p>
-                </div>
-              </div>
-
-              {/* n8n Configuration */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Server className="w-6 h-6 text-sakura-500" />
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    n8n Configuration
-                  </h2>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      n8n Base URL
-                    </label>
-                    <input
-                      type="url"
-                      value={apiConfig.n8n_base_url || ''}
-                      onChange={(e) => setApiConfig(prev => ({ ...prev, n8n_base_url: e.target.value }))}
-                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                      placeholder="http://localhost:5678"
-                    />
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      The URL where your n8n instance is running
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      n8n API Key
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showApiKey ? "text" : "password"}
-                        value={apiConfig.n8n_api_key || ''}
-                        onChange={(e) => setApiConfig(prev => ({ ...prev, n8n_api_key: e.target.value }))}
-                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                        placeholder="Your n8n API key"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2"
-                      >
-                        {showApiKey ? (
-                          <Lock className="h-4 w-4 text-gray-500" />
-                        ) : (
-                          <Key className="h-4 w-4 text-gray-500" />
-                        )}
-                      </button>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      API key for authenticating with your n8n instance
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>

@@ -485,140 +485,187 @@ Current request: ${currentInput}`;
   const renderOutputs = () => {
     if (messageHistory.length === 0 && !isRunning) {
       return (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
-            <MessageSquare className="w-8 h-8 text-blue-500" />
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-3xl blur-xl animate-pulse"></div>
+            <div className="relative w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 flex items-center justify-center backdrop-blur-sm border border-white/20">
+              <MessageSquare className="w-10 h-10 text-blue-500" />
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Start a conversation
+          <div className="space-y-3">
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+              Ready to get started?
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 max-w-md text-sm leading-relaxed">
+            <p className="text-gray-600 dark:text-gray-400 max-w-md text-base leading-relaxed">
               {appData?.description ||
-                'Enter your information and run the app to get started.'}
+                'Enter your information and run the app to see the magic happen.'}
             </p>
+          </div>
+          {/* Add some visual interest with floating elements */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-blue-400/30 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+            <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-purple-400/30 rounded-full animate-bounce" style={{ animationDelay: '1s' }}></div>
+            <div className="absolute bottom-1/3 left-1/3 w-1.5 h-1.5 bg-pink-400/30 rounded-full animate-bounce" style={{ animationDelay: '2s' }}></div>
           </div>
         </div>
       );
     }
 
     return (
-      <div className="space-y-6 flex flex-col">
-        {messageHistory.map((message) => {
+      <div className="space-y-4 flex flex-col">
+        {messageHistory.map((message, index) => {
           const isUserMessage = message.type === 'user';
           const isImageContent = typeof message.content === 'string' && 
             (message.content.startsWith('data:image') || message.isImage);
+          const isFirst = index === 0;
+          const isConsecutive = index > 0 && messageHistory[index - 1].type === message.type;
           
           return (
             <div
               key={message.id}
               className={`flex ${
                 isUserMessage ? 'justify-end' : 'justify-start'
-              }`}
+              } ${isFirst ? 'animate-in slide-in-from-bottom-4 duration-500' : ''}`}
             >
               <div
-                className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative text-sm leading-relaxed
-                  ${isUserMessage ? 'rounded-tr-md ml-auto' : 'rounded-tl-md mr-auto'}
-                  ${
-                    isUserMessage
-                      ? isDark
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/20'
-                        : 'bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 shadow-blue-100/50 border border-blue-100'
-                      : isDark
-                      ? 'bg-gray-800/80 text-gray-100 border border-gray-700/50'
-                      : 'bg-white text-gray-800 border border-gray-100'
-                  }
+                className={`max-w-[85%] sm:max-w-[75%] relative text-sm leading-relaxed group
+                  ${isUserMessage ? 'ml-auto' : 'mr-auto'}
+                  ${!isConsecutive ? 'mt-4' : 'mt-1'}
                 `}
               >
-                {isImageContent ? (
-                  <div>
-                    <img 
-                      src={message.content} 
-                      alt="Generated" 
-                      className="max-w-full rounded-xl shadow-sm"
-                      style={{ maxHeight: '512px' }}
-                    />
-                    <button
-                      onClick={() => {
-                        const link = document.createElement('a');
-                        link.href = message.content;
-                        link.download = `generated-${Date.now()}.png`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
-                      className={`mt-3 px-4 py-1.5 text-xs rounded-full flex items-center gap-1.5 transition-colors
-                        ${isUserMessage 
-                          ? isDark
-                            ? 'bg-white/20 hover:bg-white/30 text-white'
-                            : 'bg-blue-200/50 hover:bg-blue-200/70 text-blue-800'
-                          : isDark
-                            ? 'bg-gray-700/50 hover:bg-gray-700/70 text-gray-200'
-                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                        }`}
-                    >
-                      <Download className="w-3 h-3" />
-                      Download Image
-                    </button>
+                {/* Message bubble with improved styling */}
+                <div
+                  className={`p-4 rounded-2xl shadow-sm relative backdrop-blur-sm transition-all duration-200 hover:shadow-md
+                    ${isUserMessage ? 'rounded-tr-md' : 'rounded-tl-md'}
+                    ${
+                      isUserMessage
+                        ? isDark
+                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/20'
+                          : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/20'
+                        : isDark
+                        ? 'bg-gray-800/90 text-gray-100 border border-gray-700/50 shadow-gray-900/20'
+                        : 'bg-white text-gray-800 border border-gray-200/50 shadow-gray-200/50'
+                    }
+                  `}
+                >
+                  {isImageContent ? (
+                    <div className="space-y-3">
+                      <div className="relative overflow-hidden rounded-xl">
+                        <img 
+                          src={message.content} 
+                          alt="Generated" 
+                          className="max-w-full transition-transform duration-200 hover:scale-105"
+                          style={{ maxHeight: '400px' }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-200"></div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = message.content;
+                          link.download = `generated-${Date.now()}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className={`w-full px-4 py-2 text-xs rounded-xl flex items-center justify-center gap-2 transition-all duration-200 hover:scale-105 active:scale-95
+                          ${isUserMessage 
+                            ? 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm'
+                            : isDark
+                              ? 'bg-gray-700/50 hover:bg-gray-700/70 text-gray-200'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          }`}
+                      >
+                        <Download className="w-3 h-3" />
+                        Download Image
+                      </button>
+                    </div>
+                  ) : isUserMessage ? (
+                    <div className="whitespace-pre-wrap font-medium">
+                      {message.content ? message.content : "Input Received"}
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-current [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                      <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
+                    </div>
+                  )}
+                  
+                  {/* Timestamp with better styling */}
+                  <div
+                    className={`text-xs mt-3 opacity-70 transition-opacity group-hover:opacity-100
+                      ${isUserMessage ? 'text-right' : 'text-left'}
+                    `}
+                  >
+                    {new Date(message.timestamp).toLocaleTimeString([], { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
                   </div>
-                ) : isUserMessage ? (
-                  <div className="whitespace-pre-wrap">
-                    {message.content ? message.content : "Input Received"}
-                  </div>
-                ) : (
-                  <div className="prose-sm dark:prose-invert max-w-none text-current">
-                    <ReactMarkdown>{formatOutputForMarkdown(message.content)}</ReactMarkdown>
+                </div>
+
+                {/* Avatar for AI messages */}
+                {!isUserMessage && !isConsecutive && (
+                  <div className="flex items-center gap-2 mt-2 ml-1">
+                    <div className={`w-6 h-6 rounded-full bg-gradient-to-br flex items-center justify-center text-xs font-medium
+                      ${isDark ? 'from-gray-600 to-gray-700 text-gray-300' : 'from-gray-200 to-gray-300 text-gray-600'}
+                    `}>
+                      <Bot className="w-3 h-3" />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                      {appData?.name || 'Assistant'}
+                    </span>
                   </div>
                 )}
-                <div
-                  className={`text-xs mt-2 text-right opacity-80 ${
-                    isUserMessage
-                      ? isDark
-                        ? 'text-blue-50'
-                        : 'text-blue-500'
-                      : isDark
-                        ? 'text-gray-400'
-                        : 'text-gray-500'
-                  }`}
-                >
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </div>
               </div>
             </div>
           );
         })}
 
-        {/* Loading indicator for in-progress responses */}
+        {/* Enhanced loading indicator */}
         {isRunning && (
-          <div className="flex justify-start w-full">
+          <div className="flex justify-start w-full animate-in slide-in-from-bottom-2 duration-300">
             <div
-              className={`max-w-[85%] p-4 rounded-2xl flex items-center gap-3 shadow-sm text-sm
-                ${isDark ? 'bg-gray-800/80 text-gray-300 border border-gray-700/50' : 'bg-white text-gray-600 border border-gray-100'}
+              className={`max-w-[85%] p-4 rounded-2xl rounded-tl-md flex items-center gap-3 shadow-sm text-sm backdrop-blur-sm
+                ${isDark ? 'bg-gray-800/90 text-gray-300 border border-gray-700/50' : 'bg-white text-gray-600 border border-gray-200/50'}
               `}
             >
-              <div className="w-5 h-5 relative">
-                <div className="absolute inset-0 rounded-full border-2 border-current border-r-transparent animate-spin" />
+              <div className="relative">
+                <div className="w-5 h-5 border-2 border-current border-r-transparent rounded-full animate-spin"></div>
+                <div className="absolute inset-0 w-5 h-5 border border-current border-l-transparent rounded-full animate-ping opacity-20"></div>
               </div>
-              <div>Processing your request...</div>
+              <div className="flex flex-col">
+                <span className="font-medium">Processing your request...</span>
+                <span className="text-xs opacity-60">This may take a moment</span>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Error display */}
+        {/* Enhanced error display */}
         {error && !isRunning && (
-          <div className="flex justify-start w-full">
-            <div className="max-w-[85%] p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 shadow-sm text-sm border border-red-100 dark:border-red-800/30">
-              {error}
+          <div className="flex justify-start w-full animate-in slide-in-from-bottom-2 duration-300">
+            <div className="max-w-[85%] p-4 rounded-2xl rounded-tl-md bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800/30 shadow-sm text-sm backdrop-blur-sm">
+              <div className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <div className="font-medium text-red-700 dark:text-red-400 mb-1">Error occurred</div>
+                  <div className="text-red-600 dark:text-red-300">{error}</div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Success indicator */}
+        {/* Enhanced success indicator */}
         {isSuccess && !isRunning && (
-          <div className="flex justify-center my-4">
-            <div className="px-4 py-2 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 flex items-center space-x-2 shadow-sm text-sm border border-green-100 dark:border-green-800/30">
-              <Check className="w-4 h-4" />
-              <span>Completed successfully</span>
+          <div className="flex justify-center my-6 animate-in zoom-in-95 duration-500">
+            <div className="px-6 py-3 rounded-full bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 text-green-700 dark:text-green-400 flex items-center space-x-3 shadow-sm text-sm border border-green-200 dark:border-green-800/30 backdrop-blur-sm">
+              <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
+                <Check className="w-3 h-3" />
+              </div>
+              <span className="font-medium">Task completed successfully!</span>
             </div>
           </div>
         )}
@@ -637,83 +684,112 @@ Current request: ${currentInput}`;
       return (
         <div className="relative">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
-          <div className="bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-3 shadow-lg backdrop-blur-xl relative">
+          <div className="bg-white/80 dark:bg-gray-800/80 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-4 shadow-xl backdrop-blur-xl relative">
             {showChainWarning && (
-              <div className="absolute bottom-full mb-2 left-0 right-0 p-3 bg-yellow-50 dark:bg-yellow-900/50 border border-yellow-200 dark:border-yellow-800/50 rounded-xl text-sm text-yellow-800 dark:text-yellow-200 backdrop-blur-sm">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div className="absolute bottom-full mb-3 left-0 right-0 p-4 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/50 dark:to-amber-900/50 border border-yellow-200 dark:border-yellow-800/50 rounded-xl text-sm text-yellow-800 dark:text-yellow-200 backdrop-blur-sm shadow-lg animate-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
                   <div>
-                    <p className="font-medium mb-1">Chain Mode Enabled</p>
-                    <p className="text-xs opacity-80">This will include previous chat context in your request. For complex apps, this might lead to unexpected behavior or reduced performance.</p>
+                    <p className="font-semibold mb-2">Chain Mode Enabled</p>
+                    <p className="text-xs opacity-90 leading-relaxed">This will include previous chat context in your request. For complex apps, this might lead to unexpected behavior or reduced performance.</p>
                   </div>
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <textarea
-                className="flex-1 p-3 border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
-                bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white 
-                border-gray-200/50 dark:border-gray-700/50 resize-none min-h-[44px] max-h-[120px] 
-                text-sm transition-all backdrop-blur-sm"
-                placeholder={
-                  inputNodes[0]?.data?.config?.placeholder || 'Ask something...'
-                }
-                value={simpleInputValue}
-                onChange={handleSimpleInputChange}
-                onKeyDown={handleKeyDown}
-              />
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <div className="relative">
+                  <textarea
+                    className="w-full p-4 pr-12 border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
+                    bg-white/70 dark:bg-gray-800/70 text-gray-900 dark:text-white 
+                    border-gray-200/50 dark:border-gray-700/50 resize-none min-h-[52px] max-h-[120px] 
+                    text-sm transition-all backdrop-blur-sm placeholder:text-gray-500 dark:placeholder:text-gray-400
+                    hover:bg-white/80 dark:hover:bg-gray-800/80 focus:bg-white dark:focus:bg-gray-800"
+                    placeholder={
+                      inputNodes[0]?.data?.config?.placeholder || 'Ask something...'
+                    }
+                    value={simpleInputValue}
+                    onChange={handleSimpleInputChange}
+                    onKeyDown={handleKeyDown}
+                  />
+                  {/* Character count indicator for long inputs */}
+                  {simpleInputValue.length > 100 && (
+                    <div className="absolute bottom-2 right-3 text-xs text-gray-400 dark:text-gray-500">
+                      {simpleInputValue.length}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
               {canEnableChain && (
                 <button
                   onClick={() => {
                     setChainEnabled(!chainEnabled);
                     setShowChainWarning(!showChainWarning);
                   }}
-                  className={`h-[44px] w-[44px] flex items-center justify-center rounded-xl shadow-sm transition-all
-                    border border-gray-200/50 dark:border-gray-700/50
+                  className={`h-[52px] w-[52px] flex items-center justify-center rounded-xl shadow-sm transition-all duration-200 group
+                    border border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm
                     ${
                       chainEnabled
                         ? isDark
-                          ? 'bg-blue-500/20 text-blue-400'
-                          : 'bg-pink-50 text-pink-400'
-                        : 'bg-white/50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500'
+                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                          : 'bg-blue-50 text-blue-500 border-blue-200'
+                        : 'bg-white/70 dark:bg-gray-800/70 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
                     }
-                    hover:bg-opacity-90 hover:shadow-md active:scale-95
+                    hover:bg-opacity-90 hover:shadow-md active:scale-95 hover:scale-105
                   `}
                   title={chainEnabled ? 'Disable chain mode' : 'Enable chain mode'}
                 >
-                  <RotateCw className={`w-5 h-5 transition-transform ${chainEnabled ? 'rotate-180' : ''}`} />
+                  <RotateCw className={`w-5 h-5 transition-all duration-300 ${chainEnabled ? 'rotate-180' : 'group-hover:rotate-12'}`} />
                 </button>
               )}
+              
               <button
                 disabled={isRunning || simpleInputValue.trim() === ''}
                 onClick={runApp}
-                className={`h-[44px] w-[44px] flex items-center justify-center rounded-xl shadow-sm transition-all
+                className={`h-[52px] w-[52px] flex items-center justify-center rounded-xl shadow-sm transition-all duration-200 group relative overflow-hidden
                   ${
                     isRunning || simpleInputValue.trim() === ''
-                      ? 'bg-gray-400/50 cursor-not-allowed backdrop-blur-sm'
+                      ? 'bg-gray-400/50 cursor-not-allowed backdrop-blur-sm border border-gray-300/50'
                       : isDark
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:opacity-90 hover:shadow-md active:scale-95'
-                        : 'bg-white hover:bg-gray-50 border border-gray-200/50 hover:shadow-md active:scale-95'
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-blue-500/20 hover:shadow-blue-500/30'
+                        : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-blue-500/20 hover:shadow-blue-500/30'
                   }
+                  ${!(isRunning || simpleInputValue.trim() === '') ? 'hover:shadow-lg active:scale-95 hover:scale-105' : ''}
                 `}
               >
+                {/* Animated background for active state */}
+                {!(isRunning || simpleInputValue.trim() === '') && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                )}
                 {isRunning ? (
                   <div className="w-5 h-5 relative">
-                    <div className={`absolute inset-0 rounded-full border-2 border-r-transparent animate-spin ${
-                      isDark ? 'border-white' : 'border-gray-400'
-                    }`} />
+                    <div className="absolute inset-0 rounded-full border-2 border-white border-r-transparent animate-spin" />
+                    <div className="absolute inset-0 rounded-full border border-white/30 border-l-transparent animate-ping" />
                   </div>
                 ) : (
-                  <Send className={`w-5 h-5 ${isDark ? 'text-white' : 'text-pink-400'}`} />
+                  <Send className="w-5 h-5 text-white relative z-10 transition-transform group-hover:translate-x-0.5" />
                 )}
               </button>
             </div>
+            
             {chainEnabled && previousContext && (
-              <div className="mt-2 p-2 bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200/50 dark:border-gray-700/50 text-xs">
-                <div className="text-gray-500 dark:text-gray-400 mb-1">Previous context:</div>
-                <div className="text-gray-700 dark:text-gray-300">
-                  <div className="mb-1">User: {previousContext.userInput}</div>
-                  <div>Assistant: {previousContext.botOutput}</div>
+              <div className="mt-4 p-3 bg-gradient-to-r from-gray-50/80 to-gray-100/80 dark:from-gray-900/50 dark:to-gray-800/50 rounded-xl border border-gray-200/50 dark:border-gray-700/50 text-xs backdrop-blur-sm animate-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-blue-500/20 flex items-center justify-center">
+                    <RotateCw className="w-2 h-2 text-blue-500" />
+                  </div>
+                  <span className="text-gray-600 dark:text-gray-400 font-medium">Previous context will be included:</span>
+                </div>
+                <div className="space-y-2 pl-6 border-l-2 border-gray-300/50 dark:border-gray-600/50">
+                  <div className="text-gray-700 dark:text-gray-300">
+                    <span className="font-medium text-gray-500 dark:text-gray-400">You:</span> {previousContext.userInput}
+                  </div>
+                  <div className="text-gray-700 dark:text-gray-300">
+                    <span className="font-medium text-gray-500 dark:text-gray-400">Assistant:</span> {previousContext.botOutput.substring(0, 100)}{previousContext.botOutput.length > 100 ? '...' : ''}
+                  </div>
                 </div>
               </div>
             )}
@@ -730,7 +806,7 @@ Current request: ${currentInput}`;
     return (
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
-        <div className="bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-4 shadow-lg backdrop-blur-xl relative">
+        <div className="bg-white/80 dark:bg-gray-800/80 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl p-5 shadow-xl backdrop-blur-xl relative">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -738,8 +814,8 @@ Current request: ${currentInput}`;
             }}
           >
             <div
-              className={`grid gap-4 ${
-                useHorizontalLayout ? 'grid-cols-1 md:grid-cols-7' : 'grid-cols-1'
+              className={`grid gap-5 ${
+                useHorizontalLayout ? 'grid-cols-1 lg:grid-cols-7' : 'grid-cols-1'
               }`}
             >
               {inputNodes.map((node: AppNode) => {
@@ -747,27 +823,37 @@ Current request: ${currentInput}`;
                   return (
                     <div
                       key={node.id}
-                      className={useHorizontalLayout ? 'md:col-span-5' : ''}
+                      className={useHorizontalLayout ? 'lg:col-span-5' : ''}
                     >
                       {node.data.label && (
-                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                        <label className="block mb-2 text-sm font-semibold text-gray-900 dark:text-white">
                           {node.data.label}
                           {node.data.config?.isRequired && (
                             <span className="text-red-500 ml-1">*</span>
                           )}
                         </label>
                       )}
-                      <textarea
-                        className="w-full p-3 text-sm border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
-                        bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white 
-                        border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm transition-all"
-                        style={{ minHeight: useHorizontalLayout ? '120px' : '80px' }}
-                        placeholder={node.data.config?.placeholder || 'Enter text...'}
-                        value={(inputState[node.id] as string) || ''}
-                        onChange={(e) => handleInputChange(node.id, e.target.value)}
-                      />
+                      <div className="relative">
+                        <textarea
+                          className="w-full p-4 border rounded-xl focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 
+                          bg-white/70 dark:bg-gray-800/70 text-gray-900 dark:text-white 
+                          border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm transition-all duration-200
+                          hover:bg-white/80 dark:hover:bg-gray-800/80 focus:bg-white dark:focus:bg-gray-800
+                          placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                          style={{ minHeight: useHorizontalLayout ? '140px' : '100px' }}
+                          placeholder={node.data.config?.placeholder || 'Enter text...'}
+                          value={(inputState[node.id] as string) || ''}
+                          onChange={(e) => handleInputChange(node.id, e.target.value)}
+                        />
+                        {/* Character count for longer inputs */}
+                        {((inputState[node.id] as string) || '').length > 50 && (
+                          <div className="absolute bottom-3 right-3 text-xs text-gray-400 dark:text-gray-500 bg-white/80 dark:bg-gray-800/80 px-2 py-1 rounded-md backdrop-blur-sm">
+                            {((inputState[node.id] as string) || '').length}
+                          </div>
+                        )}
+                      </div>
                       {node.data.config?.description && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
                           {node.data.config.description}
                         </p>
                       )}
@@ -775,13 +861,14 @@ Current request: ${currentInput}`;
                   );
                 }
                 if (node.type === 'imageInputNode') {
+                  const hasImage = inputState[node.id] instanceof File || node.data.runtimeImage;
                   return (
                     <div
                       key={node.id}
-                      className={useHorizontalLayout ? 'md:col-span-2' : ''}
+                      className={useHorizontalLayout ? 'lg:col-span-2' : ''}
                     >
                       {node.data.label && (
-                        <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
+                        <label className="block mb-2 text-sm font-semibold text-gray-900 dark:text-white">
                           {node.data.label}
                           {node.data.config?.isRequired && (
                             <span className="text-red-500 ml-1">*</span>
@@ -791,29 +878,38 @@ Current request: ${currentInput}`;
                       <div className="flex justify-center w-full h-full">
                         <label
                           className={`
-                            flex flex-col items-center justify-center w-full border border-dashed rounded-xl cursor-pointer
-                            hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-all duration-200
-                            bg-white/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50 backdrop-blur-sm
+                            flex flex-col items-center justify-center w-full border-2 border-dashed rounded-xl cursor-pointer
+                            transition-all duration-200 group relative overflow-hidden backdrop-blur-sm
+                            ${
+                              hasImage
+                                ? 'border-blue-300 dark:border-blue-600/50 bg-blue-50/50 dark:bg-blue-900/20'
+                                : 'border-gray-300 dark:border-gray-600/50 hover:border-blue-400 dark:hover:border-blue-500/50'
+                            }
+                            bg-white/70 dark:bg-gray-800/70 hover:bg-white/80 dark:hover:bg-gray-800/80
                             ${
                               useHorizontalLayout
-                                ? 'h-[120px]'
-                                : 'h-16'
+                                ? 'h-[140px]'
+                                : 'h-20'
                             }
+                            hover:shadow-md hover:scale-[1.02] active:scale-[0.98]
                           `}
                         >
+                          {/* Animated background gradient */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-500/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                          
                           {inputState[node.id] instanceof File ? (
                             <div
-                              className={`flex items-center justify-center p-2 w-full h-full ${
+                              className={`flex items-center justify-center p-3 w-full h-full relative z-10 ${
                                 useHorizontalLayout
                                   ? 'flex-col'
                                   : 'flex-row'
                               }`}
                             >
                               <div
-                                className={`shrink-0 ${
+                                className={`shrink-0 relative ${
                                   useHorizontalLayout
-                                    ? 'w-16 h-16 mb-2'
-                                    : 'w-10 h-10 mr-3'
+                                    ? 'w-16 h-16 mb-3'
+                                    : 'w-12 h-12 mr-3'
                                 }`}
                               >
                                 <img
@@ -821,57 +917,66 @@ Current request: ${currentInput}`;
                                     inputState[node.id] as File
                                   )}
                                   alt="Preview"
-                                  className="w-full h-full object-cover rounded-lg"
+                                  className="w-full h-full object-cover rounded-lg shadow-sm"
                                 />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-lg"></div>
                               </div>
-                              <div className="text-left">
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+                              <div className="text-center">
+                                <p className="text-xs text-gray-600 dark:text-gray-400 font-medium truncate max-w-[120px]">
                                   {(inputState[node.id] as File).name}
                                 </p>
-                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                <p className="text-xs text-blue-600 dark:text-blue-400 font-semibold mt-1 flex items-center justify-center gap-1">
+                                  <ImageIcon className="w-3 h-3" />
                                   Click to replace
                                 </p>
                               </div>
                             </div>
                           ) : node.data.runtimeImage ? (
                             <div
-                              className={`flex items-center justify-center p-2 w-full h-full ${
+                              className={`flex items-center justify-center p-3 w-full h-full relative z-10 ${
                                 useHorizontalLayout
                                   ? 'flex-col'
                                   : 'flex-row'
                               }`}
                             >
                               <div
-                                className={`shrink-0 ${
+                                className={`shrink-0 relative ${
                                   useHorizontalLayout
-                                    ? 'w-16 h-16 mb-2'
-                                    : 'w-10 h-10 mr-3'
+                                    ? 'w-16 h-16 mb-3'
+                                    : 'w-12 h-12 mr-3'
                                 }`}
                               >
                                 <img
                                   src={node.data.runtimeImage}
                                   alt="Preview"
-                                  className="w-full h-full object-cover rounded-lg"
+                                  className="w-full h-full object-cover rounded-lg shadow-sm"
                                 />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-lg"></div>
                               </div>
-                              <div className="text-left">
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                              <div className="text-center">
+                                <p className="text-xs text-gray-600 dark:text-gray-400 font-medium">
                                   Image selected
                                 </p>
-                                <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-1">
+                                <p className="text-xs text-blue-600 dark:text-blue-400 font-semibold mt-1 flex items-center justify-center gap-1">
+                                  <ImageIcon className="w-3 h-3" />
                                   Click to replace
                                 </p>
                               </div>
                             </div>
                           ) : (
                             <div
-                              className={`flex flex-col items-center justify-center p-2 ${
-                                useHorizontalLayout ? 'py-4' : ''
+                              className={`flex flex-col items-center justify-center p-4 relative z-10 ${
+                                useHorizontalLayout ? 'py-8' : ''
                               }`}
                             >
-                              <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
-                              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                                Click to upload an image
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
+                                <ImageIcon className="w-5 h-5 text-blue-500" />
+                              </div>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 text-center font-medium">
+                                Drop an image here
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-500 text-center mt-1">
+                                or click to browse
                               </p>
                             </div>
                           )}
@@ -887,8 +992,8 @@ Current request: ${currentInput}`;
                           />
                         </label>
                       </div>
-                      {node.data.config?.description && !useHorizontalLayout && (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {node.data.config?.description && (
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
                           {node.data.config.description}
                         </p>
                       )}
@@ -899,34 +1004,38 @@ Current request: ${currentInput}`;
               })}
             </div>
 
-            <div className={`${!hasTextInput ? 'flex justify-center' : 'flex justify-end'} mt-4`}>
+            <div className={`${!hasTextInput ? 'flex justify-center' : 'flex justify-end'} mt-6`}>
               <button
                 type="submit"
                 disabled={isRunning || !isFormComplete}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm shadow-sm transition-all
-                  ${!hasTextInput ? 'w-full max-w-[200px]' : ''}
+                className={`flex items-center gap-3 px-8 py-3 rounded-xl text-sm font-medium shadow-sm transition-all duration-200 group relative overflow-hidden
+                  ${!hasTextInput ? 'w-full max-w-[220px]' : ''}
                   ${
                     isRunning || !isFormComplete
-                      ? 'bg-gray-400/50 text-white cursor-not-allowed backdrop-blur-sm'
+                      ? 'bg-gray-400/50 text-white cursor-not-allowed backdrop-blur-sm border border-gray-300/50'
                       : isDark
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:opacity-90 hover:shadow-md active:scale-95'
-                        : 'bg-white text-pink-400 border border-gray-200/50 hover:bg-gray-50 hover:shadow-md active:scale-95'
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/20 hover:shadow-blue-500/30'
+                        : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-blue-500/20 hover:shadow-blue-500/30'
                   }
+                  ${!(isRunning || !isFormComplete) ? 'hover:shadow-lg active:scale-95 hover:scale-105' : ''}
                 `}
               >
+                {/* Animated background shimmer */}
+                {!(isRunning || !isFormComplete) && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                )}
                 {isRunning ? (
                   <>
-                    <div className="w-4 h-4 relative">
-                      <div className={`absolute inset-0 rounded-full border-2 border-r-transparent animate-spin ${
-                        isDark ? 'border-white' : 'border-gray-400'
-                      }`} />
+                    <div className="w-5 h-5 relative">
+                      <div className="absolute inset-0 rounded-full border-2 border-white border-r-transparent animate-spin" />
+                      <div className="absolute inset-0 rounded-full border border-white/30 border-l-transparent animate-ping" />
                     </div>
-                    <span>Processing...</span>
+                    <span className="relative z-10">Processing...</span>
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    <span>{!hasTextInput ? 'Generate' : 'Send'}</span>
+                    <Send className="w-5 h-5 relative z-10 transition-transform group-hover:translate-x-1" />
+                    <span className="relative z-10">{!hasTextInput ? 'Generate' : 'Send Message'}</span>
                   </>
                 )}
               </button>
@@ -1018,35 +1127,47 @@ Current request: ${currentInput}`;
           <Topbar userName={appData?.name || 'App Runner'} />
           <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
             {/* Header / Info Section */}
-            <div className="bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 m-4 p-4 rounded-2xl flex items-center justify-between shadow-sm backdrop-blur-xl">
-              <div className="flex items-center gap-4">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm bg-gradient-to-br"
-                  style={{ 
-                    background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}, ${appData?.color || '#3B82F6'}dd)`
-                  }}
-                >
-                  {appData?.icon &&
-                    React.createElement(iconMap[appData.icon] || Activity, {
-                      className: 'w-6 h-6 text-white',
-                    })}
+            <div className="bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 m-4 p-5 rounded-2xl flex items-center justify-between shadow-lg backdrop-blur-xl relative overflow-hidden">
+              {/* Animated background pattern */}
+              <div className="absolute inset-0 opacity-30">
+                <div 
+                  className="absolute inset-0 bg-gradient-to-r opacity-10" 
+                  style={{ background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}20, transparent 50%, ${appData?.color || '#3B82F6'}10)` }}
+                ></div>
+              </div>
+              
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="relative group">
+                  <div
+                    className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md bg-gradient-to-br transition-transform group-hover:scale-105 duration-200"
+                    style={{ 
+                      background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}, ${appData?.color || '#3B82F6'}cc)`
+                    }}
+                  >
+                    {appData?.icon &&
+                      React.createElement(iconMap[appData.icon] || Activity, {
+                        className: 'w-7 h-7 text-white drop-shadow-sm',
+                      })}
+                  </div>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
                     {appData?.name}
                   </h1>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1">
+                  <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1 max-w-md">
                     {appData?.description}
                   </p>
                 </div>
               </div>
               <button
                 onClick={onBack}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-gray-700 dark:text-gray-300
-                  hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all"
+                className="flex items-center gap-3 px-5 py-2.5 rounded-xl text-gray-700 dark:text-gray-300
+                  hover:bg-white/70 dark:hover:bg-gray-700/50 transition-all duration-200 backdrop-blur-sm
+                  border border-gray-200/50 dark:border-gray-600/50 hover:shadow-md active:scale-95 group relative z-10"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back to Apps</span>
+                <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+                <span className="font-medium">Back to Apps</span>
               </button>
             </div>
 
@@ -1060,29 +1181,35 @@ Current request: ${currentInput}`;
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Scroll-to-top button */}
+              {/* Enhanced scroll-to-top button */}
               {showScrollTop && (
                 <button
                   onClick={scrollToTop}
-                  className="fixed bottom-24 right-6 p-3 rounded-xl shadow-lg z-10
-                  opacity-90 hover:opacity-100 transition-all hover:shadow-md active:scale-95"
-                  style={{ 
-                    background: `linear-gradient(135deg, ${appData?.color || '#3B82F6'}, ${appData?.color || '#3B82F6'}dd)`
-                  }}
+                  className="fixed bottom-28 right-6 p-4 rounded-2xl shadow-xl z-20 group
+                  opacity-90 hover:opacity-100 transition-all duration-300 hover:shadow-2xl active:scale-95 hover:scale-105
+                  bg-white/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-300 backdrop-blur-xl
+                  border border-gray-200/50 dark:border-gray-700/50"
                 >
-                  <svg
-                    className="w-5 h-5 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 15l7-7 7 7"
-                    />
-                  </svg>
+                  <div className="relative">
+                    <svg
+                      className="w-5 h-5 transition-transform group-hover:-translate-y-1"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 15l7-7 7 7"
+                      />
+                    </svg>
+                    {/* Subtle glow effect */}
+                    <div 
+                      className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-300 blur-md"
+                      style={{ background: appData?.color || '#3B82F6' }}
+                    ></div>
+                  </div>
                 </button>
               )}
             </div>

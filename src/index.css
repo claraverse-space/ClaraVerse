@@ -575,3 +575,101 @@ textarea {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Gradient text animation */
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease-in-out infinite;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Apps component enhanced animations */
+@keyframes pulse-delayed {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.animation-delay-1000 {
+  animation-delay: 1s;
+}
+
+/* Enhanced card animations */
+@keyframes shine {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shine {
+  animation: shine 1.5s ease-in-out infinite;
+}
+
+/* UI Builder preview isolation */
+.preview-container {
+  font-family: inherit !important;
+  isolation: isolate;
+}
+
+.preview-container * {
+  font-family: inherit !important;
+}
+
+/* Force Quicksand font for Apps component cards */
+.ui-project-card {
+  font-family: 'Quicksand', sans-serif !important;
+}
+
+.ui-project-card * {
+  font-family: 'Quicksand', sans-serif !important;
+}
+
+/* Ensure preview content doesn't leak styles */
+.preview-isolation {
+  contain: style layout;
+  isolation: isolate;
+}
+
+/* Force Quicksand font for entire Apps component */
+.apps-component,
+.apps-component *,
+.apps-component input,
+.apps-component select,
+.apps-component button,
+.apps-component textarea {
+  font-family: 'Quicksand', sans-serif !important;
+}
+
+/* Prevent any font inheritance issues in Apps component */
+.apps-component {
+  font-family: 'Quicksand', sans-serif !important;
+}
