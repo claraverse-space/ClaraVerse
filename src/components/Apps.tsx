@@ -277,38 +277,84 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           Community Apps
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Explore apps shared by the Clara community.
+          Explore and import apps shared by the Clara community.
         </p>
       </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {communityApps.map((app, index) => {
           const IconComponent = getIconComponent(app.icon || 'Activity');
           return (
             <div
               key={index}
-              className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
+              className="group glassmorphic rounded-2xl overflow-hidden hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-300 cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02] relative"
               onClick={() => {
-                // Import the app into user's apps
                 handleImportCommunityApp(app);
               }}
             >
+              {/* Enhanced App Icon Section */}
               <div
-                className="h-32 flex items-center justify-center"
-                style={{ backgroundColor: app.color }}
+                className="h-40 flex items-center justify-center relative overflow-hidden"
+                style={{ 
+                  background: `linear-gradient(135deg, ${app.color}, ${app.color}90)` 
+                }}
               >
-                <IconComponent className="h-16 w-16 text-white/90" />
+                {/* Background pattern */}
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-4 right-4 w-16 h-16 rounded-full bg-white/20"></div>
+                  <div className="absolute bottom-4 left-4 w-8 h-8 rounded-full bg-white/20"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-white/5"></div>
+                </div>
+                
+                {/* Icon with enhanced styling */}
+                <div className="relative z-10 p-4 rounded-2xl bg-white/10 backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
+                  <IconComponent className="h-12 w-12 text-white drop-shadow-lg" />
+                </div>
+                
+                {/* Community Badge */}
+                <div className="absolute top-3 right-3 px-3 py-1 bg-emerald-500/90 rounded-lg text-xs font-medium text-white backdrop-blur-sm">
+                  <Globe className="w-3 h-3 inline mr-1" />
+                  Community
+                </div>
+                
+                {/* Hover overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </div>
-              <div className="p-5">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {app.name}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+              
+              {/* Enhanced Content Section */}
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors duration-200">
+                    {app.name}
+                  </h3>
+                </div>
+                
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3 leading-relaxed">
                   {app.description}
                 </p>
-                <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
-                  Import App
-                </button>
+                
+                {/* Enhanced Footer */}
+                <div className="flex justify-between items-center pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></div>
+                    <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
+                      Ready to import
+                    </span>
+                  </div>
+                  <button 
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-teal-600 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleImportCommunityApp(app);
+                    }}
+                  >
+                    Import App
+                  </button>
+                </div>
               </div>
+              
+              {/* Subtle shine effect on hover */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none"></div>
             </div>
           );
         })}
@@ -385,74 +431,125 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
 
     return (
       <>
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+        <div className="mb-6" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2" style={{ fontFamily: 'Quicksand, sans-serif' }}>
             My Apps
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Quicksand, sans-serif' }}>
             Create and manage your UI Based apps
           </p>
         </div>
 
-        {/* Show success notification */}
+        {/* Enhanced Success Notification */}
         {deleteSuccess && (
-          <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 flex items-center justify-between">
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200/50 dark:border-green-800/50 flex items-center justify-between shadow-lg backdrop-blur-sm" style={{ fontFamily: 'Quicksand, sans-serif' }}>
             <div className="flex items-center">
-              <Check className="w-5 h-5 text-green-500 mr-2" />
-              <span className="text-green-700 dark:text-green-300">{deleteSuccess}</span>
+              <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center mr-3">
+                <Check className="w-5 h-5 text-green-500" />
+              </div>
+              <div style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                <h4 className="font-medium text-green-800 dark:text-green-200" style={{ fontFamily: 'Quicksand, sans-serif' }}>Success!</h4>
+                <p className="text-sm text-green-700 dark:text-green-300" style={{ fontFamily: 'Quicksand, sans-serif' }}>{deleteSuccess}</p>
+              </div>
             </div>
             <button 
               onClick={() => setDeleteSuccess(null)}
-              className="text-green-500 hover:text-green-700 dark:hover:text-green-300"
+              className="text-green-500 hover:text-green-700 dark:hover:text-green-300 p-2 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-all duration-200"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
         
-        {/* Search and Controls */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-8">
-          {/* Search Bar */}
-          <div className="relative flex-grow max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search UI projects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
-            />
-          </div>
-          
-          {/* Controls */}
-          <div className="flex items-center gap-3">
-            {/* Sort Options */}
+        {/* Enhanced Loading state */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center py-20" style={{ fontFamily: 'Quicksand, sans-serif' }}>
             <div className="relative">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
-              >
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
-                <option value="alphabetical">A-Z</option>
-              </select>
-              <SlidersHorizontal className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              {/* Animated loader */}
+              <div className="w-16 h-16 border-4 border-sakura-200 dark:border-sakura-800 rounded-full animate-spin border-t-sakura-500"></div>
+              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-ping border-t-sakura-300"></div>
+            </div>
+            <p className="mt-6 text-gray-600 dark:text-gray-400 font-medium" style={{ fontFamily: 'Quicksand, sans-serif' }}>Loading your agents...</p>
+          </div>
+        )}
+        
+        {/* Enhanced Search and Controls */}
+        <div className="glassmorphic rounded-2xl p-6 mb-8 border border-white/20 dark:border-gray-700/20" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
+            {/* Search Section */}
+            <div className="flex-1 max-w-2xl">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search UI projects by name or description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-6 py-4 rounded-xl border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-300 dark:focus:ring-violet-500 focus:border-transparent dark:bg-gray-800/80 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 text-lg backdrop-blur-sm transition-all duration-200"
+                  style={{ fontFamily: 'Quicksand, sans-serif' }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
             </div>
             
-            {/* Create New UI Project Button */}
-            <button 
-              onClick={() => {
-                localStorage.removeItem('current_ui_project');
-                localStorage.setItem('create_new_ui_project', 'true');
-                onPageChange('ui-builder');
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create First UI Project</span>
-            </button>
+            {/* Controls Section */}
+            <div className="flex items-center gap-4">
+              {/* Enhanced Sort Options */}
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="appearance-none pl-4 pr-10 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-300 dark:focus:ring-violet-500 dark:bg-gray-800/80 dark:text-white backdrop-blur-sm transition-all duration-200 font-medium"
+                  style={{ fontFamily: 'Quicksand, sans-serif' }}
+                >
+                  <option value="newest">📅 Newest First</option>
+                  <option value="oldest">⏰ Oldest First</option>
+                  <option value="alphabetical">🔤 A to Z</option>
+                </select>
+                <SlidersHorizontal className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              </div>
+              
+              {/* Enhanced View Options */}
+              <div className="hidden sm:flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200/50 dark:border-gray-700/50">
+                <button className="p-3 rounded-lg bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg">
+                  <Grid className="h-4 w-4" />
+                </button>
+                <button className="p-3 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200">
+                  <Layers className="h-4 w-4" />
+                </button>
+              </div>
+              
+              {/* Enhanced Create Button */}
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('current_ui_project');
+                  localStorage.setItem('create_new_ui_project', 'true');
+                  onPageChange('ui-builder');
+                }}
+                className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                style={{ fontFamily: 'Quicksand, sans-serif' }}
+              >
+                <Plus className="h-5 w-5" />
+                <span className="hidden sm:inline">Create Project</span>
+              </button>
+            </div>
           </div>
+          
+          {/* Search Results Counter */}
+          {searchQuery && (
+            <div className="mt-4 pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
+              <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                Found <span className="font-semibold text-violet-500">{filteredProjects.length}</span> project{filteredProjects.length !== 1 ? 's' : ''} matching "<span className="font-medium">{searchQuery}</span>"
+              </p>
+            </div>
+          )}
         </div>
         
         {/* Loading state */}
@@ -468,103 +565,176 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
             sortedProjects.map(project => (
               <div 
                 key={project.id} 
-                className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
+                className="group glassmorphic rounded-2xl overflow-hidden hover:shadow-2xl hover:shadow-violet-500/10 transition-all duration-300 cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02] relative ui-project-card"
                 onClick={() => handleOpenUiProject(project.id)}
               >
                 {/* Preview area - show rendered HTML/CSS */}
-                <div className="h-40 overflow-hidden bg-white relative">
-                  <div 
-                    className="absolute inset-0 p-1"
-                    dangerouslySetInnerHTML={{ 
-                      __html: `
-                        <style>${project.cssCode}</style>
-                        <div class="transform scale-50 origin-top-left w-[200%] h-[200%] overflow-hidden">
-                          ${project.htmlCode}
-                        </div>
-                      `
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-gray-900 opacity-20"></div>
+                <div className="h-40 overflow-hidden bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 relative">
+                  {/* Isolated preview container */}
+                  <div className="absolute inset-0 overflow-hidden preview-isolation">
+                    <div 
+                      className="absolute inset-0 p-1"
+                      style={{ 
+                        fontFamily: 'inherit', // Prevent font inheritance from preview
+                        isolation: 'isolate' // CSS isolation
+                      }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: `
+                          <style>
+                            ${project.cssCode}
+                            /* Force contain styles within preview */
+                            .preview-container * {
+                              font-family: inherit !important;
+                            }
+                          </style>
+                          <div class="preview-container transform scale-50 origin-top-left w-[200%] h-[200%] overflow-hidden">
+                            ${project.htmlCode}
+                          </div>
+                        `
+                      }}
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-violet-500/20 dark:to-purple-500/20 opacity-60"></div>
+                  
+                  {/* Enhanced Preview Label */}
+                  <div className="absolute top-3 right-3 px-3 py-1 bg-white/90 dark:bg-gray-900/90 rounded-lg text-xs font-medium text-violet-600 dark:text-violet-400 backdrop-blur-sm" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                    <Layout className="w-3 h-3 inline mr-1" />
+                    Preview
+                  </div>
+                  
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
                 
-                <div className="p-5">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{project.name}</h3>
+                {/* Enhanced Content Section - Force Font */}
+                <div className="p-6" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors duration-200" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                      {project.name}
+                    </h3>
                     <div className="relative">
                       <button 
-                        className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                        className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
                         onClick={(e) => toggleMenu(project.id, e)}
                       >
                         <MoreVertical className="h-5 w-5" />
                       </button>
                       
                       {menuOpen === project.id && (
-                        <div className="absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700">
+                        <div className="absolute right-0 mt-1 py-2 w-52 rounded-xl shadow-xl z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200/50 dark:border-gray-700/50 backdrop-blur-md" style={{ fontFamily: 'Quicksand, sans-serif' }}>
                           <button
-                            className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                            className="flex w-full items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50 transition-colors duration-200"
                             onClick={(e) => handleEditUiProject(project.id, e)}
+                            style={{ fontFamily: 'Quicksand, sans-serif' }}
                           >
-                            <Edit className="h-4 w-4 mr-2" /> Edit
+                            <Edit className="h-4 w-4 mr-3 text-blue-500" />
+                            <span>Edit Project</span>
                           </button>
+                          <div className="border-t border-gray-200/50 dark:border-gray-700/50 my-1"></div>
                           <button
-                            className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-900/30"
+                            className="flex w-full items-center px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-900/30 transition-colors duration-200"
                             onClick={(e) => handleDeleteUiProject(project.id, e)}
+                            style={{ fontFamily: 'Quicksand, sans-serif' }}
                           >
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            <Trash2 className="h-4 w-4 mr-3" />
+                            <span>Delete Project</span>
                           </button>
                         </div>
                       )}
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                    {project.description || 'No description'}
+                  
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3 leading-relaxed" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                    {project.description || 'No description available for this project.'}
                   </p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Updated: {new Date(project.updatedAt).toLocaleDateString()}
-                    </span>
+                  
+                  {/* Enhanced Footer */}
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-200/50 dark:border-gray-700/50" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-gray-500 dark:text-gray-400" style={{ fontFamily: 'Quicksand, sans-serif' }}>Last updated</span>
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                        {new Date(project.updatedAt).toLocaleDateString()}
+                      </span>
+                    </div>
                     <button 
-                      className="text-sakura-500 hover:text-sakura-600 text-sm font-medium"
+                      className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-lg text-sm font-medium hover:from-violet-600 hover:to-purple-600 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
                       onClick={(e) => {
-                        e.stopPropagation(); // Prevent the card's onClick from triggering
+                        e.stopPropagation();
                         handleOpenUiProject(project.id);
                       }}
+                      style={{ fontFamily: 'Quicksand, sans-serif' }}
                     >
                       Open Project
                     </button>
                   </div>
                 </div>
+                
+                {/* Subtle shine effect on hover */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none"></div>
               </div>
             ))
           ) : !isLoadingUiProjects && (
-            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-full bg-sakura-100 dark:bg-sakura-100/10 flex items-center justify-center mb-4">
-                <Layout className="w-8 h-8 text-sakura-500" />
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+              <div className="relative mb-8">
+                {/* Animated background circles */}
+                <div className="absolute inset-0 -m-8">
+                  <div className="w-32 h-32 bg-sakura-100 dark:bg-sakura-100/10 rounded-full animate-pulse opacity-60"></div>
+                </div>
+                <div className="absolute inset-0 -m-4">
+                  <div className="w-24 h-24 bg-sakura-200 dark:bg-sakura-200/10 rounded-full animate-pulse opacity-40 animation-delay-1000"></div>
+                </div>
+                
+                {/* Main icon */}
+                <div className="relative w-20 h-20 bg-gradient-to-br from-sakura-100 to-pink-100 dark:from-sakura-900/30 dark:to-pink-900/30 rounded-2xl flex items-center justify-center shadow-lg">
+                  <Bot className="w-10 h-10 text-sakura-500 animate-bounce" />
+                </div>
               </div>
-              <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No UI projects found</h3>
-              <p className="text-gray-600 dark:text-gray-400 max-w-sm mb-6">
-                {searchQuery ? "No projects match your search criteria." : "Create your first UI project to get started with the UI Builder."}
+              
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                {searchQuery ? "No projects found" : "Ready to create your first project?"}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 max-w-md mb-8 leading-relaxed" style={{ fontFamily: 'Quicksand, sans-serif' }}>
+                {searchQuery 
+                  ? "Try adjusting your search terms or clear the search to see all projects." 
+                  : "Build stunning apps with Clara's powerful visual editor. Create workflows, automations, and custom AI assistants."
+                }
               </p>
-              {searchQuery ? (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
-                >
-                  Clear search
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    localStorage.removeItem('current_ui_project');
-                    localStorage.setItem('create_new_ui_project', 'true');
-                    onPageChange('ui-builder');
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Create First UI Project</span>
-                </button>
-              )}
+              
+              <div className="flex gap-4">
+                {searchQuery ? (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="flex items-center gap-2 px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl transition-all duration-200 font-medium"
+                    style={{ fontFamily: 'Quicksand, sans-serif' }}
+                  >
+                    <X className="h-4 w-4" />
+                    Clear search
+                  </button>
+                ) : (
+                  <>
+                    <button 
+                      onClick={() => {
+                        localStorage.removeItem('current_ui_project');
+                        localStorage.setItem('create_new_ui_project', 'true');
+                        onPageChange('ui-builder');
+                      }}
+                      className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 text-white rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                      style={{ fontFamily: 'Quicksand, sans-serif' }}
+                    >
+                      <Plus className="h-5 w-5" />
+                      Create First Project
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('community')}
+                      className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl transition-all duration-200 font-medium border border-gray-200 dark:border-gray-700"
+                      style={{ fontFamily: 'Quicksand, sans-serif' }}
+                    >
+                      <Globe className="h-5 w-5" />
+                      Explore Community
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -588,39 +758,60 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
           }}
         />
       )}
-      <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto relative z-10">
-        {/* Tabs */}
-        <div className="flex justify-center border-b border-gray-200 dark:border-gray-700 mb-6">
-          <button
-            onClick={() => setActiveTab('myApps')}
-            className={`px-6 py-3 text-sm font-medium ${
-              activeTab === 'myApps'
-                ? 'border-b-2 border-sakura-500 text-sakura-600 dark:text-sakura-400'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            My Agents
-          </button>
-          <button
-            onClick={() => setActiveTab('uiApps')}
-            className={`px-6 py-3 text-sm font-medium ${
-              activeTab === 'uiApps'
-                ? 'border-b-2 border-sakura-500 text-sakura-600 dark:text-sakura-400'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            My Apps
-          </button>
-          <button
-            onClick={() => setActiveTab('community')}
-            className={`px-6 py-3 text-sm font-medium ${
-              activeTab === 'community'
-                ? 'border-b-2 border-sakura-500 text-sakura-600 dark:text-sakura-400'
-                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            Community
-          </button>
+      <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto relative z-10 apps-component">
+        {/* Enhanced Header Section */}
+        <div className="mb-8">
+          <div className="text-center mb-6 pt-4">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">
+              <span className="bg-gradient-to-r from-sakura-500 via-pink-500 to-purple-500 bg-clip-text text-transparent">
+                Your Creative Workspace
+              </span>
+            </h1>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Build powerful agents, create stunning apps, and explore community creations
+            </p>
+          </div>
+
+          {/* Enhanced Tabs */}
+          <div className="flex justify-center mb-6">
+            <div className="glassmorphic rounded-2xl p-2 border border-white/20 dark:border-gray-700/20">
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => setActiveTab('myApps')}
+                  className={`relative px-6 py-3 text-sm font-medium rounded-xl transition-all duration-300 ${
+                    activeTab === 'myApps'
+                      ? 'bg-gradient-to-r from-sakura-500 to-pink-500 text-white shadow-lg shadow-sakura-500/25'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <Bot className="w-4 h-4 inline mr-2" />
+                  My Agents
+                </button>
+                <button
+                  onClick={() => setActiveTab('uiApps')}
+                  className={`relative px-6 py-3 text-sm font-medium rounded-xl transition-all duration-300 ${
+                    activeTab === 'uiApps'
+                      ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg shadow-violet-500/25'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <Layout className="w-4 h-4 inline mr-2" />
+                  My Apps
+                </button>
+                <button
+                  onClick={() => setActiveTab('community')}
+                  className={`relative px-6 py-3 text-sm font-medium rounded-xl transition-all duration-300 ${
+                    activeTab === 'community'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <Globe className="w-4 h-4 inline mr-2" />
+                  Community
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
@@ -629,78 +820,83 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
             {/* My Apps Content */}
             <div className="mb-6">
               <h1 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-                My Agents
+                My Apps
               </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                Create and manage your Clara-powered agents
+                Create and manage your UI Based apps
               </p>
             </div>
             
-            {/* Show success notification */}
-            {deleteSuccess && (
-              <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 flex items-center justify-between">
-                <div className="flex items-center">
-                  <Check className="w-5 h-5 text-green-500 mr-2" />
-                  <span className="text-green-700 dark:text-green-300">{deleteSuccess}</span>
+            {/* Enhanced Search and Controls */}
+            <div className="glassmorphic rounded-2xl p-6 mb-8 border border-white/20 dark:border-gray-700/20">
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
+                {/* Search Section */}
+                <div className="flex-1 max-w-2xl">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search agents by name or description..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-12 pr-6 py-4 rounded-xl border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:focus:ring-sakura-500 focus:border-transparent dark:bg-gray-800/80 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 text-lg backdrop-blur-sm transition-all duration-200"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <button 
-                  onClick={() => setDeleteSuccess(null)}
-                  className="text-green-500 hover:text-green-700 dark:hover:text-green-300"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-            
-            {/* Search and Controls */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-8">
-              {/* Search Bar */}
-              <div className="relative flex-grow max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search apps..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
-                />
+                
+                {/* Controls Section */}
+                <div className="flex items-center gap-4">
+                  {/* Enhanced Sort Options */}
+                  <div className="relative">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="appearance-none pl-4 pr-10 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:focus:ring-sakura-500 dark:bg-gray-800/80 dark:text-white backdrop-blur-sm transition-all duration-200 font-medium"
+                    >
+                      <option value="newest">📅 Newest First</option>
+                      <option value="oldest">⏰ Oldest First</option>
+                      <option value="alphabetical">🔤 A to Z</option>
+                    </select>
+                    <SlidersHorizontal className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  </div>
+                  
+                  {/* Enhanced View Options */}
+                  <div className="hidden sm:flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200/50 dark:border-gray-700/50">
+                    <button className="p-3 rounded-lg bg-gradient-to-r from-sakura-500 to-pink-500 text-white shadow-lg">
+                      <Grid className="h-4 w-4" />
+                    </button>
+                    <button className="p-3 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200">
+                      <Layers className="h-4 w-4" />
+                    </button>
+                  </div>
+                  
+                  {/* Enhanced Create Button */}
+                  <button 
+                    onClick={handleCreateApp}
+                    className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 text-white rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    <Plus className="h-5 w-5" />
+                    <span className="hidden sm:inline">Create Agent</span>
+                  </button>
+                </div>
               </div>
               
-              {/* Controls */}
-              <div className="flex items-center gap-3">
-                {/* Sort Options */}
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-sakura-300 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white"
-                  >
-                    <option value="newest">Newest</option>
-                    <option value="oldest">Oldest</option>
-                    <option value="alphabetical">A-Z</option>
-                  </select>
-                  <SlidersHorizontal className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              {/* Search Results Counter */}
+              {searchQuery && (
+                <div className="mt-4 pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Found <span className="font-semibold text-sakura-500">{filteredApps.length}</span> agent{filteredApps.length !== 1 ? 's' : ''} matching "<span className="font-medium">{searchQuery}</span>"
+                  </p>
                 </div>
-                
-                {/* View Options */}
-                <div className="hidden sm:flex items-center gap-1 border border-gray-200 rounded-lg dark:border-gray-700">
-                  <button className="p-2 rounded-l-lg bg-sakura-100 dark:bg-sakura-100/10 text-sakura-500">
-                    <Grid className="h-4 w-4" />
-                  </button>
-                  <button className="p-2 rounded-r-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
-                    <Layers className="h-4 w-4" />
-                  </button>
-                </div>
-                
-                {/* Create New App Button */}
-                <button 
-                  onClick={handleCreateApp}
-                  className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Create Agents</span>
-                </button>
-              </div>
+              )}
             </div>
             
             {/* Loading state */}
@@ -719,84 +915,159 @@ const Apps: React.FC<AppsProps> = ({ onPageChange }) => {
                   return (
                     <div 
                       key={app.id} 
-                      className="glassmorphic rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer transform hover:-translate-y-1 transition-transform duration-200"
+                      className="group glassmorphic rounded-2xl overflow-hidden hover:shadow-2xl hover:shadow-sakura-500/10 transition-all duration-300 cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02] relative"
                       onClick={() => handleOpenApp(app.id)}
                     >
+                      {/* Enhanced App Icon Section */}
                       <div 
-                        className="h-32 flex items-center justify-center" 
-                        style={{ backgroundColor: app.color || '#3B82F6' }}
+                        className="h-40 flex items-center justify-center relative overflow-hidden" 
+                        style={{ 
+                          background: `linear-gradient(135deg, ${app.color || '#3B82F6'}, ${app.color ? app.color + '90' : '#1E40AF'})` 
+                        }}
                       >
-                        <IconComponent className="h-16 w-16 text-white/90" />
+                        {/* Background pattern */}
+                        <div className="absolute inset-0 opacity-10">
+                          <div className="absolute top-4 right-4 w-16 h-16 rounded-full bg-white/20"></div>
+                          <div className="absolute bottom-4 left-4 w-8 h-8 rounded-full bg-white/20"></div>
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-white/5"></div>
+                        </div>
+                        
+                        {/* Icon with enhanced styling */}
+                        <div className="relative z-10 p-4 rounded-2xl bg-white/10 backdrop-blur-sm group-hover:scale-110 transition-transform duration-300">
+                          <IconComponent className="h-12 w-12 text-white drop-shadow-lg" />
+                        </div>
+                        
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                       </div>
-                      <div className="p-5">
-                        <div className="flex justify-between items-start">
-                          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{app.name}</h3>
+                      
+                      {/* Enhanced Content Section */}
+                      <div className="p-6">
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className="text-xl font-semibold text-gray-900 dark:text-white group-hover:text-sakura-500 dark:group-hover:text-sakura-400 transition-colors duration-200">
+                            {app.name}
+                          </h3>
                           <div className="relative">
                             <button 
-                              className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                              className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200"
                               onClick={(e) => toggleMenu(app.id, e)}
                             >
                               <MoreVertical className="h-5 w-5" />
                             </button>
                             
                             {menuOpen === app.id && (
-                              <div className="absolute right-0 mt-1 py-1 w-48 rounded-md shadow-lg z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700">
+                              <div className="absolute right-0 mt-1 py-2 w-52 rounded-xl shadow-xl z-10 glassmorphic bg-white/95 dark:bg-gray-800/95 border border-gray-200/50 dark:border-gray-700/50 backdrop-blur-md">
                                 <button
-                                  className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                                  className="flex w-full items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50 transition-colors duration-200"
                                   onClick={(e) => handleEditApp(app.id, e)}
                                 >
-                                  <Edit className="h-4 w-4 mr-2" /> Edit
+                                  <Edit className="h-4 w-4 mr-3 text-blue-500" />
+                                  <span>Edit Agent</span>
                                 </button>
                                 <button
-                                  className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                                  className="flex w-full items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-gray-700/50 transition-colors duration-200"
                                   onClick={(e) => handleDuplicateApp(app.id, e)}
                                 >
-                                  <Copy className="h-4 w-4 mr-2" /> Duplicate
+                                  <Copy className="h-4 w-4 mr-3 text-green-500" />
+                                  <span>Duplicate Agent</span>
+                                </button>
+                                <div className="border-t border-gray-200/50 dark:border-gray-700/50 my-1"></div>
+                                <button
+                                  className="flex w-full items-center px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-900/30 transition-colors duration-200"
+                                  onClick={(e) => handleDeleteApp(app.id, e)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-3" />
+                                  <span>Delete Agent</span>
                                 </button>
                               </div>
                             )}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                          {app.description || 'No description'}
+                        
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3 leading-relaxed">
+                          {app.description || 'No description available for this agent.'}
                         </p>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            Updated: {new Date(app.updatedAt).toLocaleDateString()}
-                          </span>
-                          <button className="text-sakura-500 hover:text-sakura-600 text-sm font-medium">
+                        
+                        {/* Enhanced Footer */}
+                        <div className="flex justify-between items-center pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
+                          <div className="flex flex-col">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Last updated</span>
+                            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                              {new Date(app.updatedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <button 
+                            className="px-4 py-2 bg-gradient-to-r from-sakura-500 to-pink-500 text-white rounded-lg text-sm font-medium hover:from-sakura-600 hover:to-pink-600 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenApp(app.id);
+                            }}
+                          >
                             Open Agent
                           </button>
                         </div>
                       </div>
+                      
+                      {/* Subtle shine effect on hover */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300 pointer-events-none"></div>
                     </div>
                   );
                 })
               ) : !isLoading && (
-                <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-16 h-16 rounded-full bg-sakura-100 dark:bg-sakura-100/10 flex items-center justify-center mb-4">
-                    <Bot className="w-8 h-8 text-sakura-500" />
+                <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                  <div className="relative mb-8">
+                    {/* Animated background circles */}
+                    <div className="absolute inset-0 -m-8">
+                      <div className="w-32 h-32 bg-sakura-100 dark:bg-sakura-100/10 rounded-full animate-pulse opacity-60"></div>
+                    </div>
+                    <div className="absolute inset-0 -m-4">
+                      <div className="w-24 h-24 bg-sakura-200 dark:bg-sakura-200/10 rounded-full animate-pulse opacity-40 animation-delay-1000"></div>
+                    </div>
+                    
+                    {/* Main icon */}
+                    <div className="relative w-20 h-20 bg-gradient-to-br from-sakura-100 to-pink-100 dark:from-sakura-900/30 dark:to-pink-900/30 rounded-2xl flex items-center justify-center shadow-lg">
+                      <Bot className="w-10 h-10 text-sakura-500 animate-bounce" />
+                    </div>
                   </div>
-                  <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">No apps found</h3>
-                  <p className="text-gray-600 dark:text-gray-400 max-w-sm mb-6">
-                    {searchQuery ? "No apps match your search criteria." : "Create your first app to get started with Clara."}
+                  
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                    {searchQuery ? "No agents found" : "Ready to create your first agent?"}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 max-w-md mb-8 leading-relaxed">
+                    {searchQuery 
+                      ? "Try adjusting your search terms or clear the search to see all agents." 
+                      : "Build intelligent agents with Clara's powerful visual editor. Create workflows, automations, and custom AI assistants."
+                    }
                   </p>
-                  {searchQuery ? (
-                    <button 
-                      onClick={() => setSearchQuery('')}
-                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"
-                    >
-                      Clear search
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={handleCreateApp}
-                      className="flex items-center gap-2 px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Create First App</span>
-                    </button>
-                  )}
+                  
+                  <div className="flex gap-4">
+                    {searchQuery ? (
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="flex items-center gap-2 px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl transition-all duration-200 font-medium"
+                      >
+                        <X className="h-4 w-4" />
+                        Clear search
+                      </button>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={handleCreateApp}
+                          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 text-white rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                        >
+                          <Plus className="h-5 w-5" />
+                          Create First Agent
+                        </button>
+                        <button 
+                          onClick={() => setActiveTab('community')}
+                          className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl transition-all duration-200 font-medium border border-gray-200 dark:border-gray-700"
+                        >
+                          <Globe className="h-5 w-5" />
+                          Explore Community
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

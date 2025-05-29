@@ -70,6 +70,9 @@ import { claraVoiceService } from '../../services/claraVoiceService';
 // Import database service
 import { claraDB } from '../../db/claraDatabase';
 
+// Import API service
+import { claraApiService } from '../../services/claraApiService';
+
 /**
  * Custom Tooltip Component
  */
@@ -268,6 +271,7 @@ const ProviderSelector: React.FC<{
   isLoading?: boolean;
 }> = ({ providers, selectedProvider, onProviderChange, isLoading }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<{ [id: string]: 'healthy' | 'unhealthy' | 'loading' | 'unknown' }>({});
   const selectedProviderObj = providers.find(p => p.id === selectedProvider);
 
   const getProviderIcon = (type: string) => {
@@ -285,6 +289,47 @@ const ProviderSelector: React.FC<{
     return 'text-blue-500';
   };
 
+  // Health dot color
+  const getHealthDot = (status: 'healthy' | 'unhealthy' | 'loading' | 'unknown') => {
+    let color = 'bg-gray-400';
+    if (status === 'healthy') color = 'bg-green-500';
+    else if (status === 'unhealthy') color = 'bg-red-500';
+    else if (status === 'loading') color = 'bg-yellow-400 animate-pulse';
+    return <span className={`inline-block w-2 h-2 rounded-full mr-1 ${color}`} title={status} />;
+  };
+
+  // Health check all enabled providers when dropdown opens
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const checkAll = async () => {
+      const newStatus: { [id: string]: 'healthy' | 'unhealthy' | 'loading' | 'unknown' } = { ...healthStatus };
+      await Promise.all(providers.map(async (provider) => {
+        if (!provider.isEnabled) {
+          newStatus[provider.id] = 'unknown';
+          return;
+        }
+        newStatus[provider.id] = 'loading';
+        setHealthStatus(s => ({ ...s, [provider.id]: 'loading' }));
+        try {
+          const healthy = await claraApiService.testProvider(provider);
+          if (!cancelled) {
+            newStatus[provider.id] = healthy ? 'healthy' : 'unhealthy';
+            setHealthStatus(s => ({ ...s, [provider.id]: healthy ? 'healthy' : 'unhealthy' }));
+          }
+        } catch {
+          if (!cancelled) {
+            newStatus[provider.id] = 'unhealthy';
+            setHealthStatus(s => ({ ...s, [provider.id]: 'unhealthy' }));
+          }
+        }
+      }));
+      if (!cancelled) setHealthStatus(newStatus);
+    };
+    checkAll();
+    return () => { cancelled = true; };
+  }, [isOpen, providers]);
+
   return (
     <div className="relative">
       <button
@@ -295,6 +340,7 @@ const ProviderSelector: React.FC<{
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {selectedProviderObj && (
             <>
+              {getHealthDot(healthStatus[selectedProviderObj.id] || 'unknown')}
               {React.createElement(getProviderIcon(selectedProviderObj.type), {
                 className: `w-4 h-4 flex-shrink-0 ${getStatusColor(selectedProviderObj)}`
               })}
@@ -322,8 +368,9 @@ const ProviderSelector: React.FC<{
                   provider.id === selectedProvider ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
                 }`}
                 disabled={!provider.isEnabled}
-                title={`${provider.name} - ${provider.baseUrl}`} // Show full info on hover
+                title={`${provider.name} - ${provider.baseUrl}`}
               >
+                {getHealthDot(healthStatus[provider.id] || 'unknown')}
                 <IconComponent className={`w-4 h-4 flex-shrink-0 ${getStatusColor(provider)}`} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -531,12 +578,73 @@ const AdvancedOptions: React.FC<{
   };
 
   const handleFeatureChange = (key: string, value: boolean) => {
-    onConfigChange?.({
+    // Create the base config change with proper typing
+    const baseConfigChange: Partial<ClaraAIConfig> = {
       features: {
         ...aiConfig.features,
         [key]: value
       }
-    });
+    };
+
+    // Auto-enable/disable autonomous mode based on tools mode
+    if (key === 'enableTools') {
+      // When tools are enabled, automatically enable autonomous mode
+      // When tools are disabled, disable autonomous mode only if streaming is enabled
+      if (value) {
+        // Enabling tools: auto-enable autonomous mode and disable streaming
+        console.log('🛠️ Tools enabled - automatically enabling autonomous mode and disabling streaming');
+        baseConfigChange.features!.enableStreaming = false; // Disable streaming when tools are enabled
+        baseConfigChange.autonomousAgent = {
+          enabled: true,
+          maxRetries: aiConfig.autonomousAgent?.maxRetries || 3,
+          retryDelay: aiConfig.autonomousAgent?.retryDelay || 1000,
+          enableSelfCorrection: aiConfig.autonomousAgent?.enableSelfCorrection || true,
+          enableToolGuidance: aiConfig.autonomousAgent?.enableToolGuidance || true,
+          enableProgressTracking: aiConfig.autonomousAgent?.enableProgressTracking || true,
+          maxToolCalls: aiConfig.autonomousAgent?.maxToolCalls || 10,
+          confidenceThreshold: aiConfig.autonomousAgent?.confidenceThreshold || 0.7,
+          enableChainOfThought: aiConfig.autonomousAgent?.enableChainOfThought || true,
+          enableErrorLearning: aiConfig.autonomousAgent?.enableErrorLearning || true
+        };
+      } else {
+        // Disabling tools: disable autonomous mode only if streaming is enabled
+        if (aiConfig.features.enableStreaming) {
+          console.log('🚫 Tools disabled with streaming enabled - automatically disabling autonomous mode');
+          baseConfigChange.autonomousAgent = {
+            enabled: false,
+            maxRetries: aiConfig.autonomousAgent?.maxRetries || 3,
+            retryDelay: aiConfig.autonomousAgent?.retryDelay || 1000,
+            enableSelfCorrection: aiConfig.autonomousAgent?.enableSelfCorrection || true,
+            enableToolGuidance: aiConfig.autonomousAgent?.enableToolGuidance || true,
+            enableProgressTracking: aiConfig.autonomousAgent?.enableProgressTracking || true,
+            maxToolCalls: aiConfig.autonomousAgent?.maxToolCalls || 10,
+            confidenceThreshold: aiConfig.autonomousAgent?.confidenceThreshold || 0.7,
+            enableChainOfThought: aiConfig.autonomousAgent?.enableChainOfThought || true,
+            enableErrorLearning: aiConfig.autonomousAgent?.enableErrorLearning || true
+          };
+        }
+      }
+    }
+
+    // Handle streaming mode changes (existing logic)
+    if (key === 'enableStreaming' && value) {
+      // When streaming is enabled, disable autonomous mode
+      console.log('🌊 Streaming enabled - automatically disabling autonomous mode');
+      baseConfigChange.autonomousAgent = {
+        enabled: false,
+        maxRetries: aiConfig.autonomousAgent?.maxRetries || 3,
+        retryDelay: aiConfig.autonomousAgent?.retryDelay || 1000,
+        enableSelfCorrection: aiConfig.autonomousAgent?.enableSelfCorrection || true,
+        enableToolGuidance: aiConfig.autonomousAgent?.enableToolGuidance || true,
+        enableProgressTracking: aiConfig.autonomousAgent?.enableProgressTracking || true,
+        maxToolCalls: aiConfig.autonomousAgent?.maxToolCalls || 10,
+        confidenceThreshold: aiConfig.autonomousAgent?.confidenceThreshold || 0.7,
+        enableChainOfThought: aiConfig.autonomousAgent?.enableChainOfThought || true,
+        enableErrorLearning: aiConfig.autonomousAgent?.enableErrorLearning || true
+      };
+    }
+
+    onConfigChange?.(baseConfigChange);
   };
 
   const handleMcpConfigChange = (key: string, value: any) => {
@@ -1225,7 +1333,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   currentSession,
   setSessions,
   autoTTSText = '',
-  autoTTSTrigger = null
+  autoTTSTrigger = null,
+  onPreloadModel,
+  showAdvancedOptionsPanel = false,
+  onAdvancedOptionsToggle
 }) => {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -1233,6 +1344,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [dragCounter, setDragCounter] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Model preloading state
+  const [hasPreloaded, setHasPreloaded] = useState(false);
+  const preloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPreloading, setIsPreloading] = useState(false);
 
   // Streaming vs Tools mode state
   const [isStreamingMode, setIsStreamingMode] = useState(
@@ -1307,6 +1423,58 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   useEffect(() => {
     focusTextarea();
   }, [focusTextarea]);
+
+  // Handle typing with model preloading
+  const handleInputChange = useCallback((value: string) => {
+    setInput(value);
+    
+    // Auto-close advanced options when user starts typing
+    if (value.trim() && showAdvancedOptionsPanel && onAdvancedOptionsToggle) {
+      onAdvancedOptionsToggle(false);
+    }
+    
+    // Trigger model preloading when user starts typing (debounced)
+    if (value.trim() && !hasPreloaded && onPreloadModel && !isLoading) {
+      // Clear any existing timeout
+      if (preloadTimeoutRef.current) {
+        clearTimeout(preloadTimeoutRef.current);
+      }
+      
+      // Set a debounced timeout to trigger preloading
+      preloadTimeoutRef.current = setTimeout(() => {
+        console.log('🚀 User started typing, preloading model...');
+        setIsPreloading(true);
+        onPreloadModel();
+        setHasPreloaded(true);
+        
+        // Hide preloading indicator after a short time
+        setTimeout(() => {
+          setIsPreloading(false);
+        }, 2000);
+      }, 500); // 500ms debounce delay
+    }
+  }, [hasPreloaded, onPreloadModel, isLoading, showAdvancedOptionsPanel, onAdvancedOptionsToggle]);
+
+  // Reset preload state when input is cleared or message is sent
+  useEffect(() => {
+    if (!input.trim()) {
+      setHasPreloaded(false);
+      setIsPreloading(false);
+      if (preloadTimeoutRef.current) {
+        clearTimeout(preloadTimeoutRef.current);
+        preloadTimeoutRef.current = null;
+      }
+    }
+  }, [input]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (preloadTimeoutRef.current) {
+        clearTimeout(preloadTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     adjustTextareaHeight();
@@ -1667,6 +1835,14 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     setFiles([]);
     adjustTextareaHeight();
     
+    // Reset preload state for next typing session
+    setHasPreloaded(false);
+    setIsPreloading(false);
+    if (preloadTimeoutRef.current) {
+      clearTimeout(preloadTimeoutRef.current);
+      preloadTimeoutRef.current = null;
+    }
+    
     // Focus the textarea after sending for immediate next input
     focusTextarea();
   }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea]);
@@ -1747,8 +1923,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         enableMCP: !newStreamingMode
       },
       // When streaming mode is enabled, disable autonomous agent mode
-      // When tools mode is enabled, keep autonomous agent setting as is
+      // When tools mode is enabled, automatically enable autonomous agent mode
       autonomousAgent: newStreamingMode ? {
+        // Streaming mode: disable autonomous
         enabled: false,
         maxRetries: currentAIConfig.autonomousAgent?.maxRetries || 3,
         retryDelay: currentAIConfig.autonomousAgent?.retryDelay || 1000,
@@ -1759,8 +1936,27 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         confidenceThreshold: currentAIConfig.autonomousAgent?.confidenceThreshold || 0.7,
         enableChainOfThought: currentAIConfig.autonomousAgent?.enableChainOfThought || true,
         enableErrorLearning: currentAIConfig.autonomousAgent?.enableErrorLearning || true
-      } : currentAIConfig.autonomousAgent
+      } : {
+        // Tools mode: automatically enable autonomous
+        enabled: true,
+        maxRetries: currentAIConfig.autonomousAgent?.maxRetries || 3,
+        retryDelay: currentAIConfig.autonomousAgent?.retryDelay || 1000,
+        enableSelfCorrection: currentAIConfig.autonomousAgent?.enableSelfCorrection || true,
+        enableToolGuidance: currentAIConfig.autonomousAgent?.enableToolGuidance || true,
+        enableProgressTracking: currentAIConfig.autonomousAgent?.enableProgressTracking || true,
+        maxToolCalls: currentAIConfig.autonomousAgent?.maxToolCalls || 10,
+        confidenceThreshold: currentAIConfig.autonomousAgent?.confidenceThreshold || 0.7,
+        enableChainOfThought: currentAIConfig.autonomousAgent?.enableChainOfThought || true,
+        enableErrorLearning: currentAIConfig.autonomousAgent?.enableErrorLearning || true
+      }
     };
+    
+    // Log the mode change for clarity
+    if (newStreamingMode) {
+      console.log('🌊 Switched to streaming mode - autonomous agent automatically disabled');
+    } else {
+      console.log('🛠️ Switched to tools mode - autonomous agent automatically enabled');
+    }
     
     handleAIConfigChange(newConfig);
   }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
@@ -1972,10 +2168,18 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
                 {/* Input Field */}
                 <div className={files.length > 0 ? 'mt-3' : ''}>
+                  {/* Preloading indicator */}
+                  {isPreloading && (
+                    <div className="flex items-center gap-2 mb-2 text-xs text-blue-600 dark:text-blue-400">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Warming up model...</span>
+                    </div>
+                  )}
+                  
                   <textarea
                     ref={textareaRef}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Ask me anything..."
                     className="w-full border-0 outline-none focus:outline-none focus:ring-0 resize-none bg-transparent text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
@@ -2034,7 +2238,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                     </Tooltip>
 
                     {/* New Chat */}
-                    <Tooltip content="New conversation" position="top">
+                    {/* <Tooltip content="New conversation" position="top">
                       <button
                         onClick={handleNewChat}
                         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
@@ -2042,7 +2246,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                       >
                         <Plus className="w-4 h-4" />
                       </button>
-                    </Tooltip>
+                    </Tooltip> */}
                   </div>
 
                   {/* Center - Mode & Model Selection */}
@@ -2147,9 +2351,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                     {/* Settings */}
                     <Tooltip content="Advanced settings" position="top">
                       <button
-                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        onClick={() => onAdvancedOptionsToggle?.(!showAdvancedOptionsPanel)}
                         className={`p-2 rounded-lg transition-colors ${
-                          showAdvanced 
+                          showAdvancedOptionsPanel 
                             ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-400' 
                             : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
                         }`}
@@ -2187,16 +2391,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
               </div>
             )}
 
-            {/* Advanced Options */}
-            <AdvancedOptions
-              aiConfig={currentAIConfig}
-              onConfigChange={handleAIConfigChange}
-              providers={providers}
-              models={models}
-              onProviderChange={onProviderChange}
-              onModelChange={onModelChange}
-              show={showAdvanced}
-            />
+            {/* Advanced Options - Removed, now handled by parent component */}
           </div>
         </div>
       </div>
@@ -2204,4 +2399,5 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   );
 };
 
-export default ClaraAssistantInput; 
+export { AdvancedOptions };
+export default ClaraAssistantInput;

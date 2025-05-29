@@ -75,6 +75,7 @@ declare global {
     modelManager: {
       searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;
       downloadModel: (modelId: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      downloadModelWithDependencies: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => Promise<{ success: boolean; results?: any[]; downloadedFiles?: string[]; error?: string }>;
       getLocalModels: () => Promise<{ success: boolean; models: any[]; error?: string }>;
       deleteLocalModel: (filePath: string) => Promise<{ success: boolean; error?: string }>;
       onDownloadProgress: (callback: (data: any) => void) => () => void;

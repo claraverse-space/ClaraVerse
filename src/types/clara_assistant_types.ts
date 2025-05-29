@@ -570,6 +570,15 @@ export interface ClaraInputProps {
   
   /** Auto TTS trigger with timestamp to ensure re-triggering */
   autoTTSTrigger?: {text: string, timestamp: number} | null;
+  
+  /** Callback for model preloading when user starts typing */
+  onPreloadModel?: () => void;
+  
+  /** Whether to show advanced options panel */
+  showAdvancedOptionsPanel?: boolean;
+  
+  /** Callback when advanced options visibility changes */
+  onAdvancedOptionsToggle?: (show: boolean) => void;
 }
 
 // ================================

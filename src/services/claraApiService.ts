@@ -304,7 +304,7 @@ export class ClaraApiService {
       const processedAttachments = await this.processFileAttachments(attachments || []);
 
       // Determine the appropriate model based on context and auto selection settings
-      let modelId = this.selectAppropriateModel(config, message, processedAttachments);
+      let modelId = this.selectAppropriateModel(config, message, processedAttachments, conversationHistory);
       
       // If the model ID includes the provider prefix (e.g., "ollama:qwen3:30b"), 
       // extract everything after the first colon to get the actual model name
@@ -337,17 +337,22 @@ export class ClaraApiService {
               const enabledServers = config.mcp.enabledServers || [];
               console.log('📋 Enabled MCP servers from config:', enabledServers);
               
-              // Check server availability and provide feedback
-              const serverSummary = claraMCPService.getServerAvailabilitySummary(enabledServers);
-              console.log('🔍 Server availability summary:', serverSummary);
-              
-              // Provide UI feedback about server status
-              if (onContentChunk && (serverSummary.unavailable.length > 0 || enabledServers.length === 0)) {
-                let feedbackMessage = '\n🔧 **MCP Server Status:**\n';
+              // CRITICAL FIX: Only proceed if servers are explicitly enabled
+              // Don't fall back to all servers when none are selected
+              if (enabledServers.length === 0) {
+                console.log('🚫 No MCP servers explicitly enabled - skipping MCP tools');
+                if (onContentChunk) {
+                  onContentChunk('ℹ️ **No MCP servers selected** - Please enable specific MCP servers in configuration to use MCP tools.\n\n');
+                }
+              } else {
+                // Check server availability and provide feedback
+                const serverSummary = claraMCPService.getServerAvailabilitySummary(enabledServers);
+                console.log('🔍 Server availability summary:', serverSummary);
                 
-                if (enabledServers.length === 0) {
-                  feedbackMessage += '⚠️ No MCP servers configured. Using all available servers.\n';
-                } else {
+                // Provide UI feedback about server status
+                if (onContentChunk && serverSummary.unavailable.length > 0) {
+                  let feedbackMessage = '\n🔧 **MCP Server Status:**\n';
+                  
                   if (serverSummary.available.length > 0) {
                     feedbackMessage += `✅ Available: ${serverSummary.available.join(', ')} (${serverSummary.totalTools} tools)\n`;
                   }
@@ -358,63 +363,63 @@ export class ClaraApiService {
                       feedbackMessage += `   • ${unavailable.server}: ${unavailable.reason}\n`;
                     }
                   }
-                }
-                
-                feedbackMessage += '\n';
-                onContentChunk(feedbackMessage);
-              }
-              
-              // Get tools only from enabled and running servers
-              const mcpTools = claraMCPService.getToolsFromEnabledServers(enabledServers.length > 0 ? enabledServers : undefined);
-              console.log(`🛠️ Found ${mcpTools.length} MCP tools from enabled/running servers:`, mcpTools.map(t => `${t.server}:${t.name}`));
-              
-              if (mcpTools.length === 0) {
-                console.warn('⚠️ No MCP tools available from enabled/running servers');
-                if (onContentChunk) {
-                  onContentChunk('⚠️ **No MCP tools available** - all configured servers are offline or disabled.\n\n');
-                }
-              } else {
-                // Convert only the filtered tools to OpenAI format
-                const mcpOpenAITools = claraMCPService.convertSpecificToolsToOpenAIFormat(mcpTools);
-                console.log(`🔄 Converted and validated ${mcpOpenAITools.length} OpenAI format tools`);
-                
-                // Convert to Tool format for compatibility
-                const mcpToolsFormatted: Tool[] = mcpOpenAITools.map(tool => ({
-                  id: tool.function.name,
-                  name: tool.function.name,
-                  description: tool.function.description,
-                  parameters: Object.entries(tool.function.parameters.properties || {}).map(([name, prop]: [string, any]) => ({
-                    name,
-                    type: prop.type || 'string',
-                    description: prop.description || '',
-                    required: tool.function.parameters.required?.includes(name) || false
-                  })),
-                  implementation: 'mcp', // Mark as MCP tool for special handling
-                  isEnabled: true
-                }));
-                
-                const beforeCount = tools.length;
-                tools = [...tools, ...mcpToolsFormatted];
-                console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
-                
-                // Provide UI feedback about loaded tools
-                if (onContentChunk && mcpToolsFormatted.length > 0) {
-                  const toolsByServer = mcpToolsFormatted.reduce((acc, tool) => {
-                    const serverName = tool.name.split('_')[1]; // Extract server name from mcp_server_tool format
-                    acc[serverName] = (acc[serverName] || 0) + 1;
-                    return acc;
-                  }, {} as Record<string, number>);
                   
-                  let toolsMessage = `🛠️ **Loaded ${mcpToolsFormatted.length} MCP tools:**\n`;
-                  for (const [server, count] of Object.entries(toolsByServer)) {
-                    toolsMessage += `   • ${server}: ${count} tools\n`;
-                  }
-                  toolsMessage += '\n';
-                  onContentChunk(toolsMessage);
+                  feedbackMessage += '\n';
+                  onContentChunk(feedbackMessage);
                 }
                 
-                // Update agent context with available tools
-                agentContext.toolsAvailable = tools.map(t => t.name);
+                // Get tools only from explicitly enabled servers
+                const mcpTools = claraMCPService.getToolsFromEnabledServers(enabledServers);
+                console.log(`🛠️ Found ${mcpTools.length} MCP tools from enabled servers:`, mcpTools.map(t => `${t.server}:${t.name}`));
+                
+                if (mcpTools.length === 0) {
+                  console.warn('⚠️ No MCP tools available from enabled/running servers');
+                  if (onContentChunk) {
+                    onContentChunk('⚠️ **No MCP tools available** - all configured servers are offline or disabled.\n\n');
+                  }
+                } else {
+                  // Convert only the filtered tools to OpenAI format
+                  const mcpOpenAITools = claraMCPService.convertSpecificToolsToOpenAIFormat(mcpTools);
+                  console.log(`🔄 Converted and validated ${mcpOpenAITools.length} OpenAI format tools`);
+                  
+                  // Convert to Tool format for compatibility
+                  const mcpToolsFormatted: Tool[] = mcpOpenAITools.map(tool => ({
+                    id: tool.function.name,
+                    name: tool.function.name,
+                    description: tool.function.description,
+                    parameters: Object.entries(tool.function.parameters.properties || {}).map(([name, prop]: [string, any]) => ({
+                      name,
+                      type: prop.type || 'string',
+                      description: prop.description || '',
+                      required: tool.function.parameters.required?.includes(name) || false
+                    })),
+                    implementation: 'mcp', // Mark as MCP tool for special handling
+                    isEnabled: true
+                  }));
+                  
+                  const beforeCount = tools.length;
+                  tools = [...tools, ...mcpToolsFormatted];
+                  console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
+                  
+                  // Provide UI feedback about loaded tools
+                  if (onContentChunk && mcpToolsFormatted.length > 0) {
+                    const toolsByServer = mcpToolsFormatted.reduce((acc, tool) => {
+                      const serverName = tool.name.split('_')[1]; // Extract server name from mcp_server_tool format
+                      acc[serverName] = (acc[serverName] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+                    
+                    let toolsMessage = `🛠️ **Loaded ${mcpToolsFormatted.length} MCP tools:**\n`;
+                    for (const [server, count] of Object.entries(toolsByServer)) {
+                      toolsMessage += `   • ${server}: ${count} tools\n`;
+                    }
+                    toolsMessage += '\n';
+                    onContentChunk(toolsMessage);
+                  }
+                  
+                  // Update agent context with available tools
+                  agentContext.toolsAvailable = tools.map(t => t.name);
+                }
               }
             } else {
               console.warn('⚠️ MCP service not ready, skipping MCP tools');
@@ -3377,7 +3382,8 @@ ESTIMATED_STEPS:
   private selectAppropriateModel(
     config: ClaraAIConfig, 
     message: string, 
-    attachments: ClaraFileAttachment[]
+    attachments: ClaraFileAttachment[],
+    conversationHistory?: ClaraMessage[]
   ): string {
     // If auto model selection is disabled, use the configured text model
     if (!config.features.autoModelSelection) {
@@ -3387,8 +3393,20 @@ ESTIMATED_STEPS:
 
     console.log('🤖 Auto model selection enabled, analyzing context...');
     
-    // Check for images in attachments
-    const hasImages = attachments.some(att => att.type === 'image');
+    // Check for images in current attachments
+    const hasCurrentImages = attachments.some(att => att.type === 'image');
+    
+    // Check for images in conversation history (last 10 messages for performance)
+    const hasHistoryImages = conversationHistory ? 
+      conversationHistory.slice(-10).some(msg => 
+        msg.attachments && msg.attachments.some(att => att.type === 'image')
+      ) : false;
+    
+    const hasImages = hasCurrentImages || hasHistoryImages;
+    
+    if (hasImages) {
+      console.log(`📸 Images detected (current: ${hasCurrentImages}, history: ${hasHistoryImages})`);
+    }
     
     // Check for code-related content
     const hasCodeFiles = attachments.some(att => att.type === 'code');
@@ -3399,12 +3417,12 @@ ESTIMATED_STEPS:
     const isToolsMode = config.features.enableTools && !config.features.enableStreaming;
     
     // Model selection priority:
-    // 1. Vision model for images (streaming mode only) 
+    // 1. Vision model for images (especially important for streaming mode where vision is required)
     // 2. Code model for tools mode (better for complex reasoning and tool usage)
     // 3. Text model for streaming and general text
     
-    if (hasImages && config.models.vision && config.features.enableStreaming) {
-      console.log('📸 Images detected in streaming mode, using vision model:', config.models.vision);
+    if (hasImages && config.models.vision) {
+      console.log('📸 Images detected, using vision model:', config.models.vision);
       return config.models.vision;
     }
     
@@ -3421,6 +3439,74 @@ ESTIMATED_STEPS:
     // Default to text model for streaming and general text
     console.log('📝 Using text model for general text/streaming:', config.models.text);
     return config.models.text || 'llama2';
+  }
+
+  /**
+   * Preload/warm up a model with a minimal request to reduce waiting time
+   * This is especially useful for local models that need to be loaded into memory
+   */
+  public async preloadModel(config: ClaraAIConfig, conversationHistory?: ClaraMessage[]): Promise<void> {
+    if (!this.client || !config.models.text) {
+      console.log('🔄 Skipping model preload: No client or model configured');
+      return;
+    }
+
+    // Only preload for local providers (Ollama) to avoid unnecessary cloud API calls
+    const isLocalProvider = config.provider === 'ollama' || 
+                           this.currentProvider?.type === 'ollama' ||
+                           this.currentProvider?.baseUrl?.includes('localhost') ||
+                           this.currentProvider?.baseUrl?.includes('127.0.0.1');
+    
+    if (!isLocalProvider) {
+      console.log('🔄 Skipping model preload: Cloud provider detected, no preloading needed');
+      return;
+    }
+
+    try {
+      // Determine model ID based on conversation context (including image history)
+      let modelId = this.selectAppropriateModel(config, '', [], conversationHistory);
+      
+      // Extract model name from provider:model format if needed
+      if (modelId.includes(':')) {
+        const parts = modelId.split(':');
+        modelId = parts.slice(1).join(':');
+      }
+
+      console.log(`🚀 Preloading model: ${modelId} for provider: ${config.provider}`);
+
+      // Create a minimal message to warm up the model
+      const warmupMessages = [
+        {
+          role: 'system' as const,
+          content: 'You are Clara, a helpful AI assistant.'
+        },
+        {
+          role: 'user' as const,
+          content: 'Hi'
+        }
+      ];
+
+      // Send minimal request with 1 token output to just load the model
+      const warmupOptions = {
+        temperature: 0.1,
+        max_tokens: 1, // Minimal token output
+        stream: false // No streaming for preload
+      };
+
+      console.log(`⚡ Sending warmup request for model: ${modelId}`);
+      
+      // Fire and forget - we don't care about the response, just want to trigger model loading
+      this.client.sendChat(modelId, warmupMessages, warmupOptions).catch(error => {
+        // Silently handle errors since this is just a warmup
+        console.log(`🔄 Model warmup completed (may have failed, but that's okay): ${error.message}`);
+      });
+
+      console.log(`✅ Model preload initiated for: ${modelId}`);
+      
+    } catch (error) {
+      // Silently handle preload errors since this is an optimization, not critical functionality
+      console.log(`🔄 Model preload failed (non-critical): ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

@@ -167,6 +167,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   // Load user name from database
   const [userName, setUserName] = useState<string>('');
 
+  // Add loading state for initial widget load
+  const [isLoadingWidgets, setIsLoadingWidgets] = useState(true);
+
+  // Simulate initial loading (you can replace this with actual loading logic)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoadingWidgets(false);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Load config and check connections
   useEffect(() => {
     console.log('Initial widgets state:', widgets);
@@ -463,13 +474,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     const wrapWithResizable = (component: React.ReactNode) => (
       <ResizableWidget
         key={widget.id}
-        className="glassmorphic rounded-2xl"
+        className="glassmorphic rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-sakura-500/10 hover:-translate-y-1 hover:scale-[1.02] group"
         isRearrangeMode={isRearrangeMode}
         onSizePresetSelect={handleSizePresetSelect}
         currentSize={currentSize}
         widgetType={widget.type}
       >
-        {component}
+        <div className="relative overflow-hidden rounded-2xl h-full">
+          {/* Subtle gradient overlay on hover */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          {component}
+        </div>
       </ResizableWidget>
     );
 
@@ -748,33 +763,51 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       
       <div className="relative z-10">
         {/* Rearrange Mode Controls */}
-        <div id="dashboard-header" className="mb-4 flex justify-between items-center px-4 pt-4 group">
-          {/* Greeting */}
-          <div id="greeting-message" className="py-3">
-            <h2 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100 font-sans" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.1)', letterSpacing: '-0.01em' }}>
-              Hi, <span className="bg-gradient-to-r from-sakura-500 to-pink-500 bg-clip-text text-transparent">{userName || 'there'}</span> 
-            </h2>
+        <div id="dashboard-header" className="mb-6 flex justify-between items-start px-4 pt-6 group">
+          {/* Enhanced Greeting Section */}
+          <div id="greeting-message" className="py-4 flex-1">
+            <div className="space-y-2">
+              <h2 className="text-5xl font-extrabold text-gray-800 dark:text-gray-100 font-sans leading-tight" 
+                  style={{ 
+                    textShadow: '0 2px 4px rgba(0,0,0,0.1)', 
+                    letterSpacing: '-0.02em' 
+                  }}>
+                Hi, <span className="bg-gradient-to-r from-sakura-500 via-pink-500 to-purple-500 bg-clip-text text-transparent animate-gradient-x">
+                  {userName || 'there'}
+                </span> 
+              </h2>
+              <p className="text-lg text-gray-600 dark:text-gray-300 font-medium opacity-80">
+                Welcome back to your personalized workspace
+              </p>
+            </div>
           </div>
 
-          <div className={`flex items-center gap-4 transition-opacity duration-200 ${isRearrangeMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}> 
+          {/* Enhanced Control Buttons */}
+          <div className={`flex items-center gap-3 transition-all duration-300 ${
+            isRearrangeMode ? 'opacity-100 scale-100' : 'opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100'
+          }`}> 
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 ${
+                isRearrangeMode 
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-green-500/25' 
+                  : 'bg-gradient-to-r from-sakura-500 to-pink-500 text-white shadow-sakura-500/25'
+              }`}
               onClick={toggleRearrangeMode}
             >
               {isRearrangeMode ? (
                 <>
                   <Check className="w-4 h-4" />
-                  Done
+                  Done Arranging
                 </>
               ) : (
                 <>
                   <Move className="w-4 h-4" />
-                  Rearrange Widgets
+                  Rearrange
                 </>
               )}
             </button>
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors bg-sakura-500 text-white"
+              className="flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all duration-200 bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg hover:shadow-xl shadow-violet-500/25 transform hover:scale-105"
               onClick={() => setShowAddWidget(true)}
             >
               <Plus className="w-4 h-4" />
@@ -783,37 +816,104 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           </div>
         </div>
 
-        {/* Toast Notification */}
+        {/* Enhanced Toast Notification */}
         {showToast && (
-          <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fadeIn z-50">
-            At least one widget must remain on the dashboard
+          <div className="fixed top-6 right-6 z-50 animate-slideInRight">
+            <div className="glassmorphic rounded-xl shadow-2xl border border-red-200/20 dark:border-red-800/20 p-4 max-w-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
+                  <Info className="w-4 h-4 text-red-500" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
+                    Cannot Remove Widget
+                  </h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    At least one widget must remain on your dashboard
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setShowToast(false)}
+                  className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Grid Layout */}
-        <div className="px-2">
-          <ResponsiveGridLayout
-            className="layout"
-            layouts={layouts}
-            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-            cols={{ lg: 12, md: 12, sm: 12, xs: 12, xxs: 12 }}
-            rowHeight={100}
-            margin={[16, 16]}
-            onLayoutChange={handleLayoutChange}
-            isDraggable={isRearrangeMode}
-            isResizable={false}
-            useCSSTransforms={true}
-          >
-            {widgets.map(widget => (
-              <div 
-                key={widget.id} 
-                className="widget-container"
-                onContextMenu={(e) => handleContextMenu(e, widget.id)}
-              >
-                {renderWidget(widget)}
+        {/* Enhanced Grid Layout */}
+        <div className="px-4">
+          {isLoadingWidgets ? (
+            // Skeleton Loading State
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="glassmorphic rounded-2xl p-6 animate-pulse">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gray-300 dark:bg-gray-600 rounded-lg"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded mb-2"></div>
+                      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-4/6"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : widgets.length === 0 ? (
+            // Empty State
+            <div className="flex flex-col items-center justify-center py-20 px-4">
+              <div className="glassmorphic rounded-3xl p-12 text-center max-w-md">
+                <div className="w-20 h-20 bg-gradient-to-br from-sakura-100 to-pink-100 dark:from-sakura-900/30 dark:to-pink-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Grid className="w-10 h-10 text-sakura-500" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                  Your Dashboard Awaits
+                </h3>
+                <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+                  Start building your personalized workspace by adding your first widget. Choose from productivity tools, data displays, and more.
+                </p>
+                <button
+                  onClick={() => setShowAddWidget(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sakura-500 to-pink-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl shadow-sakura-500/25 transition-all duration-200 hover:scale-105"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Your First Widget
+                </button>
               </div>
-            ))}
-          </ResponsiveGridLayout>
+            </div>
+          ) : (
+            <ResponsiveGridLayout
+              className="layout"
+              layouts={layouts}
+              breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+              cols={{ lg: 12, md: 12, sm: 12, xs: 12, xxs: 12 }}
+              rowHeight={100}
+              margin={[20, 20]}
+              containerPadding={[0, 0]}
+              onLayoutChange={handleLayoutChange}
+              isDraggable={isRearrangeMode}
+              isResizable={false}
+              useCSSTransforms={true}
+              preventCollision={false}
+              compactType="vertical"
+            >
+              {widgets.map(widget => (
+                <div 
+                  key={widget.id} 
+                  className="widget-container"
+                  onContextMenu={(e) => handleContextMenu(e, widget.id)}
+                >
+                  {renderWidget(widget)}
+                </div>
+              ))}
+            </ResponsiveGridLayout>
+          )}
         </div>
       </div>
 
@@ -849,6 +949,26 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             setShowAddWidget(false);
           }}
         />
+      )}
+
+      {/* Quick Actions Floating Button */}
+      {!isRearrangeMode && (
+        <div className="fixed bottom-6 right-6 z-40">
+          <div className="relative group">
+            <button
+              className="w-14 h-14 bg-gradient-to-r from-sakura-500 to-pink-500 rounded-full shadow-lg hover:shadow-xl shadow-sakura-500/25 flex items-center justify-center transition-all duration-300 hover:scale-110 group"
+              onClick={() => setShowAddWidget(true)}
+            >
+              <Plus className="w-6 h-6 text-white" />
+            </button>
+            
+            {/* Tooltip */}
+            <div className="absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+              Add Widget
+              <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900 dark:border-t-gray-100"></div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

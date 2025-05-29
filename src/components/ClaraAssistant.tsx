@@ -3,6 +3,7 @@ import Topbar from './Topbar';
 import ClaraSidebar from './Clara_Components/ClaraSidebar';
 import ClaraAssistantInput from './Clara_Components/clara_assistant_input';
 import ClaraChatWindow from './Clara_Components/clara_assistant_chat_window';
+import { AdvancedOptions } from './Clara_Components/clara_assistant_input';
 import Sidebar from './Sidebar';
 import { db } from '../db';
 import { claraDB } from '../db/claraDatabase';
@@ -138,6 +139,9 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // Auto TTS state - track latest AI response for voice synthesis
   const [latestAIResponse, setLatestAIResponse] = useState<string>('');
   const [autoTTSTrigger, setAutoTTSTrigger] = useState<{text: string, timestamp: number} | null>(null);
+  
+  // Advanced options state
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   
   // Session management state
   const [sessions, setSessions] = useState<ClaraChatSession[]>([]);
@@ -387,6 +391,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 autoDiscoverTools: true,
                 maxToolCalls: 5
               },
+              autonomousAgent: {
+                enabled: true,
+                maxRetries: 3,
+                retryDelay: 1000,
+                enableSelfCorrection: true,
+                enableToolGuidance: true,
+                enableProgressTracking: true,
+                maxToolCalls: 10,
+                confidenceThreshold: 0.7,
+                enableChainOfThought: true,
+                enableErrorLearning: true
+              },
               contextWindow: 50 // Include last 50 messages in conversation history
             };
 
@@ -457,6 +473,58 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     if (!content.trim() && (!attachments || attachments.length === 0)) return;
     if (!currentSession || !sessionConfig.aiConfig) return;
 
+    // **CRITICAL ENFORCEMENT**: Check streaming vs autonomous mode before sending
+    // When streaming mode is enabled, ALWAYS disable autonomous agent and tools
+    let enforcedConfig = sessionConfig.aiConfig;
+    if (sessionConfig.aiConfig.features?.enableStreaming) {
+      console.log('🔒 STREAMING MODE ENFORCEMENT: Disabling autonomous agent and tools for streaming-only mode');
+      
+      // Create enforced config that disables autonomous features for streaming
+      enforcedConfig = {
+        ...sessionConfig.aiConfig,
+        features: {
+          ...sessionConfig.aiConfig.features,
+          enableStreaming: true,
+          enableTools: false,      // Disable tools in streaming mode
+          enableMCP: false        // Disable MCP in streaming mode
+        },
+        autonomousAgent: {
+          enabled: false,          // Disable autonomous agent in streaming mode
+          maxRetries: sessionConfig.aiConfig.autonomousAgent?.maxRetries || 3,
+          retryDelay: sessionConfig.aiConfig.autonomousAgent?.retryDelay || 1000,
+          enableSelfCorrection: sessionConfig.aiConfig.autonomousAgent?.enableSelfCorrection || true,
+          enableToolGuidance: sessionConfig.aiConfig.autonomousAgent?.enableToolGuidance || true,
+          enableProgressTracking: sessionConfig.aiConfig.autonomousAgent?.enableProgressTracking || true,
+          maxToolCalls: sessionConfig.aiConfig.autonomousAgent?.maxToolCalls || 10,
+          confidenceThreshold: sessionConfig.aiConfig.autonomousAgent?.confidenceThreshold || 0.7,
+          enableChainOfThought: sessionConfig.aiConfig.autonomousAgent?.enableChainOfThought || true,
+          enableErrorLearning: sessionConfig.aiConfig.autonomousAgent?.enableErrorLearning || true
+        }
+      };
+
+      // Update the session config to reflect this enforcement
+      setSessionConfig(prev => ({
+        ...prev,
+        aiConfig: enforcedConfig
+      }));
+
+      // Save the enforced config to prevent future conflicts
+      if (enforcedConfig.provider) {
+        saveProviderConfig(enforcedConfig.provider, enforcedConfig);
+      }
+
+      console.log('✅ Streaming mode enforcement applied - autonomous features disabled');
+      
+      // Notify user about streaming mode enforcement
+      addInfoNotification(
+        'Streaming Mode Active',
+        'Autonomous features automatically disabled for smooth streaming experience.',
+        3000
+      );
+    } else {
+      console.log('🛠️ Tools mode active - autonomous features available as configured');
+    }
+
     // Check if this is a voice message with the prefix
     const voiceModePrefix = "Warning: You are in speech mode, make sure to reply in few lines:  \n";
     const isVoiceMessage = content.startsWith(voiceModePrefix);
@@ -505,8 +573,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       timestamp: new Date(),
       metadata: {
         isStreaming: true,
-        model: `${sessionConfig.aiConfig.provider}:${sessionConfig.aiConfig.models.text}`,
-        temperature: sessionConfig.aiConfig.parameters.temperature
+        model: `${enforcedConfig.provider}:${enforcedConfig.models.text}`,
+        temperature: enforcedConfig.parameters.temperature
       }
     };
 
@@ -515,16 +583,17 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
     try {
       // Get conversation context (configurable context window, default 50 messages)
-      const contextWindow = sessionConfig.aiConfig?.contextWindow || 50;
+      const contextWindow = enforcedConfig?.contextWindow || 50;
       const conversationHistory = currentMessages
         .slice(-contextWindow)  // Take last N messages based on config
         .filter(msg => msg.role !== 'system'); // Exclude system messages
 
       // Send message with streaming callback and conversation context
       // Use aiContent (with voice prefix) for AI processing
+      // IMPORTANT: Use enforcedConfig to ensure streaming mode settings are applied
       const aiMessage = await claraApiService.sendChatMessage(
         aiContent, // Send full content including voice prefix to AI
-        sessionConfig.aiConfig,
+        enforcedConfig, // Use enforced config instead of original sessionConfig.aiConfig
         attachments,
         sessionConfig.systemPrompt,
         conversationHistory, // Pass conversation context
@@ -782,26 +851,91 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('=== Switching to provider ===');
       console.log('Provider:', provider.name, '(ID:', providerId, ')');
       
-      // STEP 1: Update API service to use selected provider
+      // POCKET PROVIDER AUTO-START LOGIC
+      if (provider.type === 'claras-pocket' && window.llamaSwap) {
+        try {
+          // Check if running
+          const status = await window.llamaSwap.getStatus?.();
+          if (!status?.isRunning) {
+            addInfoNotification(
+              "Starting Clara's Pocket LLM Service...",
+              'Attempting to start the native LLM service for you.',
+              4000
+            );
+            const result = await window.llamaSwap.start();
+            if (!result.success) {
+              addErrorNotification(
+                "Failed to Start Clara's Pocket",
+                result.error || 'Could not start the native LLM service. Please check your installation.',
+                8000
+              );
+              setIsLoadingProviders(false);
+              return;
+            }
+            // Wait a moment for service to be ready
+            await new Promise(res => setTimeout(res, 1500));
+          }
+        } catch (err) {
+          addErrorNotification(
+            "Error Starting Clara's Pocket",
+            err instanceof Error ? err.message : String(err),
+            8000
+          );
+          setIsLoadingProviders(false);
+          return;
+        }
+      }
+      // STEP 1: Health check the provider before proceeding
+      console.log('🏥 Testing provider health...');
+      addInfoNotification(
+        'Testing Provider',
+        `Checking connection to ${provider.name}...`,
+        2000
+      );
+
+      const isHealthy = await claraApiService.testProvider(provider);
+      if (!isHealthy) {
+        console.error('❌ Provider health check failed for:', provider.name);
+        
+        // Show error notification with suggestion
+        addErrorNotification(
+          'Provider Connection Failed',
+          `${provider.name} is not responding. Please check if the service is running or try a different provider.`,
+          8000
+        );
+        
+        // Don't proceed with provider switch if health check fails
+        setIsLoadingProviders(false);
+        return;
+      }
+      
+      console.log('✅ Provider health check passed for:', provider.name);
+      addInfoNotification(
+        'Provider Connected',
+        `Successfully connected to ${provider.name}`,
+        2000
+      );
+      
+      // STEP 2: Update API service to use selected provider
       claraApiService.updateProvider(provider);
       
-      // STEP 2: Load models ONLY from the selected provider
+      // STEP 3: Load models ONLY from the selected provider
       const newModels = await claraApiService.getModels(providerId);
       console.log('Available models for', provider.name, ':', newModels.map(m => ({ id: m.id, name: m.name })));
       setModels(newModels);
       
-      // STEP 3: Create models filtered by current provider for validation
+      // STEP 4: Create models filtered by current provider for validation
       const providerModels = newModels.filter(m => m.provider === providerId);
       console.log('Filtered models for provider validation:', providerModels.map(m => m.id));
       
-      // STEP 4: Try to load saved config for this provider
+      // STEP 5: Try to load saved config for this provider
       const savedConfig = loadProviderConfig(providerId);
       
       if (savedConfig) {
         console.log('Found saved config for', provider.name);
         console.log('Saved models:', savedConfig.models);
         
-        // STEP 5: Validate saved models against current provider's available models
+        // STEP 6: Validate saved models against current provider's available models
         const validTextModel = providerModels.find(m => m.id === savedConfig.models.text);
         const validVisionModel = providerModels.find(m => m.id === savedConfig.models.vision);
         const validCodeModel = providerModels.find(m => m.id === savedConfig.models.code);
@@ -811,7 +945,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         console.log('- Vision model valid:', !!validVisionModel, validVisionModel?.id);
         console.log('- Code model valid:', !!validCodeModel, validCodeModel?.id);
         
-        // STEP 6: Create clean config with validated models
+        // STEP 7: Create clean config with validated models
         const cleanConfig = {
           provider: providerId,
           models: {
@@ -842,7 +976,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       } else {
         console.log('No saved config found for', provider.name, '- creating default');
         
-        // STEP 7: Create fresh default config for this provider
+        // STEP 8: Create fresh default config for this provider
         const textModel = providerModels.find(m => m.type === 'text' || m.type === 'multimodal');
         const visionModel = providerModels.find(m => m.supportsVision);
         const codeModel = providerModels.find(m => m.supportsCode);
@@ -879,6 +1013,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             enabledServers: [],
             autoDiscoverTools: true,
             maxToolCalls: 5
+          },
+          autonomousAgent: {
+            enabled: true,
+            maxRetries: 3,
+            retryDelay: 1000,
+            enableSelfCorrection: true,
+            enableToolGuidance: true,
+            enableProgressTracking: true,
+            maxToolCalls: 10,
+            confidenceThreshold: 0.7,
+            enableChainOfThought: true,
+            enableErrorLearning: true
           },
           contextWindow: 50 // Include last 50 messages in conversation history
         };
@@ -984,6 +1130,34 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     claraApiService.stop();
     setIsLoading(false);
   }, []);
+
+  // Handle model preloading when user starts typing
+  const handlePreloadModel = useCallback(async () => {
+    if (sessionConfig.aiConfig) {
+      console.log('🚀 Triggering model preload for typing optimization...');
+      
+      // Quick health check before preloading
+      try {
+        const isHealthy = await claraApiService.healthCheck();
+        if (!isHealthy) {
+          console.warn('⚠️ Provider health check failed during preload attempt');
+          addErrorNotification(
+            'Provider Issue Detected',
+            'The current provider is not responding. Please check if the service is running.',
+            5000
+          );
+          return;
+        }
+        
+        // Proceed with preload if health check passes
+        // Pass conversation history so preloading considers images in conversation
+        await claraApiService.preloadModel(sessionConfig.aiConfig, messages);
+      } catch (error) {
+        console.error('Failed to preload model:', error);
+        // Don't show notification for preload failures as they're optional
+      }
+    }
+  }, [sessionConfig.aiConfig, messages]);
 
   // Handle session config changes
   const handleConfigChange = useCallback((newConfig: Partial<ClaraSessionConfig>) => {
@@ -1152,137 +1326,32 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }
     };
 
-    (window as any).clearProblematicToolsForProvider = (providerId: string) => {
-      console.log(`🗑️ Clearing problematic tools for provider: ${providerId}`);
-      // Import the classes dynamically to access static methods
-      import('../utils/APIClient').then(({ APIClient }) => {
-        APIClient.clearProblematicToolsForProvider(providerId);
-      });
-      import('../utils/OllamaClient').then(({ OllamaClient }) => {
-        OllamaClient.clearProblematicToolsForProvider(providerId);
-      });
-    };
-
-    (window as any).testProviderSpecificToolError = () => {
-      console.log('🧪 Testing provider-specific tool error handling...');
-      console.log('Current provider:', sessionConfig.aiConfig?.provider);
-      console.log('This feature will now store problematic tools per provider instead of globally.');
-      console.log('Use debugProblematicTools() to see stored tools per provider.');
-    };
-
-    (window as any).testClaraPerformance = () => {
-      console.log('🚀 Clara Performance Test Results:');
-      console.log('Current loading strategy: Lazy loading with pagination');
-      console.log('Sessions loaded:', sessions.length);
-      console.log('Has more sessions:', hasMoreSessions);
-      console.log('Current session page:', sessionPage);
-      console.log('Loading states:', {
-        isLoadingSessions,
-        isLoadingMoreSessions,
-        isLoadingProviders
-      });
-      
-      // Test loading time
-      const startTime = performance.now();
-      setTimeout(() => {
-        const endTime = performance.now();
-        console.log(`UI responsiveness test: ${(endTime - startTime).toFixed(2)}ms`);
-      }, 0);
-    };
-
-    (window as any).testStreamingAutonomousExclusivity = () => {
-      console.log('🧪 Testing Streaming/Autonomous Agent Mutual Exclusivity...');
+    // Add test for auto-enable autonomous mode functionality
+    (window as any).testAutoEnableAutonomous = () => {
+      console.log('🧪 Testing Auto-Enable Autonomous Mode Feature...');
       console.log('Current config:', {
         streaming: sessionConfig.aiConfig?.features?.enableStreaming,
-        autonomous: sessionConfig.aiConfig?.autonomousAgent?.enabled,
         tools: sessionConfig.aiConfig?.features?.enableTools,
-        mcp: sessionConfig.aiConfig?.features?.enableMCP
+        autonomous: sessionConfig.aiConfig?.autonomousAgent?.enabled,
+        provider: sessionConfig.aiConfig?.provider
       });
       
-      // Test 1: Enable streaming should disable autonomous
-      console.log('\n📝 Test 1: Enabling streaming should disable autonomous agent');
-      const streamingConfig = {
-        ...sessionConfig.aiConfig,
-        features: {
-          ...sessionConfig.aiConfig?.features,
-          enableStreaming: true,
-          enableTools: false,
-          enableMCP: false
-        },
-        autonomousAgent: {
-          enabled: false,
-          maxRetries: sessionConfig.aiConfig?.autonomousAgent?.maxRetries || 3,
-          retryDelay: sessionConfig.aiConfig?.autonomousAgent?.retryDelay || 1000,
-          enableSelfCorrection: sessionConfig.aiConfig?.autonomousAgent?.enableSelfCorrection || true,
-          enableToolGuidance: sessionConfig.aiConfig?.autonomousAgent?.enableToolGuidance || true,
-          enableProgressTracking: sessionConfig.aiConfig?.autonomousAgent?.enableProgressTracking || true,
-          maxToolCalls: sessionConfig.aiConfig?.autonomousAgent?.maxToolCalls || 10,
-          confidenceThreshold: sessionConfig.aiConfig?.autonomousAgent?.confidenceThreshold || 0.7,
-          enableChainOfThought: sessionConfig.aiConfig?.autonomousAgent?.enableChainOfThought || true,
-          enableErrorLearning: sessionConfig.aiConfig?.autonomousAgent?.enableErrorLearning || true
-        }
-      };
+      console.log('\n📝 Expected behavior:');
+      console.log('1. When Tools Mode is enabled → Autonomous Mode automatically enabled');
+      console.log('2. When Streaming Mode is enabled → Autonomous Mode automatically disabled');
+      console.log('3. Mode toggle button switches both streaming/tools AND autonomous');
       
-      console.log('Expected streaming config:', {
-        streaming: streamingConfig.features?.enableStreaming,
-        autonomous: streamingConfig.autonomousAgent?.enabled,
-        tools: streamingConfig.features?.enableTools,
-        mcp: streamingConfig.features?.enableMCP
-      });
+      console.log('\n🔧 Test Steps:');
+      console.log('1. Open Advanced Options panel');
+      console.log('2. Toggle "Enable Tools" checkbox');
+      console.log('3. Watch console for "🛠️ Tools enabled" message');
+      console.log('4. Verify Autonomous Agent is automatically enabled');
+      console.log('5. Toggle mode button between Streaming ↔ Tools');
+      console.log('6. Watch console for mode switch messages');
+      console.log('7. Verify autonomous mode follows tools mode automatically');
       
-      // Test 2: Enable autonomous should disable streaming
-      console.log('\n📝 Test 2: Enabling autonomous agent should disable streaming');
-      const autonomousConfig = {
-        ...sessionConfig.aiConfig,
-        features: {
-          ...sessionConfig.aiConfig?.features,
-          enableStreaming: false,
-          enableTools: true,
-          enableMCP: true
-        },
-        autonomousAgent: {
-          ...sessionConfig.aiConfig?.autonomousAgent,
-          enabled: true
-        }
-      };
-      
-      console.log('Expected autonomous config:', {
-        streaming: autonomousConfig.features?.enableStreaming,
-        autonomous: autonomousConfig.autonomousAgent?.enabled,
-        tools: autonomousConfig.features?.enableTools,
-        mcp: autonomousConfig.features?.enableMCP
-      });
-      
-      console.log('\n✅ Mutual exclusivity test complete. Check the UI to verify behavior matches expected configs.');
-    };
-
-    (window as any).testConversationHistory = () => {
-      console.log('🧪 Testing Conversation History Handling...');
-      console.log('Current session:', currentSession?.title);
-      console.log('Current messages count:', messages.length);
-      console.log('Context window setting:', sessionConfig.aiConfig?.contextWindow || 50);
-      
-      if (messages.length > 0) {
-        console.log('Recent messages:');
-        messages.slice(-5).forEach((msg, idx) => {
-          console.log(`  ${idx + 1}. [${msg.role}]: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
-        });
-        
-        // Simulate what would be sent as conversation history
-        const contextWindow = sessionConfig.aiConfig?.contextWindow || 50;
-        const simulatedHistory = messages
-          .slice(-contextWindow)
-          .filter(msg => msg.role !== 'system');
-        
-        console.log(`\n📚 Simulated conversation history (${simulatedHistory.length} messages):`);
-        simulatedHistory.forEach((msg, idx) => {
-          console.log(`  ${idx + 1}. [${msg.role}]: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
-        });
-        
-        console.log(`\n🔍 When sending a new message, ${simulatedHistory.length - 1} history messages would be included (excluding the current message)`);
-      } else {
-        console.log('No messages in current session to test with.');
-      }
+      console.log('\n✅ Auto-enable autonomous mode test ready.');
+      console.log('💡 Use the UI controls to test the automatic behavior!');
     };
 
     return () => {
@@ -1297,11 +1366,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).testBackgroundNotification;
       delete (window as any).testBackgroundService;
       delete (window as any).debugProblematicTools;
-      delete (window as any).clearProblematicToolsForProvider;
-      delete (window as any).testProviderSpecificToolError;
-      delete (window as any).testClaraPerformance;
-      delete (window as any).testStreamingAutonomousExclusivity;
-      delete (window as any).testConversationHistory;
+      delete (window as any).testAutoEnableAutonomous;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
 
@@ -1361,6 +1426,68 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             onEditMessage={handleEditMessage}
           />
           
+          {/* Advanced Options Panel - Above Chat Input */}
+          {showAdvancedOptions && (
+            <div className="px-6 py-4 transition-all duration-300 ease-out transform animate-in slide-in-from-top-2 fade-in-0">
+              <div className="max-w-4xl mx-auto transition-all duration-300">
+                <AdvancedOptions
+                  aiConfig={sessionConfig.aiConfig}
+                  onConfigChange={(newConfig) => {
+                    const currentConfig = sessionConfig.aiConfig;
+                    const updatedConfig: ClaraAIConfig = {
+                      provider: newConfig.provider ?? currentConfig.provider,
+                      models: {
+                        text: newConfig.models?.text ?? currentConfig.models.text,
+                        vision: newConfig.models?.vision ?? currentConfig.models.vision,
+                        code: newConfig.models?.code ?? currentConfig.models.code
+                      },
+                      parameters: {
+                        temperature: newConfig.parameters?.temperature ?? currentConfig.parameters.temperature,
+                        maxTokens: newConfig.parameters?.maxTokens ?? currentConfig.parameters.maxTokens,
+                        topP: newConfig.parameters?.topP ?? currentConfig.parameters.topP,
+                        topK: newConfig.parameters?.topK ?? currentConfig.parameters.topK
+                      },
+                      features: {
+                        enableTools: newConfig.features?.enableTools ?? currentConfig.features.enableTools,
+                        enableRAG: newConfig.features?.enableRAG ?? currentConfig.features.enableRAG,
+                        enableStreaming: newConfig.features?.enableStreaming ?? currentConfig.features.enableStreaming,
+                        enableVision: newConfig.features?.enableVision ?? currentConfig.features.enableVision,
+                        autoModelSelection: newConfig.features?.autoModelSelection ?? currentConfig.features.autoModelSelection,
+                        enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP
+                      },
+                      mcp: newConfig.mcp ? {
+                        enableTools: newConfig.mcp.enableTools ?? currentConfig.mcp?.enableTools ?? true,
+                        enableResources: newConfig.mcp.enableResources ?? currentConfig.mcp?.enableResources ?? true,
+                        enabledServers: newConfig.mcp.enabledServers ?? currentConfig.mcp?.enabledServers ?? [],
+                        autoDiscoverTools: newConfig.mcp.autoDiscoverTools ?? currentConfig.mcp?.autoDiscoverTools ?? true,
+                        maxToolCalls: newConfig.mcp.maxToolCalls ?? currentConfig.mcp?.maxToolCalls ?? 5
+                      } : currentConfig.mcp,
+                      autonomousAgent: newConfig.autonomousAgent ? {
+                        enabled: newConfig.autonomousAgent.enabled ?? currentConfig.autonomousAgent?.enabled ?? false,
+                        maxRetries: newConfig.autonomousAgent.maxRetries ?? currentConfig.autonomousAgent?.maxRetries ?? 3,
+                        retryDelay: newConfig.autonomousAgent.retryDelay ?? currentConfig.autonomousAgent?.retryDelay ?? 1000,
+                        enableSelfCorrection: newConfig.autonomousAgent.enableSelfCorrection ?? currentConfig.autonomousAgent?.enableSelfCorrection ?? true,
+                        enableToolGuidance: newConfig.autonomousAgent.enableToolGuidance ?? currentConfig.autonomousAgent?.enableToolGuidance ?? true,
+                        enableProgressTracking: newConfig.autonomousAgent.enableProgressTracking ?? currentConfig.autonomousAgent?.enableProgressTracking ?? true,
+                        maxToolCalls: newConfig.autonomousAgent.maxToolCalls ?? currentConfig.autonomousAgent?.maxToolCalls ?? 10,
+                        confidenceThreshold: newConfig.autonomousAgent.confidenceThreshold ?? currentConfig.autonomousAgent?.confidenceThreshold ?? 0.7,
+                        enableChainOfThought: newConfig.autonomousAgent.enableChainOfThought ?? currentConfig.autonomousAgent?.enableChainOfThought ?? true,
+                        enableErrorLearning: newConfig.autonomousAgent.enableErrorLearning ?? currentConfig.autonomousAgent?.enableErrorLearning ?? true
+                      } : currentConfig.autonomousAgent,
+                      contextWindow: newConfig.contextWindow ?? currentConfig.contextWindow
+                    };
+                    handleConfigChange({ aiConfig: updatedConfig });
+                  }}
+                  providers={providers}
+                  models={models}
+                  onProviderChange={handleProviderChange}
+                  onModelChange={handleModelChange}
+                  show={showAdvancedOptions}
+                />
+              </div>
+            </div>
+          )}
+          
           {/* Chat Input */}
           <ClaraAssistantInput
             onSendMessage={handleSendMessage}
@@ -1375,6 +1502,9 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
             onNewChat={handleNewChat}
             autoTTSText={latestAIResponse}
             autoTTSTrigger={autoTTSTrigger}
+            onPreloadModel={handlePreloadModel}
+            showAdvancedOptionsPanel={showAdvancedOptions}
+            onAdvancedOptionsToggle={setShowAdvancedOptions}
           />
         </div>
 

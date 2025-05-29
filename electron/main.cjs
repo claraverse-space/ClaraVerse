@@ -370,6 +370,258 @@ function registerLlamaSwapHandlers() {
 }
 
 function registerModelManagerHandlers() {
+  // Helper functions for vision model detection
+  function isVisionModel(model) {
+    const visionKeywords = ['vl', 'vision', 'multimodal', 'mm', 'clip', 'siglip'];
+    const modelText = `${model.modelId} ${model.description || ''}`.toLowerCase();
+    return visionKeywords.some(keyword => modelText.includes(keyword));
+  }
+
+  function findRequiredMmprojFiles(siblings) {
+    return siblings.filter(file => 
+      file.rfilename.toLowerCase().includes('mmproj') ||
+      file.rfilename.toLowerCase().includes('mm-proj') ||
+      file.rfilename.toLowerCase().includes('projection')
+    );
+  }
+
+  function isVisionModelByName(fileName) {
+    const visionKeywords = ['vl', 'vision', 'multimodal', 'mm', 'clip', 'siglip'];
+    return visionKeywords.some(keyword => fileName.toLowerCase().includes(keyword));
+  }
+
+  function findBestMmprojMatch(modelFileName, mmprojFiles) {
+    const modelBaseName = modelFileName
+      .replace('.gguf', '')
+      .replace(/-(q4_k_m|q4_k_s|q8_0|f16|instruct).*$/i, '')
+      .toLowerCase();
+    
+    // Look for exact matches first
+    for (const mmproj of mmprojFiles) {
+      const mmprojBaseName = mmproj.rfilename
+        .replace(/-(mmproj|mm-proj|projection).*$/i, '')
+        .toLowerCase();
+      
+      if (modelBaseName.includes(mmprojBaseName) || mmprojBaseName.includes(modelBaseName)) {
+        return mmproj;
+      }
+    }
+    
+    // If no exact match, return the first available mmproj file
+    return mmprojFiles[0];
+  }
+
+  async function downloadSingleFile(modelId, fileName, modelsDir) {
+    const fs = require('fs');
+    const https = require('https');
+    const http = require('http');
+    const path = require('path');
+    
+    const downloadUrl = `https://huggingface.co/${modelId}/resolve/main/${fileName}`;
+    const filePath = path.join(modelsDir, fileName);
+    
+    // Check if file already exists
+    if (fs.existsSync(filePath)) {
+      return { success: false, error: 'File already exists' };
+    }
+    
+    log.info(`Starting download: ${downloadUrl} -> ${filePath}`);
+    
+    return new Promise((resolve) => {
+      const protocol = downloadUrl.startsWith('https:') ? https : http;
+      const file = fs.createWriteStream(filePath);
+      let stopped = false;
+      
+      // Store download info for stop functionality
+      const downloadInfo = {
+        request: null,
+        file,
+        filePath,
+        stopped: false
+      };
+      activeDownloads.set(fileName, downloadInfo);
+      
+      const cleanup = () => {
+        activeDownloads.delete(fileName);
+        if (file && !file.destroyed) {
+          file.close();
+        }
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (cleanupError) {
+            log.warn('Error cleaning up file:', cleanupError);
+          }
+        }
+      };
+      
+      const request = protocol.get(downloadUrl, (response) => {
+        downloadInfo.request = request;
+        
+        if (downloadInfo.stopped) {
+          cleanup();
+          resolve({ success: false, error: 'Download stopped by user' });
+          return;
+        }
+        
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          // Handle redirect
+          const redirectUrl = response.headers.location;
+          if (redirectUrl) {
+            const redirectProtocol = redirectUrl.startsWith('https:') ? https : http;
+            const redirectRequest = redirectProtocol.get(redirectUrl, (redirectResponse) => {
+              downloadInfo.request = redirectRequest;
+              
+              if (downloadInfo.stopped) {
+                cleanup();
+                resolve({ success: false, error: 'Download stopped by user' });
+                return;
+              }
+              
+              if (redirectResponse.statusCode !== 200) {
+                cleanup();
+                resolve({ success: false, error: `HTTP ${redirectResponse.statusCode}` });
+                return;
+              }
+              
+              const totalSize = parseInt(redirectResponse.headers['content-length'] || '0');
+              let downloadedSize = 0;
+              
+              redirectResponse.pipe(file);
+              
+              redirectResponse.on('data', (chunk) => {
+                if (downloadInfo.stopped) {
+                  redirectResponse.destroy();
+                  cleanup();
+                  resolve({ success: false, error: 'Download stopped by user' });
+                  return;
+                }
+                
+                downloadedSize += chunk.length;
+                const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+                
+                // Send progress update to renderer
+                if (mainWindow) {
+                  mainWindow.webContents.send('download-progress', {
+                    fileName,
+                    progress: Math.round(progress),
+                    downloadedSize,
+                    totalSize
+                  });
+                }
+              });
+              
+              file.on('finish', () => {
+                if (downloadInfo.stopped) {
+                  cleanup();
+                  resolve({ success: false, error: 'Download stopped by user' });
+                  return;
+                }
+                
+                file.close(() => {
+                  activeDownloads.delete(fileName);
+                  log.info(`Download completed: ${filePath}`);
+                  
+                  // Send final progress update
+                  if (mainWindow) {
+                    mainWindow.webContents.send('download-progress', {
+                      fileName,
+                      progress: 100,
+                      downloadedSize: totalSize,
+                      totalSize
+                    });
+                  }
+                  
+                  resolve({ success: true, filePath });
+                });
+              });
+              
+              file.on('error', (error) => {
+                cleanup();
+                resolve({ success: false, error: error.message });
+              });
+            });
+            
+            redirectRequest.on('error', (error) => {
+              cleanup();
+              resolve({ success: false, error: error.message });
+            });
+          } else {
+            cleanup();
+            resolve({ success: false, error: 'Redirect without location header' });
+          }
+        } else if (response.statusCode !== 200) {
+          cleanup();
+          resolve({ success: false, error: `HTTP ${response.statusCode}` });
+        } else {
+          const totalSize = parseInt(response.headers['content-length'] || '0');
+          let downloadedSize = 0;
+          
+          response.pipe(file);
+          
+          response.on('data', (chunk) => {
+            if (downloadInfo.stopped) {
+              response.destroy();
+              cleanup();
+              resolve({ success: false, error: 'Download stopped by user' });
+              return;
+            }
+            
+            downloadedSize += chunk.length;
+            const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+            
+            // Send progress update to renderer
+            if (mainWindow) {
+              mainWindow.webContents.send('download-progress', {
+                fileName,
+                progress: Math.round(progress),
+                downloadedSize,
+                totalSize
+              });
+            }
+          });
+          
+          file.on('finish', () => {
+            if (downloadInfo.stopped) {
+              cleanup();
+              resolve({ success: false, error: 'Download stopped by user' });
+              return;
+            }
+            
+            file.close(() => {
+              activeDownloads.delete(fileName);
+              log.info(`Download completed: ${filePath}`);
+              
+              // Send final progress update
+              if (mainWindow) {
+                mainWindow.webContents.send('download-progress', {
+                  fileName,
+                  progress: 100,
+                  downloadedSize: totalSize,
+                  totalSize
+                });
+              }
+              
+              resolve({ success: true, filePath });
+            });
+          });
+          
+          file.on('error', (error) => {
+            cleanup();
+            resolve({ success: false, error: error.message });
+          });
+        }
+      });
+      
+      downloadInfo.request = request;
+      
+      request.on('error', (error) => {
+        cleanup();
+        resolve({ success: false, error: error.message });
+      });
+    });
+  }
+
   // Search models from Hugging Face
   ipcMain.handle('search-huggingface-models', async (_event, { query, limit = 20 }) => {
     try {
@@ -405,13 +657,89 @@ function registerModelManagerHandlers() {
         tags: model.tags || [],
         description: model.description || '',
         author: model.author || model.modelId?.split('/')[0] || '',
-        files: model.siblings ? model.siblings.filter(file => file.rfilename.endsWith('.gguf')) : []
+        // Include ALL files, not just .gguf
+        files: model.siblings || [],
+        // Add flags for vision models and required mmproj files
+        isVisionModel: isVisionModel(model),
+        requiredMmprojFiles: findRequiredMmprojFiles(model.siblings || [])
       }));
       
       return { success: true, models: ggufModels };
     } catch (error) {
       log.error('Error searching HuggingFace models:', error);
       return { success: false, error: error.message, models: [] };
+    }
+  });
+
+  // Enhanced download with dependencies
+  ipcMain.handle('download-model-with-dependencies', async (_event, { modelId, fileName, allFiles }) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      
+      const modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+
+      // Check if this is a vision model
+      const isVision = isVisionModelByName(fileName);
+      
+      // Find required mmproj files
+      const mmprojFiles = allFiles.filter(file => 
+        file.rfilename.toLowerCase().includes('mmproj') ||
+        file.rfilename.toLowerCase().includes('mm-proj') ||
+        file.rfilename.toLowerCase().includes('projection')
+      );
+      
+      const filesToDownload = [fileName];
+      
+      // If it's a vision model and mmproj files exist, add them
+      if (isVision && mmprojFiles.length > 0) {
+        // Find the best matching mmproj file
+        const matchingMmproj = findBestMmprojMatch(fileName, mmprojFiles);
+        if (matchingMmproj) {
+          filesToDownload.push(matchingMmproj.rfilename);
+          log.info(`Vision model detected, will also download: ${matchingMmproj.rfilename}`);
+        }
+      }
+      
+      // Download all required files
+      const results = [];
+      for (const file of filesToDownload) {
+        try {
+          const result = await downloadSingleFile(modelId, file, modelsDir);
+          results.push({ file, success: result.success, error: result.error });
+        } catch (error) {
+          results.push({ file, success: false, error: error.message });
+        }
+      }
+      
+      // Check if main model downloaded successfully
+      const mainResult = results.find(r => r.file === fileName);
+      if (mainResult?.success) {
+        // Restart llama-swap service to load new models
+        try {
+          if (llamaSwapService && llamaSwapService.getStatus().isRunning) {
+            log.info('Restarting llama-swap service to load new models...');
+            await llamaSwapService.restart();
+            log.info('llama-swap service restarted successfully');
+          }
+        } catch (restartError) {
+          log.warn('Failed to restart llama-swap service after download:', restartError);
+        }
+      }
+      
+      return { 
+        success: mainResult?.success || false, 
+        results,
+        downloadedFiles: results.filter(r => r.success).map(r => r.file)
+      };
+      
+    } catch (error) {
+      log.error('Error downloading model with dependencies:', error);
+      return { success: false, error: error.message };
     }
   });
 
