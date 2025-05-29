@@ -36,6 +36,18 @@ export interface ElectronAPI {
   }>;
   restartInterpreterContainer: () => Promise<{ success: boolean; error?: string }>;
   checkForUpdates: () => Promise<void>;
+  getUpdateInfo: () => Promise<{
+    hasUpdate: boolean;
+    latestVersion?: string;
+    currentVersion: string;
+    releaseUrl?: string;
+    downloadUrl?: string;
+    releaseNotes?: string;
+    publishedAt?: string;
+    platform: string;
+    isOTASupported: boolean;
+    error?: string;
+  }>;
   clipboard: {
     writeText: (text: string) => void;
     readText: () => string;

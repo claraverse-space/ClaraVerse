@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Search, Trash2, HardDrive, Cloud, TrendingUp, Star, Info, FileText, X, ExternalLink, Cpu, Database } from 'lucide-react';
+import { Download, Search, Trash2, HardDrive, Cloud, TrendingUp, Star, FileText, X, ExternalLink, Cpu, Database } from 'lucide-react';
 
 // Define types for model management
 interface HuggingFaceModel {

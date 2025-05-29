@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Key, Lock, Image, Settings as SettingsIcon, Download, Search, Trash2, HardDrive, Cloud, Plus, Check, X, Edit3, Zap, Router, Bot } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
 import MCPSettings from './MCPSettings';
 import ModelManager from './ModelManager';
+import ToolBelt from './ToolBelt';
 
 const Settings = () => {
-  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp'>('api');
+  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates'>('api');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
     email: '',
@@ -26,12 +27,31 @@ const Settings = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [showApiKey, setShowApiKey] = useState(false);
+  // const [showApiKey, setShowApiKey] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  // Update state
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [lastUpdateCheck, setLastUpdateCheck] = useState<Date | null>(null);
+
+  // Type for update info to fix TypeScript errors
+  interface UpdateInfo {
+    hasUpdate: boolean;
+    error?: string;
+    currentVersion: string;
+    latestVersion?: string;
+    platform: string;
+    isOTASupported: boolean;
+    releaseUrl?: string;
+    downloadUrl?: string;
+    releaseNotes?: string;
+    publishedAt?: string;
+  }
 
   const { setTheme } = useTheme();
   const { providers, addProvider, updateProvider, deleteProvider, setPrimaryProvider, loading: providersLoading } = useProviders();
-  const { theme } = useTheme();
+  // const { theme } = useTheme();
   const saveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Add provider modal state
@@ -84,6 +104,239 @@ const Settings = () => {
     };
     loadWallpaper();
   }, []);
+
+  // Check for updates when updates tab is first opened
+  useEffect(() => {
+    if (activeTab === 'updates' && !updateInfo && !checkingUpdates) {
+      checkForUpdates();
+    }
+  }, [activeTab]);
+
+  // Add auto-detection when API tab is opened
+  useEffect(() => {
+    if (activeTab === 'api' && !providersLoading) {
+      // Only auto-detect if no providers exist or only Clara's Core exists
+      const nonCoreProviders = providers.filter(p => p.type !== 'claras-pocket');
+      if (nonCoreProviders.length === 0) {
+        autoDetectOllamaProvider();
+      }
+    }
+  }, [activeTab, providersLoading, providers]);
+
+  // Update checking functionality - Enhanced with bulletproof error handling
+  const checkForUpdates = async () => {
+    const electron = window.electron as any;
+    
+    // Validate electron availability
+    if (!electron) {
+      console.error('Electron API not available');
+      setUpdateInfo({ 
+        error: 'Application API not available. Please restart the application.',
+        hasUpdate: false,
+        currentVersion: '1.0.0',
+        platform: 'unknown',
+        isOTASupported: false
+      });
+      setCheckingUpdates(false);
+      return;
+    }
+    
+    if (!electron.getUpdateInfo) {
+      console.error('Update functionality not available');
+      setUpdateInfo({ 
+        error: 'Update functionality is not available in this version.',
+        hasUpdate: false,
+        currentVersion: '1.0.0',
+        platform: 'unknown',
+        isOTASupported: false
+      });
+      setCheckingUpdates(false);
+      return;
+    }
+
+    // Prevent concurrent checks
+    if (checkingUpdates) {
+      console.warn('Update check already in progress');
+      return;
+    }
+
+    setCheckingUpdates(true);
+    setUpdateInfo(null); // Clear previous results
+    
+    try {
+      console.log('Starting update check...');
+      const info = await electron.getUpdateInfo();
+      
+      // Validate response structure
+      if (!info || typeof info !== 'object') {
+        throw new Error('Invalid update information received');
+      }
+      
+      // Ensure required fields exist
+      const safeInfo = {
+        hasUpdate: Boolean(info.hasUpdate),
+        currentVersion: info.currentVersion || '1.0.0',
+        latestVersion: info.latestVersion || info.currentVersion || '1.0.0',
+        platform: info.platform || 'unknown',
+        isOTASupported: Boolean(info.isOTASupported),
+        releaseUrl: info.releaseUrl || '',
+        downloadUrl: info.downloadUrl || '',
+        releaseNotes: info.releaseNotes || 'No release notes available.',
+        publishedAt: info.publishedAt || null,
+        error: info.error || null
+      };
+      
+      setUpdateInfo(safeInfo);
+      setLastUpdateCheck(new Date());
+      
+      console.log('Update check completed successfully:', {
+        hasUpdate: safeInfo.hasUpdate,
+        currentVersion: safeInfo.currentVersion,
+        latestVersion: safeInfo.latestVersion,
+        error: safeInfo.error
+      });
+      
+    } catch (error) {
+      console.error('Error checking for updates:', error);
+      
+      // Create safe error response
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'An unexpected error occurred while checking for updates';
+        
+      const errorInfo: UpdateInfo = {
+        hasUpdate: false,
+        error: errorMessage,
+        currentVersion: '1.0.0',
+        platform: 'unknown',
+        isOTASupported: false
+      };
+      
+      setUpdateInfo(errorInfo);
+      setLastUpdateCheck(new Date());
+      
+      // Log additional context for debugging
+      console.error('Update check error details:', {
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const handleManualUpdateCheck = async () => {
+    const electron = window.electron as any;
+    
+    // Validate electron availability
+    if (!electron) {
+      console.error('Electron API not available');
+      return;
+    }
+    
+    if (!electron.checkForUpdates) {
+      console.error('Manual update check not available');
+      return;
+    }
+
+    // Prevent concurrent manual checks
+    if (checkingUpdates) {
+      console.warn('Update check already in progress');
+      return;
+    }
+
+    try {
+      console.log('Starting manual update check...');
+      
+      // Call the manual update check (may show dialogs)
+      await electron.checkForUpdates();
+      
+      console.log('Manual update check initiated successfully');
+      
+      // Refresh update info after manual check with delay
+      setTimeout(() => {
+        if (!checkingUpdates) { // Only refresh if not already checking
+          checkForUpdates();
+        }
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Error during manual update check:', error);
+      
+      // Show user-friendly error
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to check for updates manually';
+        
+      setUpdateInfo((prev: UpdateInfo | null) => ({
+        hasUpdate: false,
+        error: errorMessage,
+        currentVersion: prev?.currentVersion || '1.0.0',
+        platform: prev?.platform || 'unknown',
+        isOTASupported: prev?.isOTASupported || false
+      }));
+    }
+  };
+
+  const openReleaseNotes = () => {
+    try {
+      if (!updateInfo?.releaseUrl) {
+        console.warn('No release URL available');
+        return;
+      }
+      
+      // Validate URL format
+      try {
+        new URL(updateInfo.releaseUrl);
+      } catch (urlError) {
+        console.error('Invalid release URL:', updateInfo.releaseUrl);
+        return;
+      }
+      
+      console.log('Opening release notes:', updateInfo.releaseUrl);
+      window.open(updateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
+      
+    } catch (error) {
+      console.error('Error opening release notes:', error);
+    }
+  };
+
+  const downloadUpdate = () => {
+    try {
+      if (!updateInfo?.downloadUrl) {
+        console.warn('No download URL available');
+        return;
+      }
+      
+      // Validate URL format
+      try {
+        new URL(updateInfo.downloadUrl);
+      } catch (urlError) {
+        console.error('Invalid download URL:', updateInfo.downloadUrl);
+        return;
+      }
+      
+      console.log('Opening download URL:', updateInfo.downloadUrl);
+      window.open(updateInfo.downloadUrl, '_blank', 'noopener,noreferrer');
+      
+    } catch (error) {
+      console.error('Error opening download URL:', error);
+    }
+  };
+
+  const getPlatformName = (platform: string) => {
+    if (!platform || typeof platform !== 'string') {
+      return 'Unknown Platform';
+    }
+    
+    switch (platform.toLowerCase()) {
+      case 'darwin': return 'macOS';
+      case 'win32': return 'Windows';
+      case 'linux': return 'Linux';
+      default: return platform.charAt(0).toUpperCase() + platform.slice(1);
+    }
+  };
 
   // Auto-save effect for personalInfo and apiConfig
   useEffect(() => {
@@ -337,6 +590,45 @@ const Settings = () => {
     }
   };
 
+  // Auto-detect Ollama installation
+  const detectOllamaInstallation = async () => {
+    try {
+      const response = await fetch('http://localhost:11434/api/tags', {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000)
+      });
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Auto-detect Ollama installation
+  const autoDetectOllamaProvider = async () => {
+    try {
+      // Check if Ollama provider already exists
+      const ollamaExists = providers.some(p => p.type === 'ollama');
+      if (ollamaExists) {
+        return; // Don't add duplicate
+      }
+
+      const isRunning = await detectOllamaInstallation();
+      if (isRunning) {
+        console.log('Auto-detected Ollama installation, adding provider...');
+        await addProvider({
+          name: 'Ollama (Local)',
+          type: 'ollama',
+          baseUrl: 'http://localhost:11434/v1',
+          apiKey: 'ollama',
+          isEnabled: true,
+          isPrimary: false
+        });
+      }
+    } catch (error) {
+      console.log('Auto-detection error:', error);
+    }
+  };
+
   return (
     <>
       {/* Wallpaper */}
@@ -384,6 +676,20 @@ const Settings = () => {
               isActive={activeTab === 'mcp'} 
             />
             
+            <TabItem 
+              id="toolbelt" 
+              label="Tool Belt" 
+              icon={<Wrench className="w-5 h-5" />} 
+              isActive={activeTab === 'toolbelt'} 
+            />
+
+            <TabItem 
+              id="updates" 
+              label="Updates" 
+              icon={<Download className="w-5 h-5" />} 
+              isActive={activeTab === 'updates'} 
+            />
+
             <TabItem 
               id="preferences" 
               label="Preferences" 
@@ -516,23 +822,25 @@ const Settings = () => {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setEditingProvider(null);
-                      setNewProviderForm({
-                        name: '',
-                        type: 'openai',
-                        baseUrl: '',
-                        apiKey: '',
-                        isEnabled: true
-                      });
-                      setShowAddProviderModal(true);
-                    }}
-                    className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Provider
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingProvider(null);
+                        setNewProviderForm({
+                          name: '',
+                          type: 'openai',
+                          baseUrl: '',
+                          apiKey: '',
+                          isEnabled: true
+                        });
+                        setShowAddProviderModal(true);
+                      }}
+                      className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Provider
+                    </button>
+                  </div>
                 </div>
 
                 {/* Providers List */}
@@ -775,6 +1083,215 @@ const Settings = () => {
           {/* MCP Tab */}
           {activeTab === 'mcp' && (
             <MCPSettings />
+          )}
+
+          {/* Tool Belt Tab */}
+          {activeTab === 'toolbelt' && (
+            <ToolBelt />
+          )}
+
+          {/* Updates Tab */}
+          {activeTab === 'updates' && (
+            <div className="glassmorphic rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Download className="w-6 h-6 text-sakura-500" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Updates
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Keep Clara up to date with the latest features and improvements
+                  </p>
+                </div>
+              </div>
+
+              {/* Current Version Info */}
+              <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white mb-1">
+                      Current Version
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Clara {updateInfo?.currentVersion || '1.0.0'} on {updateInfo ? getPlatformName(updateInfo.platform) : 'Unknown Platform'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleManualUpdateCheck}
+                    disabled={checkingUpdates}
+                    className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  >
+                    {checkingUpdates ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Checking...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4" />
+                        Check for Updates
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Update Status */}
+              {updateInfo && (
+                <div className="space-y-4">
+                  {updateInfo.error ? (
+                    <div className="bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                        <div>
+                          <h4 className="font-medium text-red-900 dark:text-red-100">
+                            Update Check Failed
+                          </h4>
+                          <p className="text-sm text-red-700 dark:text-red-300">
+                            {updateInfo.error}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : updateInfo.hasUpdate ? (
+                    <div className="bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center">
+                          <Download className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                            New Version Available: Clara {updateInfo.latestVersion || 'Unknown'}
+                          </h4>
+                          
+                          {/* Platform-specific messaging */}
+                          {updateInfo.isOTASupported ? (
+                            <div className="space-y-3">
+                              <p className="text-sm text-blue-700 dark:text-blue-300">
+                                🍎 Automatic updates are supported on macOS. Click "Download & Install" to update Clara automatically.
+                              </p>
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={handleManualUpdateCheck}
+                                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                                >
+                                  <Download className="w-4 h-4" />
+                                  Download & Install
+                                </button>
+                                {updateInfo.releaseUrl && (
+                                  <button
+                                    onClick={openReleaseNotes}
+                                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                    Release Notes
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <p className="text-sm text-blue-700 dark:text-blue-300">
+                                🔒 On {getPlatformName(updateInfo.platform)}, updates need to be installed manually for security reasons. 
+                                Click "Download Now" to get the latest version.
+                              </p>
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={downloadUpdate}
+                                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                  Download Now
+                                </button>
+                                {updateInfo.releaseUrl && (
+                                  <button
+                                    onClick={openReleaseNotes}
+                                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                    Release Notes
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {updateInfo.releaseNotes && updateInfo.releaseNotes !== 'No release notes available.' && (
+                            <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                              <h5 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                                What's New:
+                              </h5>
+                              <div className="text-sm text-blue-700 dark:text-blue-300 bg-blue-50/50 dark:bg-blue-950/30 rounded p-3 max-h-32 overflow-y-auto">
+                                <pre className="whitespace-pre-wrap font-sans">
+                                  {updateInfo.releaseNotes.length > 500 
+                                    ? updateInfo.releaseNotes.substring(0, 500) + '...' 
+                                    : updateInfo.releaseNotes}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+
+                          {updateInfo.publishedAt && (
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                              Released {new Date(updateInfo.publishedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50/50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center">
+                          <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-green-900 dark:text-green-100">
+                            You're Up to Date!
+                          </h4>
+                          <p className="text-sm text-green-700 dark:text-green-300">
+                            Clara {updateInfo.currentVersion || 'Unknown'} is the latest version.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {lastUpdateCheck && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                      Last checked: {lastUpdateCheck.toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Update Information */}
+              <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <h3 className="font-medium text-gray-900 dark:text-white mb-4">
+                  Update Information
+                </h3>
+                <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-sakura-400 rounded-full mt-2 flex-shrink-0"></div>
+                    <div>
+                      <strong>macOS:</strong> Supports automatic over-the-air (OTA) updates with code signing verification for security.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                    <div>
+                      <strong>Windows & Linux:</strong> Manual updates ensure security. Download links point to the official GitHub releases.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
+                    <div>
+                      <strong>Release Notes:</strong> View detailed information about new features, improvements, and bug fixes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>

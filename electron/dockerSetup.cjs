@@ -22,7 +22,7 @@ class DockerSetup extends EventEmitter {
     // Path for storing pull timestamps
     this.pullTimestampsPath = path.join(this.appDataPath, 'pull_timestamps.json');
 
-    // Container configuration
+    // Container configuration - Removed Ollama container
     this.containers = {
       python: {
         name: 'clara_python',
@@ -42,16 +42,6 @@ class DockerSetup extends EventEmitter {
         healthCheck: this.checkN8NHealth.bind(this),
         volumes: [
           `${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`
-        ]
-      },
-      ollama: {
-        name: 'clara_ollama',
-        image: 'ollama/ollama',
-        port: 11434,
-        internalPort: 11434,
-        healthCheck: this.isOllamaRunning.bind(this),
-        volumes: [
-          `${path.join(this.appDataPath, 'ollama')}:/root/.ollama`
         ]
       }
     };
@@ -87,7 +77,7 @@ class DockerSetup extends EventEmitter {
     this.retryDelay = 5000; // 5 seconds
 
     // Clara container names
-    this.containerNames = ['clara_python', 'clara_n8n', 'clara_ollama'];
+    this.containerNames = ['clara_python', 'clara_n8n'];
 
     // Create subdirectories for each service
     Object.keys(this.containers).forEach(service => {
@@ -342,15 +332,6 @@ class DockerSetup extends EventEmitter {
 
   async startContainer(config) {
     try {
-      // Special handling for Ollama - if it's already running on the system, skip container creation
-      if (config.name === 'clara_ollama') {
-        const isRunning = await this.isOllamaRunning();
-        if (isRunning) {
-          console.log('Ollama is already running on the system, skipping container creation');
-          return;
-        }
-      }
-
       // Check if container exists and is running
       try {
         const existingContainer = await this.docker.getContainer(config.name);
@@ -598,17 +579,16 @@ class DockerSetup extends EventEmitter {
       statusCallback('Creating Docker network...');
       await this.createNetwork();
 
-      // Check if Ollama is running on the system
-      const ollamaRunning = await this.isOllamaRunning();
+      // Check if Ollama is running on the system (no container management)
+      const ollamaRunning = await this.checkOllamaAvailability();
+      if (ollamaRunning) {
+        statusCallback('✓ Ollama detected and available at http://localhost:11434', 'success');
+      } else {
+        statusCallback('⚠️ Ollama not detected. Please install Ollama manually if you want local AI models. Visit: https://ollama.com', 'warning');
+      }
 
       // Check and pull images if needed
       for (const [name, config] of Object.entries(this.containers)) {
-        // Skip pulling Ollama image if Ollama is already running
-        if (name === 'ollama' && ollamaRunning) {
-          statusCallback('Ollama is already running on the system, skipping image pull and container creation.');
-          continue;
-        }
-
         // Check if image exists locally
         try {
           await this.docker.getImage(config.image).inspect();
@@ -625,10 +605,6 @@ class DockerSetup extends EventEmitter {
 
       // Start containers in sequence
       for (const [name, config] of Object.entries(this.containers)) {
-        // Skip starting Ollama container if Ollama is already running
-        if (name === 'ollama' && ollamaRunning) {
-          continue;
-        }
         statusCallback(`Starting ${name} service...`);
         await this.startContainer(config);
       }
@@ -738,40 +714,27 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  async isOllamaRunning() {
+  async checkOllamaAvailability() {
     try {
-      // First check if Ollama is running on the system
       const response = await new Promise((resolve, reject) => {
         const req = http.get('http://localhost:11434/api/tags', (res) => {
           if (res.statusCode === 200) {
             resolve(true);
           } else {
-            reject(new Error(`HTTP status ${res.statusCode}`));
+            resolve(false);
           }
         });
         
         req.on('error', () => resolve(false));
         
         // Add timeout to avoid hanging
-        req.setTimeout(2000, () => {
+        req.setTimeout(3000, () => {
           req.destroy();
           resolve(false);
         });
       });
-
-      if (response) {
-        console.log('Found Ollama running on system');
-        return true;
-      }
-
-      // If not running on system, check container
-      try {
-        const container = await this.docker.getContainer('clara_ollama');
-        const info = await container.inspect();
-        return info.State.Running;
-      } catch (error) {
-        return false;
-      }
+      
+      return response;
     } catch (error) {
       return false;
     }

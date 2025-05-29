@@ -142,6 +142,7 @@ If asked about your capabilities, explain that you can help with general questio
 export class LocalStorageDB {
   private useIndexedDB = true; // Flag to control storage method
   private initialized = false;
+  private initializingProviders = false; // Flag to prevent concurrent initialization
 
   constructor() {
     // Check if IndexedDB is supported
@@ -1025,13 +1026,16 @@ export class LocalStorageDB {
 
   async addProvider(provider: Omit<Provider, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
     try {
-      // Prevent multiple Clara's Pocket providers
+      // Prevent multiple Clara's Pocket providers with double-check
       if (provider.type === 'claras-pocket') {
+        console.log('Checking for existing Clara\'s Pocket providers before adding...');
         const providers = await this.getAllProviders();
         const existingClarasPocket = providers.find(p => p.type === 'claras-pocket');
         if (existingClarasPocket) {
+          console.log(`Clara's Pocket provider already exists: ${existingClarasPocket.name} (ID: ${existingClarasPocket.id})`);
           throw new Error("Clara's Pocket provider already exists. Only one instance is allowed.");
         }
+        console.log('No existing Clara\'s Pocket provider found, proceeding with creation...');
       }
 
       const id = this.generateId();
@@ -1044,10 +1048,17 @@ export class LocalStorageDB {
         updatedAt: now
       };
 
-      // If this is being set as primary, unset other primary providers
-      if (provider.isPrimary) {
-        await this.setPrimaryProvider(id);
+      // Double-check again right before adding (race condition protection)
+      if (provider.type === 'claras-pocket') {
+        const recentProviders = await this.getAllProviders();
+        const stillNoExisting = recentProviders.find(p => p.type === 'claras-pocket');
+        if (stillNoExisting) {
+          console.log(`Race condition detected: Clara's Pocket provider was created during our check: ${stillNoExisting.name} (ID: ${stillNoExisting.id})`);
+          throw new Error("Clara's Pocket provider was created by another process. Only one instance is allowed.");
+        }
       }
+
+      console.log(`Adding provider: ${newProvider.name} (Type: ${newProvider.type}, ID: ${newProvider.id})`);
 
       if (this.useIndexedDB) {
         await indexedDBService.put('providers', newProvider);
@@ -1057,6 +1068,12 @@ export class LocalStorageDB {
         this.setItemToLocalStorage('providers', providers);
       }
 
+      // If this is being set as primary, unset other primary providers
+      if (provider.isPrimary) {
+        await this.setPrimaryProvider(id);
+      }
+
+      console.log(`Provider successfully added: ${newProvider.name}`);
       return id;
     } catch (error) {
       console.error('Error adding provider:', error);
@@ -1152,30 +1169,38 @@ export class LocalStorageDB {
   }
 
   async initializeDefaultProviders(): Promise<void> {
+    // Prevent concurrent initialization
+    if (this.initializingProviders) {
+      console.log('Provider initialization already in progress, skipping...');
+      return;
+    }
+
+    this.initializingProviders = true;
+    
     try {
       const providers = await this.getAllProviders();
       
       // Clean up any duplicate Clara's Pocket providers (keep only the first one)
       const clarasPocketProviders = providers.filter(p => p.type === 'claras-pocket');
       if (clarasPocketProviders.length > 1) {
-        console.log('Cleaning up duplicate Clara\'s Pocket providers...');
+        console.log(`Found ${clarasPocketProviders.length} duplicate Clara's Pocket providers, cleaning up...`);
         // Keep the first one, delete the rest
         for (let i = 1; i < clarasPocketProviders.length; i++) {
+          console.log(`Deleting duplicate Clara's Pocket provider: ${clarasPocketProviders[i].name} (ID: ${clarasPocketProviders[i].id})`);
           await this.deleteProvider(clarasPocketProviders[i].id);
         }
-        // Refresh providers list after cleanup
-        const updatedProviders = await this.getAllProviders();
-        providers.length = 0;
-        providers.push(...updatedProviders);
+        console.log('Cleanup completed');
       }
       
-      // Check if Clara's Pocket exists
-      const clarasPocketExists = providers.some(p => p.type === 'claras-pocket');
-      // Check if Ollama exists  
-      const ollamaExists = providers.some(p => p.type === 'ollama' && p.name === 'Ollama');
+      // Get fresh providers list after cleanup
+      const updatedProviders = await this.getAllProviders();
       
-      // Create Clara's Pocket if it doesn't exist
-      if (!clarasPocketExists) {
+      // Check if Clara's Core exists
+      const clarasCoreExists = updatedProviders.some(p => p.type === 'claras-pocket');
+      
+      // Create Clara's Core if it doesn't exist - this should be the primary provider
+      if (!clarasCoreExists) {
+        console.log('No Clara\'s Core found, creating one...');
         await this.addProvider({
           name: "Clara's Core",
           type: 'claras-pocket',
@@ -1186,34 +1211,70 @@ export class LocalStorageDB {
             description: 'Local LLM service powered by llama.cpp'
           }
         });
+        console.log('Clara\'s Core created successfully');
+      } else {
+        console.log('Clara\'s Core already exists, skipping creation');
       }
 
-      // Create Ollama if it doesn't exist
+      // Check for existing Ollama installation
+      const ollamaExists = updatedProviders.some(p => p.type === 'ollama');
       if (!ollamaExists) {
-        await this.addProvider({
-          name: 'Ollama',
-          type: 'ollama',
-          baseUrl: 'http://localhost:11434/v1',
-          apiKey: 'ollama',
-          isEnabled: true,
-          isPrimary: false,
-          config: {
-            description: 'Local Ollama service'
+        console.log('Checking for existing Ollama installation...');
+        try {
+          // Test if Ollama is running on standard port
+          const response = await fetch('http://localhost:11434/api/tags', {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000) // 3 second timeout
+          });
+          
+          if (response.ok) {
+            console.log('Found existing Ollama installation, adding as provider...');
+            await this.addProvider({
+              name: 'Ollama (Local)',
+              type: 'ollama',
+              baseUrl: 'http://localhost:11434/v1',
+              apiKey: 'ollama', // Ollama doesn't require a real API key
+              isEnabled: true,
+              isPrimary: false, // Clara's Core should remain primary
+              config: {
+                description: 'Local Ollama installation detected automatically'
+              }
+            });
+            console.log('Ollama provider created successfully');
+          } else {
+            console.log('Ollama is not running - install manually if needed: https://ollama.com');
           }
-        });
+        } catch (error) {
+          console.log('No existing Ollama installation detected - install manually if needed: https://ollama.com');
+        }
+      } else {
+        console.log('Ollama provider already exists, skipping creation');
       }
       
-      // Ensure at least one provider is primary
-      const updatedProviders = await this.getAllProviders();
-      const primaryProvider = updatedProviders.find(p => p.isPrimary);
+      // Ensure at least one provider is primary (should be Clara's Core)
+      const finalProviders = await this.getAllProviders();
+      const primaryProvider = finalProviders.find(p => p.isPrimary);
       if (!primaryProvider) {
-        const enabledProvider = updatedProviders.find(p => p.isEnabled);
-        if (enabledProvider) {
-          await this.setPrimaryProvider(enabledProvider.id);
+        console.log('No primary provider found, setting Clara\'s Core as primary...');
+        const clarasCoreProvider = finalProviders.find(p => p.type === 'claras-pocket');
+        if (clarasCoreProvider) {
+          await this.setPrimaryProvider(clarasCoreProvider.id);
+          console.log('Clara\'s Core set as primary provider');
+        } else {
+          // Fallback: set first enabled provider as primary
+          const enabledProvider = finalProviders.find(p => p.isEnabled);
+          if (enabledProvider) {
+            console.log('No Clara\'s Core found, setting first enabled provider as primary...');
+            await this.setPrimaryProvider(enabledProvider.id);
+          }
         }
+      } else {
+        console.log(`Primary provider already exists: ${primaryProvider.name}`);
       }
     } catch (error) {
       console.error('Error initializing default providers:', error);
+    } finally {
+      this.initializingProviders = false;
     }
   }
 }

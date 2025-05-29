@@ -155,8 +155,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const [models, setModels] = useState<ClaraModel[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(true);
 
+  // No models modal state
+  const [showNoModelsModal, setShowNoModelsModal] = useState(false);
+
   // Wallpaper state
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  // Refresh state - track when we last refreshed to avoid too frequent calls
+  const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Session configuration with new AI config structure
   const [sessionConfig, setSessionConfig] = useState<ClaraSessionConfig>({
@@ -204,6 +211,97 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     contextWindow: 50 // Include last 50 messages in conversation history
   });
 
+  // Refresh providers, models, and MCP services
+  const refreshProvidersAndServices = useCallback(async (force: boolean = false) => {
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshTime;
+    const REFRESH_COOLDOWN = 5000; // 5 seconds cooldown
+    
+    // Avoid too frequent refreshes unless forced
+    if (!force && timeSinceLastRefresh < REFRESH_COOLDOWN) {
+      console.log(`⏳ Skipping refresh - last refresh was ${Math.round(timeSinceLastRefresh / 1000)}s ago (cooldown: ${REFRESH_COOLDOWN / 1000}s)`);
+      return;
+    }
+    
+    if (isRefreshing) {
+      console.log('🔄 Refresh already in progress, skipping...');
+      return;
+    }
+    
+    setIsRefreshing(true);
+    setLastRefreshTime(now);
+    
+    try {
+      console.log('🔄 Refreshing providers, models, and services...');
+      
+      // Refresh MCP service
+      try {
+        console.log('🔧 Refreshing MCP services...');
+        await claraMCPService.refresh();
+        console.log('✅ MCP services refreshed');
+      } catch (mcpError) {
+        console.warn('⚠️ MCP refresh failed:', mcpError);
+      }
+
+      // Reload providers
+      console.log('🏢 Refreshing providers...');
+      const refreshedProviders = await claraApiService.getProviders();
+      setProviders(refreshedProviders);
+      console.log(`✅ Loaded ${refreshedProviders.length} providers`);
+
+      // Clean up invalid provider configurations
+      const validProviderIds = refreshedProviders.map(p => p.id);
+      cleanInvalidProviderConfigs(validProviderIds);
+
+      // Load models from ALL providers
+      let allModels: ClaraModel[] = [];
+      for (const provider of refreshedProviders) {
+        try {
+          const providerModels = await claraApiService.getModels(provider.id);
+          allModels = [...allModels, ...providerModels];
+          console.log(`📦 Loaded ${providerModels.length} models from ${provider.name}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to load models from ${provider.name}:`, error);
+        }
+      }
+      
+      setModels(allModels);
+      console.log(`✅ Total models refreshed: ${allModels.length}`);
+
+      // Update current provider if needed
+      const currentProviderId = sessionConfig.aiConfig?.provider;
+      if (currentProviderId) {
+        const currentProvider = refreshedProviders.find(p => p.id === currentProviderId);
+        if (currentProvider) {
+          claraApiService.updateProvider(currentProvider);
+          console.log(`🔧 Updated current provider: ${currentProvider.name}`);
+        }
+      }
+
+      // Health check current provider
+      if (sessionConfig.aiConfig?.provider) {
+        const currentProvider = refreshedProviders.find(p => p.id === sessionConfig.aiConfig.provider);
+        if (currentProvider) {
+          try {
+            const isHealthy = await claraApiService.testProvider(currentProvider);
+            if (!isHealthy) {
+              console.warn(`⚠️ Current provider ${currentProvider.name} health check failed`);
+            }
+          } catch (healthError) {
+            console.warn(`⚠️ Health check failed for ${currentProvider.name}:`, healthError);
+          }
+        }
+      }
+
+      console.log('✅ Providers and services refresh complete');
+      
+    } catch (error) {
+      console.error('❌ Failed to refresh providers and services:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [lastRefreshTime, isRefreshing, sessionConfig.aiConfig?.provider]);
+
   // Load user name from database
   useEffect(() => {
     const loadUserName = async () => {
@@ -235,6 +333,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   useEffect(() => {
     claraBackgroundService.setBackgroundMode(!isVisible);
   }, [isVisible]);
+
+  // Auto-refresh when Clara becomes visible again
+  useEffect(() => {
+    if (isVisible && !isLoadingProviders) {
+      // Trigger refresh when Clara becomes visible
+      console.log('👁️ Clara became visible - checking for updates...');
+      refreshProvidersAndServices(false); // Use cooldown to avoid spam
+    }
+  }, [isVisible, isLoadingProviders, refreshProvidersAndServices]);
 
   // Load chat sessions on component mount
   useEffect(() => {
@@ -329,15 +436,30 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         const validProviderIds = loadedProviders.map(p => p.id);
         cleanInvalidProviderConfigs(validProviderIds);
 
+        // Load models from ALL providers to check availability
+        let allModels: ClaraModel[] = [];
+        for (const provider of loadedProviders) {
+          try {
+            const providerModels = await claraApiService.getModels(provider.id);
+            allModels = [...allModels, ...providerModels];
+            console.log(`Loaded ${providerModels.length} models from provider: ${provider.name}`);
+          } catch (error) {
+            console.warn(`Failed to load models from provider ${provider.name}:`, error);
+          }
+        }
+        
+        // Set all models for the modal check
+        setModels(allModels);
+        console.log(`Total models available across all providers: ${allModels.length}`);
+
         // Get primary provider and set it in config
         const primaryProvider = loadedProviders.find(p => p.isPrimary) || loadedProviders[0];
         if (primaryProvider) {
           // Update API service to use primary provider
           claraApiService.updateProvider(primaryProvider);
 
-          // Load models only from the primary provider
-          const loadedModels = await claraApiService.getModels(primaryProvider.id);
-          setModels(loadedModels);
+          // Get models specifically for the primary provider for configuration
+          const primaryProviderModels = allModels.filter(m => m.provider === primaryProvider.id);
 
           // Try to load saved config for this provider first
           const savedConfig = loadProviderConfig(primaryProvider.id);
@@ -350,15 +472,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           } else {
             console.log('No saved config found for provider:', primaryProvider.name, 'creating default config');
             // Auto-select first available models for this provider
-            const textModel = loadedModels.find(m => 
+            const textModel = primaryProviderModels.find(m => 
               m.provider === primaryProvider.id && 
               (m.type === 'text' || m.type === 'multimodal')
             );
-            const visionModel = loadedModels.find(m => 
+            const visionModel = primaryProviderModels.find(m => 
               m.provider === primaryProvider.id && 
               m.supportsVision
             );
-            const codeModel = loadedModels.find(m => 
+            const codeModel = primaryProviderModels.find(m => 
               m.provider === primaryProvider.id && 
               m.supportsCode
             );
@@ -424,6 +546,21 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
     loadProvidersAndModels();
   }, []);
+
+  // Monitor models availability to show/hide no models modal
+  useEffect(() => {
+    if (!isLoadingProviders) {
+      // Check if there are any models available across all providers
+      const hasModels = models.length > 0;
+      setShowNoModelsModal(!hasModels);
+      
+      if (!hasModels) {
+        console.log('No models available - showing no models modal');
+      } else {
+        console.log(`Found ${models.length} models - hiding no models modal`);
+      }
+    }
+  }, [models, isLoadingProviders]);
 
   // Initialize TTS service
   useEffect(() => {
@@ -1306,6 +1443,22 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       }, 5000);
     };
 
+    // Add refresh functionality to debug utilities
+    (window as any).refreshClaraServices = async (force = false) => {
+      console.log('🔄 Manually refreshing Clara services...');
+      await refreshProvidersAndServices(force);
+    };
+
+    (window as any).debugRefreshStatus = () => {
+      console.log('🔄 Refresh Status:');
+      console.log('- Is refreshing:', isRefreshing);
+      console.log('- Last refresh time:', new Date(lastRefreshTime));
+      console.log('- Time since last refresh:', Math.round((Date.now() - lastRefreshTime) / 1000), 'seconds');
+      console.log('- Current visibility:', isVisible);
+      console.log('- Total models:', models.length);
+      console.log('- Total providers:', providers.length);
+    };
+
     // Add provider-specific debugging functions
     (window as any).debugProblematicTools = (providerId?: string) => {
       console.log('=== Provider-Specific Problematic Tools Debug ===');
@@ -1365,6 +1518,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       delete (window as any).testBackgroundChat;
       delete (window as any).testBackgroundNotification;
       delete (window as any).testBackgroundService;
+      delete (window as any).refreshClaraServices;
+      delete (window as any).debugRefreshStatus;
       delete (window as any).debugProblematicTools;
       delete (window as any).testAutoEnableAutonomous;
     };
@@ -1521,6 +1676,50 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           onLoadMore={loadMoreSessions}
         />
       </div>
+
+      {/* No Models Available Modal */}
+      {showNoModelsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 m-4 max-w-md w-full mx-auto transform transition-all duration-300 ease-out scale-100 animate-in fade-in-0 zoom-in-95">
+            {/* Icon */}
+            <div className="flex justify-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
+              No AI Models Available
+            </h2>
+
+            {/* Message */}
+            <p className="text-gray-600 dark:text-gray-300 text-center mb-6 leading-relaxed">
+              You don't seem to have any AI models downloaded yet. To start chatting with Clara, 
+              you'll need to download at least one model from the Model Manager.
+            </p>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col space-y-3">
+              <button
+                onClick={() => onPageChange('settings')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Go to Model Manager</span>
+              </button>
+              
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                This dialog will disappear once you have downloaded a model
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
