@@ -181,12 +181,6 @@ export class ClaraApiService {
         config: provider.config
       }));
 
-      // If no providers exist, create default ones
-      if (claraProviders.length === 0) {
-        await this.initializeDefaultProviders();
-        return this.getProviders();
-      }
-
       return claraProviders;
     } catch (error) {
       console.error('Failed to get providers:', error);
@@ -266,6 +260,38 @@ export class ClaraApiService {
   ): Promise<ClaraMessage> {
     if (!this.client) {
       throw new Error('No API client configured. Please select a provider.');
+    }
+
+    // CRITICAL FIX: Switch to the provider specified in config if different from current
+    if (config.provider && (!this.currentProvider || this.currentProvider.id !== config.provider)) {
+      console.log(`🔄 Switching provider from ${this.currentProvider?.id || 'none'} to ${config.provider}`);
+      try {
+        const providers = await this.getProviders();
+        const requestedProvider = providers.find(p => p.id === config.provider);
+        
+        if (requestedProvider) {
+          console.log(`✅ Found provider ${config.provider}:`, {
+            name: requestedProvider.name,
+            baseUrl: requestedProvider.baseUrl,
+            isEnabled: requestedProvider.isEnabled
+          });
+          
+          if (!requestedProvider.isEnabled) {
+            throw new Error(`Provider ${requestedProvider.name} is not enabled`);
+          }
+          
+          // Update the client to use the requested provider
+          this.updateProvider(requestedProvider);
+          console.log(`🚀 Switched to provider: ${requestedProvider.name} (${requestedProvider.baseUrl})`);
+        } else {
+          throw new Error(`Provider ${config.provider} not found or not configured`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to switch to provider ${config.provider}:`, error);
+        throw new Error(`Failed to switch to provider ${config.provider}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } else if (config.provider) {
+      console.log(`✅ Already using correct provider: ${this.currentProvider?.name} (${this.currentProvider?.baseUrl})`);
     }
 
     try {
@@ -1033,41 +1059,6 @@ export class ClaraApiService {
   }
 
   /**
-   * Initialize default providers if none exist
-   */
-  private async initializeDefaultProviders(): Promise<void> {
-    try {
-      const defaultProviders = [
-        {
-          name: 'Ollama (Local)',
-          type: 'ollama' as ClaraProviderType,
-          baseUrl: 'http://localhost:11434',
-          isEnabled: true,
-          isPrimary: true
-        },
-        {
-          name: 'OpenAI',
-          type: 'openai' as ClaraProviderType,
-          baseUrl: 'https://api.openai.com/v1',
-          isEnabled: false,
-          isPrimary: false
-        },
-        {
-          name: 'OpenRouter',
-          type: 'openrouter' as ClaraProviderType,
-          baseUrl: 'https://openrouter.ai/api/v1',
-          isEnabled: false,
-          isPrimary: false
-        }
-      ];
-
-      for (const provider of defaultProviders) {
-        await db.addProvider(provider);
-      }
-    } catch (error) {
-      console.error('Failed to initialize default providers:', error);
-    }
-  }
 
   /**
    * Get primary provider

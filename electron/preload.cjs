@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
   
   // Clipboard
   clipboard: {

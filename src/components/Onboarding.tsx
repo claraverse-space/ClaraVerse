@@ -19,6 +19,7 @@ import {
     Sun,
     Moon,
     Palette,
+    Download,
 } from 'lucide-react';
 import {db} from '../db';
 import {OllamaClient} from '../utils/OllamaClient';
@@ -28,13 +29,13 @@ interface OnboardingProps {
 }
 
 const Onboarding = ({onComplete}: OnboardingProps) => {
-    const [section, setSection] = useState<'welcome' | 'features' | 'setup'>('welcome');
+    const [section, setSection] = useState<'welcome' | 'setup'>('welcome');
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        theme_preference: 'light' as 'light' | 'dark' | 'system', // Default to light mode
+        theme_preference: 'dark' as 'light' | 'dark' | 'system', // Default to dark mode
         avatar_url: '',
         ollama_url: 'http://localhost:11434',
         comfyui_url: 'http://localhost:8188',
@@ -47,9 +48,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
     const [animationClass, setAnimationClass] = useState('animate-fadeIn');
     const [showApiKey, setShowApiKey] = useState(false);
     const [logoError, setLogoError] = useState(false);
-
-    // For feature showcase animation
-    const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
+    const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+    const [checkingModels, setCheckingModels] = useState(false);
 
     // Apply theme immediately when selected
     useEffect(() => {
@@ -61,16 +61,19 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         }
     }, [formData.theme_preference]);
 
-    // Auto-rotate features
-    useEffect(() => {
-        if (section === 'features') {
-            const interval = setInterval(() => {
-                setActiveFeatureIndex((prev) => (prev + 1) % useCases.length);
-            }, 5000);
-
-            return () => clearInterval(interval);
+    const checkOllamaModels = async (url: string) => {
+        setCheckingModels(true);
+        try {
+            const client = new OllamaClient(url);
+            const models = await client.listModels();
+            setOllamaModels(models.map(model => model.name));
+        } catch (error) {
+            console.error('Error checking Ollama models:', error);
+            setOllamaModels([]);
+        } finally {
+            setCheckingModels(false);
         }
-    }, [section]);
+    };
 
     const pingOllamaServer = async (url: string) => {
         setLoading(true);
@@ -80,6 +83,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             const isAvailable = await client.checkConnection();
             if (isAvailable) {
                 setPingStatus('success');
+                // Check for existing models when connection is successful
+                await checkOllamaModels(url);
             } else {
                 setPingStatus('error');
             }
@@ -113,7 +118,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         onComplete();
     };
 
-    const handleNextSection = (nextSection: 'welcome' | 'features' | 'setup') => {
+    const handleNextSection = (nextSection: 'welcome' | 'setup') => {
         setAnimationClass('animate-fadeOut');
         setTimeout(() => {
             setSection(nextSection);
@@ -138,40 +143,6 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             }
         }
     };
-
-    // Use cases for Clara
-    const useCases = [
-        {
-            title: "AI Assistant",
-            description: "Clara serves as your personal AI assistant, helping with tasks, answering questions, and providing information—all while keeping your data private.",
-            icon: <Bot className="w-12 h-12 text-sakura-500"/>,
-            examples: ["Ask questions about any topic", "Get help with coding problems", "Brainstorm ideas for projects"]
-        },
-        {
-            title: "Image Understanding",
-            description: "Upload images and get intelligent analysis and descriptions using multimodal models, without sending your images to cloud servers.",
-            icon: <Image className="w-12 h-12 text-sakura-500"/>,
-            examples: ["Analyze charts and graphs", "Get detailed descriptions of images", "Extract text from screenshots"]
-        },
-        {
-            title: "Creative Writing",
-            description: "Generate creative content, stories, and ideas with the help of powerful language models running on your own hardware.",
-            icon: <Sparkles className="w-12 h-12 text-sakura-500"/>,
-            examples: ["Write blog posts and articles", "Create stories and narratives", "Draft professional emails"]
-        },
-        {
-            title: "Custom App Building",
-            description: "Build your own AI-powered applications using Clara's visual flow builder without writing a single line of code.",
-            icon: <Zap className="w-12 h-12 text-sakura-500"/>,
-            examples: ["Create custom chatbots", "Build data processing flows", "Design interactive tools"]
-        },
-        {
-            title: "Code Assistant",
-            description: "Get coding help, generate code snippets, and debug issues with Clara's programming capabilities.",
-            icon: <Code className="w-12 h-12 text-sakura-500"/>,
-            examples: ["Generate code in multiple languages", "Debug existing code", "Get coding tutorials and explanations"]
-        }
-    ];
 
     // Features of Clara
     const features = [
@@ -265,120 +236,10 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
 
                     <div className="w-full px-4 pb-6 sm:pb-8 flex justify-center animate-fadeInUp delay-500 shrink-0">
                         <button
-                            onClick={() => handleNextSection("features")}
+                            onClick={() => handleNextSection("setup")}
                             className="px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-sakura-400 to-sakura-500 hover:from-sakura-500 hover:to-sakura-600 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:gap-3"
                         >
-                            Discover Clara <Zap className="w-5 h-5"/>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // Features and use cases section
-    if (section === "features") {
-        return (
-            <div
-                className="fixed inset-0 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 flex items-start justify-center z-50 overflow-y-auto py-8 sm:py-12 overflow-x-hidden">
-                <div
-                    className={`w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-8 sm:space-y-12 ${animationClass}`}>
-                    {/* Header section */}
-                    <div className="text-center px-2">
-                        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">
-                            What can you do with Clara?
-                        </h2>
-                        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-                            Clara is designed to be your AI companion for a variety of tasks,
-                            all while keeping your data private and secure.
-                        </p>
-                    </div>
-
-                    {/* Carousel section */}
-                    <div className="relative min-h-[300px] sm:min-h-[350px] md:min-h-[400px] w-full overflow-hidden">
-                        {useCases.map((useCase, idx) => (
-                            <div
-                                key={idx}
-                                className={`absolute inset-0 transition-all duration-700 flex flex-col md:flex-row items-center ${
-                                    idx === activeFeatureIndex
-                                        ? "opacity-100 translate-x-0"
-                                        : idx < activeFeatureIndex
-                                            ? "opacity-0 -translate-x-full"
-                                            : "opacity-0 translate-x-full"
-                                }`}
-                            >
-                                {/* Icon/image container */}
-                                <div className="w-full md:w-1/3 flex justify-center p-4 sm:p-6">
-                                    <div className="relative max-w-[200px] mx-auto">
-                                        <div
-                                            className="absolute inset-0 bg-sakura-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
-                                        <div
-                                            className="bg-white dark:bg-gray-800 rounded-full p-4 sm:p-6 shadow-xl relative">
-                                            {useCase.icon}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Content container */}
-                                <div className="w-full md:w-2/3 space-y-3 sm:space-y-4 p-4 sm:p-6">
-                                    <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">
-                                        {useCase.title}
-                                    </h3>
-                                    <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">
-                                        {useCase.description}
-                                    </p>
-
-                                    <div className="space-y-2 pt-2 sm:pt-4">
-                                        <p className="text-xs sm:text-sm uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">
-                                            Examples:
-                                        </p>
-                                        <ul className="space-y-1 sm:space-y-2">
-                                            {useCase.examples.map((example, i) => (
-                                                <li key={i} className="flex items-start gap-2">
-                                                    <Check
-                                                        className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 shrink-0 mt-0.5"/>
-                                                    <span
-                                                        className="text-sm sm:text-base text-gray-700 dark:text-gray-300">
-                                                    {example}
-                                                </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Indicator dots */}
-                    <div className="flex justify-center gap-2">
-                        {useCases.map((_, idx) => (
-                            <button
-                                key={idx}
-                                className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full transition-all ${
-                                    idx === activeFeatureIndex
-                                        ? "bg-sakura-500 scale-125"
-                                        : "bg-gray-300 dark:bg-gray-600"
-                                }`}
-                                onClick={() => setActiveFeatureIndex(idx)}
-                                aria-label={`Go to slide ${idx + 1}`}
-                            />
-                        ))}
-                    </div>
-
-                    {/* Navigation buttons */}
-                    <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 pt-4 sm:pt-6 px-2">
-                        <button
-                            onClick={() => handleNextSection("welcome")}
-                            className="px-4 sm:px-6 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
-                        >
-                            Back
-                        </button>
-                        <button
-                            onClick={() => handleNextSection("setup")}
-                            className="px-5 sm:px-8 py-2 sm:py-2.5 text-sm sm:text-base bg-gradient-to-r from-sakura-400 to-sakura-500 hover:from-sakura-500 hover:to-sakura-600 text-white rounded-full font-medium shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
-                        >
-                            Get Started <Zap className="w-4 h-4 sm:w-5 sm:h-5"/>
+                            Get Started <Zap className="w-5 h-5"/>
                         </button>
                     </div>
                 </div>
@@ -486,28 +347,6 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
 
                             <div className="flex flex-col gap-4 mt-6">
                                 <button
-                                    onClick={() => setFormData(prev => ({...prev, theme_preference: 'light'}))}
-                                    className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
-                                        formData.theme_preference === 'light'
-                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
-                                    }`}
-                                >
-                                    <div
-                                        className={`p-3 rounded-full ${formData.theme_preference === 'light' ? 'bg-sakura-100 text-sakura-500' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
-                                        <Sun className="w-6 h-6"/>
-                                    </div>
-                                    <div className="flex-1 text-left">
-                                        <h4 className="font-medium text-gray-900 dark:text-white">Light Mode</h4>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Bright interface, ideal
-                                            for daytime use</p>
-                                    </div>
-                                    {formData.theme_preference === 'light' && (
-                                        <Check className="w-5 h-5 text-sakura-500"/>
-                                    )}
-                                </button>
-
-                                <button
                                     onClick={() => setFormData(prev => ({...prev, theme_preference: 'dark'}))}
                                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
                                         formData.theme_preference === 'dark'
@@ -521,10 +360,30 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     </div>
                                     <div className="flex-1 text-left">
                                         <h4 className="font-medium text-gray-900 dark:text-white">Dark Mode</h4>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Easier on the eyes in
-                                            low-light environments</p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">Easier on the eyes, ideal for most environments</p>
                                     </div>
                                     {formData.theme_preference === 'dark' && (
+                                        <Check className="w-5 h-5 text-sakura-500"/>
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => setFormData(prev => ({...prev, theme_preference: 'light'}))}
+                                    className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
+                                        formData.theme_preference === 'light'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
+                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                    }`}
+                                >
+                                    <div
+                                        className={`p-3 rounded-full ${formData.theme_preference === 'light' ? 'bg-sakura-100 text-sakura-500' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                                        <Sun className="w-6 h-6"/>
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <h4 className="font-medium text-gray-900 dark:text-white">Light Mode</h4>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">Bright interface for daytime use</p>
+                                    </div>
+                                    {formData.theme_preference === 'light' && (
                                         <Check className="w-5 h-5 text-sakura-500"/>
                                     )}
                                 </button>
@@ -545,8 +404,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     </div>
                                     <div className="flex-1 text-left">
                                         <h4 className="font-medium text-gray-900 dark:text-white">System Default</h4>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Follow your device's
-                                            theme settings</p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">Follow your device's theme settings</p>
                                     </div>
                                     {formData.theme_preference === 'system' && (
                                         <Check className="w-5 h-5 text-sakura-500"/>
@@ -567,8 +425,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                 </h3>
                             </div>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                                Clara connects to local AI engines running on your device or network for complete
-                                privacy.
+                                Clara connects to local AI engines running on your device or network for complete privacy.
                             </p>
 
                             <div className="space-y-6">
@@ -577,8 +434,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         Ollama API URL
                                     </label>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        Ollama provides the AI models that power Clara's intelligence. By default, it
-                                        runs locally on your machine.
+                                        Ollama provides the AI models that power Clara's intelligence. By default, it runs locally on your machine.
                                     </p>
                                     <div className="flex gap-2">
                                         <input
@@ -599,25 +455,95 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             {loading ? <Loader className="w-4 h-4 animate-spin"/> : 'Test'}
                                         </button>
                                     </div>
+
+                                    {/* Connection Status and Model Suggestions */}
                                     <div className="mt-2">
                                         {pingStatus === 'success' && (
-                                            <div className="flex items-center gap-1 text-green-600 text-xs">
-                                                <Check className="w-4 h-4"/> Connection successful! Ollama server is
-                                                reachable.
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-1 text-green-600 text-xs">
+                                                    <Check className="w-4 h-4"/> Connection successful! Ollama server is reachable.
+                                                </div>
+                                                
+                                                {checkingModels && (
+                                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                                        <Loader className="w-4 h-4 animate-spin"/>
+                                                        Checking for existing models...
+                                                    </div>
+                                                )}
+
+                                                {!checkingModels && ollamaModels.length === 0 && (
+                                                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 mb-2">
+                                                            <Download className="w-5 h-5"/>
+                                                            <h4 className="font-medium">Download Recommended Models</h4>
+                                                        </div>
+                                                        <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">
+                                                            We recommend downloading these two models for the best Clara experience:
+                                                        </p>
+                                                        
+                                                        <div className="space-y-3">
+                                                            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded">
+                                                                <h5 className="font-medium text-blue-800 dark:text-blue-200 mb-1">Qwen2.5:4b (Q4)</h5>
+                                                                <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                                                                    Excellent for general conversations and reasoning tasks (~2.4GB)
+                                                                </p>
+                                                                <code className="block bg-blue-200 dark:bg-blue-800 p-2 rounded text-xs font-mono">
+                                                                    ollama run qwen2.5:4b-instruct-q4_K_M
+                                                                </code>
+                                                            </div>
+                                                            
+                                                            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded">
+                                                                <h5 className="font-medium text-blue-800 dark:text-blue-200 mb-1">Gemma2:9b (Q4)</h5>
+                                                                <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                                                                    Great for coding and technical tasks (~5.4GB)
+                                                                </p>
+                                                                <code className="block bg-blue-200 dark:bg-blue-800 p-2 rounded text-xs font-mono">
+                                                                    ollama run gemma2:9b-instruct-q4_K_M
+                                                                </code>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                                                            Run these commands in your terminal after Clara setup is complete. The models will download automatically.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {!checkingModels && ollamaModels.length > 0 && (
+                                                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                                        <div className="flex items-center gap-2 text-green-700 dark:text-green-300 mb-2">
+                                                            <Check className="w-5 h-5"/>
+                                                            <h4 className="font-medium">Models Found</h4>
+                                                        </div>
+                                                        <p className="text-sm text-green-600 dark:text-green-400 mb-2">
+                                                            Great! You already have {ollamaModels.length} model{ollamaModels.length > 1 ? 's' : ''} installed:
+                                                        </p>
+                                                        <div className="text-xs text-green-700 dark:text-green-300 space-y-1">
+                                                            {ollamaModels.slice(0, 3).map((model, idx) => (
+                                                                <div key={idx} className="flex items-center gap-1">
+                                                                    <Check className="w-3 h-3"/>
+                                                                    <span className="font-mono">{model}</span>
+                                                                </div>
+                                                            ))}
+                                                            {ollamaModels.length > 3 && (
+                                                                <div className="text-green-600 dark:text-green-400">
+                                                                    ...and {ollamaModels.length - 3} more
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
+                                        
                                         {pingStatus === 'error' && (
                                             <div className="text-xs">
-                                                <div
-                                                    className="flex items-center gap-1 text-amber-600 dark:text-amber-500">
-                                                    <AlertCircle className="w-4 h-4"/> Unable to connect to Ollama
-                                                    server
+                                                <div className="flex items-center gap-1 text-amber-600 dark:text-amber-500">
+                                                    <AlertCircle className="w-4 h-4"/> Unable to connect to Ollama server
                                                 </div>
-                                                <div
-                                                    className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs">
+                                                <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs">
                                                     <p className="font-medium mb-1">Don't have Ollama yet?</p>
-                                                    <p className="mb-2">Ollama is required to power Clara's AI
-                                                        capabilities. It's free, open-source, and runs locally.</p>
+                                                    <p className="mb-2">Ollama is required to power Clara's AI capabilities. It's free, open-source, and runs locally.</p>
                                                     <a
                                                         href="https://ollama.com/download"
                                                         target="_blank"
@@ -626,18 +552,14 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                     >
                                                         Download Ollama →
                                                     </a>
-                                                    <div
-                                                        className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
+                                                    <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
                                                         <p className="font-medium mb-1">After installing Ollama:</p>
-                                                        <p className="mb-2">Try running this command to download a small
-                                                            but powerful model:</p>
-                                                        <div
-                                                            className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded font-mono mb-2">
-                                                            ollama run deepseek-r1
+                                                        <p className="mb-2">Try running this command to download a recommended model:</p>
+                                                        <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded font-mono mb-2">
+                                                            ollama run qwen2.5:4b-instruct-q4_K_M
                                                         </div>
                                                         <p className="text-amber-700 dark:text-amber-300 text-xs">
-                                                            deepseek-r1 is a compact model that demonstrates Ollama's
-                                                            capabilities while being smaller to download.
+                                                            This will download and run a compact but powerful model to get started.
                                                         </p>
                                                     </div>
                                                 </div>
@@ -651,8 +573,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         ComfyUI URL (Optional)
                                     </label>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        ComfyUI enables image generation capabilities. You can configure this later if
-                                        you don't have it installed.
+                                        ComfyUI enables image generation capabilities. You can configure this later if you don't have it installed.
                                     </p>
                                     <input
                                         type="url"
@@ -676,7 +597,12 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         onKeyDown={handleKeyDown}
                                         className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                                     >
-                                        {Intl.supportedValuesOf('timeZone').map(tz => (
+                                        {[
+                                            'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+                                            'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Rome',
+                                            'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Asia/Dubai',
+                                            'Australia/Sydney', 'Pacific/Auckland', 'America/Toronto'
+                                        ].map(tz => (
                                             <option key={tz} value={tz}>{tz}</option>
                                         ))}
                                     </select>
@@ -698,10 +624,10 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                 </button>
                             ) : (
                                 <button
-                                    onClick={() => handleNextSection('features')}
+                                    onClick={() => handleNextSection('welcome')}
                                     className="px-6 py-2 rounded-lg text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
                                 >
-                                    Back to Features
+                                    Back to Welcome
                                 </button>
                             )}
 

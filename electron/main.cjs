@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const DockerSetup = require('./dockerSetup.cjs');
-const { setupAutoUpdater, checkForUpdates } = require('./updateService.cjs');
+const { setupAutoUpdater, checkForUpdates, getUpdateInfo } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
@@ -1596,6 +1596,11 @@ ipcMain.handle('getWorkflowsPath', () => {
 // Add handler for checking updates
 ipcMain.handle('check-for-updates', () => {
   return checkForUpdates();
+});
+
+// Add handler for getting update information (without dialogs)
+ipcMain.handle('get-update-info', () => {
+  return getUpdateInfo();
 });
 
 // Handle microphone permission request
