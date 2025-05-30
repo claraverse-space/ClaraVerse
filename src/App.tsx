@@ -5,7 +5,6 @@ import Topbar from './components/Topbar';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import Debug from './components/Debug';
-import Assistant from './components/Assistant';
 import Onboarding from './components/Onboarding';
 import Apps from './components/Apps';
 import AppCreator from './components/AppCreator';
@@ -72,7 +71,7 @@ function App() {
 
   const renderContent = () => {
     if (activePage === 'assistant') {
-      return <Assistant onPageChange={setActivePage} />;
+      return <ClaraAssistant onPageChange={setActivePage} />;
     }
     
     // Clara is now always mounted but conditionally visible
