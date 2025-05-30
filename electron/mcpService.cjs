@@ -129,13 +129,27 @@ class MCPService {
   getEnhancedPath() {
     const currentPath = process.env.PATH || '';
     const homedir = os.homedir();
-    
+
+    // check for nvm versions
+    let nvmNodePath = null;
+    try {
+      const versionsDir = path.join(homedir, '.nvm/versions/node');
+      const versions = fs.readdirSync(versionsDir);
+      if (versions.length > 0) {
+        // Assuming the user is using the first installed version
+        nvmNodePath = path.join(versionsDir, versions[0], 'bin');
+      }
+    } catch (err) {
+      // ignore if not found
+    }
+
     // Common Node.js installation paths
+    
     const commonNodePaths = [
       '/usr/local/bin',
       '/opt/homebrew/bin',
       '/usr/bin',
-      path.join(homedir, '.nvm/current/bin'),
+      nvmNodePath,
       path.join(homedir, '.volta/bin'),
       path.join(homedir, '.fnm/current/bin'),
       path.join(homedir, 'n/bin'),
