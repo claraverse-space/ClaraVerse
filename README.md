@@ -2,7 +2,7 @@
   <img src="/public/logo.png" alt="Clara Logo" width="90" height="90" />
   <h1>Clara</h1>
   <p><strong>Your Fully Local AI Superstack — Not Just Another Chat UI.</strong></p>
-  <p>Clara isn’t a wrapper. It’s a full-blown AI assistant, workflow engine, agent builder, and image lab — all running 100% offline on your machine.</p>
+  <p>Clara isn't a wrapper. It's a full-blown AI assistant, workflow engine, agent builder, and image lab — all running 100% offline on your machine.</p>
 
   <p>
     💬 LLM Chat • 🧠 Agents • 🔄 Automation • 🎨 Image Gen • 🧱 Widgets • 🧩 App Builder — <br/>
@@ -30,7 +30,7 @@
 
 ## 🌟 Help Clara Grow
 
-If you like what I’m building:
+If you like what I'm building:
 
 - ⭐ [Star the repo](https://github.com/badboysm890/ClaraVerse)
 - 🐦 [Tweet about Clara](https://twitter.com/intent/tweet?text=Clara%20is%20a%20fully%20offline%20AI%20superstack%20with%20LLMs%2C%20automations%2C%20agents%2C%20image%20generation%20%2B%20more%20%E2%80%94%20all%20open-source.%20Get%20it%20here%20%F0%9F%91%87&url=https%3A%2F%2Fgithub.com%2Fbadboysm890%2FClaraVerse)
@@ -80,7 +80,7 @@ Ollama + Vision models. Local. Context-aware. No cloud bills.
 
 ---
 
-### 🧑‍💻 Clara ≠ Chatbot. It’s Your Local Dev Intern
+### 🧑‍💻 Clara ≠ Chatbot. It's Your Local Dev Intern
 
 Write code, summarize docs, train models — via OpenInterpreter.
 
@@ -151,14 +151,14 @@ Organize your generations with tags, thumbnails, and metadata.
 
 ## 🍏 macOS Unsigned App Fix
 
-> Getting the “App is damaged” warning?
+> Getting the "App is damaged" warning?
 
 ```bash
 # Just right-click the app and hit "Open"  
 # Then go to System Preferences > Security and allow it manually
 ```
 
-Totally safe. It’s unsigned, not unsafe.
+Totally safe. It's unsigned, not unsafe.
 
 ---
 
@@ -191,7 +191,7 @@ npm run electron:build     # Desktop
 
 📧 **[praveensm890@gmail.com](mailto:praveensm890@gmail.com)**  
 🐙 [Raise issues or PRs on GitHub](https://github.com/badboysm890/ClaraVerse)  
-🔥 Got memes? Post them. I’ll probably feature them.
+🔥 Got memes? Post them. I'll probably feature them.
 
 ---
 
@@ -199,4 +199,15 @@ npm run electron:build     # Desktop
 
 Clara gives you the full local AI stack — no vendor lock-in, no API hell, no GPU bills.
 
-**Clara’s your rocket. Light it up. 🚀**
+**Clara's your rocket. Light it up. 🚀**
+
+## Features
+
+- 🧠 **AI-Powered Agent Building**: Create intelligent agents with visual flow-based programming
+- 🤖 **Custom Node Creation**: Build your own nodes with custom logic and interfaces
+  - **Auto Mode**: AI-powered node generation using structured output - just describe what you want and let AI create the complete implementation
+  - **Manual Mode**: Step-by-step node creation with full control over inputs, outputs, properties, and code
+- 🔧 **Drag & Drop Interface**: Intuitive visual programming with nodes and connections
+- ⚡ **Real-time Execution**: See your agents run and debug in real-time
+- 🎨 **Customizable Themes**: Beautiful light and dark themes
+- 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices

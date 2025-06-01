@@ -192,7 +192,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     // { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Bot, label: 'Chat', id: 'clara' },
-    { icon: BrainCircuit, label: 'Agents', id: 'apps' },
+    { icon: BrainCircuit, label: 'Agents', id: 'agents' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     // Only show n8n if Docker services are available
     ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 

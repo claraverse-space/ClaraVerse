@@ -73,7 +73,7 @@ const showGlobalErrorMessage = (message: string) => {
   `;
 
   const claraImg = document.createElement('img');
-  claraImg.src = '/src/assets/mascot/Error_Clara.png';
+  claraImg.src = '/mascot/Error_Clara.png';
   claraImg.alt = 'Clara Error Mascot';
   claraImg.style.cssText = `
     width: 100%;
@@ -81,6 +81,12 @@ const showGlobalErrorMessage = (message: string) => {
     object-fit: contain;
     filter: drop-shadow(0 8px 25px rgba(236, 72, 153, 0.3));
   `;
+
+  // Add error fallback for image loading
+  claraImg.onerror = () => {
+    // Fallback to src/assets path if public path fails
+    claraImg.src = '/src/assets/mascot/Error_Clara.png';
+  };
 
   // Alert indicator
   const alertBadge = document.createElement('div');

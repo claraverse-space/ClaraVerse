@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2, AppWindow, RefreshCw } from 'lucide-react';
-import axios from 'axios';
-import { appStore, AppData as AppStoreData } from '../../services/AppStore';
+import { XCircle, Bot, Info, Star, Webhook, LayoutGrid, Mail, Briefcase, MessageSquare, Loader2, RefreshCw } from 'lucide-react';
 
 interface WidgetOption {
   id: string;
@@ -9,24 +7,17 @@ interface WidgetOption {
   name: string;
   description: string;
   icon: React.ReactNode;
-  category: 'system' | 'data' | 'productivity' | 'custom' | 'apps';
-  preview: React.ReactNode;
-}
-
-interface AppWidget extends WidgetOption {
-  appId: string;
-  appName: string;
-  appDescription: string;
-  appIcon?: string;
+  category: 'system' | 'data' | 'productivity' | 'custom';
+  preview?: React.ReactNode;
 }
 
 interface AddWidgetModalProps {
+  isOpen: boolean;
   onClose: () => void;
-  onAddWidget: (type: string, data?: any) => void;
+  onAddWidget?: (type: string, data?: any) => void;
   onAddWebhookWidget?: (name: string, url: string) => void;
   onAddEmailWidget?: (name: string, url: string, refreshInterval: number) => void;
   onAddQuickChatWidget?: (name: string, url: string, model: string, systemPrompt?: string, prePrompt?: string) => void;
-  onResetDefault?: () => void;
 }
 
 interface AppData {
@@ -34,276 +25,194 @@ interface AppData {
   name: string;
   description: string;
   icon?: string;
+  nodes: any[];
+  edges: any[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 const AVAILABLE_WIDGETS: WidgetOption[] = [
   {
-    id: 'quick-chat',
-    type: 'quick-chat',
-    name: 'Quick Chat',
-    description: 'Chat directly with Ollama AI',
-    icon: <MessageSquare className="w-5 h-5" />,
-    category: 'productivity',
-    preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Quick Chat</h3>
-        </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Have quick conversations with Ollama AI...</p>
-      </div>
-    )
-  },
-  {
     id: 'welcome',
     type: 'welcome',
     name: 'Welcome',
-    description: 'Introduction and quick actions for Clara',
+    description: 'A personalized welcome message with quick actions',
     icon: <Bot className="w-5 h-5" />,
     category: 'system',
     preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
+      <div className="bg-gradient-to-r from-sakura-50 to-pink-50 dark:from-sakura-900/20 dark:to-pink-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
           <Bot className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Welcome to Clara</h3>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Welcome back!</h3>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Your AI assistant powered by Ollama...</p>
-      </div>
-    )
-  },
-  {
-    id: 'privacy',
-    type: 'privacy',
-    name: 'Privacy Notice',
-    description: 'Information about Clara\'s privacy and security',
-    icon: <Info className="w-5 h-5" />,
-    category: 'system',
-    preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Info className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Private & Secure</h3>
-        </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Clara runs locally on your machine...</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Ready to create something amazing?</p>
       </div>
     )
   },
   {
     id: 'whats-new',
     type: 'whats-new',
-    name: 'What\'s New',
-    description: 'Latest updates and features in Clara',
+    name: "What's New",
+    description: 'Latest updates and features in ClaraVerse',
     icon: <Star className="w-5 h-5" />,
     category: 'system',
     preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Star className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">What's New in Clara</h3>
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <Star className="w-4 h-4 text-blue-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">What's New</h3>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Latest updates and improvements...</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Discover the latest features and improvements</p>
+      </div>
+    )
+  },
+  {
+    id: 'capabilities',
+    type: 'capabilities',
+    name: 'Capabilities',
+    description: 'Overview of ClaraVerse features and capabilities',
+    icon: <Info className="w-5 h-5" />,
+    category: 'system',
+    preview: (
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <Info className="w-4 h-4 text-green-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Capabilities</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Explore what ClaraVerse can do</p>
+      </div>
+    )
+  },
+  {
+    id: 'privacy',
+    type: 'privacy',
+    name: 'Privacy & Security',
+    description: 'Information about data privacy and security',
+    icon: <LayoutGrid className="w-5 h-5" />,
+    category: 'system',
+    preview: (
+      <div className="bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <LayoutGrid className="w-4 h-4 text-purple-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Privacy & Security</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Your data stays private and secure</p>
       </div>
     )
   },
   {
     id: 'webhook',
     type: 'webhook',
-    name: 'Custom Webhook',
-    description: 'Display data from external APIs',
+    name: 'Webhook',
+    description: 'Display data from external webhooks and APIs',
     icon: <Webhook className="w-5 h-5" />,
     category: 'data',
     preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Webhook className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Webhook Data</h3>
+      <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <Webhook className="w-4 h-4 text-orange-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">API Data</h3>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Display real-time data from APIs...</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Real-time data from your APIs</p>
       </div>
     )
   },
   {
     id: 'email',
     type: 'email',
-    name: 'Email Inbox',
-    description: 'View your recent emails at a glance',
+    name: 'Email',
+    description: 'Monitor email inboxes and display unread counts',
     icon: <Mail className="w-5 h-5" />,
     category: 'productivity',
     preview: (
-      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Mail className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Email Inbox</h3>
+      <div className="bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <Mail className="w-4 h-4 text-cyan-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Email Monitor</h3>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Connect to your email API endpoint...</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Keep track of your inbox</p>
+      </div>
+    )
+  },
+  {
+    id: 'quick-chat',
+    type: 'quick-chat',
+    name: 'Quick Chat',
+    description: 'Quick access to AI chat with customizable prompts',
+    icon: <MessageSquare className="w-5 h-5" />,
+    category: 'productivity',
+    preview: (
+      <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 p-3 rounded border">
+        <div className="flex items-center gap-2 mb-2">
+          <MessageSquare className="w-4 h-4 text-teal-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Quick Chat</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400">Fast AI assistance</p>
       </div>
     )
   }
 ];
 
-const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, onAddWebhookWidget, onAddEmailWidget, onAddQuickChatWidget, onResetDefault }) => {
-  const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom' | 'apps'>('system');
-  const [selectedWidget, setSelectedWidget] = React.useState<string | null>(null);
+const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
+  isOpen,
+  onClose,
+  onAddWidget,
+  onAddWebhookWidget,
+  onAddEmailWidget,
+  onAddQuickChatWidget
+}) => {
+  const [selectedWidget, setSelectedWidget] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = React.useState<'system' | 'data' | 'productivity' | 'custom'>('system');
   
-  // Webhook form state
+  // Webhook widget state
   const [webhookName, setWebhookName] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [showWebhookForm, setShowWebhookForm] = useState(false);
   
-  // Email widget form state
+  // Email widget state
   const [emailName, setEmailName] = useState('');
   const [emailUrl, setEmailUrl] = useState('');
-  const [refreshInterval, setRefreshInterval] = useState(5);
-  const [emailError, setEmailError] = useState<string | null>(null);
-
-  // Quick Chat widget form state
+  const [emailRefreshInterval, setEmailRefreshInterval] = useState(300); // 5 minutes default
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  
+  // Quick Chat widget state
   const [quickChatName, setQuickChatName] = useState('');
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
-  const [selectedModel, setSelectedModel] = useState('');
+  const [quickChatUrl, setQuickChatUrl] = useState('http://localhost:11434');
+  const [quickChatModel, setQuickChatModel] = useState('');
+  const [quickChatSystemPrompt, setQuickChatSystemPrompt] = useState('');
+  const [quickChatPrePrompt, setQuickChatPrePrompt] = useState('');
+  const [showQuickChatForm, setShowQuickChatForm] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
-  const [modelError, setModelError] = useState('');
-  const [quickChatError, setQuickChatError] = useState<string | null>(null);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [prePrompt, setPrePrompt] = useState('');
-  const isQuickChatFormValid = quickChatName.trim() !== '' && ollamaUrl.trim() !== '';
 
-  const [userApps, setUserApps] = useState<AppWidget[]>([]);
-  const [loadingApps, setLoadingApps] = useState(false);
-  const [appsError, setAppsError] = useState<string | null>(null);
-
-  // Combine static widgets with user's apps
-  const allWidgets = [...AVAILABLE_WIDGETS, ...(selectedCategory === 'apps' ? userApps : [])];
-  const filteredWidgets = allWidgets.filter(widget => widget.category === selectedCategory);
-  
-  const isWebhookSelected = selectedWidget === 'webhook';
-  const isEmailSelected = selectedWidget === 'email';
-  const isQuickChatSelected = selectedWidget === 'quick-chat';
-  const isWebhookFormValid = webhookName.trim() !== '' && webhookUrl.trim() !== '';
-  const isEmailFormValid = emailName.trim() !== '' && emailUrl.trim() !== '';
-
-  useEffect(() => {
-    const fetchModels = async () => {
-      if (!ollamaUrl) {
-        setAvailableModels([]);
-        setSelectedModel('');
-        return;
-      }
-
-      setLoadingModels(true);
-      setModelError('');
-
-      try {
-        const response = await axios.get(`${ollamaUrl}/api/tags`);
-        if (response.data.models) {
-          const modelNames = response.data.models.map((model: any) => model.name);
-          setAvailableModels(modelNames);
-          if (modelNames.length > 0) {
-            setSelectedModel(modelNames[0]);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching models:', err);
-        setModelError('Failed to fetch available models');
-        setAvailableModels([]);
-        setSelectedModel('');
-      } finally {
-        setLoadingModels(false);
-      }
-    };
-
-    fetchModels();
-  }, [ollamaUrl]);
-
-  useEffect(() => {
-    const fetchUserApps = async () => {
-      if (selectedCategory !== 'apps') return;
-      
-      setLoadingApps(true);
-      setAppsError(null);
-      
-      try {
-        // Get apps from AppStore
-        const appsData = await appStore.listApps();
-        console.log('Loaded apps from AppStore:', appsData);
-        
-        const apps = appsData.map((app: AppStoreData) => ({
-          id: `app-${app.id}`,
-          type: 'app',
-          name: app.name,
-          description: app.description,
-          icon: <AppWindow className="w-5 h-5" />,
-          category: 'apps' as const,
-          appId: app.id,
-          appName: app.name,
-          appDescription: app.description,
-          appIcon: app.icon,
-          preview: (
-            <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
-              <div className="flex items-center gap-2">
-                <AppWindow className="w-4 h-4 text-sakura-500" />
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</h3>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">{app.description}</p>
-            </div>
-          )
-        }));
-
-        console.log('Processed apps:', apps); // Debug log
-        setUserApps(apps);
-      } catch (error) {
-        console.error('Error fetching user apps:', error);
-        setAppsError('Failed to load your apps');
-      } finally {
-        setLoadingApps(false);
-      }
-    };
-
-    fetchUserApps();
-  }, [selectedCategory]);
+  // Combine static widgets
+  const allWidgets = AVAILABLE_WIDGETS;
 
   const handleAddWidget = () => {
     if (selectedWidget) {
-      // For app widgets
-      if (selectedWidget.startsWith('app-')) {
-        const appWidget = userApps.find(app => app.id === selectedWidget);
-        if (appWidget && onAddWidget) {
-          const widgetData = {
-            type: 'app',
-            appId: appWidget.appId,
-            appName: appWidget.appName,
-            appDescription: appWidget.appDescription,
-            appIcon: appWidget.appIcon
-          };
-          onAddWidget('app', widgetData);
-          onClose();
-          return;
-        }
-      }
-
       // For other widget types
       const widget = AVAILABLE_WIDGETS.find(w => w.id === selectedWidget);
       if (widget) {
         if (widget.id === 'webhook' && onAddWebhookWidget) {
-          if (!isWebhookFormValid) {
-            setWebhookError('Please enter both name and URL');
+          if (!webhookName.trim() || !webhookUrl.trim()) {
+            console.error('Please enter both name and URL');
             return;
           }
           onAddWebhookWidget(webhookName, webhookUrl);
         } else if (widget.id === 'email' && onAddEmailWidget) {
-          if (!isEmailFormValid) {
-            setEmailError('Please enter both name and URL');
+          if (!emailName.trim() || !emailUrl.trim()) {
+            console.error('Please enter both name and URL');
             return;
           }
-          onAddEmailWidget(emailName, emailUrl, refreshInterval);
+          onAddEmailWidget(emailName, emailUrl, emailRefreshInterval);
         } else if (widget.id === 'quick-chat' && onAddQuickChatWidget) {
-          if (!isQuickChatFormValid) {
-            setQuickChatError('Please enter both name and URL');
+          if (!quickChatName.trim() || !quickChatUrl.trim()) {
+            console.error('Please enter both name and URL');
             return;
           }
-          onAddQuickChatWidget(quickChatName, ollamaUrl, selectedModel, systemPrompt, prePrompt);
+          onAddQuickChatWidget(quickChatName, quickChatUrl, quickChatModel, quickChatSystemPrompt, quickChatPrePrompt);
         } else {
-          onAddWidget(widget.type);
+          onAddWidget?.(widget.type);
         }
         onClose();
       }
@@ -362,43 +271,33 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                 </button>
                 <button
                   className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                    selectedCategory === 'apps'
+                    selectedCategory === 'custom'
                       ? 'bg-sakura-500/10 text-sakura-500'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-500/5 dark:hover:bg-gray-300/5'
                   }`}
-                  onClick={() => setSelectedCategory('apps')}
+                  onClick={() => setSelectedCategory('custom')}
                 >
-                  <Bot className="w-4 h-4" />
-                  Apps & Agents
+                  <LayoutGrid className="w-4 h-4" />
+                  Custom Widgets
                 </button>
               </div>
             </div>
             
             {/* Action Buttons in Sidebar */}
             <div className="p-4 border-t border-gray-200/10 dark:border-gray-700/10 space-y-2">
-              {onResetDefault && (
-                <button
-                  className="w-full px-3 py-2 border border-sakura-500 text-sakura-500 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-900/10 transition-colors flex items-center justify-center gap-2 text-sm"
-                  onClick={onResetDefault}
-                  type="button"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  Reset to Default
-                </button>
-              )}
               <button
                 className={`w-full px-3 py-2 rounded-lg text-white transition-colors text-sm flex items-center justify-center gap-2 ${
                   selectedWidget && 
-                  !((isWebhookSelected && !isWebhookFormValid) ||
-                    (isEmailSelected && !isEmailFormValid) ||
-                    (isQuickChatSelected && !isQuickChatFormValid))
+                  !((selectedWidget === 'webhook' && !webhookName.trim()) ||
+                    (selectedWidget === 'email' && !emailName.trim()) ||
+                    (selectedWidget === 'quick-chat' && !quickChatName.trim()))
                     ? 'bg-sakura-500 hover:bg-sakura-600 cursor-pointer' 
                     : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
                 }`}
                 disabled={!selectedWidget || 
-                  (isWebhookSelected && !isWebhookFormValid) ||
-                  (isEmailSelected && !isEmailFormValid) ||
-                  (isQuickChatSelected && !isQuickChatFormValid)
+                  (selectedWidget === 'webhook' && !webhookName.trim()) ||
+                  (selectedWidget === 'email' && !emailName.trim()) ||
+                  (selectedWidget === 'quick-chat' && !quickChatName.trim())
                 }
                 onClick={handleAddWidget}
               >
@@ -433,50 +332,35 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
 
             {/* Widget Grid */}
             <div className="flex-1 overflow-y-auto p-4">
-              {loadingApps && selectedCategory === 'apps' ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="w-8 h-8 animate-spin text-sakura-500" />
-                  <span className="ml-2 text-gray-600 dark:text-gray-400">Loading your apps...</span>
-                </div>
-              ) : appsError && selectedCategory === 'apps' ? (
-                <div className="text-center text-red-500 p-4">
-                  {appsError}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 auto-rows-max max-h-[calc(100vh-20rem)] overflow-y-auto p-1">
-                  {filteredWidgets.map(widget => (
-                    <div
-                      key={widget.id}
-                      className={`p-3 rounded-xl cursor-pointer transition-all bg-gray-500/5 dark:bg-gray-300/5 hover:bg-gray-500/10 dark:hover:bg-gray-300/10 h-[160px] flex flex-col ${
-                        selectedWidget === widget.id
-                          ? 'ring-1 ring-sakura-500'
-                          : ''
-                      }`}
-                      onClick={() => setSelectedWidget(widget.id)}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-gray-500/10 dark:bg-gray-300/10 rounded-lg">
-                          {widget.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-gray-900 dark:text-white truncate">{widget.name}</h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{widget.description}</p>
-                        </div>
+              <div className="grid grid-cols-2 gap-4 auto-rows-max max-h-[calc(100vh-20rem)] overflow-y-auto p-1">
+                {allWidgets.map(widget => (
+                  <div
+                    key={widget.id}
+                    className={`p-3 rounded-xl cursor-pointer transition-all bg-gray-500/5 dark:bg-gray-300/5 hover:bg-gray-500/10 dark:hover:bg-gray-300/10 h-[160px] flex flex-col ${
+                      selectedWidget === widget.id
+                        ? 'ring-1 ring-sakura-500'
+                        : ''
+                    }`}
+                    onClick={() => setSelectedWidget(widget.id)}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-gray-500/10 dark:bg-gray-300/10 rounded-lg">
+                        {widget.icon}
                       </div>
-                      <div className="flex-1 overflow-hidden">{widget.preview}</div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-gray-900 dark:text-white truncate">{widget.name}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{widget.description}</p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className="flex-1 overflow-hidden">{widget.preview}</div>
+                  </div>
+                ))}
+              </div>
               
               {/* Webhook Configuration Form */}
-              {isWebhookSelected && (
+              {selectedWidget === 'webhook' && (
                 <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Webhook Configuration</h3>
-                  
-                  {webhookError && (
-                    <div className="mb-4 text-red-500 text-sm">{webhookError}</div>
-                  )}
                   
                   <div className="space-y-4">
                     <div>
@@ -506,13 +390,9 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
               )}
               
               {/* Quick Chat Widget Configuration Form */}
-              {isQuickChatSelected && (
+              {selectedWidget === 'quick-chat' && (
                 <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Quick Chat Configuration</h3>
-                  
-                  {quickChatError && (
-                    <div className="mb-4 text-red-500 text-sm">{quickChatError}</div>
-                  )}
                   
                   <div className="space-y-4">
                     <div>
@@ -532,8 +412,8 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                         type="text"
                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
                         placeholder="http://localhost:11434"
-                        value={ollamaUrl}
-                        onChange={(e) => setOllamaUrl(e.target.value)}
+                        value={quickChatUrl}
+                        onChange={(e) => setQuickChatUrl(e.target.value)}
                       />
                       <p className="text-xs text-gray-500 mt-1">Enter the URL of your Ollama API endpoint</p>
                     </div>
@@ -545,23 +425,17 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Loading available models...
                         </div>
-                      ) : modelError ? (
-                        <div className="text-sm text-red-500">{modelError}</div>
-                      ) : availableModels.length > 0 ? (
+                      ) : (
                         <select
                           className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
-                          value={selectedModel}
-                          onChange={(e) => setSelectedModel(e.target.value)}
+                          value={quickChatModel}
+                          onChange={(e) => setQuickChatModel(e.target.value)}
                         >
                           <option value="">Select a model</option>
                           {availableModels.map(model => (
                             <option key={model} value={model}>{model}</option>
                           ))}
                         </select>
-                      ) : (
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          Enter Ollama URL to load available models
-                        </div>
                       )}
                     </div>
 
@@ -572,8 +446,8 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                       <textarea
                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg h-24 resize-none"
                         placeholder="Enter a system prompt to set the AI's behavior"
-                        value={systemPrompt}
-                        onChange={(e) => setSystemPrompt(e.target.value)}
+                        value={quickChatSystemPrompt}
+                        onChange={(e) => setQuickChatSystemPrompt(e.target.value)}
                       />
                       <p className="text-xs text-gray-500 mt-1">This won't be visible in the chat but will influence how the AI responds</p>
                     </div>
@@ -585,8 +459,8 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                       <textarea
                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg h-24 resize-none"
                         placeholder="This text will be prepended to each of your messages"
-                        value={prePrompt}
-                        onChange={(e) => setPrePrompt(e.target.value)}
+                        value={quickChatPrePrompt}
+                        onChange={(e) => setQuickChatPrePrompt(e.target.value)}
                       />
                       <p className="text-xs text-gray-500 mt-1">This text will be added before each of your messages</p>
                     </div>
@@ -595,13 +469,9 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
               )}
 
               {/* Email Widget Configuration Form */}
-              {isEmailSelected && (
+              {selectedWidget === 'email' && (
                 <div className="mt-6 bg-gray-500/5 dark:bg-gray-300/5 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
                   <h3 className="font-medium text-gray-900 dark:text-white mb-4">Email Widget Configuration</h3>
-                  
-                  {emailError && (
-                    <div className="mb-4 text-red-500 text-sm">{emailError}</div>
-                  )}
                   
                   <div className="space-y-4">
                     <div>
@@ -628,18 +498,13 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ onClose, onAddWidget, o
                     </div>
                     
                     <div>
-                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Auto-Refresh Interval (minutes)</label>
-                      <select
+                      <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Auto-Refresh Interval (seconds)</label>
+                      <input
+                        type="number"
                         className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
-                        value={refreshInterval}
-                        onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                      >
-                        <option value="1">1 minute</option>
-                        <option value="5">5 minutes</option>
-                        <option value="15">15 minutes</option>
-                        <option value="30">30 minutes</option>
-                        <option value="60">1 hour</option>
-                      </select>
+                        value={emailRefreshInterval}
+                        onChange={(e) => setEmailRefreshInterval(Number(e.target.value))}
+                      />
                     </div>
                   </div>
                 </div>
