@@ -74,3 +74,7 @@ tools/*
 /clara_interpreter_dockerstuff
 
 electron/llamacpp-binaries/models/*
+
+testing_sdk/*
+
+sdk/*

@@ -7,18 +7,12 @@ import Settings from './components/Settings';
 import Debug from './components/Debug';
 import Assistant from './components/Assistant';
 import Onboarding from './components/Onboarding';
-import Apps from './components/Apps';
-import AppCreator from './components/AppCreator';
-import AppRunner from './components/AppRunner';
 import ImageGen from './components/ImageGen';
 import Gallery from './components/Gallery';
 import Help from './components/Help';
 import N8N from './components/N8N';
-import UIBuilder from './components/UIBuilder';
-import UIProjectViewer from './components/UIProjectViewer';
 import Servers from './components/Servers';
-import NodeRegistryDebug from './debug/NodeRegistryDebug';
-import ToolbarDebug from './debug/ToolbarDebug';
+import AgentStudio from './components/AgentStudio';
 import { db } from './db';
 import { InterpreterProvider } from './contexts/InterpreterContext';
 import { ProvidersProvider } from './contexts/ProvidersContext';
@@ -54,16 +48,6 @@ function App() {
       setUserInfo({ name: info.name });
     }
   };
-  
-  useEffect(() => {
-    if (activePage === 'app-creator' || activePage === 'app-runner') {
-      const appId = localStorage.getItem('current_app_id');
-      
-      if (activePage === 'app-runner' && !appId) {
-        setActivePage('apps');
-      }
-    }
-  }, [activePage]);
 
   useEffect(() => {
     console.log('Storing activePage:', activePage);
@@ -78,21 +62,10 @@ function App() {
     // Clara is now always mounted but conditionally visible
     // This allows it to run in the background
     
-    if (activePage === 'app-creator') {
-      const appId = localStorage.getItem('current_app_id');
-      return <AppCreator onPageChange={setActivePage} appId={appId || undefined} />;
+    if (activePage === 'agents') {
+      return <AgentStudio onPageChange={setActivePage} userName={userInfo?.name} />;
     }
     
-    if (activePage === 'app-runner') {
-      const appId = localStorage.getItem('current_app_id');
-      if (appId) {
-        return <AppRunner appId={appId} onBack={() => setActivePage('apps')} />;
-      } else {
-        setActivePage('apps');
-        return null;
-      }
-    }
-
     if (activePage === 'image-gen') {
       return <ImageGen onPageChange={setActivePage} />;
     }
@@ -103,14 +76,6 @@ function App() {
 
     if (activePage === 'n8n') {
       return <N8N onPageChange={setActivePage} />;
-    }
-
-    if (activePage === 'ui-builder') {
-      return <UIBuilder onPageChange={setActivePage} />;
-    }
-
-    if (activePage === 'ui-project-viewer') {
-      return <UIProjectViewer onPageChange={setActivePage} />;
     }
     
     if (activePage === 'servers') {
@@ -131,8 +96,6 @@ function App() {
                   return <Settings />;
                 case 'debug':
                   return <Debug />;
-                case 'apps':
-                  return <Apps onPageChange={setActivePage} />;
                 case 'help':
                   return <Help />;
                 case 'dashboard':
@@ -140,12 +103,6 @@ function App() {
                   return <Dashboard onPageChange={setActivePage} />;
               }
             })()}
-            {import.meta.env.DEV && (
-              <>
-                <NodeRegistryDebug />
-                <ToolbarDebug />
-              </>
-            )}
           </main>
         </div>
       </div>

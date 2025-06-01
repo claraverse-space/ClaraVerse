@@ -57,7 +57,6 @@ import WidgetContextMenu from './widget-components/WidgetContextMenu';
 import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
 import QuickChatWidget from './widget-components/QuickChatWidget';
-import AppWidget from './widget-components/AppWidget';
 import ResizableWidget, { 
   WIDGET_SIZE_CONSTRAINTS, 
   DEFAULT_SIZE_CONSTRAINTS 
@@ -95,10 +94,6 @@ interface Widget {
   url?: string;
   order: number;
   refreshInterval?: number;
-  appId?: string;
-  appName?: string;
-  appDescription?: string;
-  appIcon?: string;
   model?: string; // Add model property for quick chat widgets
   // Add layout properties
   x?: number;
@@ -336,40 +331,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const handleAddWidget = (type: string, data?: any) => {
     const widgetId = `${type}-${Date.now()}`;
-    if (type === 'webhook') {
-      // For webhook widgets, show the custom webhook modal
-      setShowAddWidget(true);
-      return;
-    }
-
-    // For app widgets, use the provided data
-    if (type === 'app' && data) {
-      const newWidget: Widget = {
-        id: widgetId,
-        type: 'app',
-        appId: data.appId,
-        appName: data.appName,
-        appDescription: data.appDescription,
-        appIcon: data.appIcon,
-        order: widgets.length
-      };
-      console.log('Adding new app widget:', newWidget);
-      setWidgets(prev => [...prev, newWidget]);
-      // Automatically enter rearrange mode after adding widget
-      setIsRearrangeMode(true);
-      return;
-    }
-
-    // For other widget types, add them directly
     const newWidget: Widget = {
       id: widgetId,
       type,
-      order: widgets.length
+      order: widgets.length,
+      ...data
     };
-    
-    console.log('Adding new widget:', newWidget);
     setWidgets(prev => [...prev, newWidget]);
-    // Automatically enter rearrange mode after adding widget
+    setShowAddWidget(false);
     setIsRearrangeMode(true);
   };
 
@@ -542,17 +511,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             id={widget.id}
             name={widget.name || ''}
             url={widget.url || ''}
-            onRemove={handleRemoveWidget}
-          />
-        );
-      case 'app':
-        return wrapWithResizable(
-          <AppWidget
-            id={widget.id}
-            appId={widget.appId || ''}
-            name={widget.appName || ''}
-            description={widget.appDescription || ''}
-            icon={widget.appIcon}
             onRemove={handleRemoveWidget}
           />
         );

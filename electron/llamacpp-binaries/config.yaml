@@ -4,8 +4,36 @@ healthCheckTimeout: 30
 logLevel: info
 
 models:
+  "qwen3:8b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-IQ4_NL.gguf"
+      --port 9999 --jinja --n-gpu-layers 30
+    ttl: 300
+
+  "qwen2:7b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen2-VL-7B-Instruct-IQ4_NL.gguf"
+      --port 9999 --jinja --n-gpu-layers 30
+      --mmproj "/Users/badfy17g/.clara/llama-models/mmproj-Qwen2-VL-7B-Instruct-f16.gguf"
+    ttl: 300
+
+  "ggml:latest":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/ggml-model-i2_s.gguf"
+      --port 9999 --jinja --n-gpu-layers 30
+    ttl: 300
+
 groups:
   "default_group":
     swap: true
     exclusive: true
     members:
+      - "qwen3:8b"
+      - "qwen2:7b"
+      - "ggml:latest"

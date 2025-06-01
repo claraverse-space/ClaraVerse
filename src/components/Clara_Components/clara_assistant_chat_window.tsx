@@ -6,16 +6,16 @@
  * the chat window state including scrolling, loading states, and empty states.
  * 
  * Features:
- * - Message history display
+ * - Message history display with virtualization for performance
  * - Auto-scrolling to new messages
  * - Loading states and indicators
  * - Empty state with welcome message
- * - Virtualization support for large conversations
+ * - Lazy loading support for large conversations
  * - Message interaction handling
  * - Session management
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { 
   MessageCircle, 
   Sparkles, 
@@ -41,6 +41,155 @@ import {
 } from '../../types/clara_assistant_types';
 import ClaraMessageBubble from './clara_assistant_message_bubble';
 import { useSmoothScroll } from '../../hooks/useSmoothScroll';
+
+/**
+ * Virtual scrolling configuration
+ */
+const VIRTUAL_CONFIG = {
+  ESTIMATED_MESSAGE_HEIGHT: 150, // Estimated height per message in pixels
+  BUFFER_SIZE: 5, // Number of extra messages to render above/below visible area
+  CONTAINER_PADDING: 48, // Top/bottom padding in pixels
+  SCROLL_DEBOUNCE: 16, // Scroll event debounce in ms (~60fps)
+  OVERSCAN: 2 // Additional messages to render for smoother scrolling
+};
+
+/**
+ * Virtual message item interface
+ */
+interface VirtualMessageItem {
+  message: ClaraMessage;
+  index: number;
+  top: number;
+  height: number;
+  isVisible: boolean;
+}
+
+/**
+ * Virtualized Message List Component
+ * Only renders visible messages plus a buffer for performance
+ */
+const VirtualizedMessageList: React.FC<{
+  messages: ClaraMessage[];
+  userName?: string;
+  containerHeight: number;
+  scrollTop: number;
+  onMessageAction: (action: string, messageId: string, data?: any) => void;
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+}> = ({ 
+  messages, 
+  userName, 
+  containerHeight, 
+  scrollTop, 
+  onMessageAction,
+  messagesEndRef 
+}) => {
+  const [measuredHeights, setMeasuredHeights] = useState<Map<string, number>>(new Map());
+  const measurementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Measure message heights for more accurate virtualization
+  const measureMessage = useCallback((messageId: string, element: HTMLDivElement | null) => {
+    if (element) {
+      measurementRefs.current.set(messageId, element);
+      const height = element.offsetHeight;
+      setMeasuredHeights(prev => {
+        const newMap = new Map(prev);
+        newMap.set(messageId, height);
+        return newMap;
+      });
+    }
+  }, []);
+
+  // Calculate virtual items with actual measured heights when available
+  const virtualItems = useMemo((): VirtualMessageItem[] => {
+    let currentTop = VIRTUAL_CONFIG.CONTAINER_PADDING;
+    
+    return messages.map((message, index) => {
+      const measuredHeight = measuredHeights.get(message.id);
+      const height = measuredHeight || VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT;
+      
+      const item: VirtualMessageItem = {
+        message,
+        index,
+        top: currentTop,
+        height,
+        isVisible: false
+      };
+      
+      currentTop += height + 20; // 20px gap between messages
+      return item;
+    });
+  }, [messages, measuredHeights]);
+
+  // Calculate total height for scrollbar
+  const totalHeight = virtualItems.length > 0 
+    ? virtualItems[virtualItems.length - 1].top + virtualItems[virtualItems.length - 1].height + VIRTUAL_CONFIG.CONTAINER_PADDING
+    : VIRTUAL_CONFIG.CONTAINER_PADDING * 2;
+
+  // Determine which messages are visible
+  const visibleItems = useMemo(() => {
+    const visibleTop = scrollTop;
+    const visibleBottom = scrollTop + containerHeight;
+    
+    return virtualItems.filter(item => {
+      const itemBottom = item.top + item.height;
+      return itemBottom >= visibleTop - (VIRTUAL_CONFIG.BUFFER_SIZE * VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT) &&
+             item.top <= visibleBottom + (VIRTUAL_CONFIG.BUFFER_SIZE * VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT);
+    });
+  }, [virtualItems, scrollTop, containerHeight]);
+
+  // Message action handlers
+  const handleCopyMessage = useCallback((content: string) => {
+    onMessageAction('copy', '', content);
+  }, [onMessageAction]);
+
+  const handleRetryMessage = useCallback((messageId: string) => {
+    onMessageAction('retry', messageId);
+  }, [onMessageAction]);
+
+  const handleEditMessage = useCallback((messageId: string, newContent: string) => {
+    onMessageAction('edit', messageId, newContent);
+  }, [onMessageAction]);
+
+  return (
+    <div style={{ height: totalHeight, position: 'relative' }}>
+      {visibleItems.map(({ message, top, height }) => (
+        <div
+          key={message.id}
+          style={{
+            position: 'absolute',
+            top: top,
+            left: 0,
+            right: 0,
+            minHeight: height
+          }}
+          ref={(el) => measureMessage(message.id, el)}
+        >
+          <div className="mb-5">
+            <ClaraMessageBubble
+              message={message}
+              userName={userName}
+              isEditable={message.role === 'user'}
+              onCopy={handleCopyMessage}
+              onRetry={handleRetryMessage}
+              onEdit={handleEditMessage}
+            />
+          </div>
+        </div>
+      ))}
+      
+      {/* Messages end marker */}
+      <div 
+        ref={messagesEndRef}
+        style={{
+          position: 'absolute',
+          top: totalHeight - VIRTUAL_CONFIG.CONTAINER_PADDING,
+          height: 1,
+          width: '100%'
+        }}
+      />
+    </div>
+  );
+};
 
 /**
  * Welcome screen component displayed when there are no messages
@@ -204,7 +353,7 @@ const LoadingScreen: React.FC<{
 };
 
 /**
- * Scroll to bottom button
+ * Scroll to bottom button component
  */
 const ScrollToBottomButton: React.FC<{
   onClick: () => void;
@@ -213,32 +362,27 @@ const ScrollToBottomButton: React.FC<{
   if (!show) return null;
 
   return (
-    <div className="absolute bottom-4 right-4 z-10">
-      <button
-        onClick={onClick}
-        className="p-3 bg-sakura-500 hover:bg-sakura-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all"
-        title="Scroll to bottom"
-      >
-        <ArrowDown className="w-5 h-5" />
-      </button>
-    </div>
+    <button
+      onClick={onClick}
+      className="fixed bottom-24 right-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
+    >
+      <ArrowDown className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:text-sakura-600 dark:group-hover:text-sakura-400" />
+    </button>
   );
 };
 
 /**
- * Loading indicator for when Clara is processing
+ * Processing indicator component
  */
 const ProcessingIndicator: React.FC<{
   processingState: ClaraProcessingState;
   message?: string;
 }> = ({ processingState, message }) => {
-  if (processingState === 'idle') return null;
-
   const getIndicatorContent = () => {
     switch (processingState) {
       case 'processing':
         return {
-          icon: <RefreshCw className="w-5 h-5 animate-spin" />,
+          icon: <Loader2 className="w-5 h-5 animate-spin" />,
           text: message || 'Clara is thinking...',
           bgColor: 'bg-blue-500'
         };
@@ -289,6 +433,11 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [processingState, setProcessingState] = useState<ClaraProcessingState>('idle');
+  
+  // Virtual scrolling state
+  const [containerHeight, setContainerHeight] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Use the smooth scroll hook for better streaming behavior
   const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
@@ -296,6 +445,55 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     behavior: 'smooth',
     block: 'end'
   });
+
+  // Update container dimensions
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (scrollRef.current) {
+        setContainerHeight(scrollRef.current.clientHeight);
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  // Handle scroll events with debouncing for performance
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+
+    const element = scrollRef.current;
+    const newScrollTop = element.scrollTop;
+    const { scrollHeight, clientHeight } = element;
+    const nearBottom = scrollHeight - newScrollTop - clientHeight < 100;
+    
+    // Clear existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    // Debounce scroll state updates for performance
+    scrollTimeoutRef.current = setTimeout(() => {
+      setScrollTop(newScrollTop);
+      setIsNearBottom(nearBottom);
+      setShowScrollButton(!nearBottom && messages.length > 0);
+    }, VIRTUAL_CONFIG.SCROLL_DEBOUNCE);
+  }, [messages.length]);
+
+  // Set up scroll listener
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (scrollElement) {
+      scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+      return () => {
+        scrollElement.removeEventListener('scroll', handleScroll);
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
+    }
+  }, [handleScroll]);
 
   // Auto-scroll to bottom when new messages arrive (if user is near bottom)
   const scrollToBottom = useCallback((force = false) => {
@@ -331,26 +529,6 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     }
   }, [messages[messages.length - 1]?.content, scrollToElementDebounced]);
 
-  // Handle scroll events to show/hide scroll button
-  const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    const nearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    
-    setIsNearBottom(nearBottom);
-    setShowScrollButton(!nearBottom && messages.length > 0);
-  }, [messages.length]);
-
-  // Set up scroll listener
-  useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (scrollElement) {
-      scrollElement.addEventListener('scroll', handleScroll);
-      return () => scrollElement.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
-
   // Update processing state based on loading and messages
   useEffect(() => {
     if (isLoading) {
@@ -369,24 +547,28 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     }
   }, [isLoading, messages]);
 
-  // Handle message interactions
-  const handleCopyMessage = useCallback((content: string) => {
-    onCopyMessage?.(content);
-    // Could show a toast notification here
-  }, [onCopyMessage]);
-
-  const handleRetryMessage = useCallback((messageId: string) => {
-    onRetryMessage?.(messageId);
-  }, [onRetryMessage]);
-
-  const handleEditMessage = useCallback((messageId: string, newContent: string) => {
-    onEditMessage?.(messageId, newContent);
-  }, [onEditMessage]);
+  // Handle message actions
+  const handleMessageAction = useCallback((action: string, messageId: string, data?: any) => {
+    switch (action) {
+      case 'copy':
+        onCopyMessage?.(data);
+        break;
+      case 'retry':
+        onRetryMessage?.(messageId);
+        break;
+      case 'edit':
+        onEditMessage?.(messageId, data);
+        break;
+    }
+  }, [onCopyMessage, onRetryMessage, onEditMessage]);
 
   // Force scroll to bottom
   const forceScrollToBottom = useCallback(() => {
     scrollToBottom(true);
   }, [scrollToBottom]);
+
+  // Performance optimization: Use a threshold to decide between virtual and normal rendering
+  const shouldUseVirtualization = messages.length > 50; // Use virtualization for 50+ messages
 
   return (
     <div 
@@ -400,7 +582,18 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
           <LoadingScreen userName={userName} />
         ) : /* Welcome screen when no messages */ messages.length === 0 ? (
           <WelcomeScreen userName={userName} />
+        ) : shouldUseVirtualization ? (
+          // Use virtualized rendering for large message lists
+          <VirtualizedMessageList
+            messages={messages}
+            userName={userName}
+            containerHeight={containerHeight}
+            scrollTop={scrollTop}
+            onMessageAction={handleMessageAction}
+            messagesEndRef={messagesEndRef}
+          />
         ) : (
+          // Use normal rendering for smaller message lists
           <div className="space-y-5">
             {/* Message list */}
             {messages.map((message) => (
@@ -409,9 +602,9 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
                 message={message}
                 userName={userName}
                 isEditable={message.role === 'user'}
-                onCopy={handleCopyMessage}
-                onRetry={handleRetryMessage}
-                onEdit={handleEditMessage}
+                onCopy={(content) => handleMessageAction('copy', '', content)}
+                onRetry={(messageId) => handleMessageAction('retry', messageId)}
+                onEdit={(messageId, newContent) => handleMessageAction('edit', messageId, newContent)}
               />
             ))}
             
@@ -427,6 +620,20 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
             
             {/* Invisible element to track end of messages */}
             <div ref={messagesEndRef} />
+          </div>
+        )}
+        
+        {/* Processing indicator for virtualized view */}
+        {shouldUseVirtualization && (
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <ProcessingIndicator 
+              processingState={processingState}
+              message={
+                processingState === 'processing' 
+                  ? 'Model is loading - the first response will take a bit...' 
+                  : undefined
+              }
+            />
           </div>
         )}
       </div>
