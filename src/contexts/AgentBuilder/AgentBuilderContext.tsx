@@ -611,30 +611,28 @@ const result = await flow.executeWithCallback(
         }
       });
 
-      if (format === 'clara-sdk') {
-        // Enhanced export format with custom node definitions
-        const customNodeDefinitions: any[] = [];
-        
-        // Include custom node definitions with their execution code
-        for (const nodeType of Array.from(customNodeTypes)) {
-          const customNode = customNodeManager.getCustomNode(nodeType);
-          if (customNode) {
-            customNodeDefinitions.push({
-              id: customNode.id,
-              type: customNode.type,
-              name: customNode.name,
-              description: customNode.description,
-              category: customNode.category,
-              icon: customNode.icon,
-              inputs: customNode.inputs,
-              outputs: customNode.outputs,
-              properties: customNode.properties,
-              executionCode: customNode.executionCode,
-              metadata: customNode.metadata
-            });
-          }
+      // Include custom node definitions with their execution code for ALL formats
+      const customNodeDefinitions: any[] = [];
+      for (const nodeType of Array.from(customNodeTypes)) {
+        const customNode = customNodeManager.getCustomNode(nodeType);
+        if (customNode) {
+          customNodeDefinitions.push({
+            id: customNode.id,
+            type: customNode.type,
+            name: customNode.name,
+            description: customNode.description,
+            category: customNode.category,
+            icon: customNode.icon,
+            inputs: customNode.inputs,
+            outputs: customNode.outputs,
+            properties: customNode.properties,
+            executionCode: customNode.executionCode,
+            metadata: customNode.metadata
+          });
         }
+      }
 
+      if (format === 'clara-sdk') {
         exportData = {
           format: 'clara-sdk',
           version: '1.0.0',
@@ -650,14 +648,18 @@ const result = await flow.executeWithCallback(
               targetNodeId: conn.targetNodeId,
               targetPortId: conn.targetPortId
             })),
-            metadata: {
-              createdAt: currentFlow.createdAt,
-              updatedAt: currentFlow.updatedAt
-            }
+            variables: currentFlow.variables || [],
+            settings: currentFlow.settings,
+            createdAt: currentFlow.createdAt,
+            updatedAt: currentFlow.updatedAt,
+            version: currentFlow.version
           },
           customNodes: customNodeDefinitions,
-          exportedAt: new Date().toISOString(),
-          exportedBy: 'Clara Agent Studio'
+          metadata: {
+            exportedAt: new Date().toISOString(),
+            exportedBy: 'Clara Agent Studio',
+            hasCustomNodes: customNodeDefinitions.length > 0
+          }
         };
         
         filename = `${currentFlow.name.replace(/[^a-zA-Z0-9]/g, '_')}_flow_sdk.json`;
@@ -668,7 +670,7 @@ const result = await flow.executeWithCallback(
         filename = `${currentFlow.name.replace(/[^a-zA-Z0-9]/g, '_')}_flow.js`;
         mimeType = 'text/javascript';
       } else {
-        // Original clara-native format
+        // clara-native format (default) - now includes custom nodes
         exportData = {
           format: 'clara-native',
           version: '1.0.0',
@@ -684,13 +686,18 @@ const result = await flow.executeWithCallback(
               targetNodeId: conn.targetNodeId,
               targetPortId: conn.targetPortId
             })),
-            metadata: {
-              createdAt: currentFlow.createdAt,
-              updatedAt: currentFlow.updatedAt
-            }
+            variables: currentFlow.variables || [],
+            settings: currentFlow.settings,
+            createdAt: currentFlow.createdAt,
+            updatedAt: currentFlow.updatedAt,
+            version: currentFlow.version
           },
-          exportedAt: new Date().toISOString(),
-          exportedBy: 'Clara Agent Studio'
+          customNodes: customNodeDefinitions,
+          metadata: {
+            exportedAt: new Date().toISOString(),
+            exportedBy: 'Clara Agent Studio',
+            hasCustomNodes: customNodeDefinitions.length > 0
+          }
         };
         
         filename = `${currentFlow.name.replace(/[^a-zA-Z0-9]/g, '_')}_flow.json`;
@@ -716,7 +723,7 @@ const result = await flow.executeWithCallback(
         data: { 
           filename, 
           nodeCount: nodes.length, 
-          customNodeCount: format === 'clara-sdk' ? customNodeTypes.size : 0 
+          customNodeCount: customNodeDefinitions.length 
         }
       });
 
@@ -739,22 +746,74 @@ const result = await flow.executeWithCallback(
       
       const { flow, metadata } = importedResult;
       
+      // Handle custom nodes if they were included in the import
+      if (metadata.customNodes && Array.isArray(metadata.customNodes)) {
+        const importedCustomNodes = metadata.customNodes;
+        let registeredCount = 0;
+        let skippedCount = 0;
+        
+        for (const customNodeDef of importedCustomNodes) {
+          try {
+            // Check if custom node already exists
+            const existingNode = customNodeManager.getCustomNode(customNodeDef.type);
+            if (existingNode) {
+              console.log(`Custom node "${customNodeDef.name}" already exists, skipping...`);
+              skippedCount++;
+              continue;
+            }
+            
+            // Register the custom node
+            customNodeManager.registerCustomNode(customNodeDef);
+            registeredCount++;
+            console.log(`Registered custom node: ${customNodeDef.name}`);
+          } catch (error) {
+            console.error(`Failed to register custom node "${customNodeDef.name}":`, error);
+            skippedCount++;
+          }
+        }
+        
+        // Update custom nodes state and sync
+        setCustomNodes(customNodeManager.getCustomNodes());
+        syncCustomNodes();
+        
+        addExecutionLog({
+          level: 'info',
+          message: `Custom nodes processed: ${registeredCount} registered, ${skippedCount} skipped`,
+          data: {
+            registered: registeredCount,
+            skipped: skippedCount,
+            total: importedCustomNodes.length
+          }
+        });
+      }
+      
       // Load the imported workflow
       loadFlow(flow);
       
       // Show success message with migration info
       if (metadata.migrated) {
-        console.log(`Workflow imported and migrated from ${metadata.originalFormat}`);
+        addExecutionLog({
+          level: 'success',
+          message: `Workflow imported and migrated from ${metadata.originalFormat}`,
+          data: { originalFormat: metadata.originalFormat }
+        });
       } else {
-        console.log('Workflow imported successfully');
+        addExecutionLog({
+          level: 'success',
+          message: 'Workflow imported successfully',
+          data: { format: metadata.originalFormat }
+        });
       }
       
       return flow;
     } catch (error) {
-      console.error('Error importing workflow:', error);
+      addExecutionLog({
+        level: 'error',
+        message: `Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
       throw error;
     }
-  }, [loadFlow]);
+  }, [loadFlow, syncCustomNodes, addExecutionLog]);
 
   // Node Management
   const addNode = useCallback((type: string, position: { x: number; y: number }): FlowNode => {

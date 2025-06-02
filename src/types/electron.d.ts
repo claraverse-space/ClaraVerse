@@ -83,6 +83,7 @@ declare global {
       getApiUrl: () => Promise<string | null>;
       regenerateConfig: () => Promise<{ success: boolean; models?: number; error?: string }>;
       debugBinaryPaths: () => Promise<{ success: boolean; debugInfo?: any; error?: string }>;
+      getGPUDiagnostics: () => Promise<{ success: boolean; gpuInfo?: any; modelInfo?: any[]; error?: string }>;
     };
     modelManager: {
       searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;

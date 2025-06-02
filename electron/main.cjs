@@ -367,6 +367,21 @@ function registerLlamaSwapHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Get GPU diagnostics information
+  ipcMain.handle('get-gpu-diagnostics', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      const diagnostics = await llamaSwapService.getGPUDiagnostics();
+      return { success: true, ...diagnostics };
+    } catch (error) {
+      log.error('Error getting GPU diagnostics:', error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 function registerModelManagerHandlers() {

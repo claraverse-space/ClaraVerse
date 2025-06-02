@@ -40,6 +40,7 @@ export interface ImportedWorkflow {
     originalFormat: string;
     sourceVersion: string;
     migrated: boolean;
+    customNodes?: any[];
   };
 }
 
@@ -462,6 +463,7 @@ export class AgentWorkflowStorage {
     try {
       let flow: AgentFlow;
       let migrated = false;
+      let customNodes: any[] = [];
 
       // Detect format if not specified
       if (!sourceFormat) {
@@ -471,6 +473,20 @@ export class AgentWorkflowStorage {
       switch (sourceFormat) {
         case 'clara-native':
           flow = data;
+          break;
+        case 'clara-native-nested':
+          flow = data.flow;
+          // Extract custom nodes if present
+          if (data.customNodes && Array.isArray(data.customNodes)) {
+            customNodes = data.customNodes;
+          }
+          break;
+        case 'clara-sdk':
+          flow = data.flow;
+          // Extract custom nodes if present
+          if (data.customNodes && Array.isArray(data.customNodes)) {
+            customNodes = data.customNodes;
+          }
           break;
         case 'n8n':
           flow = this.convertFromN8NFormat(data);
@@ -499,8 +515,9 @@ export class AgentWorkflowStorage {
           importedAt: new Date().toISOString(),
           originalFormat: sourceFormat,
           sourceVersion: data.version || 'unknown',
-          migrated
-        }
+          migrated,
+          customNodes: customNodes.length > 0 ? customNodes : undefined
+        } as any
       };
 
       return importedWorkflow;
@@ -550,8 +567,19 @@ export class AgentWorkflowStorage {
    */
   private detectFormat(data: any): string {
     if (typeof data === 'string') return 'json';
+    
+    // Check for new clara-sdk format (with nested flow structure)
+    if (data.format === 'clara-sdk' && data.flow) return 'clara-sdk';
+    
+    // Check for clara-native format (with nested flow structure)
+    if (data.format === 'clara-native' && data.flow) return 'clara-native-nested';
+    
+    // Check for direct flow structure (old format)
     if (data.nodes && data.connections && data.id) return 'clara-native';
+    
+    // Check for n8n format
     if (data.nodes && Array.isArray(data.nodes) && data.nodes[0]?.type) return 'n8n';
+    
     return 'unknown';
   }
 

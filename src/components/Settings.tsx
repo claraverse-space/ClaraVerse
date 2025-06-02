@@ -6,9 +6,11 @@ import { useProviders } from '../contexts/ProvidersContext';
 import MCPSettings from './MCPSettings';
 import ModelManager from './ModelManager';
 import ToolBelt from './ToolBelt';
+import GPUDiagnostics from './GPUDiagnostics';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo'>('api');
+  const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
     email: '',
@@ -77,7 +79,7 @@ const Settings = () => {
         setPersonalInfo(savedPersonalInfo);
         setTheme(savedPersonalInfo.theme_preference as ThemeMode);
       }
-      
+
       if (savedApiConfig) {
         setApiConfig({
           ...savedApiConfig,
@@ -135,11 +137,11 @@ const Settings = () => {
   // Update checking functionality - Enhanced with bulletproof error handling
   const checkForUpdates = async () => {
     const electron = window.electron as any;
-    
+
     // Validate electron availability
     if (!electron) {
       console.error('Electron API not available');
-      setUpdateInfo({ 
+      setUpdateInfo({
         error: 'Application API not available. Please restart the application.',
         hasUpdate: false,
         currentVersion: '1.0.0',
@@ -149,10 +151,10 @@ const Settings = () => {
       setCheckingUpdates(false);
       return;
     }
-    
+
     if (!electron.getUpdateInfo) {
       console.error('Update functionality not available');
-      setUpdateInfo({ 
+      setUpdateInfo({
         error: 'Update functionality is not available in this version.',
         hasUpdate: false,
         currentVersion: '1.0.0',
@@ -171,16 +173,16 @@ const Settings = () => {
 
     setCheckingUpdates(true);
     setUpdateInfo(null); // Clear previous results
-    
+
     try {
       console.log('Starting update check...');
       const info = await electron.getUpdateInfo();
-      
+
       // Validate response structure
       if (!info || typeof info !== 'object') {
         throw new Error('Invalid update information received');
       }
-      
+
       // Ensure required fields exist
       const safeInfo = {
         hasUpdate: Boolean(info.hasUpdate),
@@ -194,25 +196,25 @@ const Settings = () => {
         publishedAt: info.publishedAt || null,
         error: info.error || null
       };
-      
+
       setUpdateInfo(safeInfo);
       setLastUpdateCheck(new Date());
-      
+
       console.log('Update check completed successfully:', {
         hasUpdate: safeInfo.hasUpdate,
         currentVersion: safeInfo.currentVersion,
         latestVersion: safeInfo.latestVersion,
         error: safeInfo.error
       });
-      
+
     } catch (error) {
       console.error('Error checking for updates:', error);
-      
+
       // Create safe error response
-      const errorMessage = error instanceof Error 
-        ? error.message 
+      const errorMessage = error instanceof Error
+        ? error.message
         : 'An unexpected error occurred while checking for updates';
-        
+
       const errorInfo: UpdateInfo = {
         hasUpdate: false,
         error: errorMessage,
@@ -220,10 +222,10 @@ const Settings = () => {
         platform: 'unknown',
         isOTASupported: false
       };
-      
+
       setUpdateInfo(errorInfo);
       setLastUpdateCheck(new Date());
-      
+
       // Log additional context for debugging
       console.error('Update check error details:', {
         message: errorMessage,
@@ -237,13 +239,13 @@ const Settings = () => {
 
   const handleManualUpdateCheck = async () => {
     const electron = window.electron as any;
-    
+
     // Validate electron availability
     if (!electron) {
       console.error('Electron API not available');
       return;
     }
-    
+
     if (!electron.checkForUpdates) {
       console.error('Manual update check not available');
       return;
@@ -257,27 +259,27 @@ const Settings = () => {
 
     try {
       console.log('Starting manual update check...');
-      
+
       // Call the manual update check (may show dialogs)
       await electron.checkForUpdates();
-      
+
       console.log('Manual update check initiated successfully');
-      
+
       // Refresh update info after manual check with delay
       setTimeout(() => {
         if (!checkingUpdates) { // Only refresh if not already checking
           checkForUpdates();
         }
       }, 1500);
-      
+
     } catch (error) {
       console.error('Error during manual update check:', error);
-      
+
       // Show user-friendly error
-      const errorMessage = error instanceof Error 
-        ? error.message 
+      const errorMessage = error instanceof Error
+        ? error.message
         : 'Failed to check for updates manually';
-        
+
       setUpdateInfo((prev: UpdateInfo | null) => ({
         hasUpdate: false,
         error: errorMessage,
@@ -294,7 +296,7 @@ const Settings = () => {
         console.warn('No release URL available');
         return;
       }
-      
+
       // Validate URL format
       try {
         new URL(updateInfo.releaseUrl);
@@ -302,10 +304,10 @@ const Settings = () => {
         console.error('Invalid release URL:', updateInfo.releaseUrl);
         return;
       }
-      
+
       console.log('Opening release notes:', updateInfo.releaseUrl);
       window.open(updateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
-      
+
     } catch (error) {
       console.error('Error opening release notes:', error);
     }
@@ -317,7 +319,7 @@ const Settings = () => {
         console.warn('No download URL available');
         return;
       }
-      
+
       // Validate URL format
       try {
         new URL(updateInfo.downloadUrl);
@@ -325,10 +327,10 @@ const Settings = () => {
         console.error('Invalid download URL:', updateInfo.downloadUrl);
         return;
       }
-      
+
       console.log('Opening download URL:', updateInfo.downloadUrl);
       window.open(updateInfo.downloadUrl, '_blank', 'noopener,noreferrer');
-      
+
     } catch (error) {
       console.error('Error opening download URL:', error);
     }
@@ -338,7 +340,7 @@ const Settings = () => {
     if (!platform || typeof platform !== 'string') {
       return 'Unknown Platform';
     }
-    
+
     switch (platform.toLowerCase()) {
       case 'darwin': return 'macOS';
       case 'win32': return 'Windows';
@@ -439,14 +441,26 @@ const Settings = () => {
   const TabItem = ({ id, label, icon, isActive }: { id: typeof activeTab, label: string, icon: React.ReactNode, isActive: boolean }) => (
     <button
       onClick={() => setActiveTab(id)}
-      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${
-        isActive 
-          ? 'bg-sakura-500 text-white' 
+      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${isActive
+          ? 'bg-sakura-500 text-white'
           : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
-      }`}
+        }`}
     >
       {icon}
       <span className="font-medium">{label}</span>
+    </button>
+  );
+
+  // Model sub-tab component
+  const ModelTabItem = ({ id, label, isActive }: { id: typeof activeModelTab, label: string, isActive: boolean }) => (
+    <button
+      onClick={() => setActiveModelTab(id)}
+      className={`px-4 py-2 rounded-lg transition-colors font-medium ${isActive
+          ? 'bg-sakura-500 text-white'
+          : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
+        }`}
+    >
+      {label}
     </button>
   );
 
@@ -461,7 +475,7 @@ const Settings = () => {
         isEnabled: newProviderForm.isEnabled,
         isPrimary: false
       });
-      
+
       setShowAddProviderModal(false);
       setNewProviderForm({
         name: '',
@@ -494,7 +508,7 @@ const Settings = () => {
 
   const handleUpdateProvider = async () => {
     if (!editingProvider) return;
-    
+
     try {
       await updateProvider(editingProvider.id, {
         name: newProviderForm.name,
@@ -503,7 +517,7 @@ const Settings = () => {
         apiKey: newProviderForm.apiKey,
         isEnabled: newProviderForm.isEnabled
       });
-      
+
       setShowAddProviderModal(false);
       setEditingProvider(null);
       setNewProviderForm({
@@ -530,7 +544,7 @@ const Settings = () => {
   const testOllamaConnection = async (providerId: string, baseUrl: string) => {
     setTestingProvider(providerId);
     setTestResults(prev => ({ ...prev, [providerId]: null }));
-    
+
     try {
       // Remove /v1 from baseUrl for the tags endpoint since Ollama's tags endpoint is at /api/tags, not /v1/api/tags
       const testUrl = baseUrl.replace('/v1', '');
@@ -545,7 +559,7 @@ const Settings = () => {
       console.error('Ollama connection test failed:', error);
     } finally {
       setTestingProvider(null);
-      
+
       // Clear test results after 3 seconds
       setTimeout(() => {
         setTestResults(prev => ({ ...prev, [providerId]: null }));
@@ -642,7 +656,7 @@ const Settings = () => {
     <>
       {/* Wallpaper */}
       {wallpaperUrl && (
-        <div 
+        <div
           className="fixed top-0 left-0 right-0 bottom-0 z-0"
           style={{
             backgroundImage: `url(${wallpaperUrl})`,
@@ -654,7 +668,7 @@ const Settings = () => {
           }}
         />
       )}
-      
+
       <div className="flex max-w-7xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
         {/* Sidebar with tabs */}
         <div className="w-64 shrink-0">
@@ -663,76 +677,77 @@ const Settings = () => {
               <SettingsIcon className="w-5 h-5 text-sakura-500" />
               Settings
             </h2>
-            
-            <TabItem 
-              id="api" 
-              label="AI Providers" 
-              icon={<Globe className="w-5 h-5" />} 
-              isActive={activeTab === 'api'} 
+
+            <TabItem
+              id="api"
+              label="AI Providers"
+              icon={<Globe className="w-5 h-5" />}
+              isActive={activeTab === 'api'}
             />
 
-            <TabItem 
-              id="models" 
-              label="Model Manager" 
-              icon={<HardDrive className="w-5 h-5" />} 
-              isActive={activeTab === 'models'} 
+            <TabItem
+              id="models"
+              label="Models"
+              icon={<HardDrive className="w-5 h-5" />}
+              isActive={activeTab === 'models'}
             />
 
-            <TabItem 
-              id="mcp" 
-              label="MCP" 
-              icon={<Server className="w-5 h-5" />} 
-              isActive={activeTab === 'mcp'} 
-            />
-            
-            <TabItem 
-              id="toolbelt" 
-              label="Tool Belt" 
-              icon={<Wrench className="w-5 h-5" />} 
-              isActive={activeTab === 'toolbelt'} 
+            <TabItem
+              id="mcp"
+              label="MCP"
+              icon={<Server className="w-5 h-5" />}
+              isActive={activeTab === 'mcp'}
             />
 
-            <TabItem 
-              id="updates" 
-              label="Updates" 
-              icon={<Download className="w-5 h-5" />} 
-              isActive={activeTab === 'updates'} 
+            <TabItem
+              id="toolbelt"
+              label="Tool Belt"
+              icon={<Wrench className="w-5 h-5" />}
+              isActive={activeTab === 'toolbelt'}
             />
 
-            <TabItem 
-              id="preferences" 
-              label="Preferences" 
-              icon={<SettingsIcon className="w-5 h-5" />} 
-              isActive={activeTab === 'preferences'} 
+
+
+            <TabItem
+              id="preferences"
+              label="Preferences"
+              icon={<SettingsIcon className="w-5 h-5" />}
+              isActive={activeTab === 'preferences'}
             />
 
-            <TabItem 
-              id="personal" 
-              label="Personal Information" 
-              icon={<User className="w-5 h-5" />} 
-              isActive={activeTab === 'personal'} 
+            <TabItem
+              id="personal"
+              label="Personal Information"
+              icon={<User className="w-5 h-5" />}
+              isActive={activeTab === 'personal'}
             />
-            
-            <TabItem 
+
+            <TabItem
+              id="updates"
+              label="Updates"
+              icon={<Download className="w-5 h-5" />}
+              isActive={activeTab === 'updates'}
+            />
+
+            {/* <TabItem 
               id="sdk-demo" 
               label="SDK Code Export Demo" 
               icon={<Zap className="w-5 h-5" />} 
               isActive={activeTab === 'sdk-demo'} 
-            />
+            /> */}
 
-            
 
-            
+
+
             {/* Save Status - Only visible when saving/saved/error */}
             {(isSaving || saveStatus !== 'idle') && (
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <span className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white transition-colors w-full ${
-                  saveStatus === 'success'
-                  ? 'bg-green-500'
-                  : saveStatus === 'error'
-                  ? 'bg-red-500'
-                  : 'bg-gray-400'
-                }`}>
+                <span className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white transition-colors w-full ${saveStatus === 'success'
+                    ? 'bg-green-500'
+                    : saveStatus === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-400'
+                  }`}>
                   <Save className="w-4 h-4" />
                   {saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Error!' : 'Saving...'}
                 </span>
@@ -742,9 +757,8 @@ const Settings = () => {
         </div>
 
         {/* Content area */}
-        <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${
-          activeTab === 'models' ? '' : 'max-w-4xl'
-        }`}>
+        <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${activeTab === 'models' ? '' : 'max-w-4xl'
+          }`}>
           {/* Personal Information Tab */}
           {activeTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">
@@ -871,45 +885,41 @@ const Settings = () => {
                       return (
                         <div
                           key={provider.id}
-                          className={`group relative p-5 rounded-xl border transition-all duration-300 ${
-                            provider.isPrimary 
-                              ? 'border-sakura-200 dark:border-sakura-700 bg-gradient-to-br from-sakura-50/50 to-white/50 dark:from-sakura-900/20 dark:to-gray-800/50 shadow-lg shadow-sakura-100/50 dark:shadow-sakura-900/20' 
+                          className={`group relative p-5 rounded-xl border transition-all duration-300 ${provider.isPrimary
+                              ? 'border-sakura-200 dark:border-sakura-700 bg-gradient-to-br from-sakura-50/50 to-white/50 dark:from-sakura-900/20 dark:to-gray-800/50 shadow-lg shadow-sakura-100/50 dark:shadow-sakura-900/20'
                               : 'border-gray-200/60 dark:border-gray-700/60 bg-white/40 dark:bg-gray-800/40 hover:border-gray-300/80 dark:hover:border-gray-600/80'
-                          } hover:shadow-lg hover:shadow-gray-100/50 dark:hover:shadow-gray-900/20 backdrop-blur-sm`}
+                            } hover:shadow-lg hover:shadow-gray-100/50 dark:hover:shadow-gray-900/20 backdrop-blur-sm`}
                         >
                           {/* Primary indicator - subtle glow */}
                           {provider.isPrimary && (
                             <div className="absolute -inset-0.5 bg-gradient-to-r from-sakura-400/20 to-sakura-600/20 rounded-xl blur-sm -z-10"></div>
                           )}
-                          
+
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4 flex-1">
-                              <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                                provider.isEnabled 
+                              <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-300 ${provider.isEnabled
                                   ? provider.isPrimary
-                                    ? 'bg-sakura-100/80 dark:bg-sakura-900/40 border-2 border-sakura-200 dark:border-sakura-700' 
+                                    ? 'bg-sakura-100/80 dark:bg-sakura-900/40 border-2 border-sakura-200 dark:border-sakura-700'
                                     : 'bg-sakura-50/60 dark:bg-sakura-900/20 border border-sakura-200/50 dark:border-sakura-700/50'
                                   : 'bg-gray-100/80 dark:bg-gray-700/80 border border-gray-200 dark:border-gray-600'
-                              }`}>
-                                <ProviderIcon className={`w-7 h-7 ${
-                                  provider.isEnabled 
-                                    ? 'text-sakura-600 dark:text-sakura-400' 
+                                }`}>
+                                <ProviderIcon className={`w-7 h-7 ${provider.isEnabled
+                                    ? 'text-sakura-600 dark:text-sakura-400'
                                     : 'text-gray-500 dark:text-gray-400'
-                                }`} />
+                                  }`} />
                                 {provider.isPrimary && (
                                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
                                     <Check className="w-3 h-3 text-white" />
                                   </div>
                                 )}
                               </div>
-                              
+
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3 mb-1">
-                                  <h4 className={`font-semibold transition-colors ${
-                                    provider.isPrimary 
-                                      ? 'text-gray-900 dark:text-white' 
+                                  <h4 className={`font-semibold transition-colors ${provider.isPrimary
+                                      ? 'text-gray-900 dark:text-white'
                                       : 'text-gray-800 dark:text-gray-200'
-                                  }`}>
+                                    }`}>
                                     {provider.name}
                                   </h4>
                                   {provider.isPrimary && (
@@ -931,22 +941,20 @@ const Settings = () => {
                                 </p>
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-4 ml-4">
                               {/* Elegant Default Toggle */}
                               <div className="flex flex-col items-center gap-1">
                                 <button
                                   onClick={() => handleSetPrimary(provider.id, !provider.isPrimary)}
                                   disabled={!provider.isEnabled}
-                                  className={`relative w-12 h-6 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-sakura-300 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    provider.isPrimary
+                                  className={`relative w-12 h-6 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-sakura-300 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed ${provider.isPrimary
                                       ? 'bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-lg shadow-emerald-500/25'
                                       : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                  }`}
+                                    }`}
                                 >
-                                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
-                                    provider.isPrimary ? 'translate-x-6' : 'translate-x-0'
-                                  }`}>
+                                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${provider.isPrimary ? 'translate-x-6' : 'translate-x-0'
+                                    }`}>
                                     {provider.isPrimary && (
                                       <Check className="w-3 h-3 text-emerald-500" />
                                     )}
@@ -956,19 +964,18 @@ const Settings = () => {
                                   Default
                                 </span>
                               </div>
-                              
+
                               {/* Test Button for Ollama */}
                               {provider.type === 'ollama' && provider.baseUrl && (
                                 <button
                                   onClick={() => testOllamaConnection(provider.id, provider.baseUrl!)}
                                   disabled={testingProvider === provider.id}
-                                  className={`px-3 py-2 text-sm rounded-lg transition-all duration-200 disabled:opacity-50 flex items-center gap-2 font-medium ${
-                                    testResults[provider.id] === 'success' 
+                                  className={`px-3 py-2 text-sm rounded-lg transition-all duration-200 disabled:opacity-50 flex items-center gap-2 font-medium ${testResults[provider.id] === 'success'
                                       ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/50 shadow-sm'
                                       : testResults[provider.id] === 'error'
-                                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700/50 shadow-sm'
-                                      : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700/50'
-                                  }`}
+                                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700/50 shadow-sm'
+                                        : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700/50'
+                                    }`}
                                 >
                                   {testingProvider === provider.id ? (
                                     <>
@@ -993,7 +1000,7 @@ const Settings = () => {
                                   )}
                                 </button>
                               )}
-                              
+
                               <button
                                 onClick={() => handleEditProvider(provider)}
                                 className="p-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-100/50 dark:hover:bg-gray-700/50"
@@ -1001,7 +1008,7 @@ const Settings = () => {
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              
+
                               {provider.type !== 'claras-pocket' && (
                                 <button
                                   onClick={() => setShowDeleteConfirm(provider.id)}
@@ -1093,7 +1100,62 @@ const Settings = () => {
 
           {/* Model Manager Tab */}
           {activeTab === 'models' && (
-            <ModelManager />
+            <div className="space-y-6">
+              {/* Model Manager Header with Sub-tabs */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <HardDrive className="w-6 h-6 text-sakura-500" />
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                        Model Management
+                      </h2>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Manage local models and monitor GPU performance
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-tabs */}
+                <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 -mb-6 pb-4">
+                  <ModelTabItem
+                    id="models"
+                    label="Models"
+                    isActive={activeModelTab === 'models'}
+                  />
+                  <ModelTabItem
+                    id="gpu-diagnostics"
+                    label="GPU Acceleration Diagnostics"
+                    isActive={activeModelTab === 'gpu-diagnostics'}
+                  />
+                </div>
+              </div>
+
+              {/* Model Tab Content */}
+              {activeModelTab === 'models' && (
+                <ModelManager />
+              )}
+
+              {/* GPU Diagnostics Tab Content */}
+              {activeModelTab === 'gpu-diagnostics' && (
+                <div className="glassmorphic rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Zap className="w-6 h-6 text-amber-500" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        GPU Acceleration Diagnostics
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Monitor GPU detection and layer allocation for optimal performance
+                      </p>
+                    </div>
+                  </div>
+
+                  <GPUDiagnostics />
+                </div>
+              )}
+            </div>
           )}
 
           {/* MCP Tab */}
@@ -1129,7 +1191,7 @@ const Settings = () => {
                 <p className="text-purple-700 dark:text-purple-300 mb-4">
                   Transform your Clara flows into ready-to-use JavaScript modules that can be directly integrated into any application using the Clara Flow SDK.
                 </p>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4">
                     <h4 className="font-semibold text-gray-900 dark:text-white mb-2">✨ What You Get</h4>
@@ -1141,7 +1203,7 @@ const Settings = () => {
                       <li>• TypeScript-friendly</li>
                     </ul>
                   </div>
-                  
+
                   <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4">
                     <h4 className="font-semibold text-gray-900 dark:text-white mb-2">🎯 Use Cases</h4>
                     <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
@@ -1162,7 +1224,7 @@ const Settings = () => {
                 </h3>
                 <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4 text-sm font-mono overflow-x-auto">
                   <pre className="text-green-400">
-{`// Generated by Clara Agent Studio
+                    {`// Generated by Clara Agent Studio
 import { ClaraFlowRunner } from 'clara-flow-sdk';
 
 export class MyAwesomeFlow {
@@ -1227,7 +1289,7 @@ export default MyAwesomeFlow;`}
                   <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Node.js Server</h4>
                   <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-3 text-xs font-mono overflow-x-auto">
                     <pre className="text-yellow-400">
-{`import { myFlow } from './my-flow.js';
+                      {`import { myFlow } from './my-flow.js';
 
 app.post('/process', async (req, res) => {
   const result = await myFlow.execute({
@@ -1243,7 +1305,7 @@ app.post('/process', async (req, res) => {
                   <h4 className="font-semibold text-gray-900 dark:text-white mb-3">React Component</h4>
                   <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-3 text-xs font-mono overflow-x-auto">
                     <pre className="text-cyan-400">
-{`import { myFlow } from './my-flow.js';
+                      {`import { myFlow } from './my-flow.js';
 
 const ProcessButton = () => {
   const handleClick = async () => {
@@ -1269,15 +1331,15 @@ const ProcessButton = () => {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-green-800 dark:text-green-200">
                   <div>
-                    <strong>🚀 Zero Dependencies</strong><br/>
+                    <strong>🚀 Zero Dependencies</strong><br />
                     Everything embedded in the generated code
                   </div>
                   <div>
-                    <strong>⚡ High Performance</strong><br/>
+                    <strong>⚡ High Performance</strong><br />
                     No JSON parsing or flow loading overhead
                   </div>
                   <div>
-                    <strong>🔧 Easy Integration</strong><br/>
+                    <strong>🔧 Easy Integration</strong><br />
                     Drop into any JavaScript project
                   </div>
                 </div>
@@ -1369,7 +1431,7 @@ const ProcessButton = () => {
                           <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
                             New Version Available: Clara {updateInfo.latestVersion || 'Unknown'}
                           </h4>
-                          
+
                           {/* Platform-specific messaging */}
                           {updateInfo.isOTASupported ? (
                             <div className="space-y-3">
@@ -1398,7 +1460,7 @@ const ProcessButton = () => {
                           ) : (
                             <div className="space-y-3">
                               <p className="text-sm text-blue-700 dark:text-blue-300">
-                                🔒 On {getPlatformName(updateInfo.platform)}, updates need to be installed manually for security reasons. 
+                                🔒 On {getPlatformName(updateInfo.platform)}, updates need to be installed manually for security reasons.
                                 Click "Download Now" to get the latest version.
                               </p>
                               <div className="flex gap-3">
@@ -1429,8 +1491,8 @@ const ProcessButton = () => {
                               </h5>
                               <div className="text-sm text-blue-700 dark:text-blue-300 bg-blue-50/50 dark:bg-blue-950/30 rounded p-3 max-h-32 overflow-y-auto">
                                 <pre className="whitespace-pre-wrap font-sans">
-                                  {updateInfo.releaseNotes.length > 500 
-                                    ? updateInfo.releaseNotes.substring(0, 500) + '...' 
+                                  {updateInfo.releaseNotes.length > 500
+                                    ? updateInfo.releaseNotes.substring(0, 500) + '...'
                                     : updateInfo.releaseNotes}
                                 </pre>
                               </div>
@@ -1519,7 +1581,7 @@ const ProcessButton = () => {
                 </p>
               </div>
             </div>
-            
+
             <div className="mb-6">
               <p className="text-gray-700 dark:text-gray-300">
                 Are you sure you want to delete this provider? All associated configurations will be permanently removed.

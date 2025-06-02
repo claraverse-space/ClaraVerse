@@ -101,7 +101,16 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     updateCanvas,
     selectNodes,
     clearSelection,
+    duplicateNode,
+    addExecutionLog,
+    saveFlow,
   } = useAgentBuilder();
+
+  // Clipboard state for copy-paste functionality
+  const [clipboard, setClipboard] = useState<{
+    nodeData: any;
+    timestamp: number;
+  } | null>(null);
 
   // Create dynamic node types that include custom nodes - use useState for immediate initialization
   const [nodeTypes, setNodeTypes] = useState<NodeTypes>(() => {
@@ -269,9 +278,12 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
           .map(c => c.id);
         
         selectNodes(allSelectedNodes);
+      } else if (change.type === 'remove') {
+        // Handle node deletion (triggered by Delete/Backspace keys)
+        deleteNode(change.id);
       }
     });
-  }, [onNodesChange, updateNode, selectNodes]);
+  }, [onNodesChange, updateNode, selectNodes, deleteNode]);
 
   // Handle ReactFlow edge changes and sync back to context
   const handleEdgesChange: OnEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -345,6 +357,184 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     console.log('ReactFlow nodeTypes being passed:', Object.keys(nodeTypes));
   }, [nodeTypes]);
 
+  // Copy selected node to clipboard
+  const handleCopyNode = useCallback(() => {
+    if (canvas.selection.nodeIds.length !== 1) {
+      addExecutionLog({
+        level: 'warning',
+        message: 'Please select exactly one node to copy'
+      });
+      return;
+    }
+
+    const selectedNodeId = canvas.selection.nodeIds[0];
+    const nodeToCopy = nodes.find(node => node.id === selectedNodeId);
+    
+    if (!nodeToCopy) {
+      addExecutionLog({
+        level: 'error',
+        message: 'Selected node not found'
+      });
+      return;
+    }
+
+    // Store node data in clipboard (excluding ID and position)
+    const { id, position, ...nodeDataToCopy } = nodeToCopy;
+    setClipboard({
+      nodeData: {
+        ...nodeDataToCopy,
+        // Store original position as reference for relative pasting
+        originalPosition: position
+      },
+      timestamp: Date.now()
+    });
+
+    addExecutionLog({
+      level: 'success',
+      message: `Node "${nodeToCopy.name}" copied to clipboard`,
+      data: { nodeType: nodeToCopy.type }
+    });
+  }, [canvas.selection.nodeIds, nodes, addExecutionLog]);
+
+  // Paste node from clipboard
+  const handlePasteNode = useCallback((event: KeyboardEvent) => {
+    if (!clipboard || !clipboard.nodeData) return;
+
+    // Check if clipboard data is not too old (5 minutes)
+    const clipboardAge = Date.now() - clipboard.timestamp;
+    if (clipboardAge > 5 * 60 * 1000) {
+      setClipboard(null);
+      addExecutionLog({
+        level: 'warning',
+        message: 'Clipboard data expired'
+      });
+      return;
+    }
+
+    try {
+      const { nodeData } = clipboard;
+      const { originalPosition, ...restNodeData } = nodeData;
+
+      // Calculate new position - offset from original position
+      const offsetX = 50;
+      const offsetY = 50;
+      const newPosition = {
+        x: originalPosition.x + offsetX,
+        y: originalPosition.y + offsetY
+      };
+
+      // Generate new unique ID
+      const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Create new node with copied data
+      const newNode = {
+        ...restNodeData,
+        id: newId,
+        name: `${restNodeData.name} (Copy)`,
+        position: newPosition,
+        // Ensure inputs and outputs have clean IDs (no references to original node)
+        inputs: restNodeData.inputs.map((input: any) => ({ ...input })),
+        outputs: restNodeData.outputs.map((output: any) => ({ ...output }))
+      };
+
+      // Add the new node using the context function (this will handle validation and state updates)
+      // We'll reconstruct it by using addNode with the type and then updating it
+      const addedNode = addNode(restNodeData.type, newPosition);
+      
+      // Update the added node with the copied data (excluding the auto-generated parts)
+      updateNode(addedNode.id, {
+        name: newNode.name,
+        data: restNodeData.data || {}
+      });
+
+      // Select the newly pasted node
+      selectNodes([addedNode.id]);
+
+      addExecutionLog({
+        level: 'success',
+        message: `Node "${newNode.name}" pasted successfully`,
+        data: { nodeType: restNodeData.type, newId: addedNode.id }
+      });
+
+      // Update clipboard position for next paste (cascade effect)
+      setClipboard(prev => prev ? {
+        ...prev,
+        nodeData: {
+          ...prev.nodeData,
+          originalPosition: newPosition
+        }
+      } : null);
+
+    } catch (error) {
+      addExecutionLog({
+        level: 'error',
+        message: `Failed to paste node: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }, [clipboard, addNode, updateNode, selectNodes, addExecutionLog]);
+
+  // Handle save shortcut
+  const handleSave = useCallback(async () => {
+    try {
+      await saveFlow();
+      addExecutionLog({
+        level: 'success',
+        message: 'Workflow saved successfully'
+      });
+    } catch (error) {
+      addExecutionLog({
+        level: 'error',
+        message: `Failed to save workflow: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  }, [saveFlow, addExecutionLog]);
+
+  // Handle keyboard events for node deletion and copy-paste
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Handle save (Ctrl+S or Cmd+S)
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        handleSave();
+        return;
+      }
+      
+      // Check if Delete or Backspace was pressed and there are selected nodes
+      if ((event.key === 'Delete' || event.key === 'Backspace') && canvas.selection.nodeIds.length > 0) {
+        // Prevent default behavior (like navigating back in browser)
+        event.preventDefault();
+        
+        // Delete all selected nodes
+        canvas.selection.nodeIds.forEach(nodeId => {
+          deleteNode(nodeId);
+        });
+        
+        // Clear selection after deletion
+        clearSelection();
+      }
+      
+      // Handle copy (Ctrl+C or Cmd+C)
+      else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && canvas.selection.nodeIds.length === 1) {
+        event.preventDefault();
+        handleCopyNode();
+      }
+      
+      // Handle paste (Ctrl+V or Cmd+V)
+      else if ((event.ctrlKey || event.metaKey) && event.key === 'v' && clipboard) {
+        event.preventDefault();
+        handlePasteNode(event);
+      }
+    };
+
+    // Add event listener to document to catch keyboard events
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [canvas.selection.nodeIds, deleteNode, clearSelection, clipboard, handleCopyNode, handlePasteNode, handleSave]);
+
   // Category-based colors
   const getCategoryColor = (node: Node): string => {
     const nodeType = node.type;
@@ -366,7 +556,7 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
   };
 
   return (
-    <div className={`w-full h-full ${className}`}>
+    <div className={`w-full h-full ${className} focus:outline-none focus:ring-2 focus:ring-sakura-500/20 focus:ring-inset`} tabIndex={0} onMouseDown={(e) => e.currentTarget.focus()}>
       <ReactFlow
         nodes={reactFlowNodes}
         edges={reactFlowEdges}
