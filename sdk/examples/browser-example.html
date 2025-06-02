@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clara Flow SDK - Browser Example</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      color: #4a5568;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .section {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .input-group {
+      margin: 15px 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    textarea {
+      height: 100px;
+      resize: vertical;
+      font-family: 'Courier New', monospace;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .result {
+      background: #edf2f7;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .logs {
+      background: #1a202c;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-weight: 600;
+    }
+
+    .status.success {
+      background: #c6f6d5;
+      color: #2f855a;
+      border: 1px solid #9ae6b4;
+    }
+
+    .status.error {
+      background: #fed7d7;
+      color: #c53030;
+      border: 1px solid #fc8181;
+    }
+
+    .status.info {
+      background: #bee3f8;
+      color: #2b6cb0;
+      border: 1px solid #90cdf4;
+    }
+
+    .file-input {
+      position: relative;
+      display: inline-block;
+      cursor: pointer;
+      background: #4299e1;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .file-input input[type=file] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.3s;
+    }
+
+    .tab.active {
+      border-bottom-color: #667eea;
+      color: #667eea;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌟 Clara Flow SDK - Browser Example</h1>
+    
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('simple')">Simple Example</div>
+      <div class="tab" onclick="showTab('upload')">Upload Flow</div>
+      <div class="tab" onclick="showTab('custom')">Custom Flow</div>
+      <div class="tab" onclick="showTab('validator')">Flow Validator</div>
+    </div>
+
+    <!-- Simple Example Tab -->
+    <div id="simple-tab" class="tab-content active">
+      <div class="section">
+        <h3>🚀 Quick Start Example</h3>
+        <p>This example demonstrates running a simple text processing flow with a custom node.</p>
+        
+        <div class="input-group">
+          <label for="input-text">Input Text:</label>
+          <input type="text" id="input-text" value="Hello, Clara Flow SDK!" placeholder="Enter text to process">
+        </div>
+        
+        <div class="input-group">
+          <label for="operation">Text Operation:</label>
+          <select id="operation">
+            <option value="uppercase">Uppercase</option>
+            <option value="lowercase">Lowercase</option>
+            <option value="reverse">Reverse</option>
+            <option value="length">Get Length</option>
+          </select>
+        </div>
+        
+        <button onclick="runSimpleExample()">▶️ Run Example</button>
+        <button onclick="clearResults()">🗑️ Clear Results</button>
+        
+        <div id="simple-status"></div>
+        <div id="simple-result"></div>
+        <div id="simple-logs"></div>
+      </div>
+    </div>
+
+    <!-- Upload Flow Tab -->
+    <div id="upload-tab" class="tab-content">
+      <div class="section">
+        <h3>📁 Upload and Run Flow</h3>
+        <p>Upload a flow exported from Clara Agent Studio and run it with custom inputs.</p>
+        
+        <div class="input-group">
+          <label class="file-input">
+            📤 Choose Flow File
+            <input type="file" id="flow-file" accept=".json" onchange="loadFlowFile(this)">
+          </label>
+        </div>
+        
+        <div id="flow-info"></div>
+        
+        <div class="input-group">
+          <label for="flow-inputs">Flow Inputs (JSON):</label>
+          <textarea id="flow-inputs" placeholder='{"input_name": "input_value"}'>{}</textarea>
+        </div>
+        
+        <button onclick="runUploadedFlow()" id="run-uploaded-btn" disabled>▶️ Run Flow</button>
+        
+        <div id="upload-status"></div>
+        <div id="upload-result"></div>
+        <div id="upload-logs"></div>
+      </div>
+    </div>
+
+    <!-- Custom Flow Tab -->
+    <div id="custom-tab" class="tab-content">
+      <div class="section">
+        <h3>🛠️ Create Custom Flow</h3>
+        <p>Build and test a custom flow with your own nodes and logic.</p>
+        
+        <div class="input-group">
+          <label for="custom-flow">Flow Definition (JSON):</label>
+          <textarea id="custom-flow" style="height: 300px;" placeholder="Paste your flow JSON here"></textarea>
+        </div>
+        
+        <div class="input-group">
+          <label for="custom-inputs">Flow Inputs (JSON):</label>
+          <textarea id="custom-inputs" placeholder='{"input_name": "input_value"}'>{}</textarea>
+        </div>
+        
+        <button onclick="loadSampleFlow()">📝 Load Sample Flow</button>
+        <button onclick="runCustomFlow()">▶️ Run Custom Flow</button>
+        
+        <div id="custom-status"></div>
+        <div id="custom-result"></div>
+        <div id="custom-logs"></div>
+      </div>
+    </div>
+
+    <!-- Flow Validator Tab -->
+    <div id="validator-tab" class="tab-content">
+      <div class="section">
+        <h3>🔍 Flow Validator</h3>
+        <p>Validate flow structure and check for potential issues before execution.</p>
+        
+        <div class="input-group">
+          <label for="validate-flow">Flow to Validate (JSON):</label>
+          <textarea id="validate-flow" style="height: 200px;" placeholder="Paste flow JSON to validate"></textarea>
+        </div>
+        
+        <button onclick="validateFlow()">🔍 Validate Flow</button>
+        <button onclick="loadSampleForValidation()">📝 Load Sample</button>
+        
+        <div id="validation-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Include the Clara Flow SDK -->
+  <script src="../dist/clara-flow-sdk.umd.js"></script>
+  
+  <script>
+    // Initialize SDK
+    const runner = new ClaraFlowSDK.ClaraFlowRunner({
+      enableLogging: true,
+      logLevel: 'info',
+      timeout: 30000
+    });
+
+    let loadedFlow = null;
+
+    // Tab switching
+    function showTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      // Show selected tab
+      document.getElementById(tabName + '-tab').classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    // Helper functions
+    function showStatus(elementId, message, type = 'info') {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<div class="status ${type}">${message}</div>`;
+    }
+
+    function showResult(elementId, data) {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<div class="result"><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+    }
+
+    function showLogs(elementId) {
+      const logs = runner.getLogs();
+      const element = document.getElementById(elementId);
+      const logText = logs.map(log => 
+        `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`
+      ).join('\n');
+      element.innerHTML = `<div class="logs">${logText}</div>`;
+    }
+
+    function clearResults() {
+      ['simple-status', 'simple-result', 'simple-logs',
+       'upload-status', 'upload-result', 'upload-logs',
+       'custom-status', 'custom-result', 'custom-logs'].forEach(id => {
+        document.getElementById(id).innerHTML = '';
+      });
+      runner.clearLogs();
+    }
+
+    // Simple example
+    async function runSimpleExample() {
+      try {
+        showStatus('simple-status', '🔄 Running simple example...', 'info');
+        
+        const inputText = document.getElementById('input-text').value;
+        const operation = document.getElementById('operation').value;
+
+        const sampleFlow = {
+          version: '1.0.0',
+          name: 'Text Processing Flow',
+          description: 'A simple flow that processes text input',
+          exportFormat: 'clara-sdk',
+          nodes: [
+            {
+              id: 'input-1',
+              type: 'input',
+              name: 'Text Input',
+              data: { inputType: 'string', defaultValue: inputText },
+              position: { x: 100, y: 100 }
+            },
+            {
+              id: 'custom-1',
+              type: 'text-processor',
+              name: 'Text Processor',
+              data: { operation: operation },
+              position: { x: 300, y: 100 }
+            },
+            {
+              id: 'output-1',
+              type: 'output',
+              name: 'Result Output',
+              data: {},
+              position: { x: 500, y: 100 }
+            }
+          ],
+          connections: [
+            {
+              id: 'conn-1',
+              sourceNodeId: 'input-1',
+              sourcePortId: 'output',
+              targetNodeId: 'custom-1',
+              targetPortId: 'input'
+            },
+            {
+              id: 'conn-2',
+              sourceNodeId: 'custom-1',
+              sourcePortId: 'output',
+              targetNodeId: 'output-1',
+              targetPortId: 'input'
+            }
+          ],
+          customNodes: [{
+            type: 'text-processor',
+            name: 'Text Processor',
+            description: 'Processes text with various operations',
+            inputs: [{ name: 'input', type: 'string', required: true }],
+            outputs: [{ name: 'output', type: 'string' }],
+            properties: [{ name: 'operation', type: 'string', defaultValue: 'uppercase' }],
+            executionCode: `
+              async function execute(inputs, properties, context) {
+                const inputText = inputs.input || '';
+                const operation = properties.operation || 'uppercase';
+                
+                context.log('Processing text: ' + inputText);
+                context.log('Operation: ' + operation);
+                
+                let result;
+                switch (operation.toLowerCase()) {
+                  case 'uppercase':
+                    result = inputText.toUpperCase();
+                    break;
+                  case 'lowercase':
+                    result = inputText.toLowerCase();
+                    break;
+                  case 'reverse':
+                    result = inputText.split('').reverse().join('');
+                    break;
+                  case 'length':
+                    result = inputText.length.toString();
+                    break;
+                  default:
+                    result = inputText;
+                }
+                
+                context.log('Result: ' + result);
+                return { output: result };
+              }
+            `
+          }]
+        };
+
+        const result = await runner.executeFlow(sampleFlow, {
+          'Text Input': inputText
+        });
+
+        showStatus('simple-status', '✅ Flow executed successfully!', 'success');
+        showResult('simple-result', result);
+        showLogs('simple-logs');
+
+      } catch (error) {
+        showStatus('simple-status', `❌ Error: ${error.message}`, 'error');
+        console.error('Simple example error:', error);
+      }
+    }
+
+    // File upload
+    function loadFlowFile(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          loadedFlow = JSON.parse(e.target.result);
+          document.getElementById('flow-info').innerHTML = `
+            <div class="status success">
+              ✅ Flow loaded: ${loadedFlow.name || 'Unnamed Flow'}<br>
+              📊 Nodes: ${loadedFlow.nodes?.length || 0}, 
+              Custom Nodes: ${loadedFlow.customNodes?.length || 0}
+            </div>
+          `;
+          document.getElementById('run-uploaded-btn').disabled = false;
+        } catch (error) {
+          document.getElementById('flow-info').innerHTML = `
+            <div class="status error">❌ Error parsing flow file: ${error.message}</div>
+          `;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    async function runUploadedFlow() {
+      if (!loadedFlow) {
+        showStatus('upload-status', '❌ No flow loaded', 'error');
+        return;
+      }
+
+      try {
+        showStatus('upload-status', '🔄 Running uploaded flow...', 'info');
+        
+        const inputsText = document.getElementById('flow-inputs').value;
+        const inputs = inputsText ? JSON.parse(inputsText) : {};
+
+        const result = await runner.executeFlow(loadedFlow, inputs);
+
+        showStatus('upload-status', '✅ Flow executed successfully!', 'success');
+        showResult('upload-result', result);
+        showLogs('upload-logs');
+
+      } catch (error) {
+        showStatus('upload-status', `❌ Error: ${error.message}`, 'error');
+        console.error('Upload flow error:', error);
+      }
+    }
+
+    // Custom flow
+    function loadSampleFlow() {
+      const sampleFlow = {
+        version: '1.0.0',
+        name: 'Sample Custom Flow',
+        description: 'A sample flow for testing',
+        exportFormat: 'clara-sdk',
+        nodes: [
+          {
+            id: 'input-1',
+            type: 'input',
+            name: 'Number Input',
+            data: { inputType: 'number', defaultValue: 10 },
+            position: { x: 100, y: 100 }
+          },
+          {
+            id: 'custom-1',
+            type: 'math-processor',
+            name: 'Math Processor',
+            data: { operation: 'square' },
+            position: { x: 300, y: 100 }
+          },
+          {
+            id: 'output-1',
+            type: 'output',
+            name: 'Result',
+            data: {},
+            position: { x: 500, y: 100 }
+          }
+        ],
+        connections: [
+          {
+            id: 'conn-1',
+            sourceNodeId: 'input-1',
+            sourcePortId: 'output',
+            targetNodeId: 'custom-1',
+            targetPortId: 'input'
+          },
+          {
+            id: 'conn-2',
+            sourceNodeId: 'custom-1',
+            sourcePortId: 'output',
+            targetNodeId: 'output-1',
+            targetPortId: 'input'
+          }
+        ],
+        customNodes: [{
+          type: 'math-processor',
+          name: 'Math Processor',
+          description: 'Performs mathematical operations',
+          inputs: [{ name: 'input', type: 'number', required: true }],
+          outputs: [{ name: 'output', type: 'number' }],
+          properties: [{ name: 'operation', type: 'string', defaultValue: 'square' }],
+          executionCode: `
+            async function execute(inputs, properties, context) {
+              const inputNumber = parseFloat(inputs.input) || 0;
+              const operation = properties.operation || 'square';
+              
+              context.log('Processing number: ' + inputNumber);
+              context.log('Operation: ' + operation);
+              
+              let result;
+              switch (operation.toLowerCase()) {
+                case 'square':
+                  result = inputNumber * inputNumber;
+                  break;
+                case 'sqrt':
+                  result = Math.sqrt(inputNumber);
+                  break;
+                case 'double':
+                  result = inputNumber * 2;
+                  break;
+                case 'half':
+                  result = inputNumber / 2;
+                  break;
+                default:
+                  result = inputNumber;
+              }
+              
+              context.log('Result: ' + result);
+              return { output: result };
+            }
+          `
+        }]
+      };
+
+      document.getElementById('custom-flow').value = JSON.stringify(sampleFlow, null, 2);
+      document.getElementById('custom-inputs').value = '{"Number Input": 5}';
+    }
+
+    async function runCustomFlow() {
+      try {
+        showStatus('custom-status', '🔄 Running custom flow...', 'info');
+        
+        const flowText = document.getElementById('custom-flow').value;
+        const inputsText = document.getElementById('custom-inputs').value;
+        
+        const flow = JSON.parse(flowText);
+        const inputs = inputsText ? JSON.parse(inputsText) : {};
+
+        const result = await runner.executeFlow(flow, inputs);
+
+        showStatus('custom-status', '✅ Flow executed successfully!', 'success');
+        showResult('custom-result', result);
+        showLogs('custom-logs');
+
+      } catch (error) {
+        showStatus('custom-status', `❌ Error: ${error.message}`, 'error');
+        console.error('Custom flow error:', error);
+      }
+    }
+
+    // Flow validation
+    function loadSampleForValidation() {
+      const sampleFlow = {
+        version: '1.0.0',
+        name: 'Validation Test Flow',
+        nodes: [
+          {
+            id: 'input-1',
+            type: 'input',
+            name: 'Test Input',
+            data: {},
+            position: { x: 100, y: 100 }
+          },
+          {
+            id: 'output-1',
+            type: 'output',
+            name: 'Test Output',
+            data: {},
+            position: { x: 300, y: 100 }
+          }
+        ],
+        connections: [
+          {
+            id: 'conn-1',
+            sourceNodeId: 'input-1',
+            sourcePortId: 'output',
+            targetNodeId: 'output-1',
+            targetPortId: 'input'
+          }
+        ],
+        customNodes: []
+      };
+
+      document.getElementById('validate-flow').value = JSON.stringify(sampleFlow, null, 2);
+    }
+
+    function validateFlow() {
+      try {
+        const flowText = document.getElementById('validate-flow').value;
+        const flow = JSON.parse(flowText);
+
+        const validation = runner.validateFlow(flow);
+
+        let resultHtml = `
+          <div class="result">
+            <h4>Validation Result</h4>
+            <p><strong>Valid:</strong> ${validation.isValid ? '✅ Yes' : '❌ No'}</p>
+        `;
+
+        if (validation.summary) {
+          resultHtml += `
+            <h5>Summary:</h5>
+            <ul>
+              <li>Flow Name: ${validation.summary.flowName}</li>
+              <li>Node Count: ${validation.summary.nodeCount}</li>
+              <li>Connection Count: ${validation.summary.connectionCount}</li>
+              <li>Custom Node Count: ${validation.summary.customNodeCount}</li>
+            </ul>
+          `;
+        }
+
+        if (validation.errors && validation.errors.length > 0) {
+          resultHtml += `
+            <h5>Errors:</h5>
+            <ul style="color: #c53030;">
+              ${validation.errors.map(error => `<li>${error}</li>`).join('')}
+            </ul>
+          `;
+        }
+
+        if (validation.warnings && validation.warnings.length > 0) {
+          resultHtml += `
+            <h5>Warnings:</h5>
+            <ul style="color: #d69e2e;">
+              ${validation.warnings.map(warning => `<li>${warning}</li>`).join('')}
+            </ul>
+          `;
+        }
+
+        resultHtml += '</div>';
+        document.getElementById('validation-result').innerHTML = resultHtml;
+
+      } catch (error) {
+        document.getElementById('validation-result').innerHTML = `
+          <div class="status error">❌ Error validating flow: ${error.message}</div>
+        `;
+      }
+    }
+
+    // Load sample flow on page load
+    window.addEventListener('load', function() {
+      showStatus('simple-status', '👋 Welcome! Enter text and select an operation to get started.', 'info');
+    });
+  </script>
+</body>
+</html> 

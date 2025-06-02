@@ -358,6 +358,9 @@ export interface ClaraAIConfig {
   /** AI provider ID */
   provider: string;
   
+  /** Custom system prompt for this provider */
+  systemPrompt?: string;
+  
   /** Model configurations for different tasks */
   models: {
     text: string;

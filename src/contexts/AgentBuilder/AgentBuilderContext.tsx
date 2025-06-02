@@ -1056,18 +1056,8 @@ const result = await flow.executeWithCallback(
       // Execute using shared engine
       const results = await executor.executeFlow(nodes, connections, {}, customNodes);
       
-      // Convert results from node-name-based to node-id-based for UI compatibility
-      const nodeBasedResults: Record<string, any> = {};
-      for (const [nodeName, result] of Object.entries(results)) {
-        // Find the output node with this name
-        const outputNode = nodes.find(node => node.type === 'output' && node.name === nodeName);
-        if (outputNode) {
-          nodeBasedResults[outputNode.id] = result;
-        }
-      }
-      
-      // Update execution results
-      setExecutionResults(nodeBasedResults);
+      // Results are now node-id-based from the FlowExecutor, so we can use them directly
+      setExecutionResults(results);
       
     } catch (error) {
       addExecutionLog({

@@ -29,9 +29,12 @@ import OutputNode from '../Nodes/OutputNode';
 import JsonParseNode from '../Nodes/JsonParseNode';
 import IfElseNode from '../Nodes/IfElseNode';
 import LLMNode from '../Nodes/LLMNode';
+import StructuredLLMNode from '../Nodes/StructuredLLMNode';
 import ImageInputNode from '../Nodes/ImageInputNode';
 import TextNode from '../Nodes/TextNode';
 import MathNode from '../Nodes/MathNode';
+import PDFInputNode from '../Nodes/PDFInputNode';
+import APIRequestNode from '../Nodes/APIRequestNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -40,9 +43,12 @@ console.log('Node imports loaded:', {
   JsonParseNode: !!JsonParseNode,
   IfElseNode: !!IfElseNode,
   LLMNode: !!LLMNode,
+  StructuredLLMNode: !!StructuredLLMNode,
   ImageInputNode: !!ImageInputNode,
   TextNode: !!TextNode,
   MathNode: !!MathNode,
+  PDFInputNode: !!PDFInputNode,
+  APIRequestNode: !!APIRequestNode,
 });
 
 // Define base node types with proper imports - moved outside component to ensure immediate availability
@@ -52,7 +58,10 @@ const baseNodeTypes: NodeTypes = {
   'json-parse': JsonParseNode,
   'if-else': IfElseNode,
   'llm': LLMNode,
+  'structured-llm': StructuredLLMNode,
   'image-input': ImageInputNode,
+  'pdf-input': PDFInputNode,
+  'api-request': APIRequestNode,
   'text': TextNode,
   'math': MathNode,
 };
@@ -336,6 +345,26 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     console.log('ReactFlow nodeTypes being passed:', Object.keys(nodeTypes));
   }, [nodeTypes]);
 
+  // Category-based colors
+  const getCategoryColor = (node: Node): string => {
+    const nodeType = node.type;
+    switch (nodeType) {
+      case 'input':
+      case 'output':
+        return '#10b981';
+      case 'json-parse': return '#3b82f6';
+      case 'api-request': return '#10b981';
+      case 'if-else': return '#84cc16';
+      case 'llm': return '#ec4899';
+      case 'structured-llm': return '#8b5cf6';
+      case 'image-input': return '#f59e0b';
+      case 'pdf-input': return '#3b82f6';
+      case 'text': return '#84cc16';
+      case 'math': return '#ec4899';
+      default: return '#6b7280';
+    }
+  };
+
   return (
     <div className={`w-full h-full ${className}`}>
       <ReactFlow
@@ -376,19 +405,7 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
         />
         <MiniMap 
           className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
-          nodeColor={(node) => {
-            switch (node.type) {
-              case 'input': return '#10b981';
-              case 'output': return '#ef4444';
-              case 'json-parse': return '#06b6d4';
-              case 'if-else': return '#84cc16';
-              case 'llm': return '#ec4899';
-              case 'image-input': return '#f59e0b';
-              case 'text': return '#84cc16';
-              case 'math': return '#ec4899';
-              default: return '#6b7280';
-            }
-          }}
+          nodeColor={getCategoryColor}
         />
       </ReactFlow>
     </div>

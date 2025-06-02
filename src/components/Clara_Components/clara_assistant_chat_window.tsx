@@ -7,10 +7,10 @@
  * 
  * Features:
  * - Message history display with virtualization for performance
- * - Auto-scrolling to new messages
+ * - Smooth auto-scrolling like Claude/ChatGPT
  * - Loading states and indicators
  * - Empty state with welcome message
- * - Lazy loading support for large conversations
+ * - Content chunking for large messages
  * - Message interaction handling
  * - Session management
  */
@@ -30,7 +30,9 @@ import {
   Brain,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 // Import types and components
@@ -54,6 +56,26 @@ const VIRTUAL_CONFIG = {
 };
 
 /**
+ * Content chunking configuration for large messages
+ */
+const CONTENT_CONFIG = {
+  CHUNK_SIZE: 2000, // Characters per chunk
+  INITIAL_CHUNKS: 2, // Number of chunks to show initially
+  EXPAND_THRESHOLD: 5000, // Show "Show More" if content is longer than this
+};
+
+/**
+ * Smooth auto-scroll configuration (Claude/ChatGPT style)
+ */
+const SCROLL_CONFIG = {
+  STREAMING_INTERVAL: 100, // How often to auto-scroll during streaming (ms)
+  SCROLL_DURATION: 300, // Duration of smooth scroll animation (ms)
+  EASING: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', // Smooth easing function
+  SCROLL_THRESHOLD: 100, // Pixels from bottom to consider "at bottom"
+  STREAMING_DELAY: 50, // Delay before starting auto-scroll during streaming
+};
+
+/**
  * Virtual message item interface
  */
 interface VirtualMessageItem {
@@ -63,6 +85,114 @@ interface VirtualMessageItem {
   height: number;
   isVisible: boolean;
 }
+
+/**
+ * Content chunk interface for large message content
+ */
+interface ContentChunk {
+  id: string;
+  content: string;
+  isVisible: boolean;
+}
+
+/**
+ * Chunked Message Content Component
+ * Handles large content by breaking it into chunks
+ */
+const ChunkedMessageContent: React.FC<{
+  message: ClaraMessage;
+  userName?: string;
+  isEditable?: boolean;
+  onCopy?: (content: string) => void;
+  onRetry?: (messageId: string) => void;
+  onEdit?: (messageId: string, newContent: string) => void;
+}> = ({ message, userName, isEditable, onCopy, onRetry, onEdit }) => {
+  const [expandedChunks, setExpandedChunks] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
+
+  // Check if content needs chunking
+  const needsChunking = message.content.length > CONTENT_CONFIG.EXPAND_THRESHOLD;
+  
+  // Create chunks if needed
+  const chunks: ContentChunk[] = useMemo(() => {
+    if (!needsChunking) {
+      return [{
+        id: `${message.id}-full`,
+        content: message.content,
+        isVisible: true
+      }];
+    }
+
+    const chunkArray: ContentChunk[] = [];
+    const content = message.content;
+    
+    for (let i = 0; i < content.length; i += CONTENT_CONFIG.CHUNK_SIZE) {
+      const chunkContent = content.slice(i, i + CONTENT_CONFIG.CHUNK_SIZE);
+      const chunkIndex = Math.floor(i / CONTENT_CONFIG.CHUNK_SIZE);
+      
+      chunkArray.push({
+        id: `${message.id}-chunk-${chunkIndex}`,
+        content: chunkContent,
+        isVisible: chunkIndex < CONTENT_CONFIG.INITIAL_CHUNKS || showAll
+      });
+    }
+    
+    return chunkArray;
+  }, [message.content, message.id, needsChunking, showAll]);
+
+  // Handle expand/collapse
+  const handleToggleExpand = useCallback(() => {
+    setShowAll(!showAll);
+  }, [showAll]);
+
+  // For streaming messages, always show all content
+  const isStreaming = message.metadata?.isStreaming;
+  const chunksToShow = isStreaming || !needsChunking ? chunks : chunks.filter(chunk => chunk.isVisible);
+
+  return (
+    <div className="space-y-2">
+      {/* Render visible chunks */}
+      {chunksToShow.map((chunk, index) => (
+        <div key={chunk.id} className={index > 0 ? "pt-2" : ""}>
+          <ClaraMessageBubble
+            message={{
+              ...message,
+              content: chunk.content,
+              id: chunk.id
+            }}
+            userName={userName}
+            isEditable={isEditable && index === 0} // Only first chunk is editable
+            onCopy={onCopy}
+            onRetry={index === 0 ? onRetry : undefined} // Only first chunk can retry
+            onEdit={index === 0 ? onEdit : undefined} // Only first chunk can edit
+          />
+        </div>
+      ))}
+      
+      {/* Show More/Less button */}
+      {needsChunking && !isStreaming && (
+        <div className="flex justify-center mt-3">
+          <button
+            onClick={handleToggleExpand}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
+          >
+            {showAll ? (
+              <>
+                <ChevronUp className="w-4 h-4" />
+                Show Less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-4 h-4" />
+                Show More ({Math.ceil((message.content.length - (CONTENT_CONFIG.INITIAL_CHUNKS * CONTENT_CONFIG.CHUNK_SIZE)) / CONTENT_CONFIG.CHUNK_SIZE)} more sections)
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Virtualized Message List Component
@@ -105,7 +235,13 @@ const VirtualizedMessageList: React.FC<{
     
     return messages.map((message, index) => {
       const measuredHeight = measuredHeights.get(message.id);
-      const height = measuredHeight || VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT;
+      // Increase estimated height for long messages
+      const contentLength = message.content.length;
+      const estimatedHeight = contentLength > CONTENT_CONFIG.EXPAND_THRESHOLD 
+        ? Math.min(800, Math.max(VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT, contentLength / 10))
+        : VIRTUAL_CONFIG.ESTIMATED_MESSAGE_HEIGHT;
+      
+      const height = measuredHeight || estimatedHeight;
       
       const item: VirtualMessageItem = {
         message,
@@ -190,6 +326,149 @@ const VirtualizedMessageList: React.FC<{
     </div>
   );
 };
+
+/**
+ * Smooth Auto-Scroll Engine (Claude/ChatGPT Style)
+ * Provides butter-smooth scrolling experience
+ */
+class SmoothAutoScroller {
+  private container: HTMLElement | null = null;
+  private target: HTMLElement | null = null;
+  private isScrolling = false;
+  private lastScrollTime = 0;
+  private streamingInterval: NodeJS.Timeout | null = null;
+  private pendingScroll = false;
+
+  constructor(container: HTMLElement | null, target: HTMLElement | null) {
+    this.container = container;
+    this.target = target;
+  }
+
+  updateRefs(container: HTMLElement | null, target: HTMLElement | null) {
+    this.container = container;
+    this.target = target;
+  }
+
+  private isNearBottom(): boolean {
+    if (!this.container) return false;
+    const { scrollTop, scrollHeight, clientHeight } = this.container;
+    return scrollHeight - scrollTop - clientHeight < SCROLL_CONFIG.SCROLL_THRESHOLD;
+  }
+
+  private smoothScrollToBottom(duration = SCROLL_CONFIG.SCROLL_DURATION): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.container || this.isScrolling) {
+        resolve();
+        return;
+      }
+
+      this.isScrolling = true;
+      const startTime = performance.now();
+      const startScrollTop = this.container.scrollTop;
+      const targetScrollTop = this.container.scrollHeight - this.container.clientHeight;
+      const distance = targetScrollTop - startScrollTop;
+
+      // Don't scroll if already at bottom
+      if (Math.abs(distance) < 5) {
+        this.isScrolling = false;
+        resolve();
+        return;
+      }
+
+      const animate = (currentTime: number) => {
+        if (!this.container) {
+          this.isScrolling = false;
+          resolve();
+          return;
+        }
+
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Smooth easing function (cubic-bezier)
+        const easeProgress = this.cubicBezier(0.25, 0.46, 0.45, 0.94, progress);
+        
+        const currentScrollTop = startScrollTop + (distance * easeProgress);
+        this.container.scrollTop = currentScrollTop;
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          this.isScrolling = false;
+          this.lastScrollTime = currentTime;
+          resolve();
+        }
+      };
+
+      requestAnimationFrame(animate);
+    });
+  }
+
+  private cubicBezier(x1: number, y1: number, x2: number, y2: number, t: number): number {
+    // Simplified cubic bezier calculation
+    const cx = 3 * x1;
+    const bx = 3 * (x2 - x1) - cx;
+    const ax = 1 - cx - bx;
+    
+    const cy = 3 * y1;
+    const by = 3 * (y2 - y1) - cy;
+    const ay = 1 - cy - by;
+    
+    const cubeT = t * t * t;
+    const squareT = t * t;
+    
+    return ay * cubeT + by * squareT + cy * t;
+  }
+
+  // For new messages - immediate smooth scroll
+  scrollToNewMessage(): void {
+    if (!this.isNearBottom()) return;
+    
+    // Cancel any existing streaming scroll
+    this.stopStreamingScroll();
+    
+    // Add slight delay to let message render
+    setTimeout(() => {
+      this.smoothScrollToBottom(SCROLL_CONFIG.SCROLL_DURATION);
+    }, 50);
+  }
+
+  // For streaming content - gradual continuous scrolling
+  startStreamingScroll(): void {
+    if (this.streamingInterval) return;
+    
+    this.streamingInterval = setInterval(() => {
+      if (!this.isNearBottom()) {
+        this.stopStreamingScroll();
+        return;
+      }
+      
+      // Gentle continuous scroll during streaming
+      if (!this.isScrolling) {
+        this.smoothScrollToBottom(SCROLL_CONFIG.STREAMING_INTERVAL + 50);
+      }
+    }, SCROLL_CONFIG.STREAMING_INTERVAL);
+  }
+
+  stopStreamingScroll(): void {
+    if (this.streamingInterval) {
+      clearInterval(this.streamingInterval);
+      this.streamingInterval = null;
+    }
+  }
+
+  // Force scroll to bottom (for button click)
+  forceScrollToBottom(): void {
+    this.stopStreamingScroll();
+    this.smoothScrollToBottom(SCROLL_CONFIG.SCROLL_DURATION * 1.5); // Slightly longer for user action
+  }
+
+  // Clean up
+  destroy(): void {
+    this.stopStreamingScroll();
+    this.isScrolling = false;
+  }
+}
 
 /**
  * Welcome screen component displayed when there are no messages
@@ -439,12 +718,22 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
   const [scrollTop, setScrollTop] = useState(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Use the smooth scroll hook for better streaming behavior
-  const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
-    debounceMs: 150,
-    behavior: 'smooth',
-    block: 'end'
-  });
+  // Smooth auto-scroll engine
+  const autoScrollerRef = useRef<SmoothAutoScroller | null>(null);
+
+  // Initialize auto-scroller
+  useEffect(() => {
+    autoScrollerRef.current = new SmoothAutoScroller(scrollRef.current, messagesEndRef.current);
+    
+    return () => {
+      autoScrollerRef.current?.destroy();
+    };
+  }, []);
+
+  // Update auto-scroller refs when elements change
+  useEffect(() => {
+    autoScrollerRef.current?.updateRefs(scrollRef.current, messagesEndRef.current);
+  }, [scrollRef.current, messagesEndRef.current]);
 
   // Update container dimensions
   useEffect(() => {
@@ -466,7 +755,7 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     const element = scrollRef.current;
     const newScrollTop = element.scrollTop;
     const { scrollHeight, clientHeight } = element;
-    const nearBottom = scrollHeight - newScrollTop - clientHeight < 100;
+    const nearBottom = scrollHeight - newScrollTop - clientHeight < SCROLL_CONFIG.SCROLL_THRESHOLD;
     
     // Clear existing timeout
     if (scrollTimeoutRef.current) {
@@ -495,39 +784,31 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     }
   }, [handleScroll]);
 
-  // Auto-scroll to bottom when new messages arrive (if user is near bottom)
-  const scrollToBottom = useCallback((force = false) => {
-    if (!messagesEndRef.current) return;
-    
-    if (force || isNearBottom) {
-      scrollToElementImmediate(messagesEndRef.current);
-    }
-  }, [isNearBottom, scrollToElementImmediate]);
-
-  // Effect to handle auto-scrolling - improved for streaming
+  // Enhanced auto-scroll for new messages
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) return;
+
     const isStreaming = lastMessage?.metadata?.isStreaming;
     
     if (isStreaming) {
-      // During streaming, use shorter debounce for better responsiveness
-      if (messagesEndRef.current) {
-        scrollToElementDebounced(messagesEndRef.current, 250);
-      }
+      // Start gentle streaming scroll
+      autoScrollerRef.current?.startStreamingScroll();
     } else {
-      // For new messages or when streaming ends, scroll immediately
-      scrollToBottom();
+      // Stop streaming and scroll to new message
+      autoScrollerRef.current?.stopStreamingScroll();
+      autoScrollerRef.current?.scrollToNewMessage();
     }
-  }, [messages.length, scrollToBottom, scrollToElementDebounced]);
+  }, [messages.length]);
 
-  // Additional effect to handle streaming content updates with moderate debounce
+  // Handle streaming content updates
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.metadata?.isStreaming && lastMessage.content && messagesEndRef.current) {
-      // Use moderate debounce for content updates during streaming
-      scrollToElementDebounced(messagesEndRef.current, 300);
+    if (lastMessage?.metadata?.isStreaming && lastMessage.content) {
+      // Continue streaming scroll - the engine handles this automatically
+      // No need for manual intervention
     }
-  }, [messages[messages.length - 1]?.content, scrollToElementDebounced]);
+  }, [messages[messages.length - 1]?.content]);
 
   // Update processing state based on loading and messages
   useEffect(() => {
@@ -564,8 +845,8 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
 
   // Force scroll to bottom
   const forceScrollToBottom = useCallback(() => {
-    scrollToBottom(true);
-  }, [scrollToBottom]);
+    autoScrollerRef.current?.forceScrollToBottom();
+  }, []);
 
   // Performance optimization: Use a threshold to decide between virtual and normal rendering
   const shouldUseVirtualization = messages.length > 50; // Use virtualization for 50+ messages
@@ -574,7 +855,7 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
     <div 
       ref={scrollRef}
       className="flex-1 overflow-y-auto p-6 relative"
-      style={{ scrollBehavior: 'smooth' }}
+      style={{ scrollBehavior: 'auto' }} // Let our custom scroller handle smooth behavior
     >
       <div className="max-w-4xl mx-auto">
         {/* Loading screen when Clara is initializing */}

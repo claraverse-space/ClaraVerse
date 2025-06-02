@@ -38,7 +38,8 @@ import {
   CheckCircle,
   XCircle,
   Waves,
-  Cog
+  Cog,
+  MessageCircle
 } from 'lucide-react';
 
 // Import types
@@ -539,6 +540,7 @@ const AdvancedOptions: React.FC<{
   // State for collapsible sections
   const [expandedSections, setExpandedSections] = useState({
     provider: true,
+    systemPrompt: false,
     models: true,
     parameters: false,
     features: false,
@@ -575,6 +577,34 @@ const AdvancedOptions: React.FC<{
         [key]: value
       }
     });
+  };
+
+  const handleSystemPromptChange = (value: string) => {
+    onConfigChange?.({
+      systemPrompt: value
+    });
+  };
+
+  const getDefaultSystemPrompt = (providerId: string): string => {
+    const provider = providers.find(p => p.id === providerId);
+    const providerName = provider?.name || 'AI Assistant';
+    
+    switch (provider?.type) {
+      case 'ollama':
+        return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.`;
+        
+      case 'openai':
+        return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.`;
+        
+      case 'openrouter':
+        return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.`;
+        
+      case 'claras-pocket':
+        return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.`;
+        
+      default:
+        return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.`;
+    }
   };
 
   const handleFeatureChange = (key: string, value: boolean) => {
@@ -741,6 +771,43 @@ const AdvancedOptions: React.FC<{
                     onProviderChange?.(providerId);
                   }}
                 />
+              </div>
+            )}
+          </div>
+
+          {/* System Prompt */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="System Prompt"
+              icon={<MessageCircle className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.systemPrompt}
+              onToggle={() => toggleSection('systemPrompt')}
+              badge={aiConfig.systemPrompt ? 'Custom' : 'Default'}
+            />
+            
+            {expandedSections.systemPrompt && (
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    System Prompt for {providers.find(p => p.id === aiConfig.provider)?.name || 'Current Provider'}
+                  </label>
+                  <button
+                    onClick={() => handleSystemPromptChange('')}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+                <textarea
+                  value={aiConfig.systemPrompt || getDefaultSystemPrompt(aiConfig.provider)}
+                  onChange={(e) => handleSystemPromptChange(e.target.value)}
+                  placeholder="Enter custom system prompt for this provider..."
+                  className="w-full min-h-[80px] max-h-[200px] p-3 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-colors text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                  rows={4}
+                />
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  This prompt will be used for all conversations with this provider. Leave empty to use the default prompt.
+                </div>
               </div>
             )}
           </div>

@@ -1376,7 +1376,7 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
               let stepContent = '';
 
               for await (const chunk of this.client!.streamChat(modelId, conversationMessages, options, tools)) {
-                console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
+                // console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
                 if (chunk.message?.content) {
                   stepContent += chunk.message.content;
                   if (onContentChunk) {
@@ -2055,7 +2055,7 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
             let streamContent = '';
 
             for await (const chunk of this.client!.streamChat(modelId, messages, options, tools)) {
-              console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
+              // console.log(`📦 [STREAM-DEBUG] Received chunk:`, JSON.stringify(chunk, null, 2));
               if (chunk.message?.content) {
                 streamContent += chunk.message.content;
                 responseContent += chunk.message.content;

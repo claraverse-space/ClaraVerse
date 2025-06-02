@@ -1,0 +1,147 @@
+{
+  "format": "clara-sdk",
+  "version": "1.0.0",
+  "flow": {
+    "id": "custom-flow-123",
+    "name": "Custom Node Flow",
+    "description": "A test flow with custom nodes",
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "name": "Text Input",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Text Input",
+          "value": "hello world"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "Value",
+            "type": "output",
+            "dataType": "string"
+          }
+        ]
+      },
+      {
+        "id": "custom-1",
+        "type": "text-transformer",
+        "name": "Text Transformer",
+        "position": {
+          "x": 300,
+          "y": 100
+        },
+        "data": {
+          "properties": {
+            "operation": "uppercase"
+          }
+        },
+        "inputs": [
+          {
+            "id": "input",
+            "name": "text",
+            "type": "input",
+            "dataType": "string",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "result",
+            "type": "output",
+            "dataType": "string"
+          }
+        ]
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "name": "Result",
+        "position": {
+          "x": 500,
+          "y": 100
+        },
+        "data": {
+          "label": "Result"
+        },
+        "inputs": [
+          {
+            "id": "input",
+            "name": "Value",
+            "type": "input",
+            "dataType": "any",
+            "required": true
+          }
+        ],
+        "outputs": []
+      }
+    ],
+    "connections": [
+      {
+        "id": "conn-1",
+        "sourceNodeId": "input-1",
+        "sourcePortId": "output",
+        "targetNodeId": "custom-1",
+        "targetPortId": "input"
+      },
+      {
+        "id": "conn-2",
+        "sourceNodeId": "custom-1",
+        "sourcePortId": "output",
+        "targetNodeId": "output-1",
+        "targetPortId": "input"
+      }
+    ]
+  },
+  "customNodes": [
+    {
+      "id": "text-transformer-node",
+      "type": "text-transformer",
+      "name": "Text Transformer",
+      "description": "Transforms text with various operations",
+      "category": "Text Processing",
+      "icon": "🔄",
+      "inputs": [
+        {
+          "id": "input",
+          "name": "text",
+          "dataType": "string",
+          "required": true,
+          "description": "Text to transform"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "output",
+          "name": "result",
+          "dataType": "string",
+          "description": "Transformed text"
+        }
+      ],
+      "properties": [
+        {
+          "id": "operation",
+          "name": "Operation",
+          "type": "string",
+          "defaultValue": "uppercase",
+          "description": "Type of transformation"
+        }
+      ],
+      "executionCode": "\n            async function execute(inputs, properties, context) {\n              const text = inputs.text || '';\n              const operation = properties.operation || 'uppercase';\n              \n              context.log('Transforming text:', text);\n              context.log('Operation:', operation);\n              \n              let result;\n              switch (operation.toLowerCase()) {\n                case 'uppercase':\n                  result = text.toUpperCase();\n                  break;\n                case 'lowercase':\n                  result = text.toLowerCase();\n                  break;\n                case 'reverse':\n                  result = text.split('').reverse().join('');\n                  break;\n                default:\n                  result = text;\n              }\n              \n              context.log('Result:', result);\n              return { result };\n            }\n          ",
+      "metadata": {
+        "author": "Clara Agent Studio",
+        "version": "1.0.0",
+        "tags": [
+          "text",
+          "transform"
+        ]
+      }
+    }
+  ]
+}
