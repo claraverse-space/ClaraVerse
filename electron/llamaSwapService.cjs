@@ -13,6 +13,14 @@ class LlamaSwapService {
     this.isRunning = false;
     this.port = 8091;
     
+    // Flash attention retry mechanism flags
+    this.handleFlashAttentionRequired = false;
+    this.flashAttentionRetryAttempted = false;
+    this.forceFlashAttention = false;
+    
+    // Progress tracking for UI feedback
+    this.progressCallback = null;
+    
     // Handle different base directory paths for development vs production
     this.baseDir = this.getBaseBinaryDirectory();
     this.modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
@@ -391,6 +399,22 @@ class LlamaSwapService {
         model.name = name;
       }
     });
+
+    // Load saved performance settings to apply to configuration
+    let globalPerfSettings;
+    try {
+      const savedSettings = await this.loadPerformanceSettings();
+      if (savedSettings.success && savedSettings.settings) {
+        globalPerfSettings = savedSettings.settings;
+        log.info('Applying saved performance settings to configuration:', globalPerfSettings);
+      } else {
+        globalPerfSettings = this.getSafeDefaultConfig();
+        log.info('No saved performance settings found, using safe defaults');
+      }
+    } catch (error) {
+      log.warn('Failed to load performance settings, using safe defaults:', error.message);
+      globalPerfSettings = this.getSafeDefaultConfig();
+    }
     
     let configYaml = `# Auto-generated llama-swap configuration
 # Models directory: ${this.modelsDir}
@@ -406,6 +430,61 @@ models:
     for (const model of mainModels) {
       // Use platform-specific llama-server path
       const llamaServerPath = this.binaryPaths.llamaServer;
+      
+      // Calculate optimal performance configuration for this model
+      let perfConfig;
+      try {
+        // Start with saved performance settings
+        perfConfig = { ...globalPerfSettings };
+        
+        // Apply some model-specific optimizations based on available GPU info
+        try {
+          const gpuInfo = await this.detectGPUInfo();
+          const cpuCores = require('os').cpus().length;
+          
+          // Apply performance settings to configuration
+          if (globalPerfSettings.threads) {
+            perfConfig.threads = globalPerfSettings.threads;
+          } else {
+            // Fallback to auto-detection if not set
+            perfConfig.threads = Math.max(1, Math.min(8, Math.floor(cpuCores / 2)));
+          }
+
+          // Apply context size from settings
+          if (globalPerfSettings.maxContextSize) {
+            perfConfig.contextSize = globalPerfSettings.maxContextSize;
+          }
+
+          // Apply parallel sequences from settings
+          if (globalPerfSettings.parallelSequences) {
+            perfConfig.parallelSequences = globalPerfSettings.parallelSequences;
+          }
+
+          // Apply optimization flags from settings
+          perfConfig.flashAttention = globalPerfSettings.flashAttention !== false;
+          perfConfig.optimizeFirstToken = globalPerfSettings.optimizeFirstToken || false;
+          perfConfig.aggressiveOptimization = globalPerfSettings.aggressiveOptimization || false;
+          perfConfig.enableContinuousBatching = globalPerfSettings.enableContinuousBatching !== false;
+          
+          // Apply conversation optimization settings
+          if (globalPerfSettings.keepTokens) {
+            perfConfig.keepTokens = globalPerfSettings.keepTokens;
+          }
+          if (globalPerfSettings.defragThreshold) {
+            perfConfig.defragThreshold = globalPerfSettings.defragThreshold;
+          }
+          
+          log.info(`Model ${model.name}: Applied performance settings - threads:${perfConfig.threads}, context:${perfConfig.contextSize}, flash:${perfConfig.flashAttention}`);
+          
+        } catch (detectionError) {
+          log.warn('GPU detection failed during config generation, using settings as-is:', detectionError.message);
+        }
+        
+      } catch (error) {
+        // Use safe defaults if performance calculation fails
+        log.warn(`Failed to calculate performance config for ${model.name}, using defaults:`, error.message);
+        perfConfig = this.getSafeDefaultConfig();
+      }
       
       // Calculate optimal GPU layers for this specific model
       const optimalGpuLayers = await this.calculateOptimalGPULayers(model.path, model.size);
@@ -434,6 +513,84 @@ models:
       --mmproj "${matchingMmproj.path}"`;
       }
       
+      // CPU optimization from performance settings
+      cmdLine += ` --threads ${perfConfig.threads}`;
+      
+      // **CRITICAL KV CACHE OPTIMIZATIONS FOR CONVERSATIONAL SPEED**
+      
+      // 1. Context window optimization - use saved setting or calculate optimal
+      const contextSize = perfConfig.contextSize || this.calculateOptimalContextSize(
+        model.size / (1024 * 1024 * 1024), // Convert to GB
+        optimalGpuLayers > 0,
+        16 // Assume reasonable memory amount, will be detected properly later
+      );
+      cmdLine += ` --ctx-size ${contextSize}`;
+      
+      // 2. Batch size optimization for both TTFT and conversation continuation
+      const { batchSize, ubatchSize } = this.calculateTTFTOptimizedBatchSizes(
+        model.size / (1024 * 1024 * 1024),
+        { hasGPU: optimalGpuLayers > 0, gpuMemoryGB: 16 }
+      );
+      cmdLine += ` --batch-size ${batchSize}`;
+      cmdLine += ` --ubatch-size ${ubatchSize}`;
+      
+      // 3. KV Cache retention for fast subsequent responses - use saved setting or calculate
+      const keepTokens = perfConfig.keepTokens || Math.min(1024, Math.floor(contextSize * 0.25));
+      cmdLine += ` --keep ${keepTokens}`;
+      
+      // 4. Cache efficiency settings - use saved setting or default
+      const defragThreshold = perfConfig.defragThreshold || 0.1;
+      cmdLine += ` --defrag-thold ${defragThreshold}`;
+      
+      // 5. Memory optimization for conversations
+      cmdLine += ` --mlock`; // Lock model in memory for consistent performance
+      
+      // 6. Parallel processing optimization - use saved setting
+      cmdLine += ` --parallel ${perfConfig.parallelSequences || 1}`;
+      
+      // 7. Flash attention if enabled in settings
+      if (perfConfig.flashAttention) {
+        cmdLine += ` --flash-attn`;
+      }
+      
+      // 8. Continuous batching for better multi-turn performance - use saved setting
+      if (perfConfig.enableContinuousBatching && !perfConfig.optimizeFirstToken) {
+        cmdLine += ` --cont-batching`;
+      }
+      
+      // 9. Cache type optimization
+      if (perfConfig.kvCacheType && perfConfig.kvCacheType !== 'f16') {
+        cmdLine += ` --cache-type-k ${perfConfig.kvCacheType}`;
+        cmdLine += ` --cache-type-v ${perfConfig.kvCacheType}`;
+      }
+      
+      // TTFT-specific optimizations (only when explicitly enabled in settings)
+      if (perfConfig.optimizeFirstToken) {
+        log.info(`Model ${model.name}: TTFT mode enabled - optimizing for first token speed`);
+        
+        // Use fewer threads for batch processing to reduce contention during prefill
+        const batchThreads = Math.max(1, Math.floor(perfConfig.threads / 2));
+        cmdLine += ` --threads-batch ${batchThreads}`;
+        
+        // Skip warmup to get to first token faster (warmup is for benchmarking)
+        cmdLine += ` --no-warmup`;
+        
+        // TTFT mode: smaller context for faster initial response
+        const ttftContextSize = Math.min(8192, contextSize);
+        cmdLine = cmdLine.replace(`--ctx-size ${contextSize}`, `--ctx-size ${ttftContextSize}`);
+        
+        // TTFT mode: more aggressive cache clearing for speed over efficiency
+        cmdLine = cmdLine.replace(`--defrag-thold ${defragThreshold}`, `--defrag-thold 0.05`);
+        
+        // TTFT mode: disable continuous batching
+        cmdLine = cmdLine.replace(` --cont-batching`, '');
+        
+        log.info(`Model ${model.name}: TTFT optimizations applied - context: ${ttftContextSize}, keep: ${keepTokens}`);
+      } else {
+        log.info(`Model ${model.name}: Conversational mode - optimizing for multi-turn chat speed`);
+        log.info(`Model ${model.name}: Context: ${contextSize}, Keep: ${keepTokens}, Batch: ${batchSize}`);
+      }
+      
       configYaml += `  "${model.name}":
     proxy: "http://127.0.0.1:9999"
     cmd: |
@@ -458,7 +615,7 @@ ${cmdLine}
     });
 
     await fs.writeFile(this.configPath, configYaml);
-    log.info('Dynamic config generated with', mainModels.length, 'models with optimized GPU layer allocation');
+    log.info('Dynamic config generated with', mainModels.length, 'models using saved performance settings');
     
     return { models: mainModels.length };
   }
@@ -556,6 +713,40 @@ ${cmdLine}
     }
 
     try {
+      // macOS Security Pre-check - Prepare for potential firewall prompts
+      if (process.platform === 'darwin') {
+        log.info('🔒 macOS detected - checking network security requirements...');
+        
+        // Check if port is already in use (could indicate permission issues)
+        try {
+          const net = require('net');
+          const server = net.createServer();
+          
+          await new Promise((resolve, reject) => {
+            server.listen(this.port, '127.0.0.1', () => {
+              server.close();
+              resolve(true);
+            });
+            
+            server.on('error', (err) => {
+              if (err.code === 'EADDRINUSE') {
+                log.warn(`⚠️ Port ${this.port} already in use - may indicate permission or conflict issues`);
+              }
+              reject(err);
+            });
+          });
+          
+          log.info('✅ Port availability check passed');
+        } catch (portError) {
+          if (portError.code === 'EADDRINUSE') {
+            log.warn(`⚠️ Port ${this.port} is already in use. This may cause permission prompts.`);
+          }
+        }
+        
+        log.info('🔓 Network security check complete. Starting service...');
+        log.info('💡 If macOS shows a firewall prompt, please click "Allow" to enable local AI functionality.');
+      }
+
       // Validate binaries before attempting to start
       log.info('Validating binaries before startup...');
       await this.validateBinaries();
@@ -573,7 +764,7 @@ ${cmdLine}
       // Fixed command line arguments according to the binary's help output
       const args = [
         '-config', this.configPath,
-        '-listen', `:${this.port}`
+        '-listen', `127.0.0.1:${this.port}` // Bind to localhost only for better security
       ];
 
       log.info(`Starting with args: ${args.join(' ')}`);
@@ -591,27 +782,46 @@ ${cmdLine}
         const output = data.toString();
         log.info(`llama-swap stdout: ${output.trim()}`);
         
+        // Parse progress information for UI feedback
+        this.parseProgressFromOutput(output);
+        
         // Check for successful startup - look for different possible success messages
         if (output.includes(`listening on`) || 
             output.includes(`server started`) ||
             output.includes(`:${this.port}`)) {
           log.info(`llama-swap service started successfully on port ${this.port}`);
         }
+        
+        this.parseProgressFromOutput(output);
       });
 
       this.process.stderr.on('data', (data) => {
         const error = data.toString();
         log.error(`llama-swap stderr: ${error.trim()}`);
         
-        // Check for common errors
+        // Check for V cache quantization error that requires flash attention
+        if (error.includes('V cache quantization requires flash_attn') || 
+            error.includes('failed to create context with model')) {
+          log.warn('⚠️ Model requires flash attention for V cache quantization - will retry with flash attention enabled');
+          this.handleFlashAttentionRequired = true;
+        }
+        
+        // Enhanced error handling for common issues
         if (error.includes('bind: address already in use')) {
-          log.error(`Port ${this.port} is already in use. Please stop any existing llama-swap processes.`);
+          log.error(`❌ Port ${this.port} is already in use. Please stop any existing llama-swap processes.`);
         }
         if (error.includes('no such file or directory')) {
-          log.error('Binary or config file not found');
+          log.error('❌ Binary or config file not found');
         }
-        if (error.includes('permission denied')) {
-          log.error('Permission denied - check binary execute permissions');
+        if (error.includes('permission denied') || error.includes('Operation not permitted')) {
+          log.error('🔒 Permission denied - this may be due to macOS security restrictions.');
+          log.error('💡 If you saw a firewall prompt, make sure you clicked "Allow".');
+          log.error('🔧 To fix: Go to System Preferences → Security & Privacy → Firewall → Firewall Options');
+          log.error('📝 Find your Clara app and ensure it\'s set to "Allow incoming connections"');
+        }
+        if (error.includes('bind') && error.includes('cannot assign requested address')) {
+          log.error('🌐 Network binding failed - possible firewall or permission issue');
+          log.error('💡 This often happens if macOS firewall permission was denied');
         }
       });
 
@@ -622,6 +832,11 @@ ${cmdLine}
         
         if (code !== 0 && code !== null) {
           log.error(`llama-swap service failed with exit code ${code}`);
+          
+          // If we detected a flash attention requirement, mark for retry
+          if (this.handleFlashAttentionRequired) {
+            log.info('🔄 Preparing automatic retry with flash attention enabled...');
+          }
         }
       });
 
@@ -649,7 +864,23 @@ ${cmdLine}
         }
       } else {
         this.isRunning = false;
-        const errorMsg = 'llama-swap process failed to start or exited immediately';
+        
+        // Check if we need to retry with flash attention enabled
+        if (this.handleFlashAttentionRequired && !this.flashAttentionRetryAttempted) {
+          log.info('🔄 Automatically retrying with flash attention enabled...');
+          this.flashAttentionRetryAttempted = true;
+          this.handleFlashAttentionRequired = false;
+          
+          // Force regenerate config with flash attention enabled
+          await this.enableFlashAttentionAndRegenerate();
+          
+          // Recursive retry
+          return await this.start();
+        }
+        
+        const errorMsg = this.handleFlashAttentionRequired 
+          ? 'Model requires flash attention but retry failed. Please enable flash attention in GPU Diagnostics → Performance Settings.'
+          : 'llama-swap process failed to start or exited immediately';
         log.error(errorMsg);
         return { success: false, error: errorMsg };
       }
@@ -707,13 +938,13 @@ ${cmdLine}
           log.warn('Force killing llama-swap process');
           this.process.kill('SIGKILL');
         }
+        this.cleanup();
         resolve(true);
       }, 5000);
 
       this.process.once('close', () => {
         clearTimeout(timeout);
-        this.isRunning = false;
-        this.process = null;
+        this.cleanup();
         log.info('llama-swap service stopped');
         resolve(true);
       });
@@ -722,8 +953,19 @@ ${cmdLine}
     });
   }
 
+  cleanup() {
+    this.isRunning = false;
+    this.process = null;
+    // Reset flash attention retry flags for next start attempt
+    this.handleFlashAttentionRequired = false;
+    this.flashAttentionRetryAttempted = false;
+    this.forceFlashAttention = false;
+  }
+
   async restart() {
     await this.stop();
+    // Additional cleanup to ensure fresh start
+    this.cleanup();
     await new Promise(resolve => setTimeout(resolve, 2000));
     return await this.start();
   }
@@ -1339,6 +1581,399 @@ ${cmdLine}
     } catch (error) {
       log.error('Error getting GPU diagnostics:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get safe default performance configuration when calculation fails
+   */
+  getSafeDefaultConfig() {
+    const cpuCores = require('os').cpus().length;
+    
+    return {
+      gpuLayers: 0,
+      contextSize: 8192,      // Larger default context for better conversations
+      batchSize: 512,
+      ubatchSize: 128,
+      flashAttention: this.forceFlashAttention || true,   // Enable by default or when forced - many modern quantized models require it
+      useMemoryMapping: true,
+      useMemoryLock: true,    // Enable memory locking for consistent performance
+      useContinuousBatching: true,  // Enable by default for better multi-turn performance
+      optimizeFirstToken: false,    // Default to conversational mode, not TTFT mode
+      threads: Math.max(4, Math.min(8, Math.floor(cpuCores / 2))), // Better thread calculation
+      parallelSequences: 1,
+      kvCacheType: 'q8_0',
+      // New conversational optimization settings
+      keepTokens: 1024,       // Keep more tokens for faster subsequent responses
+      defragThreshold: 0.1,   // Less aggressive defrag for better cache retention
+      enableContinuousBatching: true  // Explicit continuous batching flag
+    };
+  }
+
+  /**
+   * Optimize conversation performance settings dynamically
+   * This method can be called to adjust settings based on real usage patterns
+   */
+  async optimizeConversationPerformance(modelPath, conversationLength = 10) {
+    try {
+      const modelSizeGB = (await fs.stat(modelPath)).size / (1024 * 1024 * 1024);
+      const gpuInfo = await this.detectGPUInfo();
+      
+      // Calculate optimal settings based on conversation length and system resources
+      const contextSize = this.calculateOptimalContextSize(modelSizeGB, gpuInfo.hasGPU, gpuInfo.gpuMemoryGB);
+      
+      // Adjust keep tokens based on conversation length
+      let keepTokens;
+      if (conversationLength <= 5) {
+        // Short conversations: keep most of the context
+        keepTokens = Math.min(2048, Math.floor(contextSize * 0.4));
+      } else if (conversationLength <= 15) {
+        // Medium conversations: balance memory and speed
+        keepTokens = Math.min(1536, Math.floor(contextSize * 0.3));
+      } else {
+        // Long conversations: more conservative to prevent memory issues
+        keepTokens = Math.min(1024, Math.floor(contextSize * 0.25));
+      }
+      
+      // Adjust defrag threshold based on conversation activity
+      const defragThreshold = conversationLength > 20 ? 0.15 : 0.1;
+      
+      return {
+        contextSize,
+        keepTokens,
+        defragThreshold,
+        enableContinuousBatching: true,
+        // Batch size optimization for conversation flow
+        batchSize: modelSizeGB <= 4 ? 256 : 512,
+        ubatchSize: modelSizeGB <= 4 ? 64 : 128
+      };
+    } catch (error) {
+      log.warn('Failed to optimize conversation performance:', error.message);
+      return this.getSafeDefaultConfig();
+    }
+  }
+
+  /**
+   * Get conversation-optimized command line arguments
+   * This replaces the aggressive TTFT settings with conversation-friendly ones
+   */
+  getConversationOptimizedArgs(perfConfig, modelSizeGB) {
+    const args = [];
+    
+    // Context size for good conversation memory
+    const contextSize = perfConfig.contextSize || 8192;
+    args.push(`--ctx-size ${contextSize}`);
+    
+    // Generous keep tokens to avoid reprocessing conversation history
+    const keepTokens = perfConfig.keepTokens || Math.min(1024, Math.floor(contextSize * 0.25));
+    args.push(`--keep ${keepTokens}`);
+    
+    // Less aggressive defrag to preserve cache
+    const defragThreshold = perfConfig.defragThreshold || 0.1;
+    args.push(`--defrag-thold ${defragThreshold}`);
+    
+    // Enable continuous batching for multi-turn efficiency
+    if (perfConfig.enableContinuousBatching !== false) {
+      args.push('--cont-batching');
+    }
+    
+    // Memory locking for consistent performance
+    if (perfConfig.useMemoryLock !== false) {
+      args.push('--mlock');
+    }
+    
+    // Batch sizes optimized for conversation flow
+    const batchSize = perfConfig.batchSize || (modelSizeGB <= 4 ? 256 : 512);
+    const ubatchSize = perfConfig.ubatchSize || (modelSizeGB <= 4 ? 64 : 128);
+    args.push(`--batch-size ${batchSize}`);
+    args.push(`--ubatch-size ${ubatchSize}`);
+    
+    // Parallel sequences
+    const parallel = perfConfig.parallelSequences || 1;
+    args.push(`--parallel ${parallel}`);
+    
+    // Cache type optimization
+    if (perfConfig.kvCacheType && perfConfig.kvCacheType !== 'f16') {
+      args.push(`--cache-type-k ${perfConfig.kvCacheType}`);
+      args.push(`--cache-type-v ${perfConfig.kvCacheType}`);
+    }
+    
+    // Flash attention if supported
+    if (perfConfig.flashAttention) {
+      args.push('--flash-attn');
+    }
+    
+    return args;
+  }
+
+  /**
+   * Save performance settings to persistent storage
+   */
+  async savePerformanceSettings(settings) {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const os = require('os');
+      
+      // Create settings directory if it doesn't exist
+      const settingsDir = path.join(os.homedir(), '.clara', 'settings');
+      await fs.mkdir(settingsDir, { recursive: true });
+      
+      // Save performance settings to file
+      const settingsPath = path.join(settingsDir, 'performance-settings.json');
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      
+      log.info('Performance settings saved successfully:', settingsPath);
+      return { success: true, path: settingsPath };
+      
+    } catch (error) {
+      log.error('Error saving performance settings:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Load performance settings from persistent storage
+   */
+  async loadPerformanceSettings() {
+    try {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const os = require('os');
+      
+      const settingsPath = path.join(os.homedir(), '.clara', 'settings', 'performance-settings.json');
+      
+      // Check if settings file exists
+      try {
+        await fs.access(settingsPath);
+      } catch (accessError) {
+        // File doesn't exist, return default settings
+        log.info('No saved performance settings found, using defaults');
+        return { success: true, settings: this.getDefaultPerformanceSettings() };
+      }
+      
+      // Read and parse settings file
+      const settingsData = await fs.readFile(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsData);
+      
+      log.info('Performance settings loaded successfully:', settingsPath);
+      return { success: true, settings };
+      
+    } catch (error) {
+      log.error('Error loading performance settings:', error);
+      return { success: false, error: error.message, settings: this.getDefaultPerformanceSettings() };
+    }
+  }
+
+  /**
+   * Get performance settings (alias for loadPerformanceSettings for compatibility)
+   */
+  async getPerformanceSettings() {
+    return await this.loadPerformanceSettings();
+  }
+
+  /**
+   * Get default performance settings for UI initialization
+   */
+  getDefaultPerformanceSettings() {
+    const cpuCores = require('os').cpus().length;
+    
+    return {
+      flashAttention: true,   // Enable by default - required for many modern quantized models
+      autoOptimization: true,
+      maxContextSize: 8192,
+      aggressiveOptimization: false,
+      prioritizeSpeed: false,
+      optimizeFirstToken: false,
+      threads: Math.max(4, Math.min(8, Math.floor(cpuCores / 2))),
+      parallelSequences: 1,
+      // Conversational optimization settings
+      optimizeConversations: true,
+      keepTokens: 1024,
+      defragThreshold: 0.1,
+      enableContinuousBatching: true,
+      conversationMode: 'balanced'
+    };
+  }
+
+  // Helper method to calculate TTFT-optimized batch sizes and parameters
+  calculateTTFTOptimizedBatchSizes(modelSizeGB, gpuInfo) {
+    const hasGPU = gpuInfo.hasGPU;
+    const memoryGB = hasGPU ? gpuInfo.gpuMemoryGB : 8; // Assume 8GB RAM fallback
+    
+    // For TTFT optimization, use smaller batch sizes for faster prefill
+    let batchSize = 512;  // Default batch size for TTFT
+    let ubatchSize = 128; // Smaller micro-batch for TTFT
+    
+    if (modelSizeGB <= 4) {
+      // Small models: aggressive TTFT optimization
+      batchSize = 256;
+      ubatchSize = 64;
+    } else if (modelSizeGB <= 8) {
+      // Medium models: balanced TTFT
+      batchSize = 512;
+      ubatchSize = 128;
+    } else {
+      // Large models: conservative TTFT
+      batchSize = 1024;
+      ubatchSize = 256;
+    }
+    
+    return { batchSize, ubatchSize };
+  }
+
+  // Helper method to optimize context size for performance vs capability
+  calculateOptimalContextSize(modelSizeGB, hasGPU, memoryGB) {
+    // For optimal conversational performance, we need larger context windows
+    // but must balance memory usage
+    
+    if (modelSizeGB <= 4) {
+      // Small models can handle larger contexts
+      return hasGPU && memoryGB >= 8 ? 32768 : 16384;
+    } else if (modelSizeGB <= 8) {
+      // Medium models: balance performance and memory
+      return hasGPU && memoryGB >= 12 ? 16384 : 8192;
+    } else if (modelSizeGB <= 16) {
+      // Large models: conservative context
+      return hasGPU && memoryGB >= 16 ? 8192 : 4096;
+    } else {
+      // Very large models: minimal context for memory efficiency
+      return hasGPU && memoryGB >= 24 ? 4096 : 2048;
+    }
+  }
+
+  async enableFlashAttentionAndRegenerate() {
+    try {
+      log.info('🔄 Enabling flash attention and regenerating configuration...');
+      
+      // Temporarily force flash attention to true for this regeneration
+      this.forceFlashAttention = true;
+      
+      // Regenerate the configuration with flash attention enabled
+      await this.generateConfig();
+      
+      log.info('✅ Configuration regenerated with flash attention enabled');
+      
+      // Also try to update saved performance settings to enable flash attention by default
+      try {
+        const currentSettings = await this.loadPerformanceSettings();
+        if (currentSettings.success) {
+          const updatedSettings = {
+            ...currentSettings.settings,
+            flashAttention: true
+          };
+          await this.savePerformanceSettings(updatedSettings);
+          log.info('💾 Updated saved performance settings to enable flash attention by default');
+        }
+      } catch (settingsError) {
+        log.warn('Could not update performance settings:', settingsError.message);
+      }
+      
+    } catch (error) {
+      log.error('Failed to enable flash attention and regenerate config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set a callback function to receive progress updates
+   */
+  setProgressCallback(callback) {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * Parse progress information from llama-swap stdout
+   */
+  parseProgressFromOutput(output) {
+    if (!this.progressCallback) return;
+
+    try {
+      // Parse different types of progress messages
+      
+      // Context processing progress: "slot update_slots: id  0 | task 1508 | prompt processing progress, n_past = 517, n_tokens = 512, progress = 0.335958"
+      const contextMatch = output.match(/(?:slot update_slots.*?)?prompt processing progress.*?progress = ([\d.]+)/);
+      if (contextMatch) {
+        const progress = Math.round(parseFloat(contextMatch[1]) * 100);
+        
+        // Extract additional details for better context
+        const nPastMatch = output.match(/n_past = (\d+)/);
+        const nTokensMatch = output.match(/n_tokens = (\d+)/);
+        
+        let details = 'Processing conversation context...';
+        if (nPastMatch && nTokensMatch) {
+          details = `Processed ${nPastMatch[1]} tokens, batch size ${nTokensMatch[1]}`;
+        }
+        
+        this.progressCallback({
+          type: 'context_loading',
+          progress: progress,
+          message: `Loading Context`,
+          details: details
+        });
+        
+        // Log progress to console for debugging
+        console.log(`📊 Context Loading Progress: ${progress}% - ${details}`);
+        return;
+      }
+
+      // Memory optimization: "kv cache rm"
+      if (output.includes('kv cache rm')) {
+        this.progressCallback({
+          type: 'memory_optimization',
+          progress: -1, // Indeterminate
+          message: 'Optimizing Memory',
+          details: 'Clearing conversation cache...'
+        });
+        
+        console.log('🧹 Memory Optimization: Clearing cache');
+        return;
+      }
+
+      // Chat format initialization
+      const chatFormatMatch = output.match(/Chat format: (.+)/);
+      if (chatFormatMatch) {
+        this.progressCallback({
+          type: 'initialization',
+          progress: -1,
+          message: 'Initializing',
+          details: `Chat format: ${chatFormatMatch[1]}`
+        });
+        
+        console.log(`🔧 Initializing chat format: ${chatFormatMatch[1]}`);
+        return;
+      }
+
+      // Model loading/warmup
+      if (output.includes('loading model') || output.includes('warming up')) {
+        this.progressCallback({
+          type: 'model_loading',
+          progress: -1,
+          message: 'Loading Model',
+          details: 'Preparing AI model...'
+        });
+        
+        console.log('🤖 Loading/warming up model');
+        return;
+      }
+
+      // Task processing (new prompt)
+      const taskMatch = output.match(/slot launch_slot_: id\s+(\d+) \| task (\d+) \| processing task/);
+      if (taskMatch) {
+        this.progressCallback({
+          type: 'task_processing',
+          progress: -1,
+          message: 'Processing Request',
+          details: `Starting task ${taskMatch[2]} on slot ${taskMatch[1]}`
+        });
+        
+        console.log(`⚡ Starting new task: ${taskMatch[2]} on slot ${taskMatch[1]}`);
+        return;
+      }
+
+    } catch (error) {
+      // Silently ignore parsing errors but log for debugging
+      console.warn('Progress parsing error:', error);
     }
   }
 }

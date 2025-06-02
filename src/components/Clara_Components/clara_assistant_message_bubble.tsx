@@ -642,6 +642,14 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
 
   // Extract the full content that was sent to AI (including extracted text)
   const getExtractedContentForAttachment = (attachmentId: string): string => {
+    // First, check if this is an image attachment - images should show the image itself
+    const attachment = displayAttachments.find((att: any) => att.id === attachmentId);
+    if (attachment?.type === 'image') {
+      // For images, we want to show the image in the modal, not text content
+      // Return a special indicator that this is an image
+      return 'IMAGE_ATTACHMENT';
+    }
+    
     if (!displayMeta?.cleanContent) return '';
     
     // Parse the content to find the extracted text for this specific attachment
@@ -656,7 +664,6 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     }
     
     // Fallback: try to find content by attachment name
-    const attachment = displayAttachments.find((att: any) => att.id === attachmentId);
     if (attachment?.name) {
       const nameMatch = displayMeta.cleanContent.match(
         new RegExp(`--- Content from ${attachment.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ---\\n([\\s\\S]*?)\\n--- End of ${attachment.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ---`)
@@ -855,9 +862,18 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
                 const attachment = displayAttachments.find((att: any) => att.id === attachmentId);
                 const extractedContent = getExtractedContentForAttachment(attachmentId);
                 
-                if (attachment) {
+                // For images, try to get the original attachment with base64 data
+                let fullAttachment = attachment;
+                if (attachment?.type === 'image' && message.attachments) {
+                  const originalAttachment = message.attachments.find(att => att.id === attachmentId);
+                  if (originalAttachment) {
+                    fullAttachment = originalAttachment;
+                  }
+                }
+                
+                if (fullAttachment) {
                   setSelectedAttachment({
-                    attachment,
+                    attachment: fullAttachment,
                     content: extractedContent
                   });
                 }
@@ -967,7 +983,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
  * Attachment Detail Modal
  */
 const AttachmentDetailModal: React.FC<{
-  attachment: {
+  attachment: ClaraFileAttachment | {
     id: string;
     name: string;
     type: string;
@@ -982,7 +998,7 @@ const AttachmentDetailModal: React.FC<{
   const { copyToClipboard } = useCopyWithToast();
 
   const handleCopy = async () => {
-    if (extractedContent) {
+    if (extractedContent && extractedContent !== 'IMAGE_ATTACHMENT') {
       await copyToClipboard(extractedContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -1009,6 +1025,10 @@ const AttachmentDetailModal: React.FC<{
   if (!isOpen) return null;
 
   const IconComponent = getFileIcon(attachment.type);
+  const isImage = attachment.type === 'image';
+  const hasImageData = 'base64' in attachment && attachment.base64;
+  const imageUrl = hasImageData ? `data:${attachment.mimeType};base64,${attachment.base64}` : 
+                   ('url' in attachment && attachment.url) ? attachment.url : null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1028,7 +1048,7 @@ const AttachmentDetailModal: React.FC<{
           </div>
           
           <div className="flex items-center gap-2">
-            {extractedContent && (
+            {extractedContent && extractedContent !== 'IMAGE_ATTACHMENT' && (
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1049,7 +1069,27 @@ const AttachmentDetailModal: React.FC<{
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-4">
-          {extractedContent ? (
+          {isImage && imageUrl ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <Eye className="w-4 h-4" />
+                <span>Image Preview</span>
+              </div>
+              
+              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                <img 
+                  src={imageUrl} 
+                  alt={attachment.name}
+                  className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-sm"
+                  style={{ maxHeight: 'calc(60vh - 2rem)' }}
+                />
+              </div>
+              
+              <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                Click and drag to move • Scroll to zoom
+              </div>
+            </div>
+          ) : extractedContent && extractedContent !== 'IMAGE_ATTACHMENT' ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                 <Eye className="w-4 h-4" />
@@ -1066,12 +1106,14 @@ const AttachmentDetailModal: React.FC<{
             <div className="text-center py-8">
               <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                No Content Available
+                {isImage ? 'Image Not Available' : 'No Content Available'}
               </h4>
               <p className="text-gray-600 dark:text-gray-400">
-                {attachment.processed 
-                  ? 'This file was processed but no text content was extracted.'
-                  : 'This file has not been processed yet.'}
+                {isImage 
+                  ? 'This image could not be loaded or displayed.'
+                  : attachment.processed 
+                    ? 'This file was processed but no text content was extracted.'
+                    : 'This file has not been processed yet.'}
               </p>
             </div>
           )}

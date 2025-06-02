@@ -682,9 +682,526 @@ async function getUpdateInfo() {
   }
 }
 
+// Llama.cpp Binary Update Service
+class LlamacppUpdateService {
+  constructor() {
+    this.platform = process.platform;
+    this.arch = process.arch;
+    this.githubRepo = 'ggerganov/llama.cpp';
+    this.isUpdating = false;
+    this.binariesPath = this.getBinariesPath();
+  }
+
+  getBinariesPath() {
+    const path = require('path');
+    const { app } = require('electron');
+    
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    
+    if (isDevelopment) {
+      return path.join(__dirname, 'llamacpp-binaries');
+    } else {
+      // Production paths
+      const possiblePaths = [
+        path.join(process.resourcesPath, 'electron', 'llamacpp-binaries'),
+        path.join(app.getAppPath(), 'electron', 'llamacpp-binaries'),
+        path.join(__dirname, 'llamacpp-binaries')
+      ];
+      
+      for (const possiblePath of possiblePaths) {
+        if (require('fs').existsSync(possiblePath)) {
+          return possiblePath;
+        }
+      }
+      
+      return path.join(app.getPath('userData'), 'llamacpp-binaries');
+    }
+  }
+
+  getCurrentVersion() {
+    const path = require('path');
+    const fs = require('fs');
+    
+    try {
+      const versionFile = path.join(this.binariesPath, 'version.txt');
+      if (fs.existsSync(versionFile)) {
+        return fs.readFileSync(versionFile, 'utf8').trim();
+      }
+    } catch (error) {
+      logger.warn('Could not read current llama.cpp version:', error);
+    }
+    
+    return 'Unknown';
+  }
+
+  getPlatformInfo() {
+    switch (this.platform) {
+      case 'darwin':
+        return {
+          platform: 'darwin',
+          arch: this.arch === 'arm64' ? 'arm64' : 'x64',
+          platformDir: this.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64',
+          assetPattern: this.arch === 'arm64' ? 'llama-.*-bin-macos-arm64.zip' : 'llama-.*-bin-macos-x64.zip'
+        };
+      case 'linux':
+        return {
+          platform: 'linux',
+          arch: 'x64',
+          platformDir: 'linux-x64',
+          assetPattern: 'llama-.*-bin-ubuntu-x64.zip'
+        };
+      case 'win32':
+        return {
+          platform: 'win32',
+          arch: 'x64',
+          platformDir: 'win32-x64',
+          assetPattern: 'llama-.*-bin-win-.*-x64.zip'
+        };
+      default:
+        throw new Error(`Unsupported platform: ${this.platform}-${this.arch}`);
+    }
+  }
+
+  async checkForUpdates() {
+    if (!fetch) {
+      throw new UpdateError('Network functionality not available', 'NO_FETCH', false);
+    }
+
+    try {
+      const response = await makeRobustRequest(`https://api.github.com/repos/${this.githubRepo}/releases/latest`);
+      const release = await response.json();
+      
+      validateReleaseData(release);
+      
+      const currentVersion = this.getCurrentVersion();
+      const latestVersion = release.tag_name;
+      const hasUpdate = currentVersion === 'Unknown' || currentVersion !== latestVersion;
+      
+      const platformInfo = this.getPlatformInfo();
+      const matchingAsset = release.assets.find(asset => 
+        new RegExp(platformInfo.assetPattern, 'i').test(asset.name)
+      );
+      
+      return {
+        hasUpdate,
+        currentVersion,
+        latestVersion,
+        platform: this.platform,
+        downloadSize: matchingAsset ? this.formatFileSize(matchingAsset.size) : 'Unknown size',
+        releaseUrl: release.html_url,
+        downloadUrl: matchingAsset?.browser_download_url,
+        publishedAt: release.published_at,
+        error: matchingAsset ? null : `No compatible binary found for ${this.platform}-${this.arch}`
+      };
+    } catch (error) {
+      logger.error('Error checking for llama.cpp updates:', error);
+      throw error;
+    }
+  }
+
+  async updateBinaries() {
+    if (this.isUpdating) {
+      throw new Error('Binary update already in progress');
+    }
+
+    this.isUpdating = true;
+
+    try {
+      const updateInfo = await this.checkForUpdates();
+      
+      if (!updateInfo.hasUpdate) {
+        return { success: true, message: 'Binaries are already up to date' };
+      }
+
+      if (!updateInfo.downloadUrl) {
+        throw new Error(updateInfo.error || 'No download URL available');
+      }
+
+      const result = await this.downloadAndInstallBinaries(updateInfo);
+      return result;
+    } catch (error) {
+      logger.error('Error updating llama.cpp binaries:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to update binaries' 
+      };
+    } finally {
+      this.isUpdating = false;
+    }
+  }
+
+  async downloadAndInstallBinaries(updateInfo) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    const fsSync = require('fs');
+    const AdmZip = require('adm-zip');
+    
+    try {
+      logger.info(`Downloading llama.cpp binaries from: ${updateInfo.downloadUrl}`);
+      
+      // Download the zip file
+      const response = await makeRobustRequest(updateInfo.downloadUrl);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      
+      // Create temporary file
+      const tempDir = path.join(require('os').tmpdir(), 'clara-llamacpp-update');
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempZipPath = path.join(tempDir, 'llamacpp-binaries.zip');
+      
+      await fs.writeFile(tempZipPath, buffer);
+      logger.info(`Downloaded binaries to: ${tempZipPath}`);
+      
+      // Extract zip file
+      const zip = new AdmZip(tempZipPath);
+      const extractDir = path.join(tempDir, 'extracted');
+      zip.extractAllTo(extractDir, true);
+      
+      // Find the platform directory to update
+      const platformInfo = this.getPlatformInfo();
+      const targetPlatformDir = path.join(this.binariesPath, platformInfo.platformDir);
+      
+      // Backup current official llama.cpp files only (preserving Clara's custom files)
+      const backupDir = path.join(this.binariesPath, `${platformInfo.platformDir}-backup-${Date.now()}`);
+      if (fsSync.existsSync(targetPlatformDir)) {
+        await fs.mkdir(backupDir, { recursive: true });
+        
+        // Only backup official llama.cpp files, leave Clara's custom files alone
+        const files = await fs.readdir(targetPlatformDir);
+        for (const file of files) {
+          // Only backup official llama.cpp files (not Clara's custom binaries)
+          if (this.isOfficialLlamacppFile(file)) {
+            const sourcePath = path.join(targetPlatformDir, file);
+            const backupPath = path.join(backupDir, file);
+            
+            if (fsSync.existsSync(sourcePath)) {
+              await fs.copyFile(sourcePath, backupPath);
+              logger.info(`Backed up ${file} to backup directory`);
+            }
+          }
+        }
+      }
+      
+      // Ensure target directory exists
+      await fs.mkdir(targetPlatformDir, { recursive: true });
+      
+      // Find and copy official llama.cpp files from extracted files
+      const extractedFiles = await this.findOfficialFilesInExtracted(extractDir);
+      
+      if (extractedFiles.length === 0) {
+        throw new Error('No official llama.cpp files found in the downloaded archive');
+      }
+      
+      for (const [sourceFile, targetName] of extractedFiles) {
+        const targetPath = path.join(targetPlatformDir, targetName);
+        await fs.copyFile(sourceFile, targetPath);
+        
+        // Make executable for binary files on Unix systems
+        if (this.platform !== 'win32' && this.isExecutableFile(targetName)) {
+          await fs.chmod(targetPath, 0o755);
+        }
+        
+        logger.info(`Installed official file: ${targetName}`);
+      }
+      
+      // Save version info
+      const versionFile = path.join(this.binariesPath, 'version.txt');
+      await fs.writeFile(versionFile, updateInfo.latestVersion);
+      
+      // Validate the installation by testing the main binary
+      await this.validateInstallation(targetPlatformDir);
+      
+      // Cleanup
+      await fs.rm(tempDir, { recursive: true, force: true });
+      
+      logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}`);
+      logger.info(`Clara's custom binaries (like llama-swap) were preserved and not modified`);
+      
+      return { 
+        success: true, 
+        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved.`,
+        version: updateInfo.latestVersion
+      };
+      
+    } catch (error) {
+      logger.error('Error during binary installation:', error);
+      throw new Error(`Installation failed: ${error.message}`);
+    }
+  }
+
+  // Check if a file is an official llama.cpp file (binaries, libraries, headers, etc.)
+  isOfficialLlamacppFile(fileName) {
+    const officialBinaries = [
+      'llama-server',
+      'llama-server.exe',
+      'llama-cli',
+      'llama-cli.exe',
+      'llama-quantize',
+      'llama-quantize.exe',
+      'llama-perplexity',
+      'llama-perplexity.exe',
+      'llama-embedding',
+      'llama-embedding.exe',
+      'llama-bench',
+      'llama-bench.exe',
+      'llama-eval',
+      'llama-eval.exe',
+      'llama-export-lora',
+      'llama-export-lora.exe',
+      'llama-finetune',
+      'llama-finetune.exe',
+      'llama-convert-hf',
+      'llama-convert-hf.exe'
+    ];
+    
+    // Official supporting libraries and files
+    const officialLibraries = [
+      // Dynamic libraries
+      'libllama.dylib',
+      'libggml.dylib',
+      'libggml-metal.dylib',
+      'libggml-cpu.dylib',
+      'libggml-base.dylib',
+      'libggml-blas.dylib',
+      'libggml-rpc.dylib',
+      'libmtmd.dylib',
+      'libmtmd_shared.dylib',
+      // Windows DLLs
+      'llama.dll',
+      'ggml.dll',
+      'ggml-metal.dll',
+      'ggml-cpu.dll',
+      'ggml-base.dll',
+      'ggml-blas.dll',
+      'ggml-rpc.dll',
+      // Linux shared objects
+      'libllama.so',
+      'libggml.so',
+      'libggml-metal.so',
+      'libggml-cpu.so',
+      'libggml-base.so',
+      'libggml-blas.so',
+      'libggml-rpc.so',
+      // Metal shaders and headers
+      'ggml-metal.metal',
+      'ggml-common.h',
+      'ggml-metal-impl.h'
+    ];
+    
+    // Exclude Clara's custom binaries
+    const claraCustomBinaries = [
+      'llama-swap',
+      'llama-swap.exe',
+      'llama-swap-darwin',
+      'llama-swap-darwin-arm64',
+      'llama-swap-linux',
+      'llama-swap-win32-x64.exe'
+    ];
+    
+    // Don't touch Clara's custom binaries
+    if (claraCustomBinaries.some(custom => fileName.includes(custom))) {
+      return false;
+    }
+    
+    // Check if it's an official binary
+    if (officialBinaries.some(official => fileName === official || fileName.includes(official.replace('.exe', '')))) {
+      return true;
+    }
+    
+    // Check if it's an official library or supporting file
+    if (officialLibraries.some(lib => fileName === lib || fileName.includes(lib.replace(/\.(dylib|dll|so)$/, '')))) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  // Check if a file should be made executable
+  isExecutableFile(fileName) {
+    const executableExtensions = ['', '.exe']; // No extension on Unix, .exe on Windows
+    const binaryNames = [
+      'llama-server',
+      'llama-cli', 
+      'llama-quantize',
+      'llama-perplexity',
+      'llama-embedding',
+      'llama-bench',
+      'llama-eval',
+      'llama-export-lora',
+      'llama-finetune',
+      'llama-convert-hf'
+    ];
+    
+    return binaryNames.some(name => 
+      fileName === name || 
+      fileName === `${name}.exe` ||
+      fileName.startsWith(`${name}-`) // Handle versioned binaries
+    );
+  }
+
+  async findOfficialFilesInExtracted(extractDir) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    const filesMap = [];
+    
+    // All files we want to update
+    const targetFiles = [
+      // Main binaries
+      ...(this.platform === 'win32' 
+        ? ['llama-server.exe', 'llama-cli.exe', 'llama-quantize.exe', 'llama-perplexity.exe']
+        : ['llama-server', 'llama-cli', 'llama-quantize', 'llama-perplexity']),
+      
+      // Supporting libraries based on platform
+      ...(this.platform === 'darwin' 
+        ? ['libllama.dylib', 'libggml.dylib', 'libggml-metal.dylib', 'libggml-cpu.dylib', 
+           'libggml-base.dylib', 'libggml-blas.dylib', 'libggml-rpc.dylib', 'libmtmd.dylib', 'libmtmd_shared.dylib']
+        : this.platform === 'win32'
+        ? ['llama.dll', 'ggml.dll', 'ggml-metal.dll', 'ggml-cpu.dll', 'ggml-base.dll', 'ggml-blas.dll', 'ggml-rpc.dll']
+        : ['libllama.so', 'libggml.so', 'libggml-metal.so', 'libggml-cpu.so', 'libggml-base.so', 'libggml-blas.so', 'libggml-rpc.so']),
+      
+      // Common supporting files
+      'ggml-metal.metal',
+      'ggml-common.h',
+      'ggml-metal-impl.h'
+    ];
+    
+    // Required core files that must be present for a valid update
+    const requiredFiles = this.platform === 'win32' 
+      ? ['llama-server.exe', 'llama.dll']
+      : this.platform === 'darwin'
+      ? ['llama-server', 'libllama.dylib']
+      : ['llama-server', 'libllama.so'];
+    
+    async function searchDirectory(dir) {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          await searchDirectory(fullPath);
+        } else if (entry.isFile()) {
+          // Check if this file matches one of our target files
+          for (const targetFile of targetFiles) {
+            const baseName = targetFile.replace(/\.(exe|dylib|dll|so)$/, '');
+            
+            if (entry.name === targetFile || 
+                entry.name === baseName ||
+                (entry.name.includes(baseName) && !entry.name.includes('swap'))) {
+              // Use the original target file name for consistency
+              filesMap.push([fullPath, targetFile]);
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    await searchDirectory(extractDir);
+    
+    // Validate that we have the essential files for a complete update
+    const foundFiles = filesMap.map(([, targetName]) => targetName);
+    const missingRequired = requiredFiles.filter(required => !foundFiles.includes(required));
+    
+    if (missingRequired.length > 0) {
+      logger.warn(`Missing required files for complete update: ${missingRequired.join(', ')}`);
+      logger.warn('This might cause compatibility issues. Skipping update.');
+      throw new Error(`Incomplete update package: missing required files ${missingRequired.join(', ')}`);
+    }
+    
+    logger.info(`Found ${filesMap.length} official files for update: ${foundFiles.join(', ')}`);
+    
+    return filesMap;
+  }
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  async validateInstallation(targetPlatformDir) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    const fsSync = require('fs');
+    
+    try {
+      // Check that the main binary exists and is executable
+      const mainBinaryPath = path.join(targetPlatformDir, this.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
+      
+      if (!fsSync.existsSync(mainBinaryPath)) {
+        throw new Error(`Main binary not found: ${mainBinaryPath}`);
+      }
+      
+      // Check that required libraries exist
+      const requiredLibs = this.platform === 'darwin' 
+        ? ['libllama.dylib']
+        : this.platform === 'win32'
+        ? ['llama.dll']
+        : ['libllama.so'];
+      
+      for (const lib of requiredLibs) {
+        const libPath = path.join(targetPlatformDir, lib);
+        if (!fsSync.existsSync(libPath)) {
+          throw new Error(`Required library not found: ${libPath}`);
+        }
+      }
+      
+      logger.info('Installation validation completed successfully');
+    } catch (error) {
+      logger.error('Installation validation failed:', error);
+      throw new Error(`Installation validation failed: ${error.message}`);
+    }
+  }
+}
+
+// Create llama.cpp update service instance
+const llamacppUpdateService = new LlamacppUpdateService();
+
+// Safe llama.cpp update check for UI
+async function checkLlamacppUpdates() {
+  try {
+    return await llamacppUpdateService.checkForUpdates();
+  } catch (error) {
+    logger.error('Error checking llama.cpp updates:', error);
+    
+    let errorMessage = 'Failed to check for llama.cpp updates';
+    
+    if (error instanceof UpdateError) {
+      errorMessage = error.message;
+    } else {
+      errorMessage = error.message || 'Unknown error occurred';
+    }
+    
+    return {
+      hasUpdate: false,
+      error: errorMessage,
+      platform: llamacppUpdateService.platform,
+      currentVersion: llamacppUpdateService.getCurrentVersion()
+    };
+  }
+}
+
+// Safe llama.cpp binary update
+async function updateLlamacppBinaries() {
+  try {
+    return await llamacppUpdateService.updateBinaries();
+  } catch (error) {
+    logger.error('Error updating llama.cpp binaries:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to update binaries'
+    };
+  }
+}
+
 module.exports = { 
   setupAutoUpdater, 
   checkForUpdates, 
   getUpdateInfo,
+  checkLlamacppUpdates,
+  updateLlamacppBinaries,
   platformUpdateService 
 };

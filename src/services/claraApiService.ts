@@ -133,6 +133,9 @@ export class ClaraApiService {
     confidenceThreshold: 0.7
   };
 
+  // New property for warm connections
+  private warmConnections: Map<string, AbortController> = new Map();
+
   constructor() {
     this.initializeFromConfig();
   }

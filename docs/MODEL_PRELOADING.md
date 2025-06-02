@@ -37,13 +37,15 @@ The warmup request is sent asynchronously and errors are silently handled. The g
 
 ## User Experience
 
-### Visual Feedback
-- A subtle "Warming up model..." indicator appears briefly when preloading starts
-- The indicator disappears after 2 seconds or when the user sends their actual message
+### Silent Operation (Updated)
+- **Completely Silent**: Preloading now operates entirely in the background with no visual indicators
+- **No UI Glitches**: Eliminates the brief "flash" of loading indicators during preloading
+- **Progress UI Only on Send**: Visual feedback appears only when the user actually sends a message (when `isLoading=true`)
+- **Silent Input Focus**: Clicking on input bar or typing triggers silent preloading without any UI feedback
 
 ### Performance Benefits
 - **Before**: User sends message → Model loads (3-10 seconds) → Response generated
-- **After**: User types → Model loads in background → User sends message → Response generated immediately
+- **After**: User types → Model loads silently in background → User sends message → Response generated immediately
 
 ## Implementation Details
 
@@ -56,7 +58,7 @@ The warmup request is sent asynchronously and errors are silently handled. The g
 
 2. **Input Component** (`ClaraAssistantInput`)
    - Debounced typing detection
-   - Visual feedback management
+   - Silent background preloading (no UI feedback)
    - State management for preload status
 
 3. **Main Component** (`ClaraAssistant`)
@@ -69,15 +71,18 @@ The warmup request is sent asynchronously and errors are silently handled. The g
 - **One-time preload**: Only preloads once per typing session
 - **Automatic reset**: Preload state resets when input is cleared or message is sent
 - **Error resilience**: Failed preloads don't affect normal functionality
+- **Silent Operation**: No visual feedback during preloading to avoid UI glitches
+- **Loading State Enforcement**: Progress UI only shows when `isLoading=true` (actual message sending)
+- **Console Logging**: Debug information available in browser console for monitoring
 
 ## Testing
 
 ### Manual Testing
 1. Ensure you have a local Ollama server running
 2. Select an Ollama model in Clara
-3. Start typing in the input field
-4. Observe the "Warming up model..." indicator
-5. Send your message and notice faster response time
+3. Start typing in the input field (preloading happens silently in background)
+4. Send your message and notice significantly faster response time
+5. Console logs will show preloading activity for debugging purposes
 
 ### Debug Functions
 Available in browser console:

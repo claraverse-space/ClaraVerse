@@ -1,5 +1,5 @@
 # Auto-generated llama-swap configuration
-# Models directory: /Users/temme/.clara/llama-models
+# Models directory: /Users/badfy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
@@ -9,16 +9,15 @@ models:
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
       -m "/Users/badfy17g/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 40
+      --port 9999 --jinja --n-gpu-layers 40 --threads 8 --ctx-size 4096 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     ttl: 300
 
-  "qwen2:7b":
+  "llama32:1b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen2-VL-7B-Instruct-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 32
-      --mmproj "/Users/badfy17g/.clara/llama-models/mmproj-Qwen2-VL-7B-Instruct-f16.gguf"
+      -m "/Users/badfy17g/.clara/llama-models/Llama-3.2-1B-Instruct-IQ4_XS.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     ttl: 300
 
   "qwen3:0.6b":
@@ -26,7 +25,23 @@ models:
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
       -m "/Users/badfy17g/.clara/llama-models/Qwen3-0.6B-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 22
+      --port 9999 --jinja --n-gpu-layers 22 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    ttl: 300
+
+  "qwen3:4b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-4B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 32 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    ttl: 300
+
+  "rwkv7:0.1b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/rwkv7-0.1B-g1.IQ4_XS.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     ttl: 300
 
 groups:
@@ -35,5 +50,7 @@ groups:
     exclusive: true
     members:
       - "qwen3:8b"
-      - "qwen2:7b"
+      - "llama32:1b"
       - "qwen3:0.6b"
+      - "qwen3:4b"
+      - "rwkv7:0.1b"
