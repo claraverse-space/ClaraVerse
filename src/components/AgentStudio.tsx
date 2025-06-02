@@ -461,6 +461,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             color: 'bg-pink-500',
                             features: ['Auto-resize', 'Base64 output']
                           },
+                          { 
+                            name: 'Load PDF', 
+                            type: 'pdf-input', 
+                            icon: '📄', 
+                            description: 'Upload PDF and extract text content', 
+                            color: 'bg-blue-500',
+                            features: ['Text extraction', 'Multi-page support']
+                          },
                         ].map((node) => (
                           <div
                             key={node.name}
@@ -508,6 +516,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             description: 'Parse JSON and extract fields', 
                             color: 'bg-blue-500',
                             features: ['Dot notation', 'Error handling', 'Field extraction']
+                          },
+                          { 
+                            name: 'API Request', 
+                            type: 'api-request', 
+                            icon: '🌐', 
+                            description: 'Production-grade HTTP/REST API client', 
+                            color: 'bg-gradient-to-r from-green-500 to-teal-500',
+                            features: ['All HTTP methods', 'Auth support', 'Auto retries', 'Response parsing']
                           },
                         ].map((node) => (
                           <div
@@ -604,6 +620,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             description: 'Large Language Model interface', 
                             color: 'bg-gradient-to-r from-sakura-500 to-pink-500',
                             features: ['Multi-model support', 'Image input', 'Memory integration']
+                          },
+                          { 
+                            name: 'Structured LLM', 
+                            type: 'structured-llm', 
+                            icon: '📊', 
+                            description: 'Generate structured JSON with any OpenAI-compatible API', 
+                            color: 'bg-gradient-to-r from-purple-500 to-indigo-500',
+                            features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
                           },
                         ].map((node) => (
                           <div

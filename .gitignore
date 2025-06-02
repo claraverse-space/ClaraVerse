@@ -77,4 +77,6 @@ electron/llamacpp-binaries/models/*
 
 testing_sdk/*
 
-sdk/*
+sdk/node_modules/*
+
+clara-sdk-docs/*

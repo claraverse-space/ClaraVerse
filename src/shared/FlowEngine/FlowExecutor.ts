@@ -149,7 +149,7 @@ export class FlowExecutor {
       
       for (const outputNode of outputNodes) {
         const outputValue = nodeOutputs.get(outputNode.id);
-        results[outputNode.name] = outputValue;
+        results[outputNode.id] = outputValue;
       }
       
       this.addLog('success', '🎉 Flow execution completed successfully');

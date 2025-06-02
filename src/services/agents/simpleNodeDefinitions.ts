@@ -345,6 +345,114 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
     }
   },
 
+  // STRUCTURED LLM NODE
+  {
+    id: 'structured-llm-node',
+    name: 'Structured LLM',
+    type: 'structured-llm',
+    category: 'ai',
+    description: 'Generate structured JSON outputs using OpenAI structured response format',
+    icon: 'chart',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'prompt',
+        name: 'Prompt',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'The prompt describing what to generate'
+      },
+      {
+        id: 'jsonExample',
+        name: 'JSON Example',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Example JSON structure that defines the output format'
+      },
+      {
+        id: 'context',
+        name: 'Context',
+        type: 'input',
+        dataType: 'string',
+        required: false,
+        description: 'Additional context for generation'
+      }
+    ],
+    outputs: [
+      {
+        id: 'jsonOutput',
+        name: 'JSON Output',
+        type: 'output',
+        dataType: 'object',
+        description: 'Generated JSON object matching the example structure'
+      },
+      {
+        id: 'rawResponse',
+        name: 'Raw Response',
+        type: 'output',
+        dataType: 'string',
+        description: 'Raw JSON string response'
+      },
+      {
+        id: 'usage',
+        name: 'Usage Stats',
+        type: 'output',
+        dataType: 'object',
+        description: 'Token usage and cost information'
+      }
+    ],
+    properties: [
+      {
+        id: 'apiBaseUrl',
+        name: 'API Base URL',
+        type: 'string',
+        defaultValue: 'https://api.openai.com/v1',
+        description: 'OpenAI API base URL'
+      },
+      {
+        id: 'apiKey',
+        name: 'API Key',
+        type: 'string',
+        defaultValue: '',
+        description: 'OpenAI API key for authentication'
+      },
+      {
+        id: 'model',
+        name: 'Model',
+        type: 'select',
+        defaultValue: 'gpt-4o-mini',
+        options: [
+          { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+          { label: 'GPT-4o', value: 'gpt-4o' },
+          { label: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' }
+        ],
+        description: 'OpenAI model to use (structured outputs require GPT-4 models)'
+      },
+      {
+        id: 'temperature',
+        name: 'Temperature',
+        type: 'number',
+        defaultValue: 0.7,
+        description: 'Temperature for response generation (0.0 - 2.0)'
+      },
+      {
+        id: 'maxTokens',
+        name: 'Max Tokens',
+        type: 'number',
+        defaultValue: 1000,
+        description: 'Maximum tokens in response'
+      }
+    ],
+    executionHandler: 'structured-llm-node-handler',
+    metadata: {
+      tags: ['ai', 'llm', 'structured', 'json', 'openai'],
+      documentation: 'Uses OpenAI structured output feature to generate JSON that matches a provided example format.'
+    }
+  },
+
   // IMAGE INPUT NODE
   {
     id: 'image-input-node',
@@ -407,7 +515,269 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
       tags: ['image', 'input', 'base64', 'media'],
       documentation: 'Processes image files and converts them to base64 for AI model consumption.'
     }
-  }
+  },
+
+  // PDF INPUT NODE
+  {
+    id: 'pdf-input-node',
+    name: 'Load PDF',
+    type: 'pdf-input',
+    category: 'input',
+    description: 'Upload PDF files and extract text content',
+    icon: 'file-text',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [],
+    outputs: [
+      {
+        id: 'text',
+        name: 'Extracted Text',
+        type: 'output',
+        dataType: 'string',
+        required: true,
+        description: 'Text content extracted from the PDF'
+      },
+      {
+        id: 'metadata',
+        name: 'Metadata',
+        type: 'output',
+        dataType: 'object',
+        required: false,
+        description: 'PDF metadata including page count, file size, etc.'
+      }
+    ],
+    properties: [
+      {
+        id: 'maxPages',
+        name: 'Max Pages',
+        type: 'number',
+        defaultValue: 50,
+        description: 'Maximum number of pages to process',
+        validation: {
+          min: 1,
+          max: 200
+        }
+      },
+      {
+        id: 'preserveFormatting',
+        name: 'Preserve Formatting',
+        type: 'boolean',
+        defaultValue: false,
+        description: 'Attempt to preserve text formatting and layout'
+      }
+    ],
+    executionHandler: 'pdf-input-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Basic PDF Text Extraction',
+          description: 'Extract all text from a PDF document',
+          config: {
+            maxPages: 50,
+            preserveFormatting: false
+          }
+        }
+      ]
+    }
+  },
+
+  // API REQUEST NODE
+  {
+    id: 'api-request-node',
+    name: 'API Request',
+    type: 'api-request',
+    category: 'data',
+    description: 'Production-grade HTTP/REST API client with comprehensive features',
+    icon: 'globe',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'url',
+        name: 'URL',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'API endpoint URL'
+      },
+      {
+        id: 'body',
+        name: 'Request Body',
+        type: 'input',
+        dataType: 'any',
+        required: false,
+        description: 'Request body data (JSON object, string, etc.)'
+      },
+      {
+        id: 'headers',
+        name: 'Headers',
+        type: 'input',
+        dataType: 'object',
+        required: false,
+        description: 'Additional HTTP headers as JSON object'
+      },
+      {
+        id: 'params',
+        name: 'Query Params',
+        type: 'input',
+        dataType: 'object',
+        required: false,
+        description: 'URL query parameters as JSON object'
+      },
+      {
+        id: 'auth',
+        name: 'Auth Data',
+        type: 'input',
+        dataType: 'object',
+        required: false,
+        description: 'Authentication data (API key, token, etc.)'
+      }
+    ],
+    outputs: [
+      {
+        id: 'data',
+        name: 'Response Data',
+        type: 'output',
+        dataType: 'any',
+        required: true,
+        description: 'Parsed response data (JSON object or raw text)'
+      },
+      {
+        id: 'status',
+        name: 'Status Code',
+        type: 'output',
+        dataType: 'number',
+        required: true,
+        description: 'HTTP status code (200, 404, 500, etc.)'
+      },
+      {
+        id: 'headers',
+        name: 'Response Headers',
+        type: 'output',
+        dataType: 'object',
+        required: true,
+        description: 'HTTP response headers'
+      },
+      {
+        id: 'success',
+        name: 'Success',
+        type: 'output',
+        dataType: 'boolean',
+        required: true,
+        description: 'Whether the request was successful (2xx status)'
+      },
+      {
+        id: 'metadata',
+        name: 'Metadata',
+        type: 'output',
+        dataType: 'object',
+        required: false,
+        description: 'Request metadata (timing, retries, etc.)'
+      }
+    ],
+    properties: [
+      {
+        id: 'method',
+        name: 'HTTP Method',
+        type: 'select',
+        defaultValue: 'GET',
+        options: [
+          { label: 'GET', value: 'GET' },
+          { label: 'POST', value: 'POST' },
+          { label: 'PUT', value: 'PUT' },
+          { label: 'PATCH', value: 'PATCH' },
+          { label: 'DELETE', value: 'DELETE' },
+          { label: 'HEAD', value: 'HEAD' },
+          { label: 'OPTIONS', value: 'OPTIONS' }
+        ],
+        description: 'HTTP method for the request'
+      },
+      {
+        id: 'timeout',
+        name: 'Timeout (ms)',
+        type: 'number',
+        defaultValue: 30000,
+        description: 'Request timeout in milliseconds'
+      },
+      {
+        id: 'retries',
+        name: 'Max Retries',
+        type: 'number',
+        defaultValue: 3,
+        description: 'Maximum number of retry attempts'
+      },
+      {
+        id: 'retryDelay',
+        name: 'Retry Delay (ms)',
+        type: 'number',
+        defaultValue: 1000,
+        description: 'Delay between retry attempts'
+      },
+      {
+        id: 'authType',
+        name: 'Authentication Type',
+        type: 'select',
+        defaultValue: 'none',
+        options: [
+          { label: 'None', value: 'none' },
+          { label: 'API Key', value: 'apiKey' },
+          { label: 'Bearer Token', value: 'bearer' },
+          { label: 'Basic Auth', value: 'basic' },
+          { label: 'Custom Header', value: 'custom' }
+        ],
+        description: 'Type of authentication to use'
+      },
+      {
+        id: 'contentType',
+        name: 'Content Type',
+        type: 'select',
+        defaultValue: 'application/json',
+        options: [
+          { label: 'JSON', value: 'application/json' },
+          { label: 'Form Data', value: 'application/x-www-form-urlencoded' },
+          { label: 'Multipart', value: 'multipart/form-data' },
+          { label: 'Plain Text', value: 'text/plain' },
+          { label: 'XML', value: 'application/xml' },
+          { label: 'Custom', value: 'custom' }
+        ],
+        description: 'Content-Type header for request body'
+      },
+      {
+        id: 'responseType',
+        name: 'Response Type',
+        type: 'select',
+        defaultValue: 'auto',
+        options: [
+          { label: 'Auto Detect', value: 'auto' },
+          { label: 'JSON', value: 'json' },
+          { label: 'Text', value: 'text' },
+          { label: 'Binary', value: 'binary' }
+        ],
+        description: 'How to parse the response'
+      },
+      {
+        id: 'followRedirects',
+        name: 'Follow Redirects',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Follow HTTP redirects automatically'
+      },
+      {
+        id: 'validateStatus',
+        name: 'Validate Status',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Throw error for non-2xx status codes'
+      }
+    ],
+    executionHandler: 'api-request-node-handler',
+    metadata: {
+      tags: ['data', 'api', 'http', 'rest'],
+      documentation: 'Handles HTTP/REST API requests with comprehensive features.'
+    }
+  },
+
+  // TEXT PROCESSING NODE
 ];
 
 // Helper functions

@@ -1,0 +1,75 @@
+{
+  "format": "clara-sdk",
+  "version": "1.0.0",
+  "flow": {
+    "id": "test-flow-123",
+    "name": "Text Processing Flow",
+    "description": "A test flow from Agent Studio",
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "name": "Text Input",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "Text Input",
+          "inputType": "string",
+          "value": "Hello from Agent Studio!"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "Value",
+            "type": "output",
+            "dataType": "string",
+            "description": "Input value"
+          }
+        ]
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "name": "Result Output",
+        "position": {
+          "x": 400,
+          "y": 100
+        },
+        "data": {
+          "label": "Result Output",
+          "format": "text"
+        },
+        "inputs": [
+          {
+            "id": "input",
+            "name": "Value",
+            "type": "input",
+            "dataType": "any",
+            "required": true,
+            "description": "Value to output"
+          }
+        ],
+        "outputs": []
+      }
+    ],
+    "connections": [
+      {
+        "id": "conn-1",
+        "sourceNodeId": "input-1",
+        "sourcePortId": "output",
+        "targetNodeId": "output-1",
+        "targetPortId": "input"
+      }
+    ],
+    "metadata": {
+      "createdAt": "2025-06-01T11:59:06.932Z",
+      "updatedAt": "2025-06-01T11:59:06.933Z"
+    }
+  },
+  "customNodes": [],
+  "exportedAt": "2025-06-01T11:59:06.933Z",
+  "exportedBy": "Clara Agent Studio"
+}
