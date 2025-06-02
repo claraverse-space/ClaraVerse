@@ -6,11 +6,6 @@ import { setupGlobalErrorHandlers } from './utils/globalErrorHandler.ts';
 import './utils/errorTestHelpers.ts'; // Import to make console helpers available
 import './index.css';
 import './styles/animations.css'; // Import animations
-// Import the node executors index so all executors get registered
-import './nodeExecutors';
-
-// Log which executors are registered for debugging
-console.log('Node executors loaded and registered');
 
 // Set initial theme to light mode by default
 document.documentElement.classList.remove('dark');

@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 7; // Increment version to trigger upgrade for Clara stores
+const DB_VERSION = 8; // Increment version to trigger upgrade for agent workflow stores
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -70,10 +70,6 @@ export class IndexedDBService {
         if (!db.objectStoreNames.contains('tools')) {
           db.createObjectStore('tools', { keyPath: 'id' });
         }
-        // Add the apps object store
-        if (!db.objectStoreNames.contains('apps')) {
-          db.createObjectStore('apps', { keyPath: 'id' });
-        }
         // Add designs store
         if (!db.objectStoreNames.contains('designs')) {
           const designStore = db.createObjectStore('designs', { keyPath: 'id' });
@@ -114,6 +110,39 @@ export class IndexedDBService {
           fileStore.createIndex('message_id_index', 'messageId', { unique: false });
           fileStore.createIndex('type_index', 'type', { unique: false });
           fileStore.createIndex('created_at_index', 'createdAt', { unique: false });
+        }
+
+        // Add Agent Workflow stores
+        if (!db.objectStoreNames.contains('agent_workflows')) {
+          const workflowStore = db.createObjectStore('agent_workflows', { keyPath: 'id' });
+          workflowStore.createIndex('name_index', 'name', { unique: false });
+          workflowStore.createIndex('created_at_index', 'createdAt', { unique: false });
+          workflowStore.createIndex('updated_at_index', 'updatedAt', { unique: false });
+          workflowStore.createIndex('starred_index', 'metadata.isStarred', { unique: false });
+          workflowStore.createIndex('archived_index', 'metadata.isArchived', { unique: false });
+          workflowStore.createIndex('tags_index', 'metadata.tags', { unique: false, multiEntry: true });
+        }
+
+        if (!db.objectStoreNames.contains('workflow_templates')) {
+          const templateStore = db.createObjectStore('workflow_templates', { keyPath: 'id' });
+          templateStore.createIndex('category_index', 'category', { unique: false });
+          templateStore.createIndex('tags_index', 'tags', { unique: false, multiEntry: true });
+          templateStore.createIndex('public_index', 'isPublic', { unique: false });
+          templateStore.createIndex('downloads_index', 'downloads', { unique: false });
+          templateStore.createIndex('rating_index', 'rating', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('workflow_versions')) {
+          const versionStore = db.createObjectStore('workflow_versions', { keyPath: 'id' });
+          versionStore.createIndex('workflow_id_index', 'workflowId', { unique: false });
+          versionStore.createIndex('version_number_index', 'versionNumber', { unique: false });
+          versionStore.createIndex('created_at_index', 'createdAt', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('workflow_metadata')) {
+          const metadataStore = db.createObjectStore('workflow_metadata', { keyPath: 'id' });
+          metadataStore.createIndex('workflow_id_index', 'workflowId', { unique: false });
+          metadataStore.createIndex('type_index', 'type', { unique: false });
         }
       };
     });
@@ -308,10 +337,6 @@ export class IndexedDBService {
       console.error('Error finding message:', error);
       return undefined;
     }
-  }
-
-  async clearApps(): Promise<void> {
-    return this.clear('apps');
   }
 
   // Design methods

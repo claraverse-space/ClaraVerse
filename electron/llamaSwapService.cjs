@@ -34,6 +34,10 @@ class LlamaSwapService {
     log.info(`Using platform directory: ${this.platformInfo.platformDir}`);
     log.info(`Binary paths:`, this.binaryPaths);
     
+    // Initialize GPU info cache
+    this.gpuInfo = null;
+    this.systemMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+    
     // Ensure models directory exists
     this.ensureDirectories();
   }
@@ -398,10 +402,13 @@ models:
 
     const groupMembers = [];
 
-    // Generate model configurations using single port with swapping
-    mainModels.forEach((model) => {
+    // Generate model configurations with dynamic GPU layer calculation
+    for (const model of mainModels) {
       // Use platform-specific llama-server path
       const llamaServerPath = this.binaryPaths.llamaServer;
+      
+      // Calculate optimal GPU layers for this specific model
+      const optimalGpuLayers = await this.calculateOptimalGPULayers(model.path, model.size);
       
       // Find matching mmproj model for this main model
       const matchingMmproj = this.findMatchingMmproj(model, mmprojModels);
@@ -410,10 +417,16 @@ models:
       -m "${model.path}"
       --port 9999`;
 
-      //FIXME: Add --jinja paramater for all models
-      // Add --jinja paramater for all models
+      // Add --jinja parameter for all models
       cmdLine += ` --jinja`;
-      cmdLine += ` --n-gpu-layers 30`;
+      
+      // Add dynamic GPU layers based on calculation
+      if (optimalGpuLayers > 0) {
+        cmdLine += ` --n-gpu-layers ${optimalGpuLayers}`;
+        log.info(`Model ${model.name}: Using ${optimalGpuLayers} GPU layers`);
+      } else {
+        log.info(`Model ${model.name}: Using CPU only (0 GPU layers)`);
+      }
       
       // Add mmproj parameter if a matching mmproj model is found
       if (matchingMmproj) {
@@ -430,7 +443,7 @@ ${cmdLine}
 `;
       
       groupMembers.push(model.name);
-    });
+    }
 
     // Add groups configuration
     configYaml += `groups:
@@ -445,7 +458,7 @@ ${cmdLine}
     });
 
     await fs.writeFile(this.configPath, configYaml);
-    log.info('Dynamic config generated with', mainModels.length, 'models');
+    log.info('Dynamic config generated with', mainModels.length, 'models with optimized GPU layer allocation');
     
     return { models: mainModels.length };
   }
@@ -813,6 +826,520 @@ ${cmdLine}
   extractQuantization(filename) {
     const quantMatch = filename.toLowerCase().match(/(q4_k_m|q4_k_s|q8_0|f16|q4_0|q5_k_m)/i);
     return quantMatch ? quantMatch[1].toLowerCase() : null;
+  }
+
+  /**
+   * Detect GPU capabilities and memory
+   */
+  async detectGPUInfo() {
+    if (this.gpuInfo) {
+      return this.gpuInfo;
+    }
+
+    const platform = os.platform();
+    let gpuMemoryMB = 0;
+    let hasGPU = false;
+    let gpuType = 'unknown';
+
+    try {
+      if (platform === 'darwin') {
+        // For macOS, try to detect Metal/Apple Silicon info
+        const systemInfo = await this.getMacOSGPUInfo();
+        gpuMemoryMB = systemInfo.gpuMemoryMB;
+        hasGPU = systemInfo.hasGPU;
+        gpuType = systemInfo.gpuType;
+      } else if (platform === 'win32') {
+        // For Windows, try to detect NVIDIA/AMD/Intel GPU
+        const systemInfo = await this.getWindowsGPUInfo();
+        gpuMemoryMB = systemInfo.gpuMemoryMB;
+        hasGPU = systemInfo.hasGPU;
+        gpuType = systemInfo.gpuType;
+      } else {
+        // For Linux, try to detect GPU via nvidia-smi or other methods
+        const systemInfo = await this.getLinuxGPUInfo();
+        gpuMemoryMB = systemInfo.gpuMemoryMB;
+        hasGPU = systemInfo.hasGPU;
+        gpuType = systemInfo.gpuType;
+      }
+    } catch (error) {
+      log.warn('Failed to detect GPU info:', error.message);
+    }
+
+    // Fallback estimation based on system memory and platform
+    if (!hasGPU || gpuMemoryMB === 0) {
+      const estimatedInfo = this.estimateGPUCapabilities();
+      gpuMemoryMB = estimatedInfo.gpuMemoryMB;
+      hasGPU = estimatedInfo.hasGPU;
+      gpuType = estimatedInfo.gpuType;
+    }
+
+    this.gpuInfo = {
+      hasGPU,
+      gpuMemoryMB,
+      gpuMemoryGB: Math.round(gpuMemoryMB / 1024 * 10) / 10,
+      gpuType,
+      systemMemoryGB: this.systemMemoryGB,
+      platform
+    };
+
+    log.info('GPU Detection Results:', this.gpuInfo);
+    return this.gpuInfo;
+  }
+
+  /**
+   * Get macOS GPU information using system_profiler
+   */
+  async getMacOSGPUInfo() {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      // Try to get GPU info from system_profiler
+      const process = spawn('system_profiler', ['SPDisplaysDataType', '-json'], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      process.on('close', (code) => {
+        try {
+          if (code === 0 && stdout) {
+            const displayData = JSON.parse(stdout);
+            const displays = displayData.SPDisplaysDataType || [];
+            
+            let maxMemoryMB = 0;
+            let gpuType = 'integrated';
+            
+            displays.forEach(display => {
+              // Check for VRAM information
+              if (display.sppci_model && display.sppci_model.includes('Apple')) {
+                gpuType = 'apple_silicon';
+                // For Apple Silicon, estimate based on unified memory
+                // Apple Silicon shares memory, so use a portion of system memory
+                const systemMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+                if (systemMemoryGB >= 32) {
+                  maxMemoryMB = 16384; // 16GB for high-end systems
+                } else if (systemMemoryGB >= 16) {
+                  maxMemoryMB = 8192; // 8GB for mid-range
+                } else {
+                  maxMemoryMB = 4096; // 4GB for entry-level
+                }
+              } else if (display.sppci_vram) {
+                // Dedicated GPU with VRAM
+                const vramStr = display.sppci_vram;
+                const vramMatch = vramStr.match(/(\d+)/);
+                if (vramMatch) {
+                  const vramMB = parseInt(vramMatch[1]);
+                  if (vramMB > maxMemoryMB) {
+                    maxMemoryMB = vramMB;
+                    gpuType = 'dedicated';
+                  }
+                }
+              }
+            });
+
+            resolve({
+              hasGPU: maxMemoryMB > 0,
+              gpuMemoryMB: maxMemoryMB,
+              gpuType
+            });
+          } else {
+            throw new Error('Failed to get system profiler data');
+          }
+        } catch (error) {
+          log.warn('Error parsing macOS GPU info:', error.message);
+          resolve(this.estimateGPUCapabilities());
+        }
+      });
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        process.kill();
+        resolve(this.estimateGPUCapabilities());
+      }, 5000);
+    });
+  }
+
+  /**
+   * Get Windows GPU information using wmic
+   */
+  async getWindowsGPUInfo() {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      // Try to get GPU info from wmic
+      const process = spawn('wmic', ['path', 'win32_VideoController', 'get', 'name,AdapterRAM', '/format:csv'], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      process.on('close', (code) => {
+        try {
+          if (code === 0 && stdout) {
+            const lines = stdout.split('\n').filter(line => line.trim());
+            let maxMemoryMB = 0;
+            let gpuType = 'integrated';
+            
+            lines.forEach(line => {
+              const parts = line.split(',');
+              if (parts.length >= 3) {
+                const ramStr = parts[1];
+                const nameStr = parts[2];
+                
+                if (ramStr && nameStr && !isNaN(parseInt(ramStr))) {
+                  const ramBytes = parseInt(ramStr);
+                  const ramMB = Math.round(ramBytes / (1024 * 1024));
+                  
+                  if (ramMB > maxMemoryMB) {
+                    maxMemoryMB = ramMB;
+                    
+                    // Determine GPU type based on name
+                    const lowerName = nameStr.toLowerCase();
+                    if (lowerName.includes('nvidia') || lowerName.includes('geforce') || lowerName.includes('rtx') || lowerName.includes('gtx')) {
+                      gpuType = 'nvidia';
+                    } else if (lowerName.includes('amd') || lowerName.includes('radeon')) {
+                      gpuType = 'amd';
+                    } else if (lowerName.includes('intel')) {
+                      gpuType = 'intel';
+                    } else {
+                      gpuType = 'dedicated';
+                    }
+                  }
+                }
+              }
+            });
+
+            resolve({
+              hasGPU: maxMemoryMB > 0,
+              gpuMemoryMB: maxMemoryMB,
+              gpuType
+            });
+          } else {
+            throw new Error('Failed to get Windows GPU info');
+          }
+        } catch (error) {
+          log.warn('Error parsing Windows GPU info:', error.message);
+          resolve(this.estimateGPUCapabilities());
+        }
+      });
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        process.kill();
+        resolve(this.estimateGPUCapabilities());
+      }, 5000);
+    });
+  }
+
+  /**
+   * Get Linux GPU information using nvidia-smi or other methods
+   */
+  async getLinuxGPUInfo() {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      // Try nvidia-smi first
+      const process = spawn('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits'], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      process.on('close', (code) => {
+        try {
+          if (code === 0 && stdout.trim()) {
+            const memoryMB = parseInt(stdout.trim());
+            if (!isNaN(memoryMB) && memoryMB > 0) {
+              resolve({
+                hasGPU: true,
+                gpuMemoryMB: memoryMB,
+                gpuType: 'nvidia'
+              });
+              return;
+            }
+          }
+          
+          // Fallback to estimation
+          resolve(this.estimateGPUCapabilities());
+        } catch (error) {
+          log.warn('Error parsing Linux GPU info:', error.message);
+          resolve(this.estimateGPUCapabilities());
+        }
+      });
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        process.kill();
+        resolve(this.estimateGPUCapabilities());
+      }, 5000);
+    });
+  }
+
+  /**
+   * Estimate GPU capabilities based on system specs
+   */
+  estimateGPUCapabilities() {
+    const platform = os.platform();
+    const arch = os.arch();
+    const systemMemoryGB = this.systemMemoryGB;
+
+    let hasGPU = true;
+    let gpuMemoryMB = 2048; // Default 2GB
+    let gpuType = 'integrated';
+
+    if (platform === 'darwin') {
+      if (arch === 'arm64') {
+        // Apple Silicon - unified memory architecture
+        gpuType = 'apple_silicon';
+        if (systemMemoryGB >= 32) {
+          gpuMemoryMB = 16384; // 16GB for high-end
+        } else if (systemMemoryGB >= 16) {
+          gpuMemoryMB = 8192; // 8GB for mid-range
+        } else {
+          gpuMemoryMB = 4096; // 4GB minimum
+        }
+      } else {
+        // Intel Mac
+        gpuType = 'integrated';
+        gpuMemoryMB = Math.min(4096, systemMemoryGB * 256); // Up to 4GB or system memory/4
+      }
+    } else {
+      // Windows/Linux - conservative estimate
+      if (systemMemoryGB >= 16) {
+        gpuMemoryMB = 4096; // Assume 4GB for systems with 16GB+ RAM
+        gpuType = 'dedicated';
+      } else if (systemMemoryGB >= 8) {
+        gpuMemoryMB = 2048; // 2GB for 8GB systems
+      } else {
+        gpuMemoryMB = 1024; // 1GB for lower-end systems
+        hasGPU = false; // Disable GPU for very low-end systems
+      }
+    }
+
+    return { hasGPU, gpuMemoryMB, gpuType };
+  }
+
+  /**
+   * Calculate optimal GPU layers for a model
+   */
+  async calculateOptimalGPULayers(modelPath, modelFileSize = null) {
+    const gpuInfo = await this.detectGPUInfo();
+    
+    if (!gpuInfo.hasGPU || gpuInfo.gpuMemoryMB < 1024) {
+      log.info('GPU not available or insufficient memory, using CPU only');
+      return 0;
+    }
+
+    try {
+      // Get model file size if not provided
+      if (!modelFileSize) {
+        const stats = await fs.stat(modelPath);
+        modelFileSize = stats.size;
+      }
+
+      const modelSizeGB = modelFileSize / (1024 * 1024 * 1024);
+      const availableGpuMemoryGB = gpuInfo.gpuMemoryGB;
+
+      // Estimate model parameters and layers based on file size
+      const modelInfo = this.estimateModelInfo(modelPath, modelSizeGB);
+      
+      log.info(`Model analysis for ${path.basename(modelPath)}:`, {
+        sizeGB: modelSizeGB,
+        estimatedParams: modelInfo.estimatedParams,
+        estimatedLayers: modelInfo.estimatedLayers,
+        availableGpuMemoryGB,
+        gpuType: gpuInfo.gpuType
+      });
+
+      // Calculate how many layers can fit in GPU memory
+      const layersToOffload = this.calculateLayerOffloading(modelInfo, gpuInfo, modelSizeGB);
+      
+      log.info(`Calculated optimal GPU layers: ${layersToOffload} / ${modelInfo.estimatedLayers}`);
+      
+      return layersToOffload;
+    } catch (error) {
+      log.warn('Error calculating optimal GPU layers:', error.message);
+      // Fallback to conservative estimate
+      return this.getConservativeGPULayers(gpuInfo);
+    }
+  }
+
+  /**
+   * Estimate model information from filename and size
+   */
+  estimateModelInfo(modelPath, modelSizeGB) {
+    const fileName = path.basename(modelPath).toLowerCase();
+    
+    // Try to extract parameter count from filename
+    let estimatedParams = '7b'; // default
+    let estimatedLayers = 32; // default for 7B models
+    
+    // Extract parameter info from filename
+    const paramMatch = fileName.match(/(\d+(?:\.\d+)?)\s*b/i);
+    if (paramMatch) {
+      const paramCount = parseFloat(paramMatch[1]);
+      estimatedParams = `${paramCount}b`;
+      
+      // Estimate layers based on parameter count
+      if (paramCount <= 1) {
+        estimatedLayers = 22; // 1B models
+      } else if (paramCount <= 3) {
+        estimatedLayers = 26; // 3B models
+      } else if (paramCount <= 7) {
+        estimatedLayers = 32; // 7B models
+      } else if (paramCount <= 13) {
+        estimatedLayers = 40; // 13B models
+      } else if (paramCount <= 30) {
+        estimatedLayers = 60; // 30B models
+      } else if (paramCount <= 70) {
+        estimatedLayers = 80; // 70B models
+      } else {
+        estimatedLayers = 100; // Larger models
+      }
+    }
+
+    // Adjust based on model size (more accurate than filename sometimes)
+    if (modelSizeGB < 1) {
+      estimatedLayers = Math.min(estimatedLayers, 22);
+    } else if (modelSizeGB < 4) {
+      estimatedLayers = Math.min(estimatedLayers, 32);
+    } else if (modelSizeGB < 8) {
+      estimatedLayers = Math.min(estimatedLayers, 40);
+    } else if (modelSizeGB < 15) {
+      estimatedLayers = Math.min(estimatedLayers, 60);
+    }
+
+    return {
+      estimatedParams,
+      estimatedLayers,
+      modelSizeGB
+    };
+  }
+
+  /**
+   * Calculate how many layers to offload based on available memory
+   */
+  calculateLayerOffloading(modelInfo, gpuInfo, modelSizeGB) {
+    const availableGpuMemoryGB = gpuInfo.gpuMemoryGB;
+    const totalLayers = modelInfo.estimatedLayers;
+    
+    // Reserve memory for context and other overhead
+    let reservedMemoryGB = 1; // Default 1GB reserved
+    
+    if (gpuInfo.gpuType === 'apple_silicon') {
+      // Apple Silicon shares memory, so be more conservative
+      reservedMemoryGB = Math.max(2, availableGpuMemoryGB * 0.3);
+    } else if (gpuInfo.gpuType === 'integrated') {
+      // Integrated graphics share system memory
+      reservedMemoryGB = Math.max(1.5, availableGpuMemoryGB * 0.4);
+    } else {
+      // Dedicated GPU
+      reservedMemoryGB = Math.max(1, availableGpuMemoryGB * 0.2);
+    }
+
+    const usableGpuMemoryGB = Math.max(0, availableGpuMemoryGB - reservedMemoryGB);
+    
+    // Estimate memory per layer (rough approximation)
+    const memoryPerLayerGB = modelSizeGB / totalLayers;
+    
+    // Calculate how many layers can fit
+    let maxLayers = Math.floor(usableGpuMemoryGB / memoryPerLayerGB);
+    
+    // Apply safety limits and platform-specific optimizations
+    if (gpuInfo.gpuType === 'apple_silicon') {
+      // Apple Silicon handles memory differently, can be more aggressive
+      maxLayers = Math.min(maxLayers, totalLayers);
+    } else if (gpuInfo.gpuType === 'nvidia' && gpuInfo.gpuMemoryMB >= 8192) {
+      // High-end NVIDIA cards can handle full offloading better
+      maxLayers = Math.min(maxLayers, totalLayers);
+    } else {
+      // Conservative approach for other GPUs
+      maxLayers = Math.min(maxLayers, Math.floor(totalLayers * 0.8));
+    }
+
+    // Ensure we don't exceed total layers or go negative
+    maxLayers = Math.max(0, Math.min(maxLayers, totalLayers));
+    
+    // Round down to avoid edge cases
+    return Math.floor(maxLayers);
+  }
+
+  /**
+   * Get conservative GPU layer estimate as fallback
+   */
+  getConservativeGPULayers(gpuInfo) {
+    if (!gpuInfo.hasGPU) return 0;
+    
+    if (gpuInfo.gpuMemoryGB >= 16) {
+      return 35; // High-end GPU
+    } else if (gpuInfo.gpuMemoryGB >= 8) {
+      return 25; // Mid-range GPU
+    } else if (gpuInfo.gpuMemoryGB >= 4) {
+      return 15; // Entry-level dedicated GPU
+    } else {
+      return 5; // Integrated graphics
+    }
+  }
+
+  /**
+   * Get GPU diagnostics information for the frontend
+   */
+  async getGPUDiagnostics() {
+    try {
+      // Get GPU information
+      const gpuInfo = await this.detectGPUInfo();
+      
+      // Get model information with GPU allocation details
+      const models = await this.scanModels();
+      const mainModels = models.filter(model => !this.isMmprojModel(model.file));
+      
+      const modelInfo = [];
+      
+      for (const model of mainModels) {
+        try {
+          const modelSizeGB = model.size / (1024 * 1024 * 1024);
+          const modelEstimation = this.estimateModelInfo(model.path, modelSizeGB);
+          const allocatedLayers = await this.calculateOptimalGPULayers(model.path, model.size);
+          
+          modelInfo.push({
+            name: this.generateModelName(model.file),
+            path: model.path,
+            sizeGB: modelSizeGB,
+            estimatedLayers: modelEstimation.estimatedLayers,
+            allocatedLayers: allocatedLayers,
+            estimatedParams: modelEstimation.estimatedParams
+          });
+        } catch (error) {
+          log.warn(`Error getting GPU info for model ${model.file}:`, error.message);
+          // Include model with fallback data
+          modelInfo.push({
+            name: this.generateModelName(model.file),
+            path: model.path,
+            sizeGB: model.size / (1024 * 1024 * 1024),
+            estimatedLayers: 32, // fallback
+            allocatedLayers: 0, // fallback to CPU
+            estimatedParams: 'unknown'
+          });
+        }
+      }
+      
+      return {
+        gpuInfo,
+        modelInfo
+      };
+    } catch (error) {
+      log.error('Error getting GPU diagnostics:', error);
+      throw error;
+    }
   }
 }
 

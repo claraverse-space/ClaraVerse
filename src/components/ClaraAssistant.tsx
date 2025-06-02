@@ -48,6 +48,30 @@ interface ClaraAssistantProps {
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 /**
+ * Get default system prompt for a provider
+ */
+const getDefaultSystemPrompt = (provider: ClaraProvider): string => {
+  const providerName = provider?.name || 'AI Assistant';
+  
+  switch (provider?.type) {
+    case 'ollama':
+      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.`;
+      
+    case 'openai':
+      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.`;
+      
+    case 'openrouter':
+      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.`;
+      
+    case 'claras-pocket':
+      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.`;
+      
+    default:
+      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.`;
+  }
+};
+
+/**
  * Create sample artifacts for demonstration
  */
 const createSampleArtifacts = (content: string): ClaraArtifact[] => {
@@ -487,6 +511,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
             const defaultConfig = {
               provider: primaryProvider.id,
+              systemPrompt: getDefaultSystemPrompt(primaryProvider),
               models: {
                 text: textModel?.id || '',
                 vision: visionModel?.id || '',
@@ -725,6 +750,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         .slice(-contextWindow)  // Take last N messages based on config
         .filter(msg => msg.role !== 'system'); // Exclude system messages
 
+      // Get system prompt (provider-specific or fallback to default)
+      const currentProvider = providers.find(p => p.id === enforcedConfig.provider);
+      const systemPrompt = enforcedConfig.systemPrompt || 
+                          (currentProvider ? getDefaultSystemPrompt(currentProvider) : 'You are Clara, a helpful AI assistant.');
+      
       // Send message with streaming callback and conversation context
       // Use aiContent (with voice prefix) for AI processing
       // IMPORTANT: Use enforcedConfig to ensure streaming mode settings are applied
@@ -732,7 +762,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         aiContent, // Send full content including voice prefix to AI
         enforcedConfig, // Use enforced config instead of original sessionConfig.aiConfig
         attachments,
-        sessionConfig.systemPrompt,
+        systemPrompt,
         conversationHistory, // Pass conversation context
         // Streaming callback to update content in real-time
         (chunk: string) => {
@@ -1085,6 +1115,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         // STEP 7: Create clean config with validated models
         const cleanConfig = {
           provider: providerId,
+          systemPrompt: savedConfig.systemPrompt, // Preserve saved system prompt
           models: {
             text: validTextModel ? savedConfig.models.text : '',
             vision: validVisionModel ? savedConfig.models.vision : '',
@@ -1095,7 +1126,27 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           },
           features: {
             ...savedConfig.features
-          }
+          },
+          mcp: savedConfig.mcp || {
+            enableTools: true,
+            enableResources: true,
+            enabledServers: [],
+            autoDiscoverTools: true,
+            maxToolCalls: 5
+          },
+          autonomousAgent: savedConfig.autonomousAgent || {
+            enabled: true,
+            maxRetries: 3,
+            retryDelay: 1000,
+            enableSelfCorrection: true,
+            enableToolGuidance: true,
+            enableProgressTracking: true,
+            maxToolCalls: 10,
+            confidenceThreshold: 0.7,
+            enableChainOfThought: true,
+            enableErrorLearning: true
+          },
+          contextWindow: savedConfig.contextWindow || 50
         };
         
         console.log('Applied clean config:', cleanConfig);
@@ -1125,6 +1176,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         
         const defaultConfig = {
           provider: providerId,
+          systemPrompt: getDefaultSystemPrompt(provider),
           models: {
             text: textModel?.id || '',
             vision: visionModel?.id || '',
@@ -1591,6 +1643,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                     const currentConfig = sessionConfig.aiConfig;
                     const updatedConfig: ClaraAIConfig = {
                       provider: newConfig.provider ?? currentConfig.provider,
+                      systemPrompt: newConfig.systemPrompt ?? currentConfig.systemPrompt,
                       models: {
                         text: newConfig.models?.text ?? currentConfig.models.text,
                         vision: newConfig.models?.vision ?? currentConfig.models.vision,

@@ -1,0 +1,303 @@
+{
+  "format": "clara-sdk",
+  "version": "1.0.1beta",
+  "flow": {
+    "id": "1748770078044-vsjl723fy",
+    "name": "Testing",
+    "description": "asdasdas",
+    "nodes": [
+      {
+        "id": "1748771279688-56yps57k7",
+        "type": "input",
+        "name": "Input",
+        "position": {
+          "x": -198.16912556175714,
+          "y": -202.601705812023
+        },
+        "data": {
+          "label": "Input",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "output",
+              "name": "Value",
+              "type": "output",
+              "dataType": "any",
+              "description": "Input value"
+            }
+          ],
+          "value": "hidsadasd"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "Value",
+            "type": "output",
+            "dataType": "any",
+            "description": "Input value"
+          }
+        ],
+        "metadata": {
+          "tags": [
+            "input",
+            "basic",
+            "source"
+          ],
+          "documentation": "Provides input values to start or feed the workflow. Supports text, numbers, and JSON objects."
+        }
+      },
+      {
+        "id": "1748771933442-r7t2x3fp2",
+        "type": "text-appender",
+        "name": "Text Appender",
+        "position": {
+          "x": 364.8917956373625,
+          "y": 105.69702146648416
+        },
+        "data": {
+          "label": "Text Appender",
+          "inputs": [
+            {
+              "id": "input_1748771257425_e57qksjkw",
+              "name": "firstText",
+              "type": "input",
+              "dataType": "string",
+              "required": true,
+              "description": "The first text input to append."
+            },
+            {
+              "id": "input_1748771257425_o8xw3gtfy",
+              "name": "secondText",
+              "type": "input",
+              "dataType": "string",
+              "required": true,
+              "description": "The second text input to append."
+            }
+          ],
+          "outputs": [
+            {
+              "id": "output_1748771257425_cgyarcmev",
+              "name": "appendedText",
+              "type": "output",
+              "dataType": "string",
+              "description": "The combined output of the two text inputs."
+            }
+          ],
+          "properties": {
+            "prop_1748771257425_9erex3umg": "kdjshdakjsdkjasd"
+          }
+        },
+        "inputs": [
+          {
+            "id": "input_1748771257425_e57qksjkw",
+            "name": "firstText",
+            "type": "input",
+            "dataType": "string",
+            "required": true,
+            "description": "The first text input to append."
+          },
+          {
+            "id": "input_1748771257425_o8xw3gtfy",
+            "name": "secondText",
+            "type": "input",
+            "dataType": "string",
+            "required": true,
+            "description": "The second text input to append."
+          }
+        ],
+        "outputs": [
+          {
+            "id": "output_1748771257425_cgyarcmev",
+            "name": "appendedText",
+            "type": "output",
+            "dataType": "string",
+            "description": "The combined output of the two text inputs."
+          }
+        ],
+        "metadata": {
+          "tags": [
+            "text",
+            "append",
+            "string manipulation",
+            "custom node"
+          ],
+          "documentation": "",
+          "examples": []
+        }
+      },
+      {
+        "id": "1748771941523-vrib46yod",
+        "type": "output",
+        "name": "Output",
+        "position": {
+          "x": 988.9514630603235,
+          "y": 192.88630461238165
+        },
+        "data": {
+          "inputValue": "hidsadasdwow",
+          "label": "Output",
+          "inputs": [
+            {
+              "id": "input",
+              "name": "Value",
+              "type": "input",
+              "dataType": "any",
+              "required": true,
+              "description": "Value to output"
+            }
+          ],
+          "outputs": [],
+          "format": "text"
+        },
+        "inputs": [
+          {
+            "id": "input",
+            "name": "Value",
+            "type": "input",
+            "dataType": "any",
+            "required": true,
+            "description": "Value to output"
+          }
+        ],
+        "outputs": [],
+        "metadata": {
+          "tags": [
+            "output",
+            "basic",
+            "sink"
+          ],
+          "documentation": "Displays the final result with various formatting options."
+        }
+      },
+      {
+        "id": "1748772839710-b7f8212y5",
+        "type": "input",
+        "name": "Input",
+        "position": {
+          "x": -196.4249001086896,
+          "y": 496.016041009295
+        },
+        "data": {
+          "label": "Input",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "output",
+              "name": "Value",
+              "type": "output",
+              "dataType": "any",
+              "description": "Input value"
+            }
+          ],
+          "value": "wow"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "Value",
+            "type": "output",
+            "dataType": "any",
+            "description": "Input value"
+          }
+        ],
+        "metadata": {
+          "tags": [
+            "input",
+            "basic",
+            "source"
+          ],
+          "documentation": "Provides input values to start or feed the workflow. Supports text, numbers, and JSON objects."
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "1748771936049-5zbfzymqb",
+        "sourceNodeId": "1748771279688-56yps57k7",
+        "sourcePortId": "output",
+        "targetNodeId": "1748771933442-r7t2x3fp2",
+        "targetPortId": "input_1748771257425_e57qksjkw"
+      },
+      {
+        "id": "1748771947044-nfg4m1x50",
+        "sourceNodeId": "1748771933442-r7t2x3fp2",
+        "sourcePortId": "output_1748771257425_cgyarcmev",
+        "targetNodeId": "1748771941523-vrib46yod",
+        "targetPortId": "input"
+      },
+      {
+        "id": "1748772849507-x3vco22a8",
+        "sourceNodeId": "1748772839710-b7f8212y5",
+        "sourcePortId": "output",
+        "targetNodeId": "1748771933442-r7t2x3fp2",
+        "targetPortId": "input_1748771257425_o8xw3gtfy"
+      }
+    ],
+    "metadata": {
+      "createdAt": "2025-06-01T09:27:58.044Z",
+      "updatedAt": "2025-06-01T10:32:57.966Z"
+    }
+  },
+  "customNodes": [
+    {
+      "id": "node-1748771266304-n4t5w30fu",
+      "type": "text-appender",
+      "name": "Text Appender",
+      "description": "This node takes two text inputs and appends them into a single output string.",
+      "category": "text",
+      "icon": "🧠",
+      "inputs": [
+        {
+          "id": "input_1748771257425_e57qksjkw",
+          "name": "firstText",
+          "type": "input",
+          "dataType": "string",
+          "required": true,
+          "description": "The first text input to append."
+        },
+        {
+          "id": "input_1748771257425_o8xw3gtfy",
+          "name": "secondText",
+          "type": "input",
+          "dataType": "string",
+          "required": true,
+          "description": "The second text input to append."
+        }
+      ],
+      "outputs": [
+        {
+          "id": "output_1748771257425_cgyarcmev",
+          "name": "appendedText",
+          "type": "output",
+          "dataType": "string",
+          "description": "The combined output of the two text inputs."
+        }
+      ],
+      "properties": [
+        {
+          "id": "prop_1748771257425_9erex3umg",
+          "name": "separator",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "A string to insert between the two texts when appending."
+        }
+      ],
+      "executionCode": "async function execute(inputs, properties, context) {\n  try {\n    context.log(\"Inputs received:\", inputs);\n    \n    const firstText = inputs.firsttext || '';\n    const secondText = inputs.secondtext || '';\n    \n    context.log(\"First text:\", firstText);\n    context.log(\"Second text:\", secondText);\n    \n    const combinedResult = firstText + secondText;\n\n    // Return object with output port name as key\n   return {\n  appendedtext: combinedResult\n  }\n  } catch (error) {\n    context.log('Error:', error.message);\n    throw error;\n  }\n}",
+      "metadata": {
+        "tags": [
+          "text",
+          "append",
+          "string manipulation",
+          "custom node"
+        ],
+        "documentation": "",
+        "examples": []
+      }
+    }
+  ],
+  "exportedAt": "2025-06-01T11:32:24.480Z",
+  "exportedBy": "Clara Agent Studio"
+}

@@ -120,7 +120,8 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getModels: () => ipcRenderer.invoke('get-llama-swap-models'),
   getApiUrl: () => ipcRenderer.invoke('get-llama-swap-api-url'),
   regenerateConfig: () => ipcRenderer.invoke('regenerate-llama-swap-config'),
-  debugBinaryPaths: () => ipcRenderer.invoke('debug-binary-paths')
+  debugBinaryPaths: () => ipcRenderer.invoke('debug-binary-paths'),
+  getGPUDiagnostics: () => ipcRenderer.invoke('get-gpu-diagnostics')
 });
 
 // Add model management API
