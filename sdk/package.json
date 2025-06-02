@@ -1,0 +1,54 @@
+{
+  "name": "clara-flow-sdk",
+  "version": "1.3.4",
+  "type": "module",
+  "description": "Lightweight JavaScript SDK for running Clara agent flows with comprehensive node support including AI, data processing, and API operations",
+  "main": "dist/index.cjs",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "node test-sdk.js",
+    "test-example": "node test-with-example.js",
+    "test-export": "node test-export-compatibility.js",
+    "test-all": "npm run test && npm run test-example && npm run test-export",
+    "debug": "node debug-llm-output.js",
+    "response-extractor": "node response-extractor-example.js",
+    "install-deps": "chmod +x install.sh && ./install.sh"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "clara",
+    "ai",
+    "automation",
+    "workflow",
+    "sdk",
+    "llm",
+    "api",
+    "pdf",
+    "structured-data",
+    "node-execution"
+  ],
+  "author": "Clara Team",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "@rollup/plugin-commonjs": "^24.0.1",
+    "@rollup/plugin-babel": "^6.0.3",
+    "@babel/core": "^7.21.0",
+    "@babel/preset-env": "^7.21.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clara-ai/clara-sdk"
+  }
+}

@@ -63,9 +63,13 @@ class ErrorBoundary extends Component<Props, State> {
                 {/* Clara mascot image */}
                 <div className="w-80 h-80 relative">
                   <img 
-                    src="/src/assets/mascot/Error_Clara.png" 
+                    src="/mascot/Error_Clara.png" 
                     alt="Clara Error Mascot" 
                     className="w-full h-full object-contain drop-shadow-2xl"
+                    onError={(e) => {
+                      // Fallback to src/assets path if public path fails
+                      e.currentTarget.src = "/src/assets/mascot/Error_Clara.png";
+                    }}
                   />
                   
                   {/* Floating elements around Clara */}

@@ -258,11 +258,6 @@ textarea {
   transition: height 0.2s ease;
 }
 
-/* Dark mode specific styles for app runner */
-.dark .app-runner-container {
-  color-scheme: dark;
-}
-
 /* Ensure markdown content has proper colors in dark mode */
 .dark .markdown-wrapper {
   color-scheme: dark;
@@ -606,20 +601,6 @@ textarea {
   animation: slideInRight 0.3s ease-out;
 }
 
-/* Apps component enhanced animations */
-@keyframes pulse-delayed {
-  0%, 100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 0.2;
-  }
-}
-
-.animation-delay-1000 {
-  animation-delay: 1s;
-}
-
 /* Enhanced card animations */
 @keyframes shine {
   from {
@@ -632,44 +613,4 @@ textarea {
 
 .animate-shine {
   animation: shine 1.5s ease-in-out infinite;
-}
-
-/* UI Builder preview isolation */
-.preview-container {
-  font-family: inherit !important;
-  isolation: isolate;
-}
-
-.preview-container * {
-  font-family: inherit !important;
-}
-
-/* Force Quicksand font for Apps component cards */
-.ui-project-card {
-  font-family: 'Quicksand', sans-serif !important;
-}
-
-.ui-project-card * {
-  font-family: 'Quicksand', sans-serif !important;
-}
-
-/* Ensure preview content doesn't leak styles */
-.preview-isolation {
-  contain: style layout;
-  isolation: isolate;
-}
-
-/* Force Quicksand font for entire Apps component */
-.apps-component,
-.apps-component *,
-.apps-component input,
-.apps-component select,
-.apps-component button,
-.apps-component textarea {
-  font-family: 'Quicksand', sans-serif !important;
-}
-
-/* Prevent any font inheritance issues in Apps component */
-.apps-component {
-  font-family: 'Quicksand', sans-serif !important;
 }

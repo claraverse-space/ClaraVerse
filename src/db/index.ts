@@ -114,21 +114,6 @@ export interface Tool {
   isEnabled: boolean;
 }
 
-export interface UIBuilderDesign {
-  id: string;
-  name: string;
-  description?: string;
-  htmlCode: string;
-  cssCode: string;
-  jsCode: string;
-  messages: Message[];
-  createdAt: string;
-  updatedAt: string;
-  isArchived?: boolean;
-  isDeleted?: boolean;
-  version: number;
-}
-
 const DB_PREFIX = 'clara_db_';
 
 const DEFAULT_SYSTEM_PROMPT = `You are Clara, a helpful and friendly AI assistant. Your responses should be:
@@ -876,40 +861,6 @@ export class LocalStorageDB {
       const filtered = tools.filter(t => t.id !== id);
       await this.setItem('tools', filtered);
     }
-  }
-
-  // Design methods
-  async getAllDesigns(): Promise<UIBuilderDesign[]> {
-    const designs = localStorage.getItem('designs');
-    return designs ? JSON.parse(designs) : [];
-  }
-
-  async getDesignById(id: string): Promise<UIBuilderDesign | null> {
-    const designs = await this.getAllDesigns();
-    return designs.find(design => design.id === id) || null;
-  }
-
-  async updateDesign(design: UIBuilderDesign): Promise<void> {
-    const designs = await this.getAllDesigns();
-    const index = designs.findIndex(d => d.id === design.id);
-    
-    if (index !== -1) {
-      designs[index] = design;
-    } else {
-      designs.push(design);
-    }
-    
-    localStorage.setItem('designs', JSON.stringify(designs));
-  }
-
-  async deleteDesign(id: string): Promise<void> {
-    const designs = await this.getAllDesigns();
-    const filteredDesigns = designs.filter(design => design.id !== id);
-    localStorage.setItem('designs', JSON.stringify(filteredDesigns));
-  }
-
-  async clearDesigns(): Promise<void> {
-    localStorage.removeItem('designs');
   }
 
   // Clear all data
