@@ -2,17 +2,33 @@ const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, pro
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
 const DockerSetup = require('./dockerSetup.cjs');
-const { setupAutoUpdater, checkForUpdates, getUpdateInfo } = require('./updateService.cjs');
+const { setupAutoUpdater, checkForUpdates, getUpdateInfo, checkLlamacppUpdates, updateLlamacppBinaries } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
+const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
 // Configure the main process logger
 log.transports.file.level = 'info';
 log.info('Application starting...');
+
+// macOS Security Configuration - Prevent unnecessary firewall prompts
+if (process.platform === 'darwin') {
+  // Request network permissions early if needed
+  try {
+    const hasNetworkAccess = systemPreferences.getMediaAccessStatus('microphone') === 'granted';
+    if (!hasNetworkAccess) {
+      log.info('Preparing network access permissions for local AI services...');
+    }
+  } catch (error) {
+    log.warn('Could not check network permissions:', error);
+  }
+}
 
 // Global variables
 let mainWindow;
@@ -20,6 +36,7 @@ let splash;
 let dockerSetup;
 let llamaSwapService;
 let mcpService;
+let updateService;
 
 // Track active downloads for stop functionality
 const activeDownloads = new Map();
@@ -379,6 +396,51 @@ function registerLlamaSwapHandlers() {
       return { success: true, ...diagnostics };
     } catch (error) {
       log.error('Error getting GPU diagnostics:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get performance settings
+  ipcMain.handle('get-performance-settings', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      const result = await llamaSwapService.getPerformanceSettings();
+      return result;
+    } catch (error) {
+      log.error('Error getting performance settings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Save performance settings
+  ipcMain.handle('save-performance-settings', async (event, settings) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      const result = await llamaSwapService.savePerformanceSettings(settings);
+      return result;
+    } catch (error) {
+      log.error('Error saving performance settings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Load performance settings
+  ipcMain.handle('load-performance-settings', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      const result = await llamaSwapService.loadPerformanceSettings();
+      return result;
+    } catch (error) {
+      log.error('Error loading performance settings:', error);
       return { success: false, error: error.message };
     }
   });
@@ -1338,6 +1400,19 @@ async function initializeApp() {
     // Register handlers for various app functions
     registerHandlers();
     
+    // Initialize all services
+    llamaSwapService = new LlamaSwapService();
+    
+    // Set up progress callback to forward to renderer
+    llamaSwapService.setProgressCallback((progressData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('llama-progress-update', progressData);
+      }
+    });
+    
+    mcpService = new MCPService();
+    updateService = platformUpdateService;
+    
     // Initialize Docker setup
     dockerSetup = new DockerSetup();
     
@@ -1360,7 +1435,6 @@ async function initializeApp() {
     // Initialize llama-swap service
     splash.setStatus('Initializing LLM service...', 'info');
     try {
-      llamaSwapService = new LlamaSwapService();
       // Start llama-swap service
       const llamaSwapSuccess = await llamaSwapService.start();
       if (llamaSwapSuccess) {
@@ -1378,7 +1452,6 @@ async function initializeApp() {
     // Initialize MCP service
     splash.setStatus('Initializing MCP service...', 'info');
     try {
-      mcpService = new MCPService();
       log.info('MCP service initialized successfully');
       splash.setStatus('MCP service initialized', 'success');
       
@@ -1616,6 +1689,15 @@ ipcMain.handle('check-for-updates', () => {
 // Add handler for getting update information (without dialogs)
 ipcMain.handle('get-update-info', () => {
   return getUpdateInfo();
+});
+
+// Add handlers for llama.cpp binary updates
+ipcMain.handle('check-llamacpp-updates', () => {
+  return checkLlamacppUpdates();
+});
+
+ipcMain.handle('update-llamacpp-binaries', () => {
+  return updateLlamacppBinaries();
 });
 
 // Handle microphone permission request

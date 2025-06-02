@@ -894,7 +894,7 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
               processingState={processingState}
               message={
                 processingState === 'processing' 
-                  ? 'Model is loading - the first response will take a bit...' 
+                  ? '' 
                   : undefined
               }
             />
@@ -911,7 +911,7 @@ const ClaraChatWindow: React.FC<ClaraChatWindowProps> = ({
               processingState={processingState}
               message={
                 processingState === 'processing' 
-                  ? 'Model is loading - the first response will take a bit...' 
+                  ? '' 
                   : undefined
               }
             />

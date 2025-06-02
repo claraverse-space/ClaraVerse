@@ -1415,7 +1415,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   // Model preloading state
   const [hasPreloaded, setHasPreloaded] = useState(false);
   const preloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [isPreloading, setIsPreloading] = useState(false);
 
   // Streaming vs Tools mode state
   const [isStreamingMode, setIsStreamingMode] = useState(
@@ -1426,6 +1425,174 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+
+  // Progress tracking state for context loading feedback
+  const [progressState, setProgressState] = useState<{
+    isActive: boolean;
+    type: string;
+    progress: number;
+    message: string;
+    details?: string;
+  }>({
+    isActive: false,
+    type: '',
+    progress: 0,
+    message: '',
+    details: ''
+  });
+
+  // Progress listener setup
+  useEffect(() => {
+    const electron = window.electron as any;
+    if (!electron?.receive) {
+      console.error('❌ Electron receive API not available for progress events');
+      return;
+    }
+
+    console.log('🔧 Setting up progress event listeners...');
+
+    const handleProgressUpdate = (progressData: any) => {
+      console.log('📊 Progress Update Received:', progressData);
+      console.log('  Type:', progressData.type);
+      console.log('  Progress:', progressData.progress);
+      console.log('  Message:', progressData.message);
+      console.log('  Details:', progressData.details);
+      console.log('  Current isLoading:', isLoading);
+      
+      // **CRITICAL FIX: Only show progress UI when actively sending a message**
+      // This prevents progress from showing during preloading or input focus
+      if (!isLoading) {
+        console.log('📊 Ignoring progress update - not actively sending message (isLoading=false)');
+        return;
+      }
+      
+      setProgressState(prev => {
+        const newState = {
+          isActive: true,
+          type: progressData.type,
+          progress: progressData.progress,
+          message: progressData.message,
+          details: progressData.details
+        };
+        console.log('  Setting new progressState (message send active):', newState);
+        return newState;
+      });
+
+      // Auto-hide progress for different scenarios
+      if (progressData.progress === -1) {
+        // Indeterminate progress - hide after 3 seconds
+        setTimeout(() => {
+          console.log('📊 Auto-hiding indeterminate progress after 3s');
+          setProgressState(prev => ({ ...prev, isActive: false }));
+        }, 3000);
+      } else if (progressData.progress >= 100) {
+        // Progress complete - hide after 1.5 seconds to show completion
+        setTimeout(() => {
+          console.log('📊 Auto-hiding completed progress (100%) after 1.5s');
+          setProgressState(prev => ({ ...prev, isActive: false }));
+        }, 1500);
+      } else if (progressData.progress > 0) {
+        // For determinate progress, set a fallback auto-hide after 10 seconds
+        // This gets reset with each new progress update
+        clearTimeout((window as any).progressAutoHideTimeout);
+        (window as any).progressAutoHideTimeout = setTimeout(() => {
+          console.log('📊 Auto-hiding stale progress after 10s timeout');
+          setProgressState(prev => ({ ...prev, isActive: false }));
+        }, 10000);
+      }
+    };
+
+    const handleProgressComplete = () => {
+      console.log('📊 Progress Complete - hiding progress indicator');
+      setProgressState(prev => ({ ...prev, isActive: false }));
+    };
+
+    // Enhanced logging wrapper
+    const debugHandleProgressUpdate = (progressData: any) => {
+      console.log('🔥 RAW IPC Event Received:', {
+        progressData,
+        timestamp: new Date().toISOString(),
+        isLoading: isLoading // Include loading state in logs
+      });
+      handleProgressUpdate(progressData);
+    };
+
+    // Use the correct electron API for registering listeners
+    const removeProgressListener = electron.receive('llama-progress-update', debugHandleProgressUpdate);
+    const removeCompleteListener = electron.receive('llama-progress-complete', handleProgressComplete);
+
+    console.log('✅ Progress event listeners registered');
+
+    return () => {
+      console.log('🧹 Cleaning up progress event listeners');
+      if (removeProgressListener) removeProgressListener();
+      if (removeCompleteListener) removeCompleteListener();
+      
+      // Clean up any pending progress timeouts
+      if ((window as any).progressAutoHideTimeout) {
+        clearTimeout((window as any).progressAutoHideTimeout);
+        delete (window as any).progressAutoHideTimeout;
+      }
+    };
+  }, [isLoading]); // Add isLoading as dependency
+
+  // Test function for debugging progress UI
+  useEffect(() => {
+    const testProgressUI = () => {
+      console.log('🧪 Testing Progress UI with auto-hide...');
+      
+      // Test context loading progress
+      setProgressState({
+        isActive: true,
+        type: 'context',
+        progress: 25,
+        message: 'Loading context',
+        details: 'Processing 512 tokens'
+      });
+      
+      setTimeout(() => {
+        setProgressState({
+          isActive: true,
+          type: 'context', 
+          progress: 75,
+          message: 'Loading context',
+          details: 'Processing 1024 tokens'
+        });
+      }, 2000);
+      
+      setTimeout(() => {
+        setProgressState({
+          isActive: true,
+          type: 'context',
+          progress: 100,
+          message: 'Context loaded',
+          details: 'Processing complete - 1652 tokens'
+        });
+        console.log('🧪 Progress reached 100% - should auto-hide in 1.5s');
+      }, 4000);
+      
+      // Note: Progress will auto-hide after reaching 100% due to the new logic
+    };
+
+    // Expose test function to window for debugging
+    (window as any).testProgressUI = testProgressUI;
+    
+    return () => {
+      delete (window as any).testProgressUI;
+    };
+  }, []);
+
+  // Auto-hide progress when loading completes
+  useEffect(() => {
+    if (!isLoading && progressState.isActive) {
+      console.log('📊 Loading completed - auto-hiding progress after 1s');
+      const timeout = setTimeout(() => {
+        setProgressState(prev => ({ ...prev, isActive: false }));
+      }, 1000);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading, progressState.isActive]);
 
   // Sync streaming mode state with session config changes
   useEffect(() => {
@@ -1500,7 +1667,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       onAdvancedOptionsToggle(false);
     }
     
-    // Trigger model preloading when user starts typing (debounced)
+    // Trigger model preloading when user starts typing (debounced) - COMPLETELY SILENT
     if (value.trim() && !hasPreloaded && onPreloadModel && !isLoading) {
       // Clear any existing timeout
       if (preloadTimeoutRef.current) {
@@ -1509,15 +1676,12 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       
       // Set a debounced timeout to trigger preloading
       preloadTimeoutRef.current = setTimeout(() => {
-        console.log('🚀 User started typing, preloading model...');
-        setIsPreloading(true);
+        console.log('🚀 User started typing, preloading model silently...');
+        // Removed setIsPreloading(true) - no UI feedback during preload
         onPreloadModel();
         setHasPreloaded(true);
         
-        // Hide preloading indicator after a short time
-        setTimeout(() => {
-          setIsPreloading(false);
-        }, 2000);
+        // No UI feedback timeout needed anymore
       }, 500); // 500ms debounce delay
     }
   }, [hasPreloaded, onPreloadModel, isLoading, showAdvancedOptionsPanel, onAdvancedOptionsToggle]);
@@ -1526,7 +1690,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   useEffect(() => {
     if (!input.trim()) {
       setHasPreloaded(false);
-      setIsPreloading(false);
+      // Removed setIsPreloading(false) - no UI feedback needed
       if (preloadTimeoutRef.current) {
         clearTimeout(preloadTimeoutRef.current);
         preloadTimeoutRef.current = null;
@@ -1904,7 +2068,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     
     // Reset preload state for next typing session
     setHasPreloaded(false);
-    setIsPreloading(false);
     if (preloadTimeoutRef.current) {
       clearTimeout(preloadTimeoutRef.current);
       preloadTimeoutRef.current = null;
@@ -2223,7 +2386,63 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
               />
             ) : (
               /* Chat Input Mode */
-              <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
+              <div 
+                className={`glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300 ${
+                  progressState.isActive && isLoading
+                    ? 'border-2 border-blue-400 dark:border-blue-500 shadow-blue-200/50 dark:shadow-blue-800/50 shadow-lg' 
+                    : 'border border-transparent'
+                }`}
+                style={{
+                  background: progressState.isActive && isLoading && progressState.progress > 0 
+                    ? `linear-gradient(90deg, rgba(59, 130, 246, 0.1) ${progressState.progress}%, transparent ${progressState.progress}%)`
+                    : undefined
+                }}
+              >
+                
+                {/* Progress Indicator */}
+                {progressState.isActive && isLoading && (
+                  <div className="flex items-center gap-3 mb-3 p-2 bg-blue-50/80 dark:bg-blue-900/30 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                      {progressState.progress > 0 ? (
+                        <div className="relative w-4 h-4">
+                          <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Waves className="w-4 h-4 animate-pulse" />
+                      )}
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{progressState.message}</span>
+                          {progressState.progress > 0 && (
+                            <span className="text-blue-500 font-mono text-xs bg-blue-100 dark:bg-blue-800/50 px-2 py-0.5 rounded">
+                              {progressState.progress}%
+                            </span>
+                          )}
+                        </div>
+                        
+                        {progressState.details && (
+                          <div className="text-xs text-blue-500/80 dark:text-blue-400/80 mt-0.5">
+                            {progressState.details}
+                          </div>
+                        )}
+                        
+                        {/* Progress bar for determinate progress */}
+                        {progressState.progress > 0 && (
+                          <div className="w-full bg-blue-200/50 dark:bg-blue-800/30 rounded-full h-1.5 mt-2">
+                            <div 
+                              className="bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out"
+                              style={{ width: `${progressState.progress}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* File Upload Area */}
                 <FileUploadArea
@@ -2235,19 +2454,25 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
                 {/* Input Field */}
                 <div className={files.length > 0 ? 'mt-3' : ''}>
-                  {/* Preloading indicator */}
-                  {isPreloading && (
-                    <div className="flex items-center gap-2 mb-2 text-xs text-blue-600 dark:text-blue-400">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Warming up model...</span>
-                    </div>
-                  )}
+                  {/* Removed preloading indicator - preloading is now completely silent */}
                   
                   <textarea
                     ref={textareaRef}
                     value={input}
                     onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    onFocus={() => {
+                      // Trigger aggressive preload on focus for fastest TTFT - SILENT
+                      console.log('⚡ Input focused - triggering silent immediate preload');
+                      onPreloadModel?.();
+                    }}
+                    onInput={() => {
+                      // Trigger preload on very first keystroke - SILENT
+                      if (input.length === 0) {
+                        console.log('🚀 First keystroke detected - silent aggressive preload');
+                        onPreloadModel?.();
+                      }
+                    }}
                     placeholder="Ask me anything..."
                     className="w-full border-0 outline-none focus:outline-none focus:ring-0 resize-none bg-transparent text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
                     style={{
@@ -2258,6 +2483,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                       padding: '0',
                       borderRadius: '0'
                     }}
+                    data-chat-input="true"
                     disabled={isLoading}
                   />
                 </div>

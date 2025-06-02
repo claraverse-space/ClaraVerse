@@ -609,6 +609,17 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     };
   }, []);
 
+  // Helper function to suggest available vision models
+  const getSuggestedVisionModels = useCallback(() => {
+    if (!sessionConfig.aiConfig?.provider) return [];
+    
+    const currentProviderModels = models.filter(m => 
+      m.provider === sessionConfig.aiConfig.provider && m.supportsVision
+    );
+    
+    return currentProviderModels.slice(0, 3); // Return top 3 vision models
+  }, [models, sessionConfig.aiConfig?.provider]);
+
   // Create new session
   const createNewSession = useCallback(async (): Promise<ClaraChatSession> => {
     try {
@@ -898,32 +909,95 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           console.error('Failed to save aborted message:', dbError);
         }
       } else {
-        // Only show error message for actual errors (not user aborts)
-        const errorMessage: ClaraMessage = {
-          id: streamingMessageId,
-          role: 'assistant',
-          content: 'I apologize, but I encountered an error while processing your request. Please try again.',
-          timestamp: new Date(),
-          metadata: {
-            error: error instanceof Error ? error.message : 'Failed to generate response',
-            isStreaming: false
-          }
-        };
-        
-        setMessages(prev => prev.map(msg => 
-          msg.id === streamingMessageId ? errorMessage : msg
-        ));
-
-        // Add error notification
-        addErrorNotification(
-          'Chat Error',
-          'Failed to generate response. Please try again.',
-          6000
+        // Check for specific vision model error
+        const isVisionError = error instanceof Error && (
+          error.message.includes('image input is not supported') ||
+          error.message.includes('vision not supported') ||
+          error.message.includes('multimodal not supported') ||
+          error.message.includes('images are not supported')
         );
+        
+        // Check if user sent images but has vision error
+        const hasImages = attachments && attachments.some(att => att.type === 'image');
+        
+        if (isVisionError || (hasImages && error instanceof Error && error.message.includes('server'))) {
+          console.log('Vision model error detected - providing helpful guidance');
+          
+          // Get suggested vision models for better error message
+          const suggestedModels = getSuggestedVisionModels();
+          const modelSuggestions = suggestedModels.length > 0 
+            ? `\n\n**Available vision models for ${sessionConfig.aiConfig?.provider}:**\n${suggestedModels.map(m => `• ${m.name}`).join('\n')}`
+            : '\n\n**Note:** No vision models found for the current provider. You may need to download vision models first.';
+          
+          const errorMessage: ClaraMessage = {
+            id: streamingMessageId,
+            role: 'assistant',
+            content: `I see you've shared an image, but the current model doesn't support image processing.${modelSuggestions}
+
+**To fix this:**
+1. Open **Advanced Options** (click the ⚙️ gear icon)
+2. Select a **Vision Model** from the dropdown${suggestedModels.length > 0 ? ` (try ${suggestedModels[0].name})` : ''}
+3. Or download vision models from **Settings → Model Manager**
+
+**Alternative:** Switch to **Tools Mode** which can automatically select appropriate models for different tasks.
+
+Would you like me to help with text-only responses for now?`,
+            timestamp: new Date(),
+            metadata: {
+              error: error instanceof Error ? error.message : 'Vision model not configured',
+              isStreaming: false,
+              isVisionError: true,
+              suggestedModels: suggestedModels.map(m => m.id)
+            }
+          };
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? errorMessage : msg
+          ));
+
+          // Add specific error notification for vision issues
+          addErrorNotification(
+            'Vision Model Required',
+            'Please configure a vision/multimodal model to process images.',
+            8000
+          );
+        } else {
+          // Only show generic error message for actual errors (not user aborts)
+          const errorMessage: ClaraMessage = {
+            id: streamingMessageId,
+            role: 'assistant',
+            content: 'I apologize, but I encountered an error while processing your request.  Please try again. \n Model Response was : \t'+(error instanceof Error ? error.message : 'Unknown error occurred'),
+            timestamp: new Date(),
+            metadata: {
+              error: error instanceof Error ? error.message : 'Failed to generate response',
+              isStreaming: false
+            }
+          };
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId ? errorMessage : msg
+          ));
+
+          // Add error notification
+          addErrorNotification(
+            'Chat Error',
+            'Failed to generate response. Please try again.',
+            6000
+          );
+        }
 
         // Save error message to database
         try {
-          await claraDB.addClaraMessage(currentSession.id, errorMessage);
+          // Get the current error message from state to save
+          setMessages(prev => {
+            const currentMessage = prev.find(msg => msg.id === streamingMessageId);
+            if (currentMessage && currentSession) {
+              claraDB.addClaraMessage(currentSession.id, currentMessage).catch(dbError => {
+                console.error('Failed to save error message:', dbError);
+              });
+            }
+            return prev; // Don't modify state, just access it
+          });
         } catch (dbError) {
           console.error('Failed to save error message:', dbError);
         }
@@ -1323,30 +1397,86 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // Handle model preloading when user starts typing
   const handlePreloadModel = useCallback(async () => {
     if (sessionConfig.aiConfig) {
-      console.log('🚀 Triggering model preload for typing optimization...');
+      console.log('🚀 Advanced TTFT preload triggered...');
       
-      // Quick health check before preloading
+      // Strategy 1: Immediate health check with timeout
       try {
-        const isHealthy = await claraApiService.healthCheck();
+        const healthCheckPromise = claraApiService.healthCheck();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Health check timeout')), 2000)
+        );
+        
+        const isHealthy = await Promise.race([healthCheckPromise, timeoutPromise]) as boolean;
         if (!isHealthy) {
-          console.warn('⚠️ Provider health check failed during preload attempt');
-          addErrorNotification(
-            'Provider Issue Detected',
-            'The current provider is not responding. Please check if the service is running.',
-            5000
-          );
+          console.warn('⚠️ Fast health check failed during preload');
           return;
         }
         
-        // Proceed with preload if health check passes
-        // Pass conversation history so preloading considers images in conversation
+        // Strategy 2: Enhanced preloading with multiple techniques
         await claraApiService.preloadModel(sessionConfig.aiConfig, messages);
+        
+        // Strategy 3: Prime GPU/CPU for local models
+        if (sessionConfig.aiConfig.provider === 'claras-pocket' || 
+            sessionConfig.aiConfig.provider === 'ollama') {
+          console.log('🔥 Triggering local model warmup...');
+          await primeLocalModel(sessionConfig.aiConfig);
+        }
+        
       } catch (error) {
-        console.error('Failed to preload model:', error);
-        // Don't show notification for preload failures as they're optional
+        console.warn('⚠️ Advanced preload failed:', error);
       }
     }
   }, [sessionConfig.aiConfig, messages]);
+
+  // Prime local models for better TTFT
+  const primeLocalModel = useCallback(async (config: ClaraAIConfig) => {
+    try {
+      // For Clara's Pocket (llama-swap), trigger model preparation
+      if (config.provider === 'claras-pocket' && window.llamaSwap) {
+        const status = await window.llamaSwap.getStatus();
+        if (status?.isRunning) {
+          console.log('🎯 Priming Clara Pocket for faster response...');
+          // The existing llamaSwapService with TTFT optimizations will handle this
+        }
+      }
+    } catch (error) {
+      console.warn('Local model priming failed:', error);
+    }
+  }, []);
+
+  // Enhanced typing detection with multiple trigger points
+  const handleAdvancedTypingDetection = useCallback(() => {
+    // Trigger preload on various user interaction events for maximum speed
+    console.log('⚡ Early typing detection - triggering aggressive preload');
+    handlePreloadModel();
+  }, [handlePreloadModel]);
+
+  // Auto-preload when user focuses on input
+  useEffect(() => {
+    const inputElement = document.querySelector('[data-chat-input]');
+    if (inputElement) {
+      inputElement.addEventListener('focus', handleAdvancedTypingDetection);
+      inputElement.addEventListener('input', handleAdvancedTypingDetection, { once: true });
+      
+      return () => {
+        inputElement.removeEventListener('focus', handleAdvancedTypingDetection);
+        inputElement.removeEventListener('input', handleAdvancedTypingDetection);
+      };
+    }
+  }, [handleAdvancedTypingDetection]);
+
+  // Predictive preloading when Clara becomes visible
+  useEffect(() => {
+    if (isVisible && !isLoadingProviders && sessionConfig.aiConfig) {
+      // Small delay then preload for when user is likely to type
+      const timer = setTimeout(() => {
+        console.log('👁️ Clara visible - predictive preload starting...');
+        handlePreloadModel();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, isLoadingProviders, sessionConfig.aiConfig, handlePreloadModel]);
 
   // Handle session config changes
   const handleConfigChange = useCallback((newConfig: Partial<ClaraSessionConfig>) => {

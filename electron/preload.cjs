@@ -27,7 +27,9 @@ const validChannels = [
   'python-status',
   'update-available',
   'update-downloaded',
-  'download-progress'
+  'download-progress',
+  'llama-progress-update',
+  'llama-progress-complete'
 ];
 
 // Add explicit logging for debugging
@@ -53,6 +55,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
+  
+  // Llama.cpp Binary Updates
+  checkLlamacppUpdates: () => ipcRenderer.invoke('check-llamacpp-updates'),
+  updateLlamacppBinaries: () => ipcRenderer.invoke('update-llamacpp-binaries'),
   
   // Clipboard
   clipboard: {
@@ -121,7 +127,10 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getApiUrl: () => ipcRenderer.invoke('get-llama-swap-api-url'),
   regenerateConfig: () => ipcRenderer.invoke('regenerate-llama-swap-config'),
   debugBinaryPaths: () => ipcRenderer.invoke('debug-binary-paths'),
-  getGPUDiagnostics: () => ipcRenderer.invoke('get-gpu-diagnostics')
+  getGPUDiagnostics: () => ipcRenderer.invoke('get-gpu-diagnostics'),
+  getPerformanceSettings: () => ipcRenderer.invoke('get-performance-settings'),
+  savePerformanceSettings: (settings) => ipcRenderer.invoke('save-performance-settings', settings),
+  loadPerformanceSettings: () => ipcRenderer.invoke('load-performance-settings')
 });
 
 // Add model management API
