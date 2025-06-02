@@ -763,6 +763,9 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                               Pro Tips
                             </h4>
                             <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                              <li>• <span className="font-medium">Copy/Paste:</span> Select a node and press Ctrl+C (Cmd+C) to copy, Ctrl+V (Cmd+V) to paste</li>
+                              <li>• <span className="font-medium">Delete:</span> Select nodes and press Delete or Backspace to remove them</li>
+                              <li>• <span className="font-medium">Save:</span> Press Ctrl+S (Cmd+S) to save your workflow</li>
                               <li>• Use JSON Parser to extract specific fields from API responses</li>
                               <li>• If/Else nodes support complex JavaScript expressions</li>
                               <li>• Image Input automatically converts to base64 for AI models</li>
