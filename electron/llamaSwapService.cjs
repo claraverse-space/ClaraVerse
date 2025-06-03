@@ -681,10 +681,38 @@ models:
         log.info(`Model ${model.name}: Context: ${contextSize}, Keep: ${keepTokens}, Batch: ${batchSize}`);
       }
       
+      // Get platform-specific environment variables for the model process
+      const platformEnv = this.platformManager.getPlatformEnvironment();
+      
+      // Build environment variables array for the YAML config
+      let envVars = [];
+      if (this.platformInfo.isLinux && platformEnv.LD_LIBRARY_PATH) {
+        envVars.push(`LD_LIBRARY_PATH=${platformEnv.LD_LIBRARY_PATH}`);
+      } else if (this.platformInfo.isMac && platformEnv.DYLD_LIBRARY_PATH) {
+        envVars.push(`DYLD_LIBRARY_PATH=${platformEnv.DYLD_LIBRARY_PATH}`);
+      }
+      
+      // Add CUDA environment variables if available
+      if (process.env.CUDA_VISIBLE_DEVICES) {
+        envVars.push(`CUDA_VISIBLE_DEVICES=${process.env.CUDA_VISIBLE_DEVICES}`);
+      }
+      
       configYaml += `  "${model.name}":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-${cmdLine}
+${cmdLine}`;
+
+      // Add environment variables if any are needed
+      if (envVars.length > 0) {
+        configYaml += `
+    env:`;
+        envVars.forEach(envVar => {
+          configYaml += `
+      - "${envVar}"`;
+        });
+      }
+
+      configYaml += `
     ttl: 300
 
 `;

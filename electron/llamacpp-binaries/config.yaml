@@ -1,31 +1,27 @@
 # Auto-generated llama-swap configuration
-# Models directory: C:\Users\prave\.clara\llama-models
+# Models directory: /home/badboy17/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "gemma3:12b":
+  "qwen3:8b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\gemma-3-12b-it-Q4_K_M.gguf"
-      --port 9999 --jinja --n-gpu-layers 40 --threads 16 --ctx-size 2048 --batch-size 512 --ubatch-size 128 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 40 --threads 16 --ctx-size 16384 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursornmcR3y/usr/lib/:/tmp/.mount_CursornmcR3y/usr/lib32/:/tmp/.mount_CursornmcR3y/usr/lib64/:/tmp/.mount_CursornmcR3y/lib/:/tmp/.mount_CursornmcR3y/lib/i386-linux-gnu/:/tmp/.mount_CursornmcR3y/lib/x86_64-linux-gnu/:/tmp/.mount_CursornmcR3y/lib/aarch64-linux-gnu/:/tmp/.mount_CursornmcR3y/lib32/:/tmp/.mount_CursornmcR3y/lib64/:"
     ttl: 300
 
-  "llama32:3b":
+  "qwen25:7b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\Llama-3.2-3B-Instruct-IQ4_XS.gguf"
-      --port 9999 --jinja --n-gpu-layers 26 --threads 16 --ctx-size 2048 --batch-size 256 --ubatch-size 64 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    ttl: 300
-
-  "qwen3:14b":
-    proxy: "http://127.0.0.1:9999"
-    cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\Qwen3-14B-UD-Q4_K_XL.gguf"
-      --port 9999 --jinja --n-gpu-layers 60 --threads 16 --ctx-size 2048 --batch-size 1024 --ubatch-size 256 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+      --port 9999 --jinja --n-gpu-layers 32 --threads 16 --ctx-size 16384 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursornmcR3y/usr/lib/:/tmp/.mount_CursornmcR3y/usr/lib32/:/tmp/.mount_CursornmcR3y/usr/lib64/:/tmp/.mount_CursornmcR3y/lib/:/tmp/.mount_CursornmcR3y/lib/i386-linux-gnu/:/tmp/.mount_CursornmcR3y/lib/x86_64-linux-gnu/:/tmp/.mount_CursornmcR3y/lib/aarch64-linux-gnu/:/tmp/.mount_CursornmcR3y/lib32/:/tmp/.mount_CursornmcR3y/lib64/:"
     ttl: 300
 
 groups:
@@ -33,6 +29,5 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "gemma3:12b"
-      - "llama32:3b"
-      - "qwen3:14b"
+      - "qwen3:8b"
+      - "qwen25:7b"

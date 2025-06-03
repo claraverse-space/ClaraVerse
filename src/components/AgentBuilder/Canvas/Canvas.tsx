@@ -279,7 +279,7 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
         
         selectNodes(allSelectedNodes);
       } else if (change.type === 'remove') {
-        // Handle node deletion (triggered by Delete/Backspace keys)
+        // Handle node deletion (using close button on each node)
         deleteNode(change.id);
       }
     });
@@ -489,7 +489,7 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     }
   }, [saveFlow, addExecutionLog]);
 
-  // Handle keyboard events for node deletion and copy-paste
+  // Handle keyboard events for copy-paste and save (removed delete functionality)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Handle save (Ctrl+S or Cmd+S)
@@ -499,22 +499,8 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
         return;
       }
       
-      // Check if Delete or Backspace was pressed and there are selected nodes
-      if ((event.key === 'Delete' || event.key === 'Backspace') && canvas.selection.nodeIds.length > 0) {
-        // Prevent default behavior (like navigating back in browser)
-        event.preventDefault();
-        
-        // Delete all selected nodes
-        canvas.selection.nodeIds.forEach(nodeId => {
-          deleteNode(nodeId);
-        });
-        
-        // Clear selection after deletion
-        clearSelection();
-      }
-      
       // Handle copy (Ctrl+C or Cmd+C)
-      else if ((event.ctrlKey || event.metaKey) && event.key === 'c' && canvas.selection.nodeIds.length === 1) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'c' && canvas.selection.nodeIds.length === 1) {
         event.preventDefault();
         handleCopyNode();
       }
@@ -533,7 +519,7 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [canvas.selection.nodeIds, deleteNode, clearSelection, clipboard, handleCopyNode, handlePasteNode, handleSave]);
+  }, [canvas.selection.nodeIds, clipboard, handleCopyNode, handlePasteNode, handleSave]);
 
   // Category-based colors
   const getCategoryColor = (node: Node): string => {
@@ -579,7 +565,6 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
         fitView={false}
         minZoom={0.1}
         maxZoom={3}
-        deleteKeyCode={['Delete', 'Backspace']}
         multiSelectionKeyCode={['Meta', 'Ctrl']}
         zoomOnDoubleClick={false}
         key={`reactflow-${nodes.length}-${connections.length}`}

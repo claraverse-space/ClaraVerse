@@ -748,7 +748,7 @@ class LlamacppUpdateService {
           platform: 'linux',
           arch: 'x64',
           platformDir: 'linux-x64',
-          assetPattern: 'llama-.*-bin-ubuntu-x64.zip'
+          assetPattern: 'llama-.*-bin-ubuntu-vulkan-x64.zip'
         };
       case 'win32':
         return {
@@ -1309,6 +1309,8 @@ class LlamacppUpdateService {
       'libggml-base.so',
       'libggml-blas.so',
       'libggml-rpc.so',
+      'libmtmd.so',
+      'libmtmd_shared.so',
       // Metal shaders and headers
       'ggml-metal.metal',
       'ggml-common.h',
@@ -1396,7 +1398,7 @@ class LlamacppUpdateService {
             // Communication and other libraries
             'ggml-rpc.dll', 'ggml-blas.dll'
           ]
-        : ['libllama.so', 'libggml.so', 'libggml-metal.so', 'libggml-cpu.so', 'libggml-base.so', 'libggml-blas.so', 'libggml-rpc.so']),
+        : ['libllama.so', 'libggml.so', 'libggml-metal.so', 'libggml-cpu.so', 'libggml-base.so', 'libggml-blas.so', 'libggml-rpc.so', 'libmtmd.so', 'libmtmd_shared.so']),
       
       // Common supporting files
       'ggml-metal.metal',
