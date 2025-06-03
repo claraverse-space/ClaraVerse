@@ -90,7 +90,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeAllListeners(channel);
     }
   },
-  getWorkflowsPath: () => ipcRenderer.invoke('getWorkflowsPath')
+  getWorkflowsPath: () => ipcRenderer.invoke('getWorkflowsPath'),
+  dialog: {
+    showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options)
+  }
 });
 
 // Add Docker container management API
@@ -130,7 +133,10 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getGPUDiagnostics: () => ipcRenderer.invoke('get-gpu-diagnostics'),
   getPerformanceSettings: () => ipcRenderer.invoke('get-performance-settings'),
   savePerformanceSettings: (settings) => ipcRenderer.invoke('save-performance-settings', settings),
-  loadPerformanceSettings: () => ipcRenderer.invoke('load-performance-settings')
+  loadPerformanceSettings: () => ipcRenderer.invoke('load-performance-settings'),
+  setCustomModelPath: (path) => ipcRenderer.invoke('set-custom-model-path', path),
+  getCustomModelPaths: () => ipcRenderer.invoke('get-custom-model-paths'),
+  scanCustomPathModels: (path) => ipcRenderer.invoke('scan-custom-path-models', path)
 });
 
 // Add model management API

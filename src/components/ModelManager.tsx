@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Search, Trash2, HardDrive, Cloud, TrendingUp, Star, FileText, X, ExternalLink, Cpu, Database } from 'lucide-react';
+import { useProviders } from '../contexts/ProvidersContext';
 
 // Define types for model management
 interface HuggingFaceModel {
@@ -457,6 +458,53 @@ const ModelManager: React.FC = () => {
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [modelManagerTab, setModelManagerTab] = useState<'discover' | 'library'>('discover');
   const [trendingFilter, setTrendingFilter] = useState<'all' | 'month' | 'week' | 'today'>('month');
+  const [isSettingCustomPath, setIsSettingCustomPath] = useState(false);
+  const { customModelPath, setCustomModelPath } = useProviders();
+
+  // UI state for notifications and confirmations
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+  } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    message: string;
+    modelCount: number;
+    modelNames: string[];
+    selectedPath: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+  } | null>(null);
+
+  // Load local models on mount and set up download progress listener
+  const loadLocalModels = async () => {
+    if (window.modelManager?.getLocalModels) {
+      try {
+        const result = await window.modelManager.getLocalModels();
+        if (result.success) {
+          setLocalModels(result.models);
+        }
+      } catch (error) {
+        console.error('Error loading local models:', error);
+      }
+    }
+  };
+
+  // Add effect to reload local models when customModelPath changes
+  useEffect(() => {
+    loadLocalModels();
+  }, [customModelPath]);
+
+  // Initial load of local models on mount
+  useEffect(() => {
+    // Add a small delay to ensure backend is ready and custom path is set
+    const timer = setTimeout(() => {
+      loadLocalModels();
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   // Load popular models on mount and when filter changes
   useEffect(() => {
@@ -465,7 +513,7 @@ const ModelManager: React.FC = () => {
       
       setIsLoadingPopular(true);
       try {
-        let allModels: HuggingFaceModel[] = [];
+        const allModels: HuggingFaceModel[] = [];
         
         if (trendingFilter === 'all') {
           // For "All Time", search for popular models using trending terms
@@ -513,14 +561,6 @@ const ModelManager: React.FC = () => {
           );
           
           // Filter by recency indicators in model names/descriptions
-          const now = new Date();
-          const cutoffDays = trendingFilter === 'today' ? 1 : 
-                           trendingFilter === 'week' ? 7 : 30; // month
-          
-          // Since we can't get exact dates, we'll use heuristics:
-          // 1. Models with version numbers suggesting recency (3.1, 3.2, 2.5, etc.)
-          // 2. Models with "2024", "2025" in name/description
-          // 3. Models with "latest", "new", "updated" keywords
           const recentKeywords = [
             '3.2', '3.1', '2.5', '2024', '2025', 'latest', 'new', 'updated', 
             'r1', 'v3', 'pro', 'turbo', 'instruct', 'chat'
@@ -550,41 +590,6 @@ const ModelManager: React.FC = () => {
 
     loadPopularModels();
   }, [trendingFilter]);
-
-  // Load local models on mount and set up download progress listener
-  useEffect(() => {
-    const loadLocalModels = async () => {
-      if (window.modelManager?.getLocalModels) {
-        try {
-          const result = await window.modelManager.getLocalModels();
-          if (result.success) {
-            setLocalModels(result.models);
-          }
-        } catch (error) {
-          console.error('Error loading local models:', error);
-        }
-      }
-    };
-
-    loadLocalModels();
-
-    // Set up download progress listener
-    let unsubscribe: (() => void) | undefined;
-    if (window.modelManager?.onDownloadProgress) {
-      unsubscribe = window.modelManager.onDownloadProgress((data: DownloadProgress) => {
-        setDownloadProgress(prev => ({
-          ...prev,
-          [data.fileName]: data
-        }));
-      });
-    }
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, []);
 
   // Model management functions
   const searchModels = async () => {
@@ -767,12 +772,147 @@ const ModelManager: React.FC = () => {
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
+  // Handler for folder picker (Electron only)
+  const handlePickCustomModelPath = async () => {
+    // @ts-expect-error Electron dialog is injected by preload and not typed
+    if (window.electron && window.electron.dialog) {
+      try {
+        // @ts-expect-error Electron dialog is injected by preload and not typed
+        const result = await window.electron.dialog.showOpenDialog({
+          properties: ['openDirectory']
+        });
+        
+        if (result && result.filePaths && result.filePaths[0]) {
+          const selectedPath = result.filePaths[0];
+          
+          // Show loading only when we have a selected directory
+          setIsSettingCustomPath(true);
+          
+          // First, scan for models in the selected path
+          if (window.llamaSwap?.scanCustomPathModels) {
+            const scanResult = await window.llamaSwap.scanCustomPathModels(selectedPath);
+            if (scanResult.success && scanResult.models && scanResult.models.length >= 0) {
+              if (scanResult.models.length === 0) {
+                setNotification({
+                  type: 'error',
+                  title: 'No Models Found',
+                  message: `No .gguf model files found in the selected folder. Please select a folder containing .gguf model files.`
+                });
+                return;
+              }
+              
+              // Show confirmation dialog with proper UI
+              setConfirmation({
+                title: 'Confirm Model Directory',
+                message: 'Do you want to use this folder as your custom model directory?',
+                modelCount: scanResult.models.length,
+                modelNames: scanResult.models.map(m => m.file),
+                selectedPath,
+                onConfirm: async () => {
+                  setConfirmation(null);
+                  // Set the custom model path
+                  await setCustomModelPath(selectedPath);
+                  
+                  // Show success notification
+                  setNotification({
+                    type: 'success',
+                    title: 'Directory Set Successfully',
+                    message: `Found ${scanResult.models?.length || 0} model(s) that will be available for use.`
+                  });
+                },
+                onCancel: () => {
+                  setConfirmation(null);
+                }
+              });
+            } else {
+              setNotification({
+                type: 'error',
+                title: 'Scan Error',
+                message: `Error scanning folder for models: ${scanResult.error || 'Unknown error'}`
+              });
+            }
+          } else {
+            // Fallback: just set the path without scanning
+            await setCustomModelPath(selectedPath);
+            setNotification({
+              type: 'success',
+              title: 'Directory Set',
+              message: 'Custom model directory has been set successfully.'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error setting custom model path:', error);
+        setNotification({
+          type: 'error',
+          title: 'Setup Error',
+          message: 'An error occurred while setting the custom model directory.'
+        });
+      } finally {
+        setIsSettingCustomPath(false);
+      }
+    } else {
+      setNotification({
+        type: 'info',
+        title: 'Desktop App Required',
+        message: 'Folder picker is only available in the desktop app.'
+      });
+    }
+  };
+
+  // Handler to clear custom path
+  const handleClearCustomModelPath = async () => {
+    await setCustomModelPath(null);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Custom Model Path UI */}
+      <div className="glassmorphic rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-6">
+        <HardDrive className="w-6 h-6 text-sakura-500" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Custom Model Directory
+          </h2>
+          <button
+            onClick={handlePickCustomModelPath}
+            disabled={isSettingCustomPath}
+            className="px-3 py-1 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center gap-2"
+          >
+            {isSettingCustomPath && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+            {isSettingCustomPath ? 'Setting up...' : (customModelPath ? 'Change Folder' : 'Set Folder')}
+          </button>
+          {customModelPath && !isSettingCustomPath && (
+            <button
+              onClick={handleClearCustomModelPath}
+              className="px-2 py-1 ml-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-xs"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        
+        {isSettingCustomPath ? (
+          <div className="flex items-center gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div>
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Loading models from custom directory</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">Scanning for .gguf model files...</p>
+            </div>
+          </div>
+        ) : customModelPath ? (
+          <div className="text-xs text-gray-600 dark:text-gray-300 break-all">
+            <span>Current: </span>
+            <span className="font-mono">{customModelPath}</span>
+          </div>
+        ) : (
+          <div className="text-xs text-gray-500 dark:text-gray-400">No custom model directory set. Using default location.</div>
+        )}
+      </div>
       {/* Header with Tabs */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
-          <HardDrive className="w-6 h-6 text-sakura-500" />
+            <HardDrive className="w-6 h-6 text-sakura-500" />
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             Model Manager
           </h2>
@@ -942,7 +1082,21 @@ const ModelManager: React.FC = () => {
                   Your Model Library
                 </h3>
               </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                {customModelPath && (
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    <span>Custom: {localModels.filter(m => m.source === 'custom').length}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>User: {localModels.filter(m => m.source === 'user').length}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                  <span>Bundled: {localModels.filter(m => m.source === 'bundled').length}</span>
+                </div>
                 <span>Total Storage: {localModels.reduce((acc, model) => acc + model.size, 0) > 0 ? formatFileSize(localModels.reduce((acc, model) => acc + model.size, 0)) : '0 B'}</span>
               </div>
             </div>
@@ -951,11 +1105,26 @@ const ModelManager: React.FC = () => {
               <div className="grid gap-3">
                 {localModels.map((model) => (
                   <div key={model.path} className="flex items-center gap-4 p-4 bg-white/30 dark:bg-gray-800/30 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center text-white">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
+                      model.source === 'custom' ? 'bg-gradient-to-br from-blue-400 to-blue-600' :
+                      model.source === 'user' ? 'bg-gradient-to-br from-green-400 to-green-600' :
+                      'bg-gradient-to-br from-purple-400 to-purple-600'
+                    }`}>
                       <HardDrive className="w-6 h-6" />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-semibold text-gray-900 dark:text-white">{model.name}</h5>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h5 className="font-semibold text-gray-900 dark:text-white">{model.name}</h5>
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                          model.source === 'custom' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                          model.source === 'user' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                          'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        }`}>
+                          {model.source === 'custom' ? '📂 Custom' : 
+                           model.source === 'user' ? '👤 User' : 
+                           '📦 Bundled'}
+                        </span>
+                      </div>
                       <p className="text-sm text-gray-600 dark:text-gray-300 font-mono">{model.file}</p>
                       <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
                         <span className="flex items-center gap-1">
@@ -967,6 +1136,11 @@ const ModelManager: React.FC = () => {
                           {model.source}
                         </span>
                         <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
+                        {model.source === 'custom' && customModelPath && (
+                          <span className="text-blue-600 dark:text-blue-400" title={model.path}>
+                            📂 {customModelPath}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -981,9 +1155,13 @@ const ModelManager: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => deleteLocalModel(model.path)}
-                          disabled={deleting.has(model.path)}
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          title="Remove model"
+                          disabled={deleting.has(model.path) || model.source === 'bundled'}
+                          className={`p-2 rounded-lg transition-colors ${
+                            model.source === 'bundled' 
+                              ? 'text-gray-400 cursor-not-allowed' 
+                              : 'text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
+                          }`}
+                          title={model.source === 'bundled' ? 'Cannot delete bundled models' : 'Remove model'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -999,21 +1177,133 @@ const ModelManager: React.FC = () => {
                 </div>
                 <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No models in your library</h4>
                 <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  Download models from the Discover tab to get started
+                  Download models from the Discover tab or set a custom model directory to get started
                 </p>
-                <button 
-                  onClick={() => setModelManagerTab('discover')}
-                  className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
-                >
-                  Discover Models
-                </button>
+                <div className="flex gap-2 justify-center">
+                  <button 
+                    onClick={() => setModelManagerTab('discover')}
+                    className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+                  >
+                    Discover Models
+                  </button>
+                  <button 
+                    onClick={handlePickCustomModelPath}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Set Custom Folder
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Notification Modal */}
+      {notification && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  notification?.type === 'success' ? 'bg-green-100 dark:bg-green-900/30' :
+                  notification?.type === 'error' ? 'bg-red-100 dark:bg-red-900/30' :
+                  'bg-blue-100 dark:bg-blue-900/30'
+                }`}>
+                  {notification?.type === 'success' ? (
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : notification?.type === 'error' ? (
+                    <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    {notification?.title}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    {notification?.message}
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setNotification(null)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmation && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                  <HardDrive className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    {confirmation?.title}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    {confirmation?.message}
+                  </p>
+                  
+                  {/* Model details */}
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Found {confirmation?.modelCount || 0} model(s) in:
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono text-gray-600 dark:text-gray-400 mb-3 break-all">
+                      {confirmation?.selectedPath}
+                    </div>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {confirmation?.modelNames?.map((name, index) => (
+                        <div key={index} className="text-sm text-gray-700 dark:text-gray-300 font-mono bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
+                          {name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={confirmation?.onCancel}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmation?.onConfirm}
+                  className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+                >
+                  Use This Directory
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default ModelManager; 
+export default ModelManager;

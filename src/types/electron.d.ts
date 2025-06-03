@@ -84,6 +84,9 @@ declare global {
       regenerateConfig: () => Promise<{ success: boolean; models?: number; error?: string }>;
       debugBinaryPaths: () => Promise<{ success: boolean; debugInfo?: any; error?: string }>;
       getGPUDiagnostics: () => Promise<{ success: boolean; gpuInfo?: any; modelInfo?: any[]; error?: string }>;
+      setCustomModelPath: (path: string | null) => Promise<{ success: boolean; error?: string }>;
+      getCustomModelPaths: () => Promise<string[]>;
+      scanCustomPathModels: (path: string) => Promise<{ success: boolean; models?: any[]; error?: string }>;
     };
     modelManager: {
       searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;

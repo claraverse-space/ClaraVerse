@@ -138,7 +138,7 @@ export class LocalStorageDB {
   private isIndexedDBSupported(): boolean {
     try {
       return 'indexedDB' in window && window.indexedDB !== null;
-    } catch (e) {
+    } catch {
       console.warn('IndexedDB is not supported in this browser. Falling back to localStorage.');
       return false;
     }
@@ -193,12 +193,12 @@ export class LocalStorageDB {
   }
 
   private async migrateCollection(collectionName: string): Promise<void> {
-    const items = this.getItemFromLocalStorage<any[]>(collectionName) || [];
-    if (items.length) {
-      for (const item of items) {
+    const items = this.getItemFromLocalStorage<unknown[]>(collectionName) || [];
+    if ((items as unknown[]).length) {
+      for (const item of items as unknown[]) {
         await indexedDBService.put(collectionName, item);
       }
-      console.info(`Migrated ${items.length} ${collectionName}`);
+      console.info(`Migrated ${(items as unknown[]).length} ${collectionName}`);
     }
   }
 
@@ -206,17 +206,17 @@ export class LocalStorageDB {
     try {
       const data = localStorage.getItem(`${DB_PREFIX}${key}`);
       return data ? JSON.parse(data) : null;
-    } catch (error) {
-      console.error(`Error reading from localStorage: ${key}`, error);
+    } catch {
+      console.error(`Error reading from localStorage: ${key}`);
       return null;
     }
   }
 
-  private setItemToLocalStorage(key: string, value: any): void {
+  private setItemToLocalStorage(key: string, value: unknown): void {
     try {
       localStorage.setItem(`${DB_PREFIX}${key}`, JSON.stringify(value));
-    } catch (error) {
-      console.error(`Error writing to localStorage: ${key}`, error);
+    } catch {
+      console.error(`Error writing to localStorage: ${key}`);
     }
   }
 
@@ -228,9 +228,9 @@ export class LocalStorageDB {
         if (Array.isArray(items)) {
           return items as unknown as T;
         }
-        return (items as any[] && (items as any[]).length > 0) ? (items as any[])[0] as T : null;
-      } catch (error) {
-        console.error(`Error getting from IndexedDB: ${key}`, error);
+        return (Array.isArray(items) && (items as unknown[]).length > 0) ? (items as unknown[])[0] as T : null;
+      } catch {
+        console.error(`Error getting from IndexedDB: ${key}`);
         // Fall back to localStorage
         return this.getItemFromLocalStorage<T>(key);
       }
@@ -1226,6 +1226,23 @@ export class LocalStorageDB {
       console.error('Error initializing default providers:', error);
     } finally {
       this.initializingProviders = false;
+    }
+  }
+
+  // Custom Model Path methods
+  async getCustomModelPath(): Promise<string | null> {
+    if (this.useIndexedDB) {
+      return await indexedDBService.getCustomModelPath();
+    } else {
+      return this.getItemFromLocalStorage<string>('custom_model_path');
+    }
+  }
+
+  async setCustomModelPath(path: string | null): Promise<void> {
+    if (this.useIndexedDB) {
+      await indexedDBService.setCustomModelPath(path);
+    } else {
+      this.setItemToLocalStorage('custom_model_path', path);
     }
   }
 }
