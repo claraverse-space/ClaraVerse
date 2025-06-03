@@ -81,7 +81,7 @@ const WelcomeWidget: React.FC<WelcomeWidgetProps> = ({
 
           {/* Agents Action */}
           <button 
-            onClick={() => onPageChange?.('apps')}
+            onClick={() => onPageChange?.('agents')}
             className="group flex flex-col items-center text-center rounded-xl sm:rounded-2xl bg-gradient-to-b from-white/80 to-white/40 dark:from-gray-800/80 dark:to-gray-800/40 backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 p-3 sm:p-4"
           >
             <div className="mb-2">
