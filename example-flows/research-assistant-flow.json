@@ -1,0 +1,157 @@
+{
+  "format": "clara-native",
+  "version": "1.0.0",
+  "name": "Research Assistant Flow",
+  "description": "An advanced flow that takes a research topic, calls an API to gather information, and then uses LLM to analyze and summarize the findings",
+  "nodes": [
+    {
+      "id": "input-topic",
+      "type": "input",
+      "position": { "x": 50, "y": 100 },
+      "data": {
+        "label": "Research Topic",
+        "inputType": "text",
+        "placeholder": "Enter a topic to research...",
+        "required": true
+      }
+    },
+    {
+      "id": "input-depth",
+      "type": "input",
+      "position": { "x": 50, "y": 250 },
+      "data": {
+        "label": "Analysis Depth",
+        "inputType": "text",
+        "placeholder": "Basic, Detailed, or Expert level",
+        "required": false
+      }
+    },
+    {
+      "id": "api-search",
+      "type": "api-request",
+      "position": { "x": 350, "y": 100 },
+      "data": {
+        "label": "Search API",
+        "url": "https://api.duckduckgo.com/?q={{topic}}&format=json&no_html=1&skip_disambig=1",
+        "method": "GET",
+        "headers": {
+          "User-Agent": "Clara Research Assistant"
+        }
+      }
+    },
+    {
+      "id": "llm-analyzer",
+      "type": "llm",
+      "position": { "x": 650, "y": 100 },
+      "data": {
+        "label": "Research Analyzer",
+        "model": "llama3.2",
+        "prompt": "You are a research analyst. I've gathered some information about: {{topic}}\n\nSearched data: {{searchResults}}\n\nAnalysis depth requested: {{depth}}\n\nPlease provide a comprehensive analysis of this topic based on the available information. Structure your response with:\n1. Key findings\n2. Important insights\n3. Practical implications\n4. Recommendations for further research\n\nTailor the depth of analysis to the requested level.",
+        "temperature": 0.3,
+        "maxTokens": 1000
+      }
+    },
+    {
+      "id": "structured-summary",
+      "type": "structured-llm",
+      "position": { "x": 650, "y": 300 },
+      "data": {
+        "label": "Structured Summary",
+        "model": "llama3.2",
+        "prompt": "Create a structured summary of this research analysis: {{analysis}}\n\nFormat the output as JSON with: title, summary, keyPoints (array), confidence (0-1), and sources (array).",
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "summary": { "type": "string" },
+            "keyPoints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "sources": {
+              "type": "array", 
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "output-analysis",
+      "type": "output",
+      "position": { "x": 950, "y": 100 },
+      "data": {
+        "label": "Research Analysis",
+        "format": "text"
+      }
+    },
+    {
+      "id": "output-summary",
+      "type": "output",
+      "position": { "x": 950, "y": 300 },
+      "data": {
+        "label": "Structured Summary",
+        "format": "json"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "topic-to-api",
+      "sourceNodeId": "input-topic",
+      "sourcePortId": "output",
+      "targetNodeId": "api-search",
+      "targetPortId": "topic"
+    },
+    {
+      "id": "topic-to-llm",
+      "sourceNodeId": "input-topic", 
+      "sourcePortId": "output",
+      "targetNodeId": "llm-analyzer",
+      "targetPortId": "topic"
+    },
+    {
+      "id": "depth-to-llm",
+      "sourceNodeId": "input-depth",
+      "sourcePortId": "output", 
+      "targetNodeId": "llm-analyzer",
+      "targetPortId": "depth"
+    },
+    {
+      "id": "api-to-llm",
+      "sourceNodeId": "api-search",
+      "sourcePortId": "output",
+      "targetNodeId": "llm-analyzer", 
+      "targetPortId": "searchResults"
+    },
+    {
+      "id": "llm-to-output",
+      "sourceNodeId": "llm-analyzer",
+      "sourcePortId": "output",
+      "targetNodeId": "output-analysis",
+      "targetPortId": "input"
+    },
+    {
+      "id": "llm-to-structured",
+      "sourceNodeId": "llm-analyzer",
+      "sourcePortId": "output", 
+      "targetNodeId": "structured-summary",
+      "targetPortId": "analysis"
+    },
+    {
+      "id": "structured-to-output",
+      "sourceNodeId": "structured-summary",
+      "sourcePortId": "output",
+      "targetNodeId": "output-summary", 
+      "targetPortId": "input"
+    }
+  ],
+  "metadata": {
+    "createdAt": "2024-01-15T10:30:00Z",
+    "exportedBy": "Clara Agent Studio", 
+    "hasCustomNodes": false,
+    "complexity": "advanced",
+    "estimatedExecutionTime": "10-30 seconds"
+  }
+} 

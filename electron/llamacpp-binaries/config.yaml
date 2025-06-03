@@ -1,5 +1,5 @@
 # Auto-generated llama-swap configuration
-# Models directory: /Users/temme/.clara/llama-models
+# Models directory: /Users/badfy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
@@ -78,21 +78,51 @@ models:
   "qwen3:0.6b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/temme/Documents/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/temme/Downloads/Qwen3-0.6B-Q4_K_S.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 5 --ctx-size 8192 --batch-size 256 --ubatch-size 64 --keep 1024 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-IQ4_NL.gguf"
+      --port 9999 --jinja --n-gpu-layers 40 --threads 4 --ctx-size 32768 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     env:
-      - "DYLD_LIBRARY_PATH=/Users/temme/Documents/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
-  "llama32:1b-q4_k_m-xs":
+  "llama32:1b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/temme/Documents/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/temme/Downloads/llama-3.2-1b-instruct-q4_k_m.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 5 --ctx-size 8192 --batch-size 256 --ubatch-size 64 --keep 1024 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Llama-3.2-1B-Instruct-IQ4_XS.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     env:
-      - "DYLD_LIBRARY_PATH=/Users/temme/Documents/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "qwen3:0.6b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-0.6B-IQ4_NL.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "qwen3:4b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-4B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 32 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "rwkv7:0.1b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/rwkv7-0.1B-g1.IQ4_XS.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
 groups:
@@ -100,12 +130,8 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "qwen3:8b-iq4_nl"
-      - "llama32:1b-q4_k_m"
-      - "qwen25:3b"
-      - "qwen3:8b-q4_k_m"
-      - "gemma3:4b"
-      - "mxbai-embed-large:large"
-      - "nomic:latest"
+      - "qwen3:8b"
+      - "llama32:1b"
       - "qwen3:0.6b"
-      - "llama32:1b-q4_k_m-xs"
+      - "qwen3:4b"
+      - "rwkv7:0.1b"

@@ -48,6 +48,7 @@ export interface ElectronAPI {
     isOTASupported: boolean;
     error?: string;
   }>;
+  sendReactReady: () => void;
   clipboard: {
     writeText: (text: string) => void;
     readText: () => string;

@@ -22,6 +22,7 @@ function getAppVersion() {
 // Valid channels for IPC communication
 const validChannels = [
   'app-ready',
+  'react-app-ready',
   'setup-status',
   'backend-status',
   'python-status',
@@ -29,7 +30,10 @@ const validChannels = [
   'update-downloaded',
   'download-progress',
   'llama-progress-update',
-  'llama-progress-complete'
+  'llama-progress-complete',
+  'watchdog-service-restored',
+  'watchdog-service-failed',
+  'watchdog-service-restarted'
 ];
 
 // Add explicit logging for debugging
@@ -71,6 +75,9 @@ contextBridge.exposeInMainWorld('electron', {
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }
+  },
+  sendReactReady: () => {
+    ipcRenderer.send('react-app-ready');
   },
   receive: (channel, func) => {
     if (validChannels.includes(channel)) {
@@ -116,7 +123,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pruneContainers: () => ipcRenderer.invoke('prune-containers'),
   pruneImages: () => ipcRenderer.invoke('prune-images'),
   getDockerInfo: () => ipcRenderer.invoke('get-docker-info'),
-  getDockerVersion: () => ipcRenderer.invoke('get-docker-version')
+  getDockerVersion: () => ipcRenderer.invoke('get-docker-version'),
+  
+  // Watchdog service API
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  on: (channel, callback) => {
+    const subscription = (event, ...args) => callback(event, ...args);
+    ipcRenderer.on(channel, subscription);
+    return () => ipcRenderer.removeListener(channel, subscription);
+  },
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
 });
 
 // Add llama-swap service API

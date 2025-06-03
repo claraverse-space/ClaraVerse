@@ -2,8 +2,12 @@
 <html>
 <head>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+    
     body {
-      background: transparent;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       margin: 0;
       display: flex;
       flex-direction: column;
@@ -13,123 +17,529 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: #333;
       line-height: 1.5;
+      overflow: hidden;
     }
+    
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+    
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+    }
+    
     .container {
       background: rgba(255, 255, 255, 0.95);
-      padding: 40px;
-      border-radius: 24px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+      backdrop-filter: blur(20px);
+      padding: 50px;
+      border-radius: 32px;
+      box-shadow: 
+        0 20px 40px rgba(0, 0, 0, 0.1),
+        0 0 0 1px rgba(255, 255, 255, 0.2);
       text-align: center;
-      width: 800px;
+      width: min(900px, 80vw);
+      max-width: 1200px;
       position: relative;
       overflow: hidden;
       margin: auto;
+      z-index: 1;
+      transform: scale(0.8);
+      opacity: 0;
     }
+    
+    .container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+      animation: shimmer 3s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+    
+    .logo-container {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 30px;
+    }
+    
     .logo {
       width: 180px;
       height: 180px;
-      margin-bottom: 25px;
+      border-radius: 50%;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      transform: scale(0);
+      opacity: 0;
     }
+    
+    .logo-glow {
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      right: -10px;
+      bottom: -10px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #667eea, #764ba2, #667eea);
+      background-size: 300% 300%;
+      animation: gradient-shift 3s ease infinite;
+      opacity: 0;
+      z-index: -1;
+    }
+    
+    @keyframes gradient-shift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
     h2 {
-      font-size: 32px;
-      font-weight: 500;
-      margin: 15px 0;
-      color: #222;
+      font-size: 36px;
+      font-weight: 600;
+      margin: 20px 0;
+      color: #2c3e50;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      opacity: 0;
+      transform: translateY(30px);
     }
+    
+    .subtitle {
+      font-size: 18px;
+      color: #7f8c8d;
+      margin-bottom: 30px;
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    
     .message {
       font-size: 16px;
       color: #666;
-      margin: 16px 0;
+      margin: 20px 0;
       padding: 0 20px;
+      opacity: 0;
+      transform: translateY(15px);
     }
+    
+    .status-container {
+      margin: 25px 0;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    
     .status {
-      margin-top: 20px;
       font-size: 16px;
       color: #666;
       font-weight: 500;
+      opacity: 0;
+      transform: translateY(10px);
+      margin-bottom: 10px;
     }
+    
     .status.warning {
       color: #f39c12;
     }
+    
     .status.error {
       color: #e74c3c;
     }
+    
     .status.success {
       color: #2ecc71;
     }
+    
+    .progress-container {
+      width: 100%;
+      margin: 20px 0;
+      opacity: 0;
+    }
+    
     .progress-bar {
       width: 100%;
-      height: 4px;
-      background: #f0f0f0;
-      border-radius: 2px;
-      margin-top: 15px;
+      height: 6px;
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
       overflow: hidden;
+      position: relative;
     }
+    
+    .progress-bar::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+      animation: progress-shimmer 2s infinite;
+    }
+    
+    @keyframes progress-shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    
     .progress-bar .fill {
       width: 0%;
       height: 100%;
-      background: #3498db;
-      transition: width 0.3s ease;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 10px;
     }
+    
+    .spinner-container {
+      margin-top: 20px;
+      opacity: 0;
+    }
+    
     .spinner {
-      margin-top: 15px;
-      width: 28px;
-      height: 28px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #3498db;
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(102, 126, 234, 0.2);
+      border-top: 3px solid #667eea;
       border-radius: 50%;
       animation: spin 1s linear infinite;
+      margin: 0 auto;
     }
-    .terminal {
-      margin-top: 25px;
-      background: #1e1e1e;
-      border-radius: 12px;
-      padding: 20px;
-      height: 250px;
-      width: calc(100% - 40px);
-      overflow-y: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      color: #fff;
-      text-align: left;
-    }
-    .terminal-line {
-      margin: 2px 0;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    .terminal-line.info { color: #fff; }
-    .terminal-line.success { color: #2ecc71; }
-    .terminal-line.warning { color: #f39c12; }
-    .terminal-line.error { color: #e74c3c; }
+    
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    
+    .terminal {
+      margin-top: 30px;
+      background: linear-gradient(135deg, #1e1e1e, #2d2d2d);
+      border-radius: 16px;
+      padding: 25px;
+      height: min(280px, 25vh);
+      width: calc(100% - 40px);
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', monospace;
+      font-size: 14px;
+      color: #fff;
+      text-align: left;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transform: translateY(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .terminal::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    .terminal::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    
+    .terminal::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+    }
+    
+    .terminal-line {
+      margin: 3px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    
+    .terminal-line.info { color: #fff; }
+    .terminal-line.success { color: #2ecc71; }
+    .terminal-line.warning { color: #f39c12; }
+    .terminal-line.error { color: #e74c3c; }
+    
+    .error-message {
+      display: none;
+      margin-top: 15px;
+      padding: 15px;
+      background: rgba(231, 76, 60, 0.1);
+      border: 1px solid rgba(231, 76, 60, 0.3);
+      border-radius: 12px;
+      color: #e74c3c;
+      font-size: 14px;
+    }
+    
     .fade {
       opacity: 1;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    
     .fade.hide {
       opacity: 0;
+    }
+    
+    /* Accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+    
+    /* Responsive design for different screen sizes */
+    @media (max-width: 1024px) {
+      .container {
+        width: min(700px, 85vw);
+        padding: 40px;
+      }
+      
+      .logo {
+        width: 150px;
+        height: 150px;
+      }
+      
+      h2 {
+        font-size: 32px;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        width: min(600px, 90vw);
+        padding: 30px;
+      }
+      
+      .logo {
+        width: 120px;
+        height: 120px;
+      }
+      
+      h2 {
+        font-size: 28px;
+      }
+      
+      .terminal {
+        height: min(200px, 20vh);
+      }
+    }
+    
+    @media (min-width: 1440px) {
+      .container {
+        width: min(1000px, 70vw);
+        padding: 60px;
+      }
+      
+      .logo {
+        width: 200px;
+        height: 200px;
+      }
+      
+      h2 {
+        font-size: 40px;
+      }
+    }
+    
+    @media (min-width: 1920px) {
+      .container {
+        width: min(1200px, 60vw);
+        padding: 80px;
+      }
+      
+      .logo {
+        width: 220px;
+        height: 220px;
+      }
+      
+      h2 {
+        font-size: 44px;
+      }
+      
+      .terminal {
+        height: min(320px, 25vh);
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container fade">
-    <img src="../../assets/icons/png/256x256.png" class="logo" alt="Clara" onerror="this.style.display='none'">
-    <h2>Clara</h2>
-    <div class="message">Setting up your environment. This may take a moment.</div>
-    <div class="status" id="status">Initializing...</div>
-    <div class="status error" id="error" style="display: none; margin-top: 8px; font-size: 13px;"></div>
-    <div class="progress-bar">
-      <div class="fill" id="progress"></div>
+  <div class="particles" id="particles"></div>
+  
+  <div class="container fade" id="container">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <img src="../../assets/icons/png/256x256.png" class="logo" alt="Clara" onerror="this.style.display='none'">
     </div>
+    
+    <h2 id="title">Clara</h2>
+    <div class="subtitle" id="subtitle">Your AI Assistant</div>
+    <div class="message" id="message">Setting up your environment. This may take a moment.</div>
+    
+    <div class="status-container">
+      <div class="status" id="status">Initializing...</div>
+      <div class="error-message" id="error"></div>
+    </div>
+    
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="fill" id="progress"></div>
+      </div>
+    </div>
+    
     <div class="terminal" id="terminal"></div>
-    <div class="spinner"></div>
+    
+    <div class="spinner-container" id="spinnerContainer">
+      <div class="spinner"></div>
+    </div>
   </div>
+
+  <!-- GSAP Scripts -->
+  <script src="./vendor/gsap.min.js"></script>
+  <script src="./vendor/textplugin.min.js"></script>
   <script>
     const { ipcRenderer } = require('electron');
+    
+    // Initialize GSAP timeline
+    const tl = gsap.timeline();
+    
+    // Create floating particles
+    function createParticles() {
+      const particlesContainer = document.getElementById('particles');
+      const particleCount = 50;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.top = Math.random() * 100 + '%';
+        particlesContainer.appendChild(particle);
+        
+        // Animate particles
+        gsap.to(particle, {
+          y: -100,
+          x: Math.random() * 100 - 50,
+          duration: Math.random() * 10 + 5,
+          repeat: -1,
+          ease: "none",
+          delay: Math.random() * 5
+        });
+        
+        gsap.to(particle, {
+          opacity: Math.random() * 0.5 + 0.2,
+          duration: Math.random() * 3 + 1,
+          repeat: -1,
+          yoyo: true,
+          ease: "power2.inOut"
+        });
+      }
+    }
+    
+    // Entrance animation
+    function initializeAnimations() {
+      // Set initial states
+      gsap.set("#container", { scale: 0.8, opacity: 0 });
+      gsap.set(".logo", { scale: 0, opacity: 0 });
+      gsap.set(".logo-glow", { scale: 0, opacity: 0 });
+      gsap.set("#title", { opacity: 0, y: 30 });
+      gsap.set("#subtitle", { opacity: 0, y: 20 });
+      gsap.set("#message", { opacity: 0, y: 15 });
+      gsap.set("#status", { opacity: 0, y: 10 });
+      gsap.set("#progressContainer", { opacity: 0 });
+      gsap.set("#terminal", { opacity: 0, y: 20 });
+      gsap.set("#spinnerContainer", { opacity: 0 });
+      
+      // Create timeline
+      tl.to("#container", { 
+        duration: 1, 
+        scale: 1, 
+        opacity: 1, 
+        ease: "back.out(1.7)" 
+      })
+      .to(".logo-glow", { 
+        duration: 0.8, 
+        scale: 1, 
+        opacity: 0.3, 
+        ease: "power2.out" 
+      }, "-=0.5")
+      .to(".logo", { 
+        duration: 1, 
+        scale: 1, 
+        opacity: 1, 
+        ease: "back.out(1.7)" 
+      }, "-=0.6")
+      .to("#title", { 
+        duration: 0.8, 
+        opacity: 1, 
+        y: 0, 
+        ease: "power2.out" 
+      }, "-=0.4")
+      .to("#subtitle", { 
+        duration: 0.6, 
+        opacity: 1, 
+        y: 0, 
+        ease: "power2.out" 
+      }, "-=0.2")
+      .to("#message", { 
+        duration: 0.6, 
+        opacity: 1, 
+        y: 0, 
+        ease: "power2.out" 
+      }, "-=0.1")
+      .to("#status", { 
+        duration: 0.5, 
+        opacity: 1, 
+        y: 0, 
+        ease: "power2.out" 
+      }, "-=0.1")
+      .to("#progressContainer", { 
+        duration: 0.5, 
+        opacity: 1, 
+        ease: "power2.out" 
+      }, "-=0.1")
+      .to("#terminal", { 
+        duration: 0.6, 
+        opacity: 1, 
+        y: 0, 
+        ease: "power2.out" 
+      }, "-=0.1")
+      .to("#spinnerContainer", { 
+        duration: 0.4, 
+        opacity: 1, 
+        ease: "power2.out" 
+      }, "-=0.1");
+      
+      // Logo breathing animation
+      gsap.to(".logo", {
+        scale: 1.05,
+        duration: 2,
+        repeat: -1,
+        yoyo: true,
+        ease: "power2.inOut"
+      });
+      
+      // Glow animation
+      gsap.to(".logo-glow", {
+        scale: 1.1,
+        opacity: 0.5,
+        duration: 2,
+        repeat: -1,
+        yoyo: true,
+        ease: "power2.inOut"
+      });
+    }
     
     function addTerminalLine(message, type = 'info') {
       const terminal = document.getElementById('terminal');
@@ -137,7 +547,21 @@
       line.className = `terminal-line ${type}`;
       line.textContent = message;
       terminal.appendChild(line);
+      
+      // Animate the line entrance
+      gsap.fromTo(line, 
+        { opacity: 0, x: -10 },
+        { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }
+      );
+      
+      // Auto scroll
       terminal.scrollTop = terminal.scrollHeight;
+      
+      // Limit terminal lines to prevent performance issues
+      const lines = terminal.querySelectorAll('.terminal-line');
+      if (lines.length > 50) {
+        lines[0].remove();
+      }
     }
     
     function updateStatus(message, type = 'info') {
@@ -146,34 +570,92 @@
       const errorEl = document.getElementById('error');
       const progressEl = document.getElementById('progress');
       
-      statusEl.textContent = message;
-      statusEl.className = 'status ' + type;
+      // Animate status change
+      gsap.to(statusEl, {
+        opacity: 0,
+        y: -10,
+        duration: 0.3,
+        ease: "power2.out",
+        onComplete: () => {
+          statusEl.textContent = message;
+          statusEl.className = 'status ' + type;
+          
+          gsap.fromTo(statusEl,
+            { opacity: 0, y: 10 },
+            { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+          );
+        }
+      });
 
-      // Add message to terminal
+      // Add message to terminal with typewriter effect
       addTerminalLine(message, type);
 
       if (type === 'error') {
         errorEl.textContent = message;
         errorEl.style.display = 'block';
+        gsap.fromTo(errorEl,
+          { opacity: 0, scale: 0.9 },
+          { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)" }
+        );
+      } else {
+        gsap.to(errorEl, {
+          opacity: 0,
+          duration: 0.3,
+          onComplete: () => {
+            errorEl.style.display = 'none';
+          }
+        });
       }
 
-      // Update progress bar for certain messages
+      // Update progress bar with animation
       if (message.includes('Downloading')) {
         const match = message.match(/(\d+)%/);
         if (match) {
-          progressEl.style.width = `${match[1]}%`;
+          gsap.to(progressEl, {
+            width: `${match[1]}%`,
+            duration: 0.8,
+            ease: "power2.out"
+          });
         }
+      }
+      
+      // Success animation
+      if (type === 'success') {
+        gsap.to(".logo", {
+          scale: 1.1,
+          duration: 0.3,
+          ease: "back.out(1.7)",
+          yoyo: true,
+          repeat: 1
+        });
       }
     }
 
     function hide() {
-      document.querySelector('.container').classList.add('hide');
+      gsap.to("#container", {
+        opacity: 0,
+        scale: 0.9,
+        duration: 0.5,
+        ease: "power2.inOut"
+      });
     }
 
     function show() {
-      document.querySelector('.container').classList.remove('hide');
+      gsap.to("#container", {
+        opacity: 1,
+        scale: 1,
+        duration: 0.5,
+        ease: "back.out(1.7)"
+      });
     }
 
+    // Initialize everything when DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      createParticles();
+      initializeAnimations();
+    });
+
+    // IPC listeners
     ipcRenderer.on('status', (_, data) => {
       if (typeof data === 'string') {
         updateStatus(data);
@@ -185,7 +667,7 @@
     ipcRenderer.on('hide', hide);
     ipcRenderer.on('show', show);
 
-    // Log any uncaught errors
+    // Log any uncaught errors with animation
     window.onerror = function(msg, url, line) {
       updateStatus(`Error: ${msg} (${url}:${line})`, 'error');
     };

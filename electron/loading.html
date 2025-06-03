@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --sakura-50: #fef6f9;
+      --sakura-100: #fee3ec;
+      --sakura-200: #ffc6da;
+      --sakura-300: #ff9dc1;
+      --sakura-400: #ff669d;
+      --sakura-500: #ff1a75;
+      --sakura-600: #e6006b;
+    }
+
+    body {
+      background: #000000; /* Pitch black space background */
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      color: #fff;
+      position: relative;
+    }
+
+    /* Starfield background */
+    .starfield {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .star {
+      position: absolute;
+      background: white;
+      border-radius: 50%;
+      animation: twinkle 2s ease-in-out infinite alternate;
+    }
+
+    .star.small {
+      width: 1px;
+      height: 1px;
+      opacity: 0.8;
+    }
+
+    .star.medium {
+      width: 2px;
+      height: 2px;
+      opacity: 0.9;
+    }
+
+    .star.large {
+      width: 3px;
+      height: 3px;
+      opacity: 1;
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    }
+
+    .star.bright {
+      width: 4px;
+      height: 4px;
+      opacity: 1;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.9), 0 0 20px rgba(255, 255, 255, 0.5);
+    }
+
+    @keyframes twinkle {
+      0% { opacity: 0.3; transform: scale(1); }
+      100% { opacity: 1; transform: scale(1.1); }
+    }
+
+    /* Shooting stars */
+    .shooting-star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: linear-gradient(45deg, #ffffff, transparent);
+      border-radius: 50%;
+      animation: shootingStar 3s linear infinite;
+    }
+
+    @keyframes shootingStar {
+      0% {
+        opacity: 0;
+        transform: translateX(-100px) translateY(100px);
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+        transform: translateX(calc(100vw + 100px)) translateY(-100px);
+      }
+    }
+
+    /* Nebula effects */
+    .nebula {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+      background: 
+        radial-gradient(circle at 15% 25%, rgba(255, 157, 193, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 85% 75%, rgba(147, 51, 234, 0.02) 0%, transparent 50%),
+        radial-gradient(circle at 50% 10%, rgba(59, 130, 246, 0.02) 0%, transparent 50%),
+        radial-gradient(circle at 30% 80%, rgba(236, 72, 153, 0.03) 0%, transparent 50%);
+      animation: nebulaFloat 20s ease-in-out infinite;
+    }
+
+    @keyframes nebulaFloat {
+      0%, 100% { transform: translateX(0) translateY(0) scale(1); }
+      25% { transform: translateX(20px) translateY(-10px) scale(1.05); }
+      50% { transform: translateX(-15px) translateY(15px) scale(0.95); }
+      75% { transform: translateX(10px) translateY(-20px) scale(1.02); }
+    }
+
+    /* Constellation patterns */
+    .constellation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.1;
+    }
+
+    .constellation-line {
+      position: absolute;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 157, 193, 0.3), transparent);
+      transform-origin: left center;
+      animation: constellationPulse 8s ease-in-out infinite;
+    }
+
+    @keyframes constellationPulse {
+      0%, 100% { opacity: 0.1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Cosmic dust */
+    .cosmic-dust {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .dust-particle {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      background: rgba(255, 157, 193, 0.2);
+      border-radius: 50%;
+      animation: dustFloat 15s linear infinite;
+    }
+
+    @keyframes dustFloat {
+      0% {
+        transform: translateX(-10px) translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(10px) translateY(-10px) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 100;
+      position: relative;
+    }
+
+    .logo-container {
+      position: relative;
+      margin-bottom: 40px;
+    }
+
+    .logo {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      box-shadow: 
+        0 0 30px rgba(255, 157, 193, 0.4),
+        0 0 60px rgba(255, 157, 193, 0.2),
+        0 0 90px rgba(255, 157, 193, 0.1),
+        inset 0 0 20px rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.1), rgba(255, 157, 193, 0.05));
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(255, 157, 193, 0.3);
+    }
+
+    .logo img {
+      width: 80%;
+      height: 80%;
+      object-fit: contain;
+      border-radius: 50%;
+      filter: drop-shadow(0 0 10px rgba(255, 157, 193, 0.5));
+    }
+
+    .logo::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255, 157, 193, 0.3), transparent);
+      transform: rotate(45deg);
+      animation: logoShine 4s ease-in-out infinite;
+    }
+
+    /* Orbital rings around logo */
+    .orbital-ring {
+      position: absolute;
+      border: 1px solid rgba(255, 157, 193, 0.2);
+      border-radius: 50%;
+      animation: orbit 10s linear infinite;
+    }
+
+    .orbital-ring.ring1 {
+      width: 160px;
+      height: 160px;
+      top: -20px;
+      left: -20px;
+      animation-duration: 8s;
+    }
+
+    .orbital-ring.ring2 {
+      width: 200px;
+      height: 200px;
+      top: -40px;
+      left: -40px;
+      animation-duration: 12s;
+      animation-direction: reverse;
+    }
+
+    @keyframes orbit {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes logoShine {
+      0% { transform: translate(-100%, -100%) rotate(45deg); }
+      50% { transform: translate(0%, 0%) rotate(45deg); }
+      100% { transform: translate(100%, 100%) rotate(45deg); }
+    }
+
+    .brand-text {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff, var(--sakura-300), #ffffff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-family: 'Quicksand', sans-serif;
+      text-shadow: 0 0 30px rgba(255, 157, 193, 0.3);
+      position: relative;
+    }
+
+    .brand-text::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, transparent, rgba(255, 157, 193, 0.1), transparent);
+      animation: textGlow 3s ease-in-out infinite;
+      z-index: -1;
+      border-radius: 10px;
+    }
+
+    @keyframes textGlow {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+
+    .tagline {
+      font-size: 18px;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 50px;
+      font-weight: 500;
+      font-family: 'Quicksand', sans-serif;
+      text-shadow: 0 0 10px rgba(255, 157, 193, 0.2);
+    }
+
+    .loading-dots {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 30px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--sakura-400), var(--sakura-600));
+      animation: dotPulse 1.4s ease-in-out infinite;
+      box-shadow: 
+        0 0 15px rgba(255, 157, 193, 0.4),
+        0 0 30px rgba(255, 157, 193, 0.2);
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%, 60%, 100% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+      30% {
+        transform: scale(1.4);
+        opacity: 1;
+      }
+    }
+
+    .progress-container {
+      width: 300px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      position: relative;
+      border: 1px solid rgba(255, 157, 193, 0.2);
+      box-shadow: 0 0 20px rgba(255, 157, 193, 0.1);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--sakura-400), var(--sakura-600), var(--sakura-400));
+      background-size: 200% 100%;
+      border-radius: 10px;
+      transition: width 0.3s ease;
+      position: relative;
+      box-shadow: 
+        0 0 20px rgba(255, 157, 193, 0.6),
+        0 0 40px rgba(255, 157, 193, 0.3);
+      animation: progressGlow 2s ease-in-out infinite;
+    }
+
+    @keyframes progressGlow {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+      animation: progressShimmer 1.5s ease-in-out infinite;
+    }
+
+    @keyframes progressShimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .status-text {
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 500;
+      min-height: 24px;
+      font-family: 'Quicksand', sans-serif;
+      text-shadow: 0 0 10px rgba(255, 157, 193, 0.3);
+    }
+
+    /* Floating particles */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .particle.cosmic {
+      width: 3px;
+      height: 3px;
+      background: radial-gradient(circle, rgba(255, 157, 193, 0.8), transparent);
+      box-shadow: 0 0 6px rgba(255, 157, 193, 0.6);
+    }
+
+    .particle.stardust {
+      width: 2px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+    }
+
+    /* Sakura petals with cosmic effect */
+    .sakura-petal {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: linear-gradient(45deg, var(--sakura-300), var(--sakura-500));
+      border-radius: 50% 0 50% 0;
+      transform: rotate(45deg);
+      opacity: 0.7;
+      box-shadow: 0 0 8px rgba(255, 157, 193, 0.5);
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      .brand-text {
+        font-size: 36px;
+      }
+      
+      .logo {
+        width: 100px;
+        height: 100px;
+      }
+      
+      .orbital-ring.ring1 {
+        width: 140px;
+        height: 140px;
+        top: -20px;
+        left: -20px;
+      }
+      
+      .orbital-ring.ring2 {
+        width: 180px;
+        height: 180px;
+        top: -40px;
+        left: -40px;
+      }
+      
+      .progress-container {
+        width: 250px;
+      }
+    }
+
+    @media (min-width: 1440px) {
+      .brand-text {
+        font-size: 56px;
+      }
+      
+      .logo {
+        width: 140px;
+        height: 140px;
+      }
+      
+      .orbital-ring.ring1 {
+        width: 180px;
+        height: 180px;
+        top: -20px;
+        left: -20px;
+      }
+      
+      .orbital-ring.ring2 {
+        width: 220px;
+        height: 220px;
+        top: -40px;
+        left: -40px;
+      }
+      
+      .progress-container {
+        width: 400px;
+      }
+    }
+
+    @media (min-width: 1920px) {
+      .brand-text {
+        font-size: 64px;
+      }
+      
+      .logo {
+        width: 160px;
+        height: 160px;
+      }
+      
+      .orbital-ring.ring1 {
+        width: 200px;
+        height: 200px;
+        top: -20px;
+        left: -20px;
+      }
+      
+      .orbital-ring.ring2 {
+        width: 240px;
+        height: 240px;
+        top: -40px;
+        left: -40px;
+      }
+      
+      .progress-container {
+        width: 450px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Starfield -->
+  <div class="starfield" id="starfield"></div>
+  
+  <!-- Nebula effects -->
+  <div class="nebula"></div>
+  
+  <!-- Cosmic dust -->
+  <div class="cosmic-dust" id="cosmicDust"></div>
+  
+  <!-- Constellation patterns -->
+  <div class="constellation" id="constellation"></div>
+  
+  <!-- Floating particles -->
+  <div class="particles" id="particles"></div>
+  
+  <div class="loading-container" id="loadingContainer">
+    <div class="logo-container">
+      <div class="orbital-ring ring1"></div>
+      <div class="orbital-ring ring2"></div>
+      <div class="logo" id="logo">
+        <img src="../assets/icons/256x256.png" alt="Clara" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'font-size: 48px; font-weight: 700; color: white;\'>C</div>'">
+      </div>
+    </div>
+    
+    <div class="brand-text" id="brandText">Clara</div>
+    <div class="tagline" id="tagline">Your AI Assistant</div>
+    
+    <div class="loading-dots" id="loadingDots">
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+    
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    
+    <div class="status-text" id="statusText">Initializing...</div>
+  </div>
+
+  <!-- GSAP Scripts -->
+  <script src="./vendor/gsap.min.js"></script>
+  <script>
+    const { ipcRenderer } = require('electron');
+    
+    let progress = 0;
+    let currentStep = 0;
+    const steps = [
+      'Initializing Clara...',
+      'Loading AI Models...',
+      'Setting up Services...',
+      'Preparing Interface...',
+      'Almost Ready...'
+    ];
+
+    // Create starfield
+    function createStarfield() {
+      const starfield = document.getElementById('starfield');
+      const starCount = 200; // Many more stars
+      
+      for (let i = 0; i < starCount; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        
+        // Different star sizes and types
+        const rand = Math.random();
+        if (rand < 0.6) {
+          star.classList.add('small');
+        } else if (rand < 0.8) {
+          star.classList.add('medium');
+        } else if (rand < 0.95) {
+          star.classList.add('large');
+        } else {
+          star.classList.add('bright');
+        }
+        
+        star.style.left = Math.random() * 100 + '%';
+        star.style.top = Math.random() * 100 + '%';
+        star.style.animationDelay = Math.random() * 3 + 's';
+        star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+        
+        starfield.appendChild(star);
+      }
+    }
+
+    // Create shooting stars
+    function createShootingStars() {
+      setInterval(() => {
+        if (Math.random() < 0.3) { // 30% chance every interval
+          const shootingStar = document.createElement('div');
+          shootingStar.className = 'shooting-star';
+          shootingStar.style.left = Math.random() * 100 + '%';
+          shootingStar.style.top = Math.random() * 50 + '%';
+          document.body.appendChild(shootingStar);
+          
+          setTimeout(() => {
+            if (shootingStar.parentNode) {
+              shootingStar.parentNode.removeChild(shootingStar);
+            }
+          }, 3000);
+        }
+      }, 2000);
+    }
+
+    // Create constellation lines
+    function createConstellation() {
+      const constellation = document.getElementById('constellation');
+      const lineCount = 8;
+      
+      for (let i = 0; i < lineCount; i++) {
+        const line = document.createElement('div');
+        line.className = 'constellation-line';
+        line.style.left = Math.random() * 80 + 10 + '%';
+        line.style.top = Math.random() * 80 + 10 + '%';
+        line.style.width = Math.random() * 100 + 50 + 'px';
+        line.style.transform = `rotate(${Math.random() * 360}deg)`;
+        line.style.animationDelay = Math.random() * 8 + 's';
+        constellation.appendChild(line);
+      }
+    }
+
+    // Create cosmic dust
+    function createCosmicDust() {
+      const cosmicDust = document.getElementById('cosmicDust');
+      const dustCount = 50;
+      
+      for (let i = 0; i < dustCount; i++) {
+        const dust = document.createElement('div');
+        dust.className = 'dust-particle';
+        dust.style.left = Math.random() * 100 + '%';
+        dust.style.animationDelay = Math.random() * 15 + 's';
+        dust.style.animationDuration = (Math.random() * 10 + 15) + 's';
+        cosmicDust.appendChild(dust);
+      }
+    }
+
+    // Create floating particles
+    function createParticles() {
+      const particlesContainer = document.getElementById('particles');
+      const particleCount = 30;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        
+        // Mix of cosmic particles, stardust, and sakura petals
+        const rand = Math.random();
+        if (rand < 0.4) {
+          particle.className = 'particle cosmic';
+        } else if (rand < 0.7) {
+          particle.className = 'particle stardust';
+        } else {
+          particle.className = 'sakura-petal';
+        }
+        
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.top = Math.random() * 100 + '%';
+        particlesContainer.appendChild(particle);
+        
+        // Animate particles
+        gsap.to(particle, {
+          y: -400,
+          x: Math.random() * 200 - 100,
+          rotation: Math.random() * 720,
+          duration: Math.random() * 25 + 20,
+          repeat: -1,
+          ease: "none",
+          delay: Math.random() * 20
+        });
+        
+        gsap.to(particle, {
+          opacity: Math.random() * 0.8 + 0.2,
+          scale: Math.random() * 0.5 + 0.8,
+          duration: Math.random() * 5 + 4,
+          repeat: -1,
+          yoyo: true,
+          ease: "power2.inOut"
+        });
+      }
+    }
+
+    // Initialize animations
+    function initializeAnimations() {
+      const tl = gsap.timeline();
+      
+      // Set initial states
+      gsap.set("#loadingContainer", { opacity: 0, scale: 0.8 });
+      gsap.set("#logo", { scale: 0, rotation: -180 });
+      gsap.set(".orbital-ring", { scale: 0, opacity: 0 });
+      gsap.set("#brandText", { opacity: 0, y: 30 });
+      gsap.set("#tagline", { opacity: 0, y: 20 });
+      gsap.set("#loadingDots", { opacity: 0, y: 15 });
+      gsap.set("#progressContainer", { opacity: 0, scaleX: 0 });
+      gsap.set("#statusText", { opacity: 0, y: 10 });
+      
+      // Create entrance animation
+      tl.to("#loadingContainer", {
+        duration: 1,
+        opacity: 1,
+        scale: 1,
+        ease: "back.out(1.7)"
+      })
+      .to("#logo", {
+        duration: 1.2,
+        scale: 1,
+        rotation: 0,
+        ease: "back.out(1.7)"
+      }, "-=0.6")
+      .to(".orbital-ring", {
+        duration: 1,
+        scale: 1,
+        opacity: 1,
+        ease: "power2.out",
+        stagger: 0.2
+      }, "-=0.8")
+      .to("#brandText", {
+        duration: 0.8,
+        opacity: 1,
+        y: 0,
+        ease: "power2.out"
+      }, "-=0.4")
+      .to("#tagline", {
+        duration: 0.6,
+        opacity: 1,
+        y: 0,
+        ease: "power2.out"
+      }, "-=0.3")
+      .to("#loadingDots", {
+        duration: 0.5,
+        opacity: 1,
+        y: 0,
+        ease: "power2.out"
+      }, "-=0.2")
+      .to("#progressContainer", {
+        duration: 0.6,
+        opacity: 1,
+        scaleX: 1,
+        ease: "power2.out"
+      }, "-=0.2")
+      .to("#statusText", {
+        duration: 0.4,
+        opacity: 1,
+        y: 0,
+        ease: "power2.out"
+      }, "-=0.2");
+
+      // Logo cosmic breathing animation
+      gsap.to("#logo", {
+        scale: 1.08,
+        duration: 4,
+        repeat: -1,
+        yoyo: true,
+        ease: "power2.inOut"
+      });
+
+      // Enhanced glow animation
+      gsap.to("#logo", {
+        boxShadow: "0 0 40px rgba(255, 157, 193, 0.6), 0 0 80px rgba(255, 157, 193, 0.3), 0 0 120px rgba(255, 157, 193, 0.1)",
+        duration: 3,
+        repeat: -1,
+        yoyo: true,
+        ease: "power2.inOut"
+      });
+    }
+
+    // Update progress with cosmic effects
+    function updateProgress() {
+      progress += Math.random() * 15 + 5;
+      if (progress > 100) progress = 100;
+      
+      gsap.to("#progressBar", {
+        width: progress + "%",
+        duration: 0.8,
+        ease: "power2.out"
+      });
+
+      // Update status text
+      if (currentStep < steps.length) {
+        gsap.to("#statusText", {
+          opacity: 0,
+          y: -10,
+          duration: 0.3,
+          ease: "power2.out",
+          onComplete: () => {
+            document.getElementById("statusText").textContent = steps[currentStep];
+            gsap.fromTo("#statusText",
+              { opacity: 0, y: 10 },
+              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+            );
+          }
+        });
+        currentStep++;
+      }
+
+      if (progress < 100) {
+        setTimeout(updateProgress, Math.random() * 800 + 400);
+      } else {
+        // Cosmic completion animation
+        setTimeout(() => {
+          gsap.to("#statusText", {
+            opacity: 0,
+            y: -10,
+            duration: 0.3,
+            onComplete: () => {
+              document.getElementById("statusText").textContent = "Ready!";
+              gsap.fromTo("#statusText",
+                { opacity: 0, y: 10 },
+                { opacity: 1, y: 0, duration: 0.5 }
+              );
+            }
+          });
+
+          // Cosmic burst effect on completion
+          gsap.to("#logo", {
+            scale: 1.2,
+            duration: 0.4,
+            ease: "back.out(1.7)",
+            yoyo: true,
+            repeat: 1
+          });
+
+          // Intensify orbital rings
+          gsap.to(".orbital-ring", {
+            borderColor: "rgba(255, 157, 193, 0.6)",
+            duration: 0.5,
+            ease: "power2.out"
+          });
+        }, 500);
+      }
+    }
+
+    // Fade out animation
+    function fadeOut() {
+      return gsap.to("#loadingContainer", {
+        opacity: 0,
+        scale: 0.9,
+        duration: 1,
+        ease: "power2.inOut"
+      });
+    }
+
+    // Initialize everything
+    document.addEventListener('DOMContentLoaded', () => {
+      createStarfield();
+      createShootingStars();
+      createConstellation();
+      createCosmicDust();
+      createParticles();
+      initializeAnimations();
+      
+      // Start progress after animations complete
+      setTimeout(() => {
+        updateProgress();
+      }, 2000);
+    });
+
+    // Listen for status updates from main process
+    ipcRenderer.on('status', (_, data) => {
+      if (typeof data === 'string') {
+        updateStatusFromMain(data);
+      } else {
+        updateStatusFromMain(data.message, data.type);
+      }
+    });
+
+    // Update status from main process
+    function updateStatusFromMain(message, type = 'info') {
+      // Update status text immediately
+      gsap.to("#statusText", {
+        opacity: 0,
+        y: -10,
+        duration: 0.3,
+        ease: "power2.out",
+        onComplete: () => {
+          document.getElementById("statusText").textContent = message;
+          gsap.fromTo("#statusText",
+            { opacity: 0, y: 10 },
+            { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+          );
+        }
+      });
+
+      // Update progress based on status
+      if (message.includes('Starting Clara')) {
+        progress = 10;
+      } else if (message.includes('Docker')) {
+        progress = 30;
+      } else if (message.includes('LLM') || message.includes('llama')) {
+        progress = 50;
+      } else if (message.includes('MCP')) {
+        progress = 70;
+      } else if (message.includes('Watchdog')) {
+        progress = 85;
+      } else if (message.includes('main application') || message.includes('Ready')) {
+        progress = 100;
+      }
+
+      gsap.to("#progressBar", {
+        width: progress + "%",
+        duration: 0.8,
+        ease: "power2.out"
+      });
+
+      // Success animation for completed steps
+      if (type === 'success') {
+        gsap.to("#logo", {
+          scale: 1.15,
+          duration: 0.3,
+          ease: "back.out(1.7)",
+          yoyo: true,
+          repeat: 1
+        });
+      }
+    }
+
+    // Listen for main window ready
+    ipcRenderer.on('main-window-ready', () => {
+      fadeOut().then(() => {
+        ipcRenderer.send('loading-complete');
+      });
+    });
+
+    // Listen for hide command
+    ipcRenderer.on('hide-loading', () => {
+      fadeOut();
+    });
+  </script>
+</body>
+</html> 
