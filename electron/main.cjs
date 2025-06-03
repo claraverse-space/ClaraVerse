@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const fsSync = require('fs');
 const log = require('electron-log');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -449,6 +450,61 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Custom model path handlers
+  ipcMain.handle('set-custom-model-path', async (event, customPath) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      // Save to file-based storage for persistence across app restarts
+      try {
+        const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+        let settings = {};
+        
+        // Load existing settings if file exists
+        if (fsSync.existsSync(settingsPath)) {
+          try {
+            settings = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+          } catch (parseError) {
+            log.warn('Could not parse existing settings file, creating new one:', parseError.message);
+            settings = {};
+          }
+        }
+        
+        // Update custom model path
+        if (customPath) {
+          settings.customModelPath = customPath;
+          log.info('Saving custom model path to settings:', customPath);
+        } else {
+          delete settings.customModelPath;
+          log.info('Removing custom model path from settings');
+        }
+        
+        // Save updated settings
+        fsSync.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+      } catch (settingsError) {
+        log.warn('Could not save custom model path to settings:', settingsError.message);
+        // Continue anyway - the in-memory setting will still work for this session
+      }
+      
+      // Set the custom path in llama-swap service
+      if (customPath) {
+        llamaSwapService.setCustomModelPaths([customPath]);
+      } else {
+        // Clear custom paths when path is null/empty
+        llamaSwapService.setCustomModelPaths([]);
+      }
+      
+      // Regenerate config to include/exclude models
+      await llamaSwapService.generateConfig();
+      
+      return { success: true };
+    } catch (error) {
+      log.error('Error setting custom model path:', error);
+      return { success: false, error: error.message };
+    }
+  });
   // Watchdog service handlers
   ipcMain.handle('watchdog-get-services-status', async () => {
     try {
@@ -501,6 +557,89 @@ function registerLlamaSwapHandlers() {
     } catch (error) {
       log.error('Error updating watchdog config:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-custom-model-paths', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService();
+      }
+      
+      let paths = llamaSwapService.getCustomModelPaths();
+      
+      // If no paths in service, try to load from file storage
+      if (paths.length === 0) {
+        try {
+          const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+          if (fsSync.existsSync(settingsPath)) {
+            const settings = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+            if (settings.customModelPath) {
+              // Validate that the path still exists before returning it
+              if (fsSync.existsSync(settings.customModelPath)) {
+                paths = [settings.customModelPath];
+                // Also set it in the service for consistency
+                llamaSwapService.setCustomModelPaths(paths);
+              } else {
+                log.warn('Custom model path from settings no longer exists:', settings.customModelPath);
+              }
+            }
+          }
+        } catch (fileError) {
+          log.warn('Could not read custom model path from file storage:', fileError.message);
+        }
+      }
+      
+      return paths;
+    } catch (error) {
+      log.error('Error getting custom model paths:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('scan-custom-path-models', async (event, path) => {
+    try {
+      if (!path) {
+        return { success: false, error: 'No path provided' };
+      }
+
+      // Create a temporary service instance to scan the specific path
+      const fs = require('fs').promises;
+      const pathModule = require('path');
+      
+      const models = [];
+      
+      try {
+        if (await fs.access(path).then(() => true).catch(() => false)) {
+          const files = await fs.readdir(path);
+          const ggufFiles = files.filter(file => file.endsWith('.gguf'));
+          
+          for (const file of ggufFiles) {
+            const fullPath = pathModule.join(path, file);
+            try {
+              const stats = await fs.stat(fullPath);
+              
+              models.push({
+                name: file.replace('.gguf', ''),
+                file: file,
+                path: fullPath,
+                size: stats.size,
+                source: 'custom',
+                lastModified: stats.mtime
+              });
+            } catch (error) {
+              log.warn(`Error reading stats for ${file}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        log.warn(`Error scanning models in ${path}:`, error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true, models };
+    } catch (error) {
+      log.error('Error scanning custom path models:', error);
     }
   });
 
@@ -1486,10 +1625,166 @@ function registerMCPHandlers() {
 
 // Register handlers for various app functions
 function registerHandlers() {
+  console.log('[main] Registering IPC handlers...');
   registerLlamaSwapHandlers();
   registerDockerContainerHandlers();
   registerModelManagerHandlers();
   registerMCPHandlers();
+  
+  // Add dialog handler for folder picker
+  ipcMain.handle('show-open-dialog', async (_event, options) => {
+    console.log('[main] show-open-dialog handler called with options:', options);
+    try {
+      return await dialog.showOpenDialog(options);
+    } catch (error) {
+      log.error('Error showing open dialog:', error);
+      return { canceled: true, filePaths: [] };
+    }
+  });
+  console.log('[main] show-open-dialog handler registered successfully');
+
+  // App info handlers
+  ipcMain.handle('get-app-path', () => app.getPath('userData'));
+  ipcMain.handle('getWorkflowsPath', () => {
+    return path.join(app.getAppPath(), 'workflows', 'n8n_workflows_full.json');
+  });
+
+  // Update handlers
+  ipcMain.handle('check-for-updates', () => {
+    return checkForUpdates();
+  });
+
+  ipcMain.handle('get-update-info', () => {
+    return getUpdateInfo();
+  });
+
+  ipcMain.handle('check-llamacpp-updates', () => {
+    return checkLlamacppUpdates();
+  });
+
+  ipcMain.handle('update-llamacpp-binaries', () => {
+    return updateLlamacppBinaries();
+  });
+
+  // Permissions handler
+  ipcMain.handle('request-microphone-permission', async () => {
+    if (process.platform === 'darwin') {
+      const status = await systemPreferences.getMediaAccessStatus('microphone');
+      if (status === 'not-determined') {
+        return await systemPreferences.askForMediaAccess('microphone');
+      }
+      return status === 'granted';
+    }
+    return true;
+  });
+
+  // Service info handlers
+  ipcMain.handle('get-service-ports', () => {
+    if (dockerSetup && dockerSetup.ports) {
+      return dockerSetup.ports;
+    }
+    return null;
+  });
+
+  ipcMain.handle('get-python-port', () => {
+    if (dockerSetup && dockerSetup.ports && dockerSetup.ports.python) {
+      return dockerSetup.ports.python;
+    }
+    return null;
+  });
+
+  ipcMain.handle('check-python-backend', async () => {
+    try {
+      if (!dockerSetup || !dockerSetup.ports || !dockerSetup.ports.python) {
+        return { status: 'error', message: 'Python backend not configured' };
+      }
+
+      const isRunning = await dockerSetup.isPythonRunning();
+      if (!isRunning) {
+        return { status: 'error', message: 'Python backend container not running' };
+      }
+
+      return {
+        status: 'running',
+        port: dockerSetup.ports.python
+      };
+    } catch (error) {
+      log.error('Error checking Python backend:', error);
+      return { status: 'error', message: error.message };
+    }
+  });
+
+  ipcMain.handle('check-docker-services', async () => {
+    try {
+      if (!dockerSetup) {
+        return { 
+          dockerAvailable: false, 
+          n8nAvailable: false,
+          pythonAvailable: false,
+          message: 'Docker setup not initialized' 
+        };
+      }
+
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      if (!dockerRunning) {
+        return { 
+          dockerAvailable: false, 
+          n8nAvailable: false,
+          pythonAvailable: false,
+          message: 'Docker is not running' 
+        };
+      }
+
+      const n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
+      const pythonRunning = await dockerSetup.isPythonRunning().catch(() => false);
+
+      return {
+        dockerAvailable: true,
+        n8nAvailable: n8nRunning,
+        pythonAvailable: pythonRunning,
+        ports: dockerSetup.ports
+      };
+    } catch (error) {
+      log.error('Error checking Docker services:', error);
+      return { 
+        dockerAvailable: false, 
+        n8nAvailable: false,
+        pythonAvailable: false,
+        message: error.message 
+      };
+    }
+  });
+
+  // Event handlers
+  ipcMain.on('backend-status', (event, status) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('backend-status', status);
+    }
+  });
+
+  ipcMain.on('python-status', (event, status) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('python-status', status);
+    }
+  });
+
+
+  // Handle loading screen completion
+  ipcMain.on('loading-complete', () => {
+    log.info('Loading screen fade-out complete');
+    if (loadingScreen) {
+      loadingScreen.close();
+      loadingScreen = null;
+    }
+  });
+
+  // Handle React app ready signal
+  ipcMain.on('react-app-ready', () => {
+    log.info('React app fully initialized and ready');
+    if (loadingScreen && loadingScreen.isValid()) {
+      loadingScreen.notifyMainWindowReady();
+    }
+  });
 }
 
 async function initializeApp() {
@@ -1502,6 +1797,26 @@ async function initializeApp() {
     
     // Initialize all services
     llamaSwapService = new LlamaSwapService();
+    
+    // Load custom model path from file-based storage and set it before starting the service
+    try {
+      const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+      
+      if (fsSync.existsSync(settingsPath)) {
+        const settingsData = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+        const customModelPath = settingsData.customModelPath;
+        
+        if (customModelPath && fsSync.existsSync(customModelPath)) {
+          log.info('Loading custom model path from settings:', customModelPath);
+          llamaSwapService.setCustomModelPaths([customModelPath]);
+        } else if (customModelPath) {
+          log.warn('Custom model path from settings no longer exists:', customModelPath);
+        }
+      }
+    } catch (error) {
+      log.warn('Could not load custom model path during initialization:', error.message);
+      // Continue without custom path - it can be set later by the frontend
+    }
     
     // Set up progress callback to forward to renderer
     llamaSwapService.setProgressCallback((progressData) => {
@@ -1860,155 +2175,5 @@ app.on('window-all-closed', async () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
-  }
-});
-
-// Handle IPC messages
-ipcMain.handle('get-app-path', () => app.getPath('userData'));
-ipcMain.handle('getWorkflowsPath', () => {
-  return path.join(app.getAppPath(), 'workflows', 'n8n_workflows_full.json');
-});
-
-// Add handler for checking updates
-ipcMain.handle('check-for-updates', () => {
-  return checkForUpdates();
-});
-
-// Add handler for getting update information (without dialogs)
-ipcMain.handle('get-update-info', () => {
-  return getUpdateInfo();
-});
-
-// Add handlers for llama.cpp binary updates
-ipcMain.handle('check-llamacpp-updates', () => {
-  return checkLlamacppUpdates();
-});
-
-ipcMain.handle('update-llamacpp-binaries', () => {
-  return updateLlamacppBinaries();
-});
-
-// Handle microphone permission request
-ipcMain.handle('request-microphone-permission', async () => {
-  if (process.platform === 'darwin') {
-    const status = await systemPreferences.getMediaAccessStatus('microphone');
-    if (status === 'not-determined') {
-      return await systemPreferences.askForMediaAccess('microphone');
-    }
-    return status === 'granted';
-  }
-  return true;
-});
-
-// IPC handler to get service ports
-ipcMain.handle('get-service-ports', () => {
-  if (dockerSetup && dockerSetup.ports) {
-    return dockerSetup.ports;
-  }
-  return null; // Or throw an error if setup isn't complete
-});
-
-// IPC handler to get Python port specifically
-ipcMain.handle('get-python-port', () => {
-  if (dockerSetup && dockerSetup.ports && dockerSetup.ports.python) {
-    return dockerSetup.ports.python;
-  }
-  return null;
-});
-
-// IPC handler to check Python backend status
-ipcMain.handle('check-python-backend', async () => {
-  try {
-    if (!dockerSetup || !dockerSetup.ports || !dockerSetup.ports.python) {
-      return { status: 'error', message: 'Python backend not configured' };
-    }
-
-    // Check if Python container is running
-    const isRunning = await dockerSetup.isPythonRunning();
-    if (!isRunning) {
-      return { status: 'error', message: 'Python backend container not running' };
-    }
-
-    return {
-      status: 'running',
-      port: dockerSetup.ports.python
-    };
-  } catch (error) {
-    log.error('Error checking Python backend:', error);
-    return { status: 'error', message: error.message };
-  }
-});
-
-// IPC handler to check Docker and service availability
-ipcMain.handle('check-docker-services', async () => {
-  try {
-    if (!dockerSetup) {
-      return { 
-        dockerAvailable: false, 
-        n8nAvailable: false,
-        pythonAvailable: false,
-        message: 'Docker setup not initialized' 
-      };
-    }
-
-    const dockerRunning = await dockerSetup.isDockerRunning();
-    if (!dockerRunning) {
-      return { 
-        dockerAvailable: false, 
-        n8nAvailable: false,
-        pythonAvailable: false,
-        message: 'Docker is not running' 
-      };
-    }
-
-    // Check individual services
-    const n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
-    const pythonRunning = await dockerSetup.isPythonRunning().catch(() => false);
-
-    return {
-      dockerAvailable: true,
-      n8nAvailable: n8nRunning,
-      pythonAvailable: pythonRunning,
-      ports: dockerSetup.ports
-    };
-  } catch (error) {
-    log.error('Error checking Docker services:', error);
-    return { 
-      dockerAvailable: false, 
-      n8nAvailable: false,
-      pythonAvailable: false,
-      message: error.message 
-    };
-  }
-});
-
-// Handle backend status updates
-ipcMain.on('backend-status', (event, status) => {
-  if (mainWindow) {
-    mainWindow.webContents.send('backend-status', status);
-  }
-});
-
-// Handle Python status updates
-ipcMain.on('python-status', (event, status) => {
-  if (mainWindow) {
-    mainWindow.webContents.send('python-status', status);
-  }
-});
-
-// Handle loading screen completion
-ipcMain.on('loading-complete', () => {
-  log.info('Loading screen fade-out complete');
-  if (loadingScreen) {
-    loadingScreen.close();
-    loadingScreen = null;
-  }
-});
-
-// Handle React app ready signal
-ipcMain.on('react-app-ready', () => {
-  log.info('React app fully initialized and ready');
-  if (loadingScreen && loadingScreen.isValid()) {
-    loadingScreen.notifyMainWindowReady();
   }
 });

@@ -27,6 +27,7 @@
     "electron:build": "npm run build && electron-builder",
     "electron:preview": "npm run build && electron .",
     "electron:build-mac": "npm run build && electron-builder --mac --universal --publish always",
+    "electron:build-mac-arm64": "npm run build && electron-builder --mac",
     "electron:build-mac-dev": "npm run build && electron-builder --mac --universal --publish always",
     "electron:build-win": "npm run build && electron-builder --win",
     "electron:build-win-admin": "node scripts/build-win-admin.cjs",
