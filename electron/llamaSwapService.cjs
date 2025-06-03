@@ -21,6 +21,9 @@ class LlamaSwapService {
     // Progress tracking for UI feedback
     this.progressCallback = null;
     
+    // Custom model paths
+    this.customModelPaths = [];
+    
     // Handle different base directory paths for development vs production
     this.baseDir = this.getBaseBinaryDirectory();
     this.modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
@@ -292,6 +295,11 @@ class LlamaSwapService {
       { path: path.join(this.baseDir, 'models'), source: 'bundled' }
     ];
 
+    // Add custom model paths
+    this.customModelPaths.forEach(customPath => {
+      sources.push({ path: customPath, source: 'custom' });
+    });
+
     for (const { path: modelPath, source } of sources) {
       try {
         if (await fs.access(modelPath).then(() => true).catch(() => false)) {
@@ -302,10 +310,8 @@ class LlamaSwapService {
             const fullPath = path.join(modelPath, file);
             try {
               const stats = await fs.stat(fullPath);
-              const modelName = this.generateModelName(file);
               
               models.push({
-                name: modelName,
                 file: file,
                 path: fullPath,
                 size: stats.size,
@@ -453,12 +459,16 @@ class LlamaSwapService {
     const modelNames = new Map();
     const nameConflicts = new Map();
     
-    // First pass: generate base names and detect conflicts
+    // First pass: generate base names and collect all conflicts
     mainModels.forEach((model) => {
       const baseName = this.generateModelName(model.file);
       if (modelNames.has(baseName)) {
-        // Mark both as having conflicts
-        nameConflicts.set(baseName, [modelNames.get(baseName), model]);
+        // If this is the first conflict for this name, move the existing model to conflicts
+        if (!nameConflicts.has(baseName)) {
+          nameConflicts.set(baseName, [modelNames.get(baseName)]);
+        }
+        // Add this conflicting model to the list
+        nameConflicts.get(baseName).push(model);
       } else {
         modelNames.set(baseName, model);
       }
@@ -466,20 +476,49 @@ class LlamaSwapService {
     
     // Second pass: resolve conflicts by adding differentiators
     nameConflicts.forEach((conflictedModels, baseName) => {
+      // Remove the original conflicting entry from modelNames
+      modelNames.delete(baseName);
+      
+      // Generate unique names for all conflicting models
+      const usedNames = new Set();
+      
       conflictedModels.forEach((model, index) => {
         const quantization = this.extractQuantization(model.file);
-        let newName = baseName;
+        const sizeInfo = this.extractFileSizeInfo(model.file, model.size);
+        let newName;
         
         if (quantization) {
+          // Try quantization-based naming first
           newName = `${baseName.split(':')[0]}:${baseName.split(':')[1]}-${quantization}`;
+          
+          // If this quantization-based name is also taken, add size info
+          if (usedNames.has(newName)) {
+            newName = `${baseName.split(':')[0]}:${baseName.split(':')[1]}-${quantization}-${sizeInfo}`;
+          }
+          
+          // If still taken, add index
+          if (usedNames.has(newName)) {
+            newName = `${baseName.split(':')[0]}:${baseName.split(':')[1]}-${quantization}-${sizeInfo}-v${index + 1}`;
+          }
         } else {
-          newName = `${baseName}-v${index + 1}`;
+          // Use size info and version for models without clear quantization
+          newName = `${baseName}-${sizeInfo}-v${index + 1}`;
         }
         
-        // Update the model name
-        model.name = newName;
-        modelNames.delete(baseName);
-        modelNames.set(newName, model);
+        // Ensure the name is truly unique by adding additional suffixes if needed
+        let finalName = newName;
+        let suffix = 1;
+        while (usedNames.has(finalName) || modelNames.has(finalName)) {
+          finalName = `${newName}-${suffix}`;
+          suffix++;
+        }
+        
+        // Update the model name and track it
+        model.name = finalName;
+        usedNames.add(finalName);
+        modelNames.set(finalName, model);
+        
+        log.info(`Resolved name conflict: ${model.file} -> ${finalName}`);
       });
     });
     
@@ -497,7 +536,7 @@ class LlamaSwapService {
       if (savedSettings.success && savedSettings.settings) {
         globalPerfSettings = savedSettings.settings;
         log.info('Applying saved performance settings to configuration:', globalPerfSettings);
-      } else {
+        } else {
         globalPerfSettings = this.getSafeDefaultConfig();
         log.info('No saved performance settings found, using safe defaults');
       }
@@ -1247,8 +1286,43 @@ ${cmdLine}`;
 
   // Helper method to extract quantization info
   extractQuantization(filename) {
-    const quantMatch = filename.toLowerCase().match(/(q4_k_m|q4_k_s|q8_0|f16|q4_0|q5_k_m)/i);
-    return quantMatch ? quantMatch[1].toLowerCase() : null;
+    // Check for common quantization patterns in order of specificity
+    const quantMatch = filename.toLowerCase().match(/(q4_k_m|q4_k_s|q5_k_m|q5_k_s|q6_k|q8_0|f16|f32|q4_0|q4_1|q5_0|q5_1|q2_k|q3_k_m|q3_k_s|q3_k_l|iq3_xxs|iq3_xs|iq3_s|iq3_m|iq4_xs|iq4_nl)/i);
+    if (quantMatch) {
+      return quantMatch[1].toLowerCase();
+    }
+    
+    // Check for other patterns like IQ (IMatrix quantization)
+    const iqMatch = filename.toLowerCase().match(/(iq\d+_\w+)/i);
+    if (iqMatch) {
+      return iqMatch[1].toLowerCase();
+    }
+    
+    // Check for BitNet patterns
+    const bitnetMatch = filename.toLowerCase().match(/(1\.58|bitnet)/i);
+    if (bitnetMatch) {
+      return 'bitnet';
+    }
+    
+    return null;
+  }
+
+  // Helper method to extract file size as a differentiator
+  extractFileSizeInfo(filename, fileSizeBytes) {
+    // Convert file size to GB and create a readable size indicator
+    const sizeGB = fileSizeBytes / (1024 * 1024 * 1024);
+    
+    if (sizeGB < 1) {
+      return 'xs'; // Extra small
+    } else if (sizeGB < 3) {
+      return 's'; // Small
+    } else if (sizeGB < 6) {
+      return 'm'; // Medium
+    } else if (sizeGB < 12) {
+      return 'l'; // Large
+    } else {
+      return 'xl'; // Extra large
+    }
   }
 
   /**
@@ -2500,6 +2574,42 @@ ${cmdLine}`;
       log.error('Static binary repair failed:', error.message);
       return false;
     }
+  }
+
+  /**
+   * Set custom model paths
+   */
+  setCustomModelPaths(paths) {
+    this.customModelPaths = Array.isArray(paths) ? paths : [paths].filter(Boolean);
+    log.info('Custom model paths updated:', this.customModelPaths);
+  }
+
+  /**
+   * Add a custom model path
+   */
+  addCustomModelPath(path) {
+    if (path && !this.customModelPaths.includes(path)) {
+      this.customModelPaths.push(path);
+      log.info('Added custom model path:', path);
+    }
+  }
+
+  /**
+   * Remove a custom model path
+   */
+  removeCustomModelPath(path) {
+    const index = this.customModelPaths.indexOf(path);
+    if (index > -1) {
+      this.customModelPaths.splice(index, 1);
+      log.info('Removed custom model path:', path);
+    }
+  }
+
+  /**
+   * Get all custom model paths
+   */
+  getCustomModelPaths() {
+    return [...this.customModelPaths];
   }
 }
 
