@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -865,49 +865,49 @@ const Settings = () => {
 
             <TabItem
               id="api"
-              label="AI Providers"
-              icon={<Globe className="w-5 h-5" />}
+              label="AI Services"
+              icon={<Bot className="w-5 h-5" />}
               isActive={activeTab === 'api'}
             />
 
             <TabItem
               id="models"
-              label="Models"
-              icon={<HardDrive className="w-5 h-5" />}
+              label="Local Models"
+              icon={<Brain className="w-5 h-5" />}
               isActive={activeTab === 'models'}
             />
 
             <TabItem
               id="mcp"
-              label="MCP"
-              icon={<Server className="w-5 h-5" />}
+              label="Extensions"
+              icon={<Puzzle className="w-5 h-5" />}
               isActive={activeTab === 'mcp'}
             />
 
             <TabItem
               id="toolbelt"
-              label="Tool Belt"
-              icon={<Wrench className="w-5 h-5" />}
+              label="Tools"
+              icon={<Hammer className="w-5 h-5" />}
               isActive={activeTab === 'toolbelt'}
             />
 
             <TabItem
               id="servers"
-              label="Servers"
+              label="Services"
               icon={<Server className="w-5 h-5" />}
               isActive={activeTab === 'servers'}
             />
 
             <TabItem
               id="preferences"
-              label="Preferences"
+              label="General"
               icon={<SettingsIcon className="w-5 h-5" />}
               isActive={activeTab === 'preferences'}
             />
 
             <TabItem
               id="personal"
-              label="Personal Information"
+              label="Profile"
               icon={<User className="w-5 h-5" />}
               isActive={activeTab === 'personal'}
             />
@@ -915,19 +915,9 @@ const Settings = () => {
             <TabItem
               id="updates"
               label="Updates"
-              icon={<Download className="w-5 h-5" />}
+              icon={<RefreshCw className="w-5 h-5" />}
               isActive={activeTab === 'updates'}
             />
-
-            {/* <TabItem 
-              id="sdk-demo" 
-              label="SDK Code Export Demo" 
-              icon={<Zap className="w-5 h-5" />} 
-              isActive={activeTab === 'sdk-demo'} 
-            /> */}
-
-
-
 
             {/* Save Status - Only visible when saving/saved/error */}
             {(isSaving || saveStatus !== 'idle') && (
@@ -949,13 +939,13 @@ const Settings = () => {
         {/* Content area */}
         <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${activeTab === 'models' ? '' : 'max-w-4xl'
           }`}>
-          {/* Personal Information Tab */}
+          {/* Profile Tab */}
           {activeTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">
               <div className="flex items-center gap-3 mb-6">
                 <User className="w-6 h-6 text-sakura-500" />
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Personal Information
+                  Profile
                 </h2>
               </div>
 
@@ -1025,7 +1015,7 @@ const Settings = () => {
             </div>
           )}
 
-          {/* API Configuration Tab */}
+          {/* AI Services Tab */}
           {activeTab === 'api' && (
             <div className="space-y-6">
               {/* Providers Section */}
@@ -1035,10 +1025,10 @@ const Settings = () => {
                     <Bot className="w-6 h-6 text-sakura-500" />
                     <div>
                       <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                        AI Providers
+                        AI Services
                       </h2>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Manage your AI service providers for chat and agents
+                        Connect and manage your AI service providers
                       </p>
                     </div>
                   </div>
@@ -1058,7 +1048,7 @@ const Settings = () => {
                       className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
-                      Add Provider
+                      Add Service
                     </button>
                   </div>
                 </div>
@@ -1217,17 +1207,17 @@ const Settings = () => {
                 )}
               </div>
 
-              {/* ComfyUI Configuration */}
+              {/* Image Generation Section */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Image className="w-6 h-6 text-sakura-500" />
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    ComfyUI Configuration
+                    Image Generation
                   </h2>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ComfyUI Base URL
+                    ComfyUI Server URL
                   </label>
                   <input
                     type="url"
@@ -1237,20 +1227,20 @@ const Settings = () => {
                     placeholder="http://localhost:8188"
                   />
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    URL for your ComfyUI instance for image generation
+                    Connect to your ComfyUI instance for AI image generation
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Preferences Tab */}
+          {/* General Preferences Tab */}
           {activeTab === 'preferences' && (
             <div className="glassmorphic rounded-xl p-6">
               <div className="flex items-center gap-3 mb-6">
                 <SettingsIcon className="w-6 h-6 text-sakura-500" />
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Preferences
+                  General Settings
                 </h2>
               </div>
 
@@ -1288,20 +1278,20 @@ const Settings = () => {
             </div>
           )}
 
-          {/* Model Manager Tab */}
+          {/* Local Models Tab */}
           {activeTab === 'models' && (
             <div className="space-y-6">
               {/* Model Manager Header with Sub-tabs */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
-                    <HardDrive className="w-6 h-6 text-sakura-500" />
+                    <Brain className="w-6 h-6 text-sakura-500" />
                     <div>
                       <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                        Model Management
+                        Local Models
                       </h2>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Manage local models and monitor GPU performance
+                        Manage your locally installed AI models and hardware acceleration
                       </p>
                     </div>
                   </div>
@@ -1316,7 +1306,7 @@ const Settings = () => {
                   />
                   <ModelTabItem
                     id="gpu-diagnostics"
-                    label="GPU Acceleration Diagnostics"
+                    label="Hardware Acceleration"
                     isActive={activeModelTab === 'gpu-diagnostics'}
                   />
                 </div>
@@ -1334,10 +1324,10 @@ const Settings = () => {
                     <Zap className="w-6 h-6 text-amber-500" />
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        GPU Acceleration Diagnostics
+                        Hardware Acceleration
                       </h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Monitor GPU detection and layer allocation for optimal performance
+                        Monitor GPU detection and optimize performance for faster inference
                       </p>
                     </div>
                   </div>
@@ -1348,17 +1338,17 @@ const Settings = () => {
             </div>
           )}
 
-          {/* MCP Tab */}
+          {/* Extensions Tab */}
           {activeTab === 'mcp' && (
             <MCPSettings />
           )}
 
-          {/* Tool Belt Tab */}
+          {/* Tools Tab */}
           {activeTab === 'toolbelt' && (
             <ToolBelt />
           )}
 
-          {/* Servers Tab */}
+          {/* Services Tab */}
           {activeTab === 'servers' && (
             <div className="space-y-6">
               {/* Docker Services Status */}
@@ -1367,10 +1357,10 @@ const Settings = () => {
                   <Server className="w-6 h-6 text-blue-500" />
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Server Management
+                      Local Services
                     </h2>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Monitor and manage local services and Docker containers
+                      Monitor and control your local development services
                     </p>
                   </div>
                 </div>
