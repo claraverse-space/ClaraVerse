@@ -63,12 +63,12 @@ class LlamaSwapService {
       // Production mode - check multiple possible locations
       const possiblePaths = [
         // Standard Electron app structure
-        path.join(process.resourcesPath, 'electron', 'llamacpp-binaries'),
+        process.resourcesPath ? path.join(process.resourcesPath, 'electron', 'llamacpp-binaries') : null,
         // Alternative app structure
-        path.join(app.getAppPath(), 'electron', 'llamacpp-binaries'),
+        app && app.getAppPath ? path.join(app.getAppPath(), 'electron', 'llamacpp-binaries') : null,
         // Fallback to current directory structure
         path.join(__dirname, 'llamacpp-binaries')
-      ];
+      ].filter(Boolean); // Remove null entries
       
       for (const possiblePath of possiblePaths) {
         log.info(`Checking binary path: ${possiblePath}`);
@@ -79,7 +79,9 @@ class LlamaSwapService {
       }
       
       // If none found, create in app data directory and log error
-      const fallbackPath = path.join(app.getPath('userData'), 'llamacpp-binaries');
+      const fallbackPath = app && app.getPath 
+        ? path.join(app.getPath('userData'), 'llamacpp-binaries')
+        : path.join(__dirname, 'llamacpp-binaries'); // Final fallback for non-Electron environments
       log.error(`No binary directory found! Checked paths:`, possiblePaths);
       log.error(`Using fallback path: ${fallbackPath}`);
       return fallbackPath;
@@ -141,8 +143,31 @@ class LlamaSwapService {
     
     const platformPath = path.join(this.baseDir, platformDir);
     
+    // For llama-swap, try multiple possible names in order of preference
+    const llamaSwapCandidates = platform === 'win32' 
+      ? ['llama-swap-win32-x64.exe', 'llama-swap.exe']
+      : platform === 'darwin'
+      ? ['llama-swap-darwin', 'llama-swap']
+      : ['llama-swap-linux', 'llama-swap'];
+    
+    let llamaSwapPath = null;
+    for (const candidate of llamaSwapCandidates) {
+      const candidatePath = path.join(platformPath, candidate);
+      if (fsSync.existsSync(candidatePath)) {
+        llamaSwapPath = candidatePath;
+        log.info(`Found llama-swap binary: ${candidate}`);
+        break;
+      }
+    }
+    
+    // Fallback to the expected name if no candidates found
+    if (!llamaSwapPath) {
+      llamaSwapPath = path.join(platformPath, binaryNames.llamaSwap);
+      log.warn(`No llama-swap binary found in candidates, using expected path: ${binaryNames.llamaSwap}`);
+    }
+    
     return {
-      llamaSwap: path.join(platformPath, binaryNames.llamaSwap),
+      llamaSwap: llamaSwapPath,
       llamaServer: path.join(platformPath, binaryNames.llamaServer)
     };
   }
@@ -350,6 +375,71 @@ class LlamaSwapService {
     }
     
     return `${baseName}:${size}`;
+  }
+
+  /**
+   * Start monitoring the main process and any child processes
+   * This helps prevent zombie processes and handles cleanup after updates
+   */
+  startProcessMonitoring() {
+    if (this.processMonitor) {
+      clearInterval(this.processMonitor);
+    }
+    
+    this.processMonitor = setInterval(() => {
+      if (!this.process || this.process.killed) {
+        log.warn('Main process lost during monitoring, cleaning up...');
+        this.cleanup();
+        return;
+      }
+      
+      // Check if process is still responsive
+      if (this.isRunning && this.process.pid) {
+        try {
+          // Send signal 0 to check if process exists (doesn't actually kill it)
+          process.kill(this.process.pid, 0);
+          
+          // Optional: Check if port is still open
+          this.checkPortStatus().catch(error => {
+            log.debug('Port check failed during monitoring:', error.message);
+          });
+          
+        } catch (error) {
+          if (error.code === 'ESRCH') {
+            log.warn('Main process no longer exists, cleaning up state...');
+            this.cleanup();
+          } else if (error.code === 'EPERM') {
+            log.debug('Process exists but no permission to signal (this is normal)');
+          } else {
+            log.warn('Unexpected error during process monitoring:', error.message);
+          }
+        }
+      }
+    }, 30000); // Check every 30 seconds
+  }
+  
+  /**
+   * Check if the service port is responsive
+   */
+  async checkPortStatus() {
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+      
+      const response = await Promise.race([
+        fetch(`http://localhost:${this.port}/v1/models`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+      
+      return response.ok;
+    } catch (error) {
+      throw new Error(`Port ${this.port} not responsive: ${error.message}`);
+    }
   }
 
   async generateConfig() {
@@ -712,6 +802,9 @@ ${cmdLine}
       return { success: true, message: 'Service already running' };
     }
 
+    // Check for stale processes after updates
+    await this.cleanupStaleProcesses();
+
     try {
       // macOS Security Pre-check - Prepare for potential firewall prompts
       if (process.platform === 'darwin') {
@@ -747,6 +840,10 @@ ${cmdLine}
         log.info('💡 If macOS shows a firewall prompt, please click "Allow" to enable local AI functionality.');
       }
 
+      // Verify and repair binaries after potential updates
+      log.info('🔧 Verifying binary integrity after potential updates...');
+      await this.verifyAndRepairBinariesAfterUpdate();
+
       // Validate binaries before attempting to start
       log.info('Validating binaries before startup...');
       await this.validateBinaries();
@@ -776,6 +873,9 @@ ${cmdLine}
       });
 
       this.isRunning = true;
+      
+      // Start process monitoring to prevent zombie processes after updates
+      this.startProcessMonitoring();
 
       // Handle process output
       this.process.stdout.on('data', (data) => {
@@ -933,23 +1033,56 @@ ${cmdLine}
     return new Promise((resolve) => {
       log.info('Stopping llama-swap service...');
       
+      // Enhanced timeout with graceful degradation
       const timeout = setTimeout(() => {
         if (this.process) {
-          log.warn('Force killing llama-swap process');
-          this.process.kill('SIGKILL');
+          log.warn('Graceful shutdown timeout, attempting force kill...');
+          
+          // Try different kill signals in sequence
+          try {
+            this.process.kill('SIGKILL');
+          } catch (killError) {
+            log.warn('SIGKILL failed, trying alternative methods:', killError.message);
+            
+            // On Windows, try taskkill as fallback
+            if (process.platform === 'win32' && this.process.pid) {
+              try {
+                const { spawn } = require('child_process');
+                spawn('taskkill', ['/F', '/T', '/PID', this.process.pid.toString()], {
+                  stdio: 'ignore'
+                });
+                log.info('Used taskkill as fallback for process termination');
+              } catch (taskillError) {
+                log.warn('Taskkill fallback also failed:', taskillError.message);
+              }
+            }
+          }
         }
         this.cleanup();
         resolve(true);
-      }, 5000);
+      }, 8000); // Increased timeout for updated binaries
 
       this.process.once('close', () => {
         clearTimeout(timeout);
         this.cleanup();
-        log.info('llama-swap service stopped');
+        log.info('llama-swap service stopped gracefully');
         resolve(true);
       });
 
-      this.process.kill('SIGTERM');
+      this.process.once('error', (error) => {
+        clearTimeout(timeout);
+        log.warn('Error during stop process:', error.message);
+        this.cleanup();
+        resolve(true);
+      });
+
+      // Try graceful shutdown first
+      try {
+        this.process.kill('SIGTERM');
+      } catch (error) {
+        log.warn('SIGTERM failed, will use timeout fallback:', error.message);
+        // Let timeout handle the force kill
+      }
     });
   }
 
@@ -960,13 +1093,33 @@ ${cmdLine}
     this.handleFlashAttentionRequired = false;
     this.flashAttentionRetryAttempted = false;
     this.forceFlashAttention = false;
+    
+    // Additional cleanup for updated binaries
+    // Clear any cached process references
+    if (this.processMonitor) {
+      clearInterval(this.processMonitor);
+      this.processMonitor = null;
+    }
   }
 
   async restart() {
+    log.info('Restarting llama-swap service...');
     await this.stop();
-    // Additional cleanup to ensure fresh start
+    
+    // Additional cleanup to ensure fresh start after updates
     this.cleanup();
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Longer wait time to ensure process cleanup after binary updates
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Regenerate config to ensure compatibility with updated binaries
+    try {
+      await this.generateConfig();
+      log.info('Configuration regenerated for updated binaries');
+    } catch (configError) {
+      log.warn('Config regeneration failed, using existing config:', configError.message);
+    }
+    
     return await this.start();
   }
 
@@ -1205,13 +1358,35 @@ ${cmdLine}
   }
 
   /**
-   * Get Windows GPU information using wmic
+   * Get Windows GPU information using nvidia-smi (preferred) or wmic (fallback)
    */
   async getWindowsGPUInfo() {
     return new Promise((resolve) => {
-      const { spawn } = require('child_process');
-      
-      // Try to get GPU info from wmic
+      const { spawn, spawnSync } = require('child_process');
+
+      // Try nvidia-smi first (for NVIDIA GPUs)
+      try {
+        const nvidiaSmi = spawnSync('nvidia-smi', [
+          '--query-gpu=memory.total',
+          '--format=csv,noheader,nounits'
+        ], { encoding: 'utf8' });
+
+        if (nvidiaSmi.status === 0 && nvidiaSmi.stdout) {
+          const lines = nvidiaSmi.stdout.trim().split('\n');
+          const maxMemoryMB = Math.max(...lines.map(line => parseInt(line.trim())));
+          if (maxMemoryMB > 0) {
+            return resolve({
+              hasGPU: true,
+              gpuMemoryMB: maxMemoryMB,
+              gpuType: 'nvidia'
+            });
+          }
+        }
+      } catch (err) {
+        // Ignore and fallback to WMIC
+      }
+
+      // Fallback to WMIC
       const process = spawn('wmic', ['path', 'win32_VideoController', 'get', 'name,AdapterRAM', '/format:csv'], {
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -1227,20 +1402,20 @@ ${cmdLine}
             const lines = stdout.split('\n').filter(line => line.trim());
             let maxMemoryMB = 0;
             let gpuType = 'integrated';
-            
+
             lines.forEach(line => {
               const parts = line.split(',');
               if (parts.length >= 3) {
                 const ramStr = parts[1];
                 const nameStr = parts[2];
-                
+
                 if (ramStr && nameStr && !isNaN(parseInt(ramStr))) {
                   const ramBytes = parseInt(ramStr);
                   const ramMB = Math.round(ramBytes / (1024 * 1024));
-                  
+
                   if (ramMB > maxMemoryMB) {
                     maxMemoryMB = ramMB;
-                    
+
                     // Determine GPU type based on name
                     const lowerName = nameStr.toLowerCase();
                     if (lowerName.includes('nvidia') || lowerName.includes('geforce') || lowerName.includes('rtx') || lowerName.includes('gtx')) {
@@ -1974,6 +2149,328 @@ ${cmdLine}
     } catch (error) {
       // Silently ignore parsing errors but log for debugging
       console.warn('Progress parsing error:', error);
+    }
+  }
+
+  /**
+   * Clean up any stale processes that might be left after binary updates
+   * This prevents "unexpected state" errors when restarting
+   */
+  async cleanupStaleProcesses() {
+    try {
+      // On Windows, check for any remaining llama-server or llama-swap processes
+      if (process.platform === 'win32') {
+        const { spawn } = require('child_process');
+        
+        // Kill any orphaned llama-server processes on our port
+        try {
+          const netstatProcess = spawn('netstat', ['-ano'], { stdio: ['ignore', 'pipe', 'ignore'] });
+          let netstatOutput = '';
+          
+          netstatProcess.stdout.on('data', (data) => {
+            netstatOutput += data.toString();
+          });
+          
+          await new Promise((resolve) => {
+            netstatProcess.on('close', () => resolve());
+          });
+          
+          // Look for processes using our ports
+          const lines = netstatOutput.split('\n');
+          const processesOnPort = [];
+          
+          for (const line of lines) {
+            if (line.includes(':9999') || line.includes(`:${this.port}`)) {
+              const parts = line.trim().split(/\s+/);
+              const pid = parts[parts.length - 1];
+              if (pid && pid !== '0' && /^\d+$/.test(pid)) {
+                processesOnPort.push(pid);
+              }
+            }
+          }
+          
+          // Kill processes found on our ports
+          for (const pid of processesOnPort) {
+            try {
+              spawn('taskkill', ['/F', '/PID', pid], { stdio: 'ignore' });
+              log.info(`Cleaned up stale process on port: PID ${pid}`);
+            } catch (killError) {
+              log.debug(`Could not kill PID ${pid}: ${killError.message}`);
+            }
+          }
+          
+        } catch (netstatError) {
+          log.debug('Netstat cleanup failed:', netstatError.message);
+        }
+        
+        // Also try to kill by process name as backup
+        try {
+          spawn('taskkill', ['/F', '/IM', 'llama-server.exe'], { stdio: 'ignore' });
+          spawn('taskkill', ['/F', '/IM', 'llama-swap.exe'], { stdio: 'ignore' });
+          spawn('taskkill', ['/F', '/IM', 'llama-swap-win32-x64.exe'], { stdio: 'ignore' });
+          log.debug('Attempted cleanup of llama processes by name');
+        } catch (cleanupError) {
+          log.debug('Process name cleanup failed:', cleanupError.message);
+        }
+      }
+      
+      // Unix-like systems (macOS, Linux)
+      else if (process.platform === 'darwin' || process.platform === 'linux') {
+        const { spawn } = require('child_process');
+        
+        try {
+          // Kill processes using our ports
+          spawn('pkill', ['-f', 'llama-server'], { stdio: 'ignore' });
+          spawn('pkill', ['-f', 'llama-swap'], { stdio: 'ignore' });
+          log.debug('Attempted cleanup of llama processes on Unix-like system');
+        } catch (cleanupError) {
+          log.debug('Unix process cleanup failed:', cleanupError.message);
+        }
+      }
+      
+      // Wait a moment for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      log.warn('Stale process cleanup encountered error:', error.message);
+      // Don't fail startup if cleanup fails
+    }
+  }
+
+  /**
+   * Attempt to recover from service errors (502/503) after updates
+   */
+  async recoverFromErrors() {
+    log.info('Attempting service recovery after errors...');
+    
+    try {
+      // Stop the service if it's in a bad state
+      if (this.isRunning) {
+        await this.stop();
+      }
+      
+      // Clean up any stale processes
+      await this.cleanupStaleProcesses();
+      
+      // Verify and repair binaries (especially important after updates)
+      await this.verifyAndRepairBinariesAfterUpdate();
+      
+      // Regenerate configuration to ensure compatibility
+      await this.generateConfig();
+      
+      // Wait a bit longer for complete cleanup
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Restart the service
+      const result = await this.start();
+      
+      if (result.success) {
+        log.info('Service recovery completed successfully');
+      } else {
+        log.error('Service recovery failed:', result.error);
+      }
+      
+      return result;
+      
+    } catch (error) {
+      log.error('Service recovery encountered error:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Verify and repair binary paths after updates
+   * This ensures the service can find the correct binaries even if naming changes after updates
+   */
+  async verifyAndRepairBinariesAfterUpdate() {
+    log.info('🔧 Verifying and repairing binary paths after update...');
+    
+    try {
+      const platform = os.platform();
+      const platformPath = path.join(this.baseDir, this.platformInfo.platformDir);
+      
+      if (!fsSync.existsSync(platformPath)) {
+        throw new Error(`Platform directory not found: ${platformPath}`);
+      }
+      
+      // List all files in the platform directory
+      const files = fsSync.readdirSync(platformPath);
+      log.info(`Files found in platform directory:`, files);
+      
+      // Check for llama-swap binary variants
+      const llamaSwapFiles = files.filter(file => 
+        file.includes('llama-swap') && 
+        !file.includes('backup') && 
+        (file.endsWith('.exe') || !file.includes('.'))
+      );
+      
+      // Check for llama-server binary
+      const llamaServerFiles = files.filter(file => 
+        file.includes('llama-server') && 
+        !file.includes('backup') &&
+        (file.endsWith('.exe') || !file.includes('.'))
+      );
+      
+      log.info(`Found llama-swap candidates:`, llamaSwapFiles);
+      log.info(`Found llama-server candidates:`, llamaServerFiles);
+      
+      // If we have multiple llama-swap binaries, ensure we have the standard names
+      if (llamaSwapFiles.length > 0) {
+        const standardName = platform === 'win32' ? 'llama-swap.exe' : 'llama-swap';
+        const platformSpecificName = platform === 'win32' ? 'llama-swap-win32-x64.exe' 
+          : platform === 'darwin' ? 'llama-swap-darwin' 
+          : 'llama-swap-linux';
+        
+        const hasStandardName = llamaSwapFiles.includes(standardName);
+        const hasPlatformName = llamaSwapFiles.includes(platformSpecificName);
+        
+        // If we only have platform-specific name, create a symlink/copy to standard name
+        if (!hasStandardName && hasPlatformName) {
+          try {
+            const sourcePath = path.join(platformPath, platformSpecificName);
+            const targetPath = path.join(platformPath, standardName);
+            
+            if (platform === 'win32') {
+              // On Windows, copy the file
+              fsSync.copyFileSync(sourcePath, targetPath);
+              log.info(`✅ Created standard llama-swap binary: ${standardName}`);
+            } else {
+              // On Unix systems, create a symlink
+              fsSync.symlinkSync(platformSpecificName, targetPath);
+              log.info(`✅ Created symlink for llama-swap: ${standardName} -> ${platformSpecificName}`);
+            }
+          } catch (linkError) {
+            log.warn(`Could not create standard binary name:`, linkError.message);
+          }
+        }
+        
+        // If we only have standard name, create platform-specific name
+        if (hasStandardName && !hasPlatformName) {
+          try {
+            const sourcePath = path.join(platformPath, standardName);
+            const targetPath = path.join(platformPath, platformSpecificName);
+            
+            if (platform === 'win32') {
+              // On Windows, copy the file
+              fsSync.copyFileSync(sourcePath, targetPath);
+              log.info(`✅ Created platform-specific llama-swap binary: ${platformSpecificName}`);
+            } else {
+              // On Unix systems, create a symlink
+              fsSync.symlinkSync(standardName, targetPath);
+              log.info(`✅ Created symlink for llama-swap: ${platformSpecificName} -> ${standardName}`);
+            }
+          } catch (linkError) {
+            log.warn(`Could not create platform-specific binary name:`, linkError.message);
+          }
+        }
+      }
+      
+      // Refresh binary paths after potential repairs
+      this.binaryPaths = this.getBinaryPathsWithFallback();
+      log.info(`✅ Binary verification and repair completed`);
+      log.info(`Updated binary paths:`, this.binaryPaths);
+      
+      return true;
+      
+    } catch (error) {
+      log.error('Binary verification and repair failed:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Static method for update service to repair binaries after updates
+   * This can be called without creating a full service instance
+   */
+  static async repairBinariesAfterUpdate(baseDir = null) {
+    log.info('🔧 Static binary repair called after update...');
+    
+    try {
+      if (!baseDir) {
+        // Determine base directory using the same logic as constructor
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        
+        if (isDevelopment) {
+          baseDir = path.join(__dirname, 'llamacpp-binaries');
+        } else {
+          const possiblePaths = [
+            process.resourcesPath ? path.join(process.resourcesPath, 'electron', 'llamacpp-binaries') : null,
+            app && app.getAppPath ? path.join(app.getAppPath(), 'electron', 'llamacpp-binaries') : null,
+            path.join(__dirname, 'llamacpp-binaries')
+          ].filter(Boolean);
+          
+          for (const possiblePath of possiblePaths) {
+            if (fsSync.existsSync(possiblePath)) {
+              baseDir = possiblePath;
+              break;
+            }
+          }
+          
+          if (!baseDir) {
+            baseDir = path.join(__dirname, 'llamacpp-binaries');
+          }
+        }
+      }
+      
+      const platformManager = new PlatformManager(baseDir);
+      const platformInfo = platformManager.platformInfo;
+      const platform = os.platform();
+      const platformPath = path.join(baseDir, platformInfo.platformDir);
+      
+      if (!fsSync.existsSync(platformPath)) {
+        log.warn(`Platform directory not found during static repair: ${platformPath}`);
+        return false;
+      }
+      
+      // List all files and repair llama-swap binaries
+      const files = fsSync.readdirSync(platformPath);
+      const llamaSwapFiles = files.filter(file => 
+        file.includes('llama-swap') && 
+        !file.includes('backup') && 
+        (file.endsWith('.exe') || !file.includes('.'))
+      );
+      
+      log.info(`Static repair found llama-swap candidates:`, llamaSwapFiles);
+      
+      if (llamaSwapFiles.length > 0) {
+        const standardName = platform === 'win32' ? 'llama-swap.exe' : 'llama-swap';
+        const platformSpecificName = platform === 'win32' ? 'llama-swap-win32-x64.exe' 
+          : platform === 'darwin' ? 'llama-swap-darwin' 
+          : 'llama-swap-linux';
+        
+        const hasStandardName = llamaSwapFiles.includes(standardName);
+        const hasPlatformName = llamaSwapFiles.includes(platformSpecificName);
+        
+        // Ensure both names exist for maximum compatibility
+        if (!hasStandardName && hasPlatformName) {
+          try {
+            const sourcePath = path.join(platformPath, platformSpecificName);
+            const targetPath = path.join(platformPath, standardName);
+            fsSync.copyFileSync(sourcePath, targetPath);
+            log.info(`✅ Static repair created standard binary: ${standardName}`);
+          } catch (error) {
+            log.warn(`Static repair failed to create standard binary:`, error.message);
+          }
+        }
+        
+        if (hasStandardName && !hasPlatformName) {
+          try {
+            const sourcePath = path.join(platformPath, standardName);
+            const targetPath = path.join(platformPath, platformSpecificName);
+            fsSync.copyFileSync(sourcePath, targetPath);
+            log.info(`✅ Static repair created platform-specific binary: ${platformSpecificName}`);
+          } catch (error) {
+            log.warn(`Static repair failed to create platform-specific binary:`, error.message);
+          }
+        }
+      }
+      
+      log.info('✅ Static binary repair completed');
+      return true;
+      
+    } catch (error) {
+      log.error('Static binary repair failed:', error.message);
+      return false;
     }
   }
 }
