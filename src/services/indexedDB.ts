@@ -393,6 +393,48 @@ export class IndexedDBService {
   async clearDesignVersions(): Promise<void> {
     return this.clear('design_versions');
   }
+
+  // Custom Model Path methods
+  async getCustomModelPath(): Promise<string | null> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction('settings', 'readonly');
+        const store = transaction.objectStore('settings');
+        const request = store.get('custom_model_path');
+        request.onsuccess = (event) => {
+          const result = (event.target as IDBRequest).result;
+          resolve(result ? result.value : null);
+        };
+        request.onerror = (event) => {
+          resolve(null);
+        };
+      });
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async setCustomModelPath(path: string | null): Promise<void> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction('settings', 'readwrite');
+        const store = transaction.objectStore('settings');
+        if (path) {
+          const request = store.put({ key: 'custom_model_path', value: path });
+          request.onsuccess = () => resolve();
+          request.onerror = () => resolve();
+        } else {
+          const request = store.delete('custom_model_path');
+          request.onsuccess = () => resolve();
+          request.onerror = () => resolve();
+        }
+      });
+    } catch (error) {
+      // ignore
+    }
+  }
 }
 
 export const indexedDBService = new IndexedDBService();
