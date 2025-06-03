@@ -1,6 +1,6 @@
 {
   "name": "clara-verse",
-  "version": "0.1.0",
+  "version": "0.1.1-stable",
   "private": true,
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for LLMs. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
