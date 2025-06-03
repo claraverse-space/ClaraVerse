@@ -202,7 +202,6 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
 
   const bottomMenuItems = [
     { icon: Settings, label: 'Settings', id: 'settings' },
-    { icon: Server, label: 'Servers', id: 'servers' },
     { icon: HelpCircle, label: 'Help', id: 'help' },
   ];
 

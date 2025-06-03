@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -8,8 +8,33 @@ import ModelManager from './ModelManager';
 import ToolBelt from './ToolBelt';
 import GPUDiagnostics from './GPUDiagnostics';
 
+// Type for llama.cpp update info
+interface LlamacppUpdateInfo {
+  hasUpdate: boolean;
+  error?: string;
+  currentVersion: string;
+  latestVersion?: string;
+  platform: string;
+  downloadSize?: string;
+  releaseUrl?: string;
+  publishedAt?: string;
+}
+
+// Add interface for Docker services status
+interface DockerServicesStatus {
+  dockerAvailable: boolean;
+  n8nAvailable: boolean;
+  pythonAvailable: boolean;
+  message?: string;
+  ports?: {
+    python: number;
+    n8n: number;
+    ollama: number;
+  };
+}
+
 const Settings = () => {
-  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo'>('api');
+  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers'>('api');
   const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
@@ -43,6 +68,13 @@ const Settings = () => {
   const [updatingLlamacppBinaries, setUpdatingLlamacppBinaries] = useState(false);
   const [lastLlamacppUpdateCheck, setLastLlamacppUpdateCheck] = useState<Date | null>(null);
 
+  // Add Docker services status state
+  const [dockerServices, setDockerServices] = useState<DockerServicesStatus>({
+    dockerAvailable: false,
+    n8nAvailable: false,
+    pythonAvailable: false
+  });
+
   // Type for update info to fix TypeScript errors
   interface UpdateInfo {
     hasUpdate: boolean;
@@ -54,18 +86,6 @@ const Settings = () => {
     releaseUrl?: string;
     downloadUrl?: string;
     releaseNotes?: string;
-    publishedAt?: string;
-  }
-
-  // Type for llama.cpp update info
-  interface LlamacppUpdateInfo {
-    hasUpdate: boolean;
-    error?: string;
-    currentVersion: string;
-    latestVersion?: string;
-    platform: string;
-    downloadSize?: string;
-    releaseUrl?: string;
     publishedAt?: string;
   }
 
@@ -157,9 +177,34 @@ const Settings = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    if (tabParam && ['personal', 'api', 'preferences', 'models', 'mcp', 'toolbelt', 'updates', 'sdk-demo'].includes(tabParam)) {
+    if (tabParam && ['personal', 'api', 'preferences', 'models', 'mcp', 'toolbelt', 'updates', 'sdk-demo', 'servers'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
+  }, []);
+
+  // Check Docker services status
+  useEffect(() => {
+    const checkDockerServices = async () => {
+      try {
+        if ((window.electron as any)?.checkDockerServices) {
+          const status = await (window.electron as any).checkDockerServices();
+          setDockerServices(status);
+        }
+      } catch (error) {
+        console.error('Failed to check Docker services:', error);
+        setDockerServices({
+          dockerAvailable: false,
+          n8nAvailable: false,
+          pythonAvailable: false,
+          message: 'Failed to check Docker services'
+        });
+      }
+    };
+
+    checkDockerServices();
+    // Check periodically every 30 seconds
+    const interval = setInterval(checkDockerServices, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Update checking functionality - Enhanced with bulletproof error handling
@@ -846,7 +891,12 @@ const Settings = () => {
               isActive={activeTab === 'toolbelt'}
             />
 
-
+            <TabItem
+              id="servers"
+              label="Servers"
+              icon={<Server className="w-5 h-5" />}
+              isActive={activeTab === 'servers'}
+            />
 
             <TabItem
               id="preferences"
@@ -1306,6 +1356,305 @@ const Settings = () => {
           {/* Tool Belt Tab */}
           {activeTab === 'toolbelt' && (
             <ToolBelt />
+          )}
+
+          {/* Servers Tab */}
+          {activeTab === 'servers' && (
+            <div className="space-y-6">
+              {/* Docker Services Status */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <Server className="w-6 h-6 text-blue-500" />
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Server Management
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Monitor and manage local services and Docker containers
+                    </p>
+                  </div>
+                </div>
+
+                {/* Docker Services Status */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${dockerServices.dockerAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    Docker Services
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Docker Status */}
+                    <div className={`p-4 rounded-lg border ${dockerServices.dockerAvailable 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${dockerServices.dockerAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">Docker</h4>
+                      </div>
+                      <p className={`text-sm ${dockerServices.dockerAvailable 
+                        ? 'text-green-700 dark:text-green-300' 
+                        : 'text-red-700 dark:text-red-300'
+                      }`}>
+                        {dockerServices.dockerAvailable ? 'Available' : 'Not Available'}
+                      </p>
+                    </div>
+
+                    {/* N8N Status */}
+                    <div className={`p-4 rounded-lg border ${dockerServices.n8nAvailable 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${dockerServices.n8nAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">n8n Workflows</h4>
+                      </div>
+                      <p className={`text-sm ${dockerServices.n8nAvailable 
+                        ? 'text-green-700 dark:text-green-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {dockerServices.n8nAvailable ? 'Running' : 'Stopped'}
+                      </p>
+                      {dockerServices.ports?.n8n && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Port: {dockerServices.ports.n8n}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Python API Status */}
+                    <div className={`p-4 rounded-lg border ${dockerServices.pythonAvailable 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${dockerServices.pythonAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">Python API</h4>
+                      </div>
+                      <p className={`text-sm ${dockerServices.pythonAvailable 
+                        ? 'text-green-700 dark:text-green-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {dockerServices.pythonAvailable ? 'Running' : 'Stopped'}
+                      </p>
+                      {dockerServices.ports?.python && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Port: {dockerServices.ports.python}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {dockerServices.message && (
+                    <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        {dockerServices.message}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Service Actions */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Wrench className="w-6 h-6 text-amber-500" />
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Service Controls
+                  </h3>
+                </div>
+                
+                {!dockerServices.dockerAvailable ? (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      <h4 className="font-medium text-red-800 dark:text-red-200">
+                        Docker Not Available
+                      </h4>
+                    </div>
+                    <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                      Docker is not installed or not running. Please install Docker Desktop to manage Clara's services.
+                    </p>
+                    <button
+                      onClick={() => window.open('https://docs.docker.com/desktop/', '_blank')}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Install Docker Desktop
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Docker Service Controls */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* n8n Workflow Service */}
+                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${dockerServices.n8nAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                              n8n Workflows
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              Automation and workflow engine
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            dockerServices.n8nAvailable 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}>
+                            {dockerServices.n8nAvailable ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          {dockerServices.n8nAvailable ? (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.stopDockerService) {
+                                      await (window.electron as any).stopDockerService('n8n');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to stop n8n:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
+                              >
+                                Stop
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.restartDockerService) {
+                                      await (window.electron as any).restartDockerService('n8n');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to restart n8n:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
+                              >
+                                Restart
+                              </button>
+                              {dockerServices.ports?.n8n && (
+                                <button
+                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.n8n}`, '_blank')}
+                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Open
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if ((window.electron as any)?.startDockerService) {
+                                    await (window.electron as any).startDockerService('n8n');
+                                  }
+                                } catch (error) {
+                                  console.error('Failed to start n8n:', error);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
+                            >
+                              Start
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Python API Service */}
+                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${dockerServices.pythonAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                              Python API
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              Custom Python processing API
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            dockerServices.pythonAvailable 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}>
+                            {dockerServices.pythonAvailable ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          {dockerServices.pythonAvailable ? (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.stopDockerService) {
+                                      await (window.electron as any).stopDockerService('python');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to stop Python API:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
+                              >
+                                Stop
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.restartDockerService) {
+                                      await (window.electron as any).restartDockerService('python');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to restart Python API:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
+                              >
+                                Restart
+                              </button>
+                              {dockerServices.ports?.python && (
+                                <button
+                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.python}/docs`, '_blank')}
+                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  API Docs
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if ((window.electron as any)?.startDockerService) {
+                                    await (window.electron as any).startDockerService('python');
+                                  }
+                                } catch (error) {
+                                  console.error('Failed to start Python API:', error);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
+                            >
+                              Start
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* SDK Code Export Demo Tab */}
