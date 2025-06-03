@@ -1,0 +1,61 @@
+{
+  "format": "clara-native",
+  "version": "1.0.0",
+  "name": "Simple LLM Chat Flow",
+  "description": "A basic flow that takes user input and processes it through an LLM to generate a response",
+  "nodes": [
+    {
+      "id": "input-1",
+      "type": "input",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "Tell me what to do",
+        "inputType": "textarea",
+        "placeholder": "Ask me anything...",
+        "required": true
+      }
+    },
+    {
+      "id": "llm-1", 
+      "type": "llm",
+      "position": { "x": 400, "y": 100 },
+      "data": {
+        "label": "AI Assistant",
+        "model": "llama3.2",
+        "prompt": "You are a helpful AI assistant. Please respond to the user's question or request in a clear and helpful way:\n\n{{input}}",
+        "temperature": 0.7,
+        "maxTokens": 500
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output", 
+      "position": { "x": 700, "y": 100 },
+      "data": {
+        "label": "AI Response",
+        "format": "text"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "connection-1",
+      "sourceNodeId": "input-1",
+      "sourcePortId": "output",
+      "targetNodeId": "llm-1",
+      "targetPortId": "input"
+    },
+    {
+      "id": "connection-2", 
+      "sourceNodeId": "llm-1",
+      "sourcePortId": "output",
+      "targetNodeId": "output-1",
+      "targetPortId": "input"
+    }
+  ],
+  "metadata": {
+    "createdAt": "2024-01-15T10:00:00Z",
+    "exportedBy": "Clara Agent Studio",
+    "hasCustomNodes": false
+  }
+} 

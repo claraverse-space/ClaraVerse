@@ -1,7 +1,7 @@
-const { BrowserWindow, app, screen } = require('electron');
+const { BrowserWindow, app } = require('electron');
 const path = require('path');
 
-class SplashScreen {
+class LoadingScreen {
   constructor() {
     const isDev = process.env.NODE_ENV === 'development';
     
@@ -16,7 +16,8 @@ class SplashScreen {
       skipTaskbar: true,
       resizable: false,
       alwaysOnTop: true,
-      show: false
+      show: false,
+      backgroundColor: '#667eea'
     });
 
     // Show window when ready to prevent flash
@@ -26,18 +27,18 @@ class SplashScreen {
 
     // Log any errors
     this.window.webContents.on('crashed', (e) => {
-      console.error('Splash screen crashed:', e);
+      console.error('Loading screen crashed:', e);
     });
 
     this.window.webContents.on('did-fail-load', (event, code, description) => {
-      console.error('Failed to load splash:', code, description);
+      console.error('Failed to load loading screen:', code, description);
     });
 
     const htmlPath = isDev 
-      ? path.join(__dirname, 'splash.html')
-      : path.join(app.getAppPath(), 'electron', 'splash.html');
+      ? path.join(__dirname, 'loading.html')
+      : path.join(app.getAppPath(), 'electron', 'loading.html');
 
-    console.log('Loading splash from:', htmlPath);
+    console.log('Loading screen from:', htmlPath);
     this.window.loadFile(htmlPath);
   }
 
@@ -50,16 +51,36 @@ class SplashScreen {
       timestamp: new Date().toISOString()
     };
     
-    console.log(`[Splash] Setting status:`, data);
+    console.log(`[Loading] Setting status:`, data);
     this.window.webContents.send('status', data);
   }
 
+  // Notify that main window is ready
+  notifyMainWindowReady() {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send('main-window-ready');
+    }
+  }
+
+  // Hide the loading screen
+  hide() {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send('hide-loading');
+    }
+  }
+
+  // Close the loading screen
   close() {
     if (this.window) {
       this.window.close();
       this.window = null;
     }
   }
+
+  // Check if window exists and is not destroyed
+  isValid() {
+    return this.window && !this.window.isDestroyed();
+  }
 }
 
-module.exports = SplashScreen;
+module.exports = LoadingScreen; 

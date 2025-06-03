@@ -7,6 +7,7 @@ import MCPSettings from './MCPSettings';
 import ModelManager from './ModelManager';
 import ToolBelt from './ToolBelt';
 import GPUDiagnostics from './GPUDiagnostics';
+import WatchdogStatus from './WatchdogStatus';
 
 // Type for llama.cpp update info
 interface LlamacppUpdateInfo {

@@ -205,12 +205,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         topK: 40
       },
       features: {
-        enableTools: true,
+        enableTools: false,             // **CHANGED**: Default to false for streaming mode
         enableRAG: false,
-        enableStreaming: true,
+        enableStreaming: true,          // **CHANGED**: Default to streaming mode
         enableVision: true,
-        autoModelSelection: true,
-        enableMCP: true
+        autoModelSelection: false,      // **CHANGED**: Default to manual model selection
+        enableMCP: false                // **CHANGED**: Default to false for streaming mode
       },
       mcp: {
         enableTools: true,
@@ -220,7 +220,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         maxToolCalls: 5
       },
       autonomousAgent: {
-        enabled: true,
+        enabled: false,                 // **CHANGED**: Default to false for streaming mode
         maxRetries: 3,
         retryDelay: 1000,
         enableSelfCorrection: true,
@@ -524,12 +524,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 topK: 40
               },
               features: {
-                enableTools: true,
+                enableTools: false,           // **CHANGED**: Default to false for streaming mode
                 enableRAG: false,
-                enableStreaming: true,
+                enableStreaming: true,        // **CHANGED**: Default to streaming mode
                 enableVision: true,
-                autoModelSelection: true,
-                enableMCP: true
+                autoModelSelection: false,    // **CHANGED**: Default to manual model selection
+                enableMCP: false              // **CHANGED**: Default to false for streaming mode
               },
               mcp: {
                 enableTools: true,
@@ -539,7 +539,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 maxToolCalls: 5
               },
               autonomousAgent: {
-                enabled: true,
+                enabled: false,               // **CHANGED**: Default to false for streaming mode
                 maxRetries: 3,
                 retryDelay: 1000,
                 enableSelfCorrection: true,
@@ -645,6 +645,31 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const handleSendMessage = useCallback(async (content: string, attachments?: ClaraFileAttachment[]) => {
     if (!content.trim() && (!attachments || attachments.length === 0)) return;
     if (!currentSession || !sessionConfig.aiConfig) return;
+
+    // **NEW**: Check if models are available before sending
+    if (models.length === 0) {
+      addErrorNotification(
+        'No Models Available',
+        'Please download and configure AI models before sending messages. Go to Settings → Model Manager to get started.',
+        8000
+      );
+      return;
+    }
+
+    // **NEW**: Check if current provider has any models selected
+    const currentProviderModels = models.filter(m => m.provider === sessionConfig.aiConfig?.provider);
+    const hasSelectedModel = sessionConfig.aiConfig?.models?.text || 
+                            sessionConfig.aiConfig?.models?.vision || 
+                            sessionConfig.aiConfig?.models?.code;
+    
+    if (currentProviderModels.length === 0 || !hasSelectedModel) {
+      addErrorNotification(
+        'No Model Selected',
+        'Please select at least one model for the current provider in Advanced Options, or go to Settings → Model Manager to download models.',
+        8000
+      );
+      return;
+    }
 
     // **CRITICAL ENFORCEMENT**: Check streaming vs autonomous mode before sending
     // When streaming mode is enabled, ALWAYS disable autonomous agent and tools
@@ -1009,7 +1034,7 @@ Would you like me to help with text-only responses for now?`,
         claraBackgroundService.decrementBackgroundActivity();
       }
     }
-  }, [currentSession, messages, sessionConfig, isVisible]);
+  }, [currentSession, messages, sessionConfig, isVisible, models]);
 
   // Handle session selection
   const handleSelectSession = useCallback(async (sessionId: string) => {
@@ -1263,12 +1288,12 @@ Would you like me to help with text-only responses for now?`,
             topK: 40
           },
           features: {
-            enableTools: true,
+            enableTools: false,           // **CHANGED**: Default to false for streaming mode
             enableRAG: false,
-            enableStreaming: true,
+            enableStreaming: true,        // **CHANGED**: Default to streaming mode
             enableVision: true,
-            autoModelSelection: true,
-            enableMCP: true
+            autoModelSelection: false,    // **CHANGED**: Default to manual model selection
+            enableMCP: false              // **CHANGED**: Default to false for streaming mode
           },
           mcp: {
             enableTools: true,
@@ -1278,7 +1303,7 @@ Would you like me to help with text-only responses for now?`,
             maxToolCalls: 5
           },
           autonomousAgent: {
-            enabled: true,
+            enabled: false,               // **CHANGED**: Default to false for streaming mode
             maxRetries: 3,
             retryDelay: 1000,
             enableSelfCorrection: true,

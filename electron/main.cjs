@@ -7,9 +7,11 @@ const { spawn } = require('child_process');
 const DockerSetup = require('./dockerSetup.cjs');
 const { setupAutoUpdater, checkForUpdates, getUpdateInfo, checkLlamacppUpdates, updateLlamacppBinaries } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
+const LoadingScreen = require('./loadingScreen.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
+const WatchdogService = require('./watchdogService.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
@@ -33,9 +35,11 @@ if (process.platform === 'darwin') {
 // Global variables
 let mainWindow;
 let splash;
+let loadingScreen;
 let dockerSetup;
 let llamaSwapService;
 let mcpService;
+let watchdogService;
 let updateService;
 
 // Track active downloads for stop functionality
@@ -441,6 +445,103 @@ function registerLlamaSwapHandlers() {
       return result;
     } catch (error) {
       log.error('Error loading performance settings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Watchdog service handlers
+  ipcMain.handle('watchdog-get-services-status', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      return { success: true, services: watchdogService.getServicesStatus() };
+    } catch (error) {
+      log.error('Error getting watchdog services status:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-get-overall-health', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      return { success: true, health: watchdogService.getOverallHealth() };
+    } catch (error) {
+      log.error('Error getting overall health:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-perform-manual-health-check', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      const status = await watchdogService.performManualHealthCheck();
+      return { success: true, services: status };
+    } catch (error) {
+      log.error('Error performing manual health check:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-update-config', async (event, newConfig) => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      watchdogService.updateConfig(newConfig);
+      return { success: true };
+    } catch (error) {
+      log.error('Error updating watchdog config:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-reset-failure-counts', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      watchdogService.resetFailureCounts();
+      return { success: true };
+    } catch (error) {
+      log.error('Error resetting failure counts:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-start', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      watchdogService.start();
+      return { success: true };
+    } catch (error) {
+      log.error('Error starting watchdog:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('watchdog-stop', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      watchdogService.stop();
+      return { success: true };
+    } catch (error) {
+      log.error('Error stopping watchdog:', error);
       return { success: false, error: error.message };
     }
   });
@@ -1393,9 +1494,8 @@ function registerHandlers() {
 
 async function initializeApp() {
   try {
-    // Show splash screen
-    splash = new SplashScreen();
-    splash.setStatus('Starting Clara...', 'info');
+    // Show loading screen
+    loadingScreen = new LoadingScreen();
     
     // Register handlers for various app functions
     registerHandlers();
@@ -1417,9 +1517,9 @@ async function initializeApp() {
     dockerSetup = new DockerSetup();
     
     // Setup Docker environment
-    splash.setStatus('Setting up Docker environment...', 'info');
+    loadingScreen.setStatus('Setting up Docker environment...', 'info');
     const success = await dockerSetup.setup((status, type = 'info') => {
-      splash.setStatus(status, type);
+      loadingScreen.setStatus(status, type);
       
       if (type === 'error') {
         dialog.showErrorBox('Setup Error', status);
@@ -1427,36 +1527,36 @@ async function initializeApp() {
     });
 
     if (!success) {
-      splash.setStatus('Docker not available. Some features may be limited.', 'warning');
+      loadingScreen.setStatus('Docker not available. Some features may be limited.', 'warning');
       log.warn('Docker setup incomplete. Continuing without Docker services.');
       // Continue with app initialization even without Docker
     }
 
     // Initialize llama-swap service
-    splash.setStatus('Initializing LLM service...', 'info');
+    loadingScreen.setStatus('Initializing LLM service...', 'info');
     try {
       // Start llama-swap service
       const llamaSwapSuccess = await llamaSwapService.start();
       if (llamaSwapSuccess) {
-        splash.setStatus('LLM service started successfully', 'success');
+        loadingScreen.setStatus('LLM service started successfully', 'success');
         log.info('Llama-swap service started successfully');
       } else {
-        splash.setStatus('LLM service failed to start (will be available for manual start)', 'warning');
+        loadingScreen.setStatus('LLM service failed to start (will be available for manual start)', 'warning');
         log.warn('Llama-swap service failed to start during initialization');
       }
     } catch (llamaSwapError) {
-      splash.setStatus('LLM service initialization failed (will be available for manual start)', 'warning');
+      loadingScreen.setStatus('LLM service initialization failed (will be available for manual start)', 'warning');
       log.error('Error initializing llama-swap service:', llamaSwapError);
     }
 
     // Initialize MCP service
-    splash.setStatus('Initializing MCP service...', 'info');
+    loadingScreen.setStatus('Initializing MCP service...', 'info');
     try {
       log.info('MCP service initialized successfully');
-      splash.setStatus('MCP service initialized', 'success');
+      loadingScreen.setStatus('MCP service initialized', 'success');
       
       // Auto-start previously running servers
-      splash.setStatus('Restoring MCP servers...', 'info');
+      loadingScreen.setStatus('Restoring MCP servers...', 'info');
       try {
         const restoreResults = await mcpService.startPreviouslyRunningServers();
         const successCount = restoreResults.filter(r => r.success).length;
@@ -1464,33 +1564,64 @@ async function initializeApp() {
         
         if (totalCount > 0) {
           log.info(`Restored ${successCount}/${totalCount} previously running MCP servers`);
-          splash.setStatus(`Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+          loadingScreen.setStatus(`Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
         } else {
-          splash.setStatus('No MCP servers to restore', 'info');
+          loadingScreen.setStatus('No MCP servers to restore', 'info');
         }
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
-        splash.setStatus('Failed to restore some MCP servers', 'warning');
+        loadingScreen.setStatus('Failed to restore some MCP servers', 'warning');
       }
     } catch (mcpError) {
-      splash.setStatus('MCP service initialization failed', 'warning');
+      loadingScreen.setStatus('MCP service initialization failed', 'warning');
       log.error('Error initializing MCP service:', mcpError);
     }
 
-    // Docker setup successful, create the main window immediately
-    log.info('Docker setup successful. Creating main window...');
-    splash.setStatus('Starting main application...', 'success');
-    createMainWindow();
+    // Initialize Watchdog service
+    loadingScreen.setStatus('Initializing Watchdog service...', 'info');
+    try {
+      watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
+      
+      // Set up event listeners for watchdog events
+      watchdogService.on('serviceRestored', (serviceKey, service) => {
+        log.info(`Watchdog: ${service.name} has been restored`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-restored', { serviceKey, service: service.name });
+        }
+      });
+      
+      watchdogService.on('serviceFailed', (serviceKey, service) => {
+        log.error(`Watchdog: ${service.name} has failed after maximum retry attempts`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-failed', { serviceKey, service: service.name });
+        }
+      });
+      
+      watchdogService.on('serviceRestarted', (serviceKey, service) => {
+        log.info(`Watchdog: ${service.name} has been restarted successfully`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-restarted', { serviceKey, service: service.name });
+        }
+      });
+      
+      // Start the watchdog monitoring
+      watchdogService.start();
+      
+      log.info('Watchdog service initialized and started successfully');
+      loadingScreen.setStatus('Watchdog service started', 'success');
+    } catch (watchdogError) {
+      loadingScreen.setStatus('Watchdog service initialization failed', 'warning');
+      log.error('Error initializing Watchdog service:', watchdogError);
+    }
 
-    // Close splash screen after a short delay (allowing main window to start loading)
-    setTimeout(() => {
-      splash?.close();
-      splash = null; // Release reference
-    }, 2000); // Adjust delay if needed
+    // Setup complete, create the main window
+    log.info('Services initialized. Creating main window...');
+    loadingScreen.setStatus('Starting main application...', 'success');
+    createMainWindow();
     
   } catch (error) {
     log.error(`Initialization error: ${error.message}`, error);
-    splash?.setStatus(`Error: ${error.message}`, 'error');
+    loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
     
     if (error.message.includes('Docker is not running')) {
       const downloadLink = error.message.split('\n')[1];
@@ -1520,14 +1651,14 @@ async function initializeApp() {
         if (response === 0) {
           require('electron').shell.openExternal(downloadLink);
         }
-        splash?.close();
+        loadingScreen?.close();
         app.quit();
       });
     } else {
       dialog.showErrorBox('Setup Error', error.message);
-      // Keep splash open on error for a bit before quitting
+      // Keep loading screen open on error for a bit before quitting
       setTimeout(() => {
-        splash?.close();
+        loadingScreen?.close();
         app.quit();
       }, 4000);
     }
@@ -1538,8 +1669,7 @@ function createMainWindow() {
   if (mainWindow) return;
   
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
+    fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -1548,7 +1678,8 @@ function createMainWindow() {
       sandbox: false
     },
     show: false,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: '#0f0f23', // Dark background to match loading screen
+    frame: true
   });
 
   // Create and set the application menu
@@ -1609,13 +1740,60 @@ function createMainWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+  // Wait for DOM content to be fully loaded before showing
+  mainWindow.webContents.once('dom-ready', () => {
+    log.info('Main window DOM ready, preparing to show...');
     
-    // Initialize auto-updater when window is ready
-    if (process.env.NODE_ENV !== 'development') {
-      setupAutoUpdater(mainWindow);
+    // Additional delay to ensure React app is fully rendered
+    setTimeout(() => {
+      // Check if loading screen is still valid before proceeding
+      if (loadingScreen && loadingScreen.isValid()) {
+        log.info('Notifying loading screen that main window is ready');
+        loadingScreen.notifyMainWindowReady();
+        
+        // Wait for loading screen fade-out before showing main window
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            log.info('Showing main window');
+            mainWindow.show();
+          }
+          
+          // Clean up loading screen
+          if (loadingScreen) {
+            loadingScreen.close();
+            loadingScreen = null;
+          }
+        }, 1500); // Longer delay to ensure smooth fade out
+      } else {
+        // If no loading screen, show immediately
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+        }
+      }
+      
+      // Initialize auto-updater when window is ready
+      if (process.env.NODE_ENV !== 'development') {
+        setupAutoUpdater(mainWindow);
+      }
+    }, 2000); // Wait for React to fully initialize
+  });
+
+  // Fallback: Show window when ready (in case dom-ready doesn't fire)
+  mainWindow.once('ready-to-show', () => {
+    log.info('Main window ready-to-show event fired');
+    // Only show if not already shown by dom-ready handler
+    if (mainWindow && !mainWindow.isVisible()) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+          log.info('Fallback: Showing main window via ready-to-show');
+          mainWindow.show();
+          
+          if (loadingScreen) {
+            loadingScreen.close();
+            loadingScreen = null;
+          }
+        }
+      }, 3000);
     }
   });
 
@@ -1629,6 +1807,16 @@ app.whenReady().then(initializeApp);
 
 // Quit when all windows are closed
 app.on('window-all-closed', async () => {
+  // Stop watchdog service first
+  if (watchdogService) {
+    try {
+      log.info('Stopping watchdog service...');
+      watchdogService.stop();
+    } catch (error) {
+      log.error('Error stopping watchdog service:', error);
+    }
+  }
+
   // Save MCP server running state before stopping
   if (mcpService) {
     try {
@@ -1805,5 +1993,22 @@ ipcMain.on('backend-status', (event, status) => {
 ipcMain.on('python-status', (event, status) => {
   if (mainWindow) {
     mainWindow.webContents.send('python-status', status);
+  }
+});
+
+// Handle loading screen completion
+ipcMain.on('loading-complete', () => {
+  log.info('Loading screen fade-out complete');
+  if (loadingScreen) {
+    loadingScreen.close();
+    loadingScreen = null;
+  }
+});
+
+// Handle React app ready signal
+ipcMain.on('react-app-ready', () => {
+  log.info('React app fully initialized and ready');
+  if (loadingScreen && loadingScreen.isValid()) {
+    loadingScreen.notifyMainWindowReady();
   }
 });
