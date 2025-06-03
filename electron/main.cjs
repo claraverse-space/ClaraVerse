@@ -989,13 +989,14 @@ function registerModelManagerHandlers() {
   });
 
   // Enhanced download with dependencies
-  ipcMain.handle('download-model-with-dependencies', async (_event, { modelId, fileName, allFiles }) => {
+  ipcMain.handle('download-model-with-dependencies', async (_event, { modelId, fileName, allFiles, downloadPath }) => {
     try {
       const fs = require('fs');
       const path = require('path');
       const os = require('os');
       
-      const modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
+      // Use custom download path if provided, otherwise use default
+      const modelsDir = downloadPath || path.join(os.homedir(), '.clara', 'llama-models');
       if (!fs.existsSync(modelsDir)) {
         fs.mkdirSync(modelsDir, { recursive: true });
       }
@@ -1061,7 +1062,7 @@ function registerModelManagerHandlers() {
   });
 
   // Download model from Hugging Face
-  ipcMain.handle('download-huggingface-model', async (_event, { modelId, fileName }) => {
+  ipcMain.handle('download-huggingface-model', async (_event, { modelId, fileName, downloadPath }) => {
     try {
       const fs = require('fs');
       const https = require('https');
@@ -1069,8 +1070,8 @@ function registerModelManagerHandlers() {
       const path = require('path');
       const os = require('os');
       
-      // Ensure models directory exists
-      const modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
+      // Use custom download path if provided, otherwise use default
+      const modelsDir = downloadPath || path.join(os.homedir(), '.clara', 'llama-models');
       if (!fs.existsSync(modelsDir)) {
         fs.mkdirSync(modelsDir, { recursive: true });
       }

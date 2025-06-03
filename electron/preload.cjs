@@ -158,8 +158,8 @@ contextBridge.exposeInMainWorld('llamaSwap', {
 // Add model management API
 contextBridge.exposeInMainWorld('modelManager', {
   searchHuggingFaceModels: (query, limit) => ipcRenderer.invoke('search-huggingface-models', { query, limit }),
-  downloadModel: (modelId, fileName) => ipcRenderer.invoke('download-huggingface-model', { modelId, fileName }),
-  downloadModelWithDependencies: (modelId, fileName, allFiles) => ipcRenderer.invoke('download-model-with-dependencies', { modelId, fileName, allFiles }),
+  downloadModel: (modelId, fileName, downloadPath) => ipcRenderer.invoke('download-huggingface-model', { modelId, fileName, downloadPath }),
+  downloadModelWithDependencies: (modelId, fileName, allFiles, downloadPath) => ipcRenderer.invoke('download-model-with-dependencies', { modelId, fileName, allFiles, downloadPath }),
   getLocalModels: () => ipcRenderer.invoke('get-local-models'),
   deleteLocalModel: (filePath) => ipcRenderer.invoke('delete-local-model', { filePath }),
   stopDownload: (fileName) => ipcRenderer.invoke('stop-download', { fileName }),

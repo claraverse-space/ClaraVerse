@@ -1,5 +1,6 @@
-# Auto-generated llama-swap configuration
+# Auto-generated llama-swap configuration (EXAMPLE - original file would be config.yaml)
 # Models directory: /Users/temme/.clara/llama-models
+
 healthCheckTimeout: 30
 logLevel: info
 

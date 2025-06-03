@@ -88,6 +88,8 @@ declare global {
       setCustomModelPath: (path: string | null) => Promise<{ success: boolean; error?: string }>;
       getCustomModelPaths: () => Promise<string[]>;
       scanCustomPathModels: (path: string) => Promise<{ success: boolean; models?: any[]; error?: string }>;
+      downloadHuggingFaceModel: (modelId: string, fileName: string, downloadPath: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      downloadModelWithDependencies: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>, downloadPath: string) => Promise<{ success: boolean; results?: any[]; downloadedFiles?: string[]; error?: string }>;
     };
     modelManager: {
       searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;
