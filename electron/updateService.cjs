@@ -834,7 +834,24 @@ class LlamacppUpdateService {
     const path = require('path');
     const fs = require('fs').promises;
     const fsSync = require('fs');
-    const AdmZip = require('adm-zip');
+    
+    // Robust require for adm-zip with fallback
+    let AdmZip;
+    try {
+      AdmZip = require('adm-zip');
+    } catch (requireError) {
+      // Try alternative require paths
+      try {
+        const mainPath = require.resolve('adm-zip', { paths: [process.cwd(), __dirname, path.join(__dirname, '..', 'node_modules')] });
+        AdmZip = require(mainPath);
+      } catch (fallbackError) {
+        // If adm-zip is not available, try using built-in modules for Windows
+        if (this.platform === 'win32') {
+          return await this.downloadAndInstallBinariesWindows(updateInfo);
+        }
+        throw new Error(`Cannot find 'adm-zip' module. Please install it: npm install adm-zip. Error: ${requireError.message}`);
+      }
+    }
     
     try {
       logger.info(`Downloading llama.cpp binaries from: ${updateInfo.downloadUrl}`);
@@ -856,75 +873,386 @@ class LlamacppUpdateService {
       const extractDir = path.join(tempDir, 'extracted');
       zip.extractAllTo(extractDir, true);
       
-      // Find the platform directory to update
-      const platformInfo = this.getPlatformInfo();
-      const targetPlatformDir = path.join(this.binariesPath, platformInfo.platformDir);
+      // ===== STOP ALL SERVICES BEFORE UPDATING =====
+      logger.info('🛑 Stopping all services before binary update...');
+      const servicesWereStopped = await this.stopAllServicesForUpdate();
       
-      // Backup current official llama.cpp files only (preserving Clara's custom files)
-      const backupDir = path.join(this.binariesPath, `${platformInfo.platformDir}-backup-${Date.now()}`);
-      if (fsSync.existsSync(targetPlatformDir)) {
-        await fs.mkdir(backupDir, { recursive: true });
+      try {
+        // Find the platform directory to update
+        const platformInfo = this.getPlatformInfo();
+        const targetPlatformDir = path.join(this.binariesPath, platformInfo.platformDir);
         
-        // Only backup official llama.cpp files, leave Clara's custom files alone
-        const files = await fs.readdir(targetPlatformDir);
-        for (const file of files) {
-          // Only backup official llama.cpp files (not Clara's custom binaries)
-          if (this.isOfficialLlamacppFile(file)) {
-            const sourcePath = path.join(targetPlatformDir, file);
-            const backupPath = path.join(backupDir, file);
-            
-            if (fsSync.existsSync(sourcePath)) {
-              await fs.copyFile(sourcePath, backupPath);
-              logger.info(`Backed up ${file} to backup directory`);
+        // Backup current official llama.cpp files only (preserving Clara's custom files)
+        const backupDir = path.join(this.binariesPath, `${platformInfo.platformDir}-backup-${Date.now()}`);
+        if (fsSync.existsSync(targetPlatformDir)) {
+          await fs.mkdir(backupDir, { recursive: true });
+          
+          // Only backup official llama.cpp files, leave Clara's custom files alone
+          const files = await fs.readdir(targetPlatformDir);
+          for (const file of files) {
+            // Only backup official llama.cpp files (not Clara's custom binaries)
+            if (this.isOfficialLlamacppFile(file)) {
+              const sourcePath = path.join(targetPlatformDir, file);
+              const backupPath = path.join(backupDir, file);
+              
+              if (fsSync.existsSync(sourcePath)) {
+                await fs.copyFile(sourcePath, backupPath);
+                logger.info(`Backed up ${file} to backup directory`);
+              }
             }
           }
         }
-      }
-      
-      // Ensure target directory exists
-      await fs.mkdir(targetPlatformDir, { recursive: true });
-      
-      // Find and copy official llama.cpp files from extracted files
-      const extractedFiles = await this.findOfficialFilesInExtracted(extractDir);
-      
-      if (extractedFiles.length === 0) {
-        throw new Error('No official llama.cpp files found in the downloaded archive');
-      }
-      
-      for (const [sourceFile, targetName] of extractedFiles) {
-        const targetPath = path.join(targetPlatformDir, targetName);
-        await fs.copyFile(sourceFile, targetPath);
         
-        // Make executable for binary files on Unix systems
-        if (this.platform !== 'win32' && this.isExecutableFile(targetName)) {
-          await fs.chmod(targetPath, 0o755);
+        // Ensure target directory exists
+        await fs.mkdir(targetPlatformDir, { recursive: true });
+        
+        // Find and copy official llama.cpp files from extracted files
+        const extractedFiles = await this.findOfficialFilesInExtracted(extractDir);
+        
+        if (extractedFiles.length === 0) {
+          throw new Error('No official llama.cpp files found in the downloaded archive');
         }
         
-        logger.info(`Installed official file: ${targetName}`);
+        for (const [sourceFile, targetName] of extractedFiles) {
+          const targetPath = path.join(targetPlatformDir, targetName);
+          await fs.copyFile(sourceFile, targetPath);
+          
+          // Make executable for binary files on Unix systems
+          if (this.platform !== 'win32' && this.isExecutableFile(targetName)) {
+            await fs.chmod(targetPath, 0o755);
+          }
+          
+          logger.info(`Installed official file: ${targetName}`);
+        }
+        
+        // Save version info
+        const versionFile = path.join(this.binariesPath, 'version.txt');
+        await fs.writeFile(versionFile, updateInfo.latestVersion);
+        
+        // Validate the installation by testing the main binary
+        await this.validateInstallation(targetPlatformDir);
+        
+        logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}`);
+        logger.info(`Clara's custom binaries (like llama-swap) were preserved and not modified`);
+        
+      } finally {
+        // ===== RESTART SERVICES AFTER UPDATE =====
+        if (servicesWereStopped) {
+          logger.info('🔄 Restarting services after binary update...');
+          await this.restartAllServicesAfterUpdate();
+        }
       }
-      
-      // Save version info
-      const versionFile = path.join(this.binariesPath, 'version.txt');
-      await fs.writeFile(versionFile, updateInfo.latestVersion);
-      
-      // Validate the installation by testing the main binary
-      await this.validateInstallation(targetPlatformDir);
       
       // Cleanup
       await fs.rm(tempDir, { recursive: true, force: true });
       
-      logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}`);
-      logger.info(`Clara's custom binaries (like llama-swap) were preserved and not modified`);
-      
       return { 
         success: true, 
-        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved.`,
+        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`,
         version: updateInfo.latestVersion
       };
       
     } catch (error) {
       logger.error('Error during binary installation:', error);
       throw new Error(`Installation failed: ${error.message}`);
+    }
+  }
+
+  // Windows-specific binary update using built-in modules if adm-zip fails
+  async downloadAndInstallBinariesWindows(updateInfo) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    const fsSync = require('fs');
+    const { spawn } = require('child_process');
+    
+    try {
+      logger.info(`Downloading llama.cpp binaries for Windows from: ${updateInfo.downloadUrl}`);
+      
+      // Download the zip file
+      const response = await makeRobustRequest(updateInfo.downloadUrl);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      
+      // Create temporary file
+      const tempDir = path.join(require('os').tmpdir(), 'clara-llamacpp-update');
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempZipPath = path.join(tempDir, 'llamacpp-binaries.zip');
+      
+      await fs.writeFile(tempZipPath, buffer);
+      logger.info(`Downloaded binaries to: ${tempZipPath}`);
+      
+      // Use Windows built-in extract if available, or try PowerShell
+      const extractDir = path.join(tempDir, 'extracted');
+      await fs.mkdir(extractDir, { recursive: true });
+      
+      // Try PowerShell extraction first
+      const success = await this.extractWithPowerShell(tempZipPath, extractDir);
+      
+      if (!success) {
+        // Fallback to manual extraction
+        throw new Error('Could not extract zip file. Please ensure adm-zip package is properly installed.');
+      }
+      
+      // ===== STOP ALL SERVICES BEFORE UPDATING =====
+      logger.info('🛑 Stopping all services before binary update (Windows fallback)...');
+      const servicesWereStopped = await this.stopAllServicesForUpdate();
+      
+      try {
+        // Continue with the same logic as the main function
+        const platformInfo = this.getPlatformInfo();
+        const targetPlatformDir = path.join(this.binariesPath, platformInfo.platformDir);
+        
+        // Backup current official llama.cpp files only (preserving Clara's custom files)
+        const backupDir = path.join(this.binariesPath, `${platformInfo.platformDir}-backup-${Date.now()}`);
+        if (fsSync.existsSync(targetPlatformDir)) {
+          await fs.mkdir(backupDir, { recursive: true });
+          
+          // Only backup official llama.cpp files, leave Clara's custom files alone
+          const files = await fs.readdir(targetPlatformDir);
+          for (const file of files) {
+            if (this.isOfficialLlamacppFile(file)) {
+              const sourcePath = path.join(targetPlatformDir, file);
+              const backupPath = path.join(backupDir, file);
+              
+              if (fsSync.existsSync(sourcePath)) {
+                await fs.copyFile(sourcePath, backupPath);
+                logger.info(`Backed up ${file} to backup directory`);
+              }
+            }
+          }
+        }
+        
+        // Ensure target directory exists
+        await fs.mkdir(targetPlatformDir, { recursive: true });
+        
+        // Find and copy official llama.cpp files from extracted files
+        const extractedFiles = await this.findOfficialFilesInExtracted(extractDir);
+        
+        if (extractedFiles.length === 0) {
+          throw new Error('No official llama.cpp files found in the downloaded archive');
+        }
+        
+        for (const [sourceFile, targetName] of extractedFiles) {
+          const targetPath = path.join(targetPlatformDir, targetName);
+          await fs.copyFile(sourceFile, targetPath);
+          logger.info(`Installed official file: ${targetName}`);
+        }
+        
+        // Save version info
+        const versionFile = path.join(this.binariesPath, 'version.txt');
+        await fs.writeFile(versionFile, updateInfo.latestVersion);
+        
+        // Validate the installation
+        await this.validateInstallation(targetPlatformDir);
+        
+        logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion} (Windows fallback method)`);
+        
+      } finally {
+        // ===== RESTART SERVICES AFTER UPDATE =====
+        if (servicesWereStopped) {
+          logger.info('🔄 Restarting services after binary update (Windows fallback)...');
+          await this.restartAllServicesAfterUpdate();
+        }
+      }
+      
+      // Cleanup
+      await fs.rm(tempDir, { recursive: true, force: true });
+      
+      return { 
+        success: true, 
+        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`,
+        version: updateInfo.latestVersion
+      };
+      
+    } catch (error) {
+      logger.error('Error during Windows binary installation:', error);
+      throw new Error(`Windows installation failed: ${error.message}`);
+    }
+  }
+
+  // Extract zip using PowerShell on Windows
+  async extractWithPowerShell(zipPath, extractPath) {
+    return new Promise((resolve) => {
+      const powerShellCommand = `
+        try {
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory('${zipPath}', '${extractPath}')
+          Write-Output "SUCCESS"
+        } catch {
+          Write-Output "ERROR: $($_.Exception.Message)"
+          exit 1
+        }
+      `;
+      
+      const powerShell = spawn('powershell', [
+        '-Command', powerShellCommand
+      ], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      let output = '';
+      let errorOutput = '';
+      
+      powerShell.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      powerShell.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      powerShell.on('close', (code) => {
+        if (code === 0 && output.includes('SUCCESS')) {
+          logger.info('Successfully extracted using PowerShell');
+          resolve(true);
+        } else {
+          logger.warn('PowerShell extraction failed:', errorOutput || output);
+          resolve(false);
+        }
+      });
+      
+      powerShell.on('error', (error) => {
+        logger.warn('PowerShell extraction error:', error.message);
+        resolve(false);
+      });
+    });
+  }
+
+  // Stop all services that might be using llama.cpp binaries
+  async stopAllServicesForUpdate() {
+    const stoppedServices = [];
+    
+    try {
+      // Get IPC access to communicate with main process
+      const { ipcMain } = require('electron');
+      
+      // Try to stop llama swap service
+      try {
+        logger.info('Stopping LlamaSwap service...');
+        const llamaSwapService = require('./llamaSwapService.cjs');
+        if (llamaSwapService && typeof llamaSwapService.stop === 'function') {
+          await llamaSwapService.stop();
+          stoppedServices.push('llamaSwap');
+          logger.info('✅ LlamaSwap service stopped');
+        }
+      } catch (error) {
+        logger.warn('Could not stop LlamaSwap service:', error.message);
+      }
+      
+      // Try to stop any Python backend services
+      try {
+        logger.info('Stopping Python backend services...');
+        // Send signal to main process to stop Python services
+        const { BrowserWindow } = require('electron');
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('stop-python-services');
+          stoppedServices.push('python');
+          logger.info('✅ Python backend services stop signal sent');
+        }
+      } catch (error) {
+        logger.warn('Could not stop Python services:', error.message);
+      }
+      
+      // Try to stop any model server processes
+      try {
+        logger.info('Stopping model server processes...');
+        
+        // Kill any llama-server processes that might be running
+        if (this.platform === 'win32') {
+          const { spawn } = require('child_process');
+          
+          // Try to gracefully stop llama-server processes
+          const taskkill = spawn('taskkill', ['/F', '/IM', 'llama-server.exe'], { 
+            stdio: 'ignore',
+            windowsHide: true 
+          });
+          
+          await new Promise((resolve) => {
+            taskkill.on('close', () => resolve());
+            setTimeout(resolve, 3000); // Don't wait forever
+          });
+          
+          stoppedServices.push('llama-server');
+          logger.info('✅ Windows llama-server processes stopped');
+        } else {
+          // Unix-like systems
+          const { spawn } = require('child_process');
+          
+          const pkill = spawn('pkill', ['-f', 'llama-server'], { 
+            stdio: 'ignore' 
+          });
+          
+          await new Promise((resolve) => {
+            pkill.on('close', () => resolve());
+            setTimeout(resolve, 3000); // Don't wait forever
+          });
+          
+          stoppedServices.push('llama-server');
+          logger.info('✅ Unix llama-server processes stopped');
+        }
+      } catch (error) {
+        logger.warn('Could not stop model server processes:', error.message);
+      }
+      
+      // Wait a bit for processes to fully release file handles
+      logger.info('⏳ Waiting for processes to release file handles...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      logger.info(`🛑 Stopped services: ${stoppedServices.join(', ')}`);
+      return stoppedServices.length > 0;
+      
+    } catch (error) {
+      logger.error('Error stopping services:', error);
+      return false;
+    }
+  }
+
+  // Restart services after update
+  async restartAllServicesAfterUpdate() {
+    try {
+      // Wait a moment for the system to settle
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Repair binary paths after update
+      try {
+        logger.info('🔧 Repairing binary paths after update...');
+        const LlamaSwapService = require('./llamaSwapService.cjs');
+        await LlamaSwapService.repairBinariesAfterUpdate();
+        logger.info('✅ Binary paths repaired after update');
+      } catch (repairError) {
+        logger.warn('Binary repair failed, but continuing with restart:', repairError.message);
+      }
+      
+      // Restart LlamaSwap service
+      try {
+        logger.info('Restarting LlamaSwap service...');
+        const llamaSwapService = require('./llamaSwapService.cjs');
+        if (llamaSwapService && typeof llamaSwapService.restart === 'function') {
+          await llamaSwapService.restart();
+          logger.info('✅ LlamaSwap service restarted');
+        }
+      } catch (error) {
+        logger.warn('Could not restart LlamaSwap service:', error.message);
+      }
+      
+      // Send signal to restart Python services
+      try {
+        logger.info('Restarting Python backend services...');
+        const { BrowserWindow } = require('electron');
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('restart-python-services');
+          logger.info('✅ Python backend services restart signal sent');
+        }
+      } catch (error) {
+        logger.warn('Could not restart Python services:', error.message);
+      }
+      
+      // The services will automatically start when needed, so we don't need to explicitly start model servers
+      logger.info('🔄 Service restart completed');
+      
+    } catch (error) {
+      logger.error('Error restarting services:', error);
     }
   }
 
@@ -1044,19 +1372,30 @@ class LlamacppUpdateService {
     
     const filesMap = [];
     
-    // All files we want to update
+    // All files we want to update - more comprehensive mapping
     const targetFiles = [
       // Main binaries
       ...(this.platform === 'win32' 
-        ? ['llama-server.exe', 'llama-cli.exe', 'llama-quantize.exe', 'llama-perplexity.exe']
-        : ['llama-server', 'llama-cli', 'llama-quantize', 'llama-perplexity']),
+        ? ['llama-server.exe', 'llama-cli.exe', 'llama-quantize.exe', 'llama-perplexity.exe', 'llama-bench.exe']
+        : ['llama-server', 'llama-cli', 'llama-quantize', 'llama-perplexity', 'llama-bench']),
       
-      // Supporting libraries based on platform
+      // Core libraries - ensure we get all variants
       ...(this.platform === 'darwin' 
         ? ['libllama.dylib', 'libggml.dylib', 'libggml-metal.dylib', 'libggml-cpu.dylib', 
            'libggml-base.dylib', 'libggml-blas.dylib', 'libggml-rpc.dylib', 'libmtmd.dylib', 'libmtmd_shared.dylib']
         : this.platform === 'win32'
-        ? ['llama.dll', 'ggml.dll', 'ggml-metal.dll', 'ggml-cpu.dll', 'ggml-base.dll', 'ggml-blas.dll', 'ggml-rpc.dll']
+        ? [
+            // Essential core libraries
+            'llama.dll', 'ggml.dll',
+            // GPU acceleration libraries  
+            'ggml-cuda.dll', 'ggml-metal.dll',
+            // CPU optimization libraries
+            'ggml-cpu.dll', 'ggml-base.dll', 'ggml-cpu-alderlake.dll', 'ggml-cpu-haswell.dll',
+            'ggml-cpu-icelake.dll', 'ggml-cpu-sandybridge.dll', 'ggml-cpu-sapphirerapids.dll',
+            'ggml-cpu-skylakex.dll', 'ggml-cpu-sse42.dll', 'ggml-cpu-x64.dll',
+            // Communication and other libraries
+            'ggml-rpc.dll', 'ggml-blas.dll'
+          ]
         : ['libllama.so', 'libggml.so', 'libggml-metal.so', 'libggml-cpu.so', 'libggml-base.so', 'libggml-blas.so', 'libggml-rpc.so']),
       
       // Common supporting files
@@ -1067,10 +1406,10 @@ class LlamacppUpdateService {
     
     // Required core files that must be present for a valid update
     const requiredFiles = this.platform === 'win32' 
-      ? ['llama-server.exe', 'llama.dll']
+      ? ['llama-server.exe', 'llama.dll', 'ggml.dll']
       : this.platform === 'darwin'
-      ? ['llama-server', 'libllama.dylib']
-      : ['llama-server', 'libllama.so'];
+      ? ['llama-server', 'libllama.dylib', 'libggml.dylib']
+      : ['llama-server', 'libllama.so', 'libggml.so'];
     
     async function searchDirectory(dir) {
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -1083,14 +1422,26 @@ class LlamacppUpdateService {
         } else if (entry.isFile()) {
           // Check if this file matches one of our target files
           for (const targetFile of targetFiles) {
-            const baseName = targetFile.replace(/\.(exe|dylib|dll|so)$/, '');
-            
-            if (entry.name === targetFile || 
-                entry.name === baseName ||
-                (entry.name.includes(baseName) && !entry.name.includes('swap'))) {
-              // Use the original target file name for consistency
+            // Direct name match (preferred)
+            if (entry.name === targetFile) {
               filesMap.push([fullPath, targetFile]);
               break;
+            }
+            
+            // Pattern-based matching for more flexible detection
+            const baseName = targetFile.replace(/\.(exe|dylib|dll|so)$/, '');
+            
+            // Handle versioned or prefix-modified binaries
+            if ((entry.name.includes(baseName) && !entry.name.includes('swap')) ||
+                (targetFile.includes('ggml') && entry.name.includes('ggml') && 
+                 entry.name.replace(/\.(dll|dylib|so)$/, '') === baseName)) {
+              
+              // Double-check we don't have this target file already mapped
+              const alreadyMapped = filesMap.some(([, mappedTarget]) => mappedTarget === targetFile);
+              if (!alreadyMapped) {
+                filesMap.push([fullPath, targetFile]);
+                break;
+              }
             }
           }
         }
@@ -1105,11 +1456,24 @@ class LlamacppUpdateService {
     
     if (missingRequired.length > 0) {
       logger.warn(`Missing required files for complete update: ${missingRequired.join(', ')}`);
+      logger.warn(`Found files: ${foundFiles.join(', ')}`);
       logger.warn('This might cause compatibility issues. Skipping update.');
       throw new Error(`Incomplete update package: missing required files ${missingRequired.join(', ')}`);
     }
     
-    logger.info(`Found ${filesMap.length} official files for update: ${foundFiles.join(', ')}`);
+    // Enhanced validation: ensure we have at least the minimum set of libraries
+    const essentialLibs = this.platform === 'win32' 
+      ? ['ggml.dll', 'llama.dll']
+      : this.platform === 'darwin'
+      ? ['libggml.dylib', 'libllama.dylib']  
+      : ['libggml.so', 'libllama.so'];
+    
+    const missingEssential = essentialLibs.filter(lib => !foundFiles.includes(lib));
+    if (missingEssential.length > 0) {
+      throw new Error(`Critical libraries missing from update: ${missingEssential.join(', ')}`);
+    }
+    
+    logger.info(`Found ${filesMap.length} official files for update: ${foundFiles.slice(0, 10).join(', ')}${foundFiles.length > 10 ? '...' : ''}`);
     
     return filesMap;
   }
