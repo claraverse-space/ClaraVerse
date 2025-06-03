@@ -20,3 +20,12 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>
 );
+
+// Signal to electron main process that React app is ready
+// Use setTimeout to ensure the app is fully rendered and initialized
+setTimeout(() => {
+  if (window.electron?.sendReactReady) {
+    console.log('Signaling that React app is ready');
+    window.electron.sendReactReady();
+  }
+}, 1000); // Give React time to fully render

@@ -57,6 +57,7 @@ import WidgetContextMenu from './widget-components/WidgetContextMenu';
 import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
 import QuickChatWidget from './widget-components/QuickChatWidget';
+import FlowWidget from './widgets/FlowWidget';
 import ResizableWidget, { 
   WIDGET_SIZE_CONSTRAINTS, 
   DEFAULT_SIZE_CONSTRAINTS 
@@ -100,6 +101,7 @@ interface Widget {
   y?: number;
   w?: number;
   h?: number;
+  flowData?: any; // Add flowData property for FlowWidget
 }
 
 interface ContextMenuState {
@@ -351,6 +353,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         setTimeout(() => setShowToast(false), 3000);
         return prev;
       }
+      
+      // Clean up localStorage for specific widget types
+      if (id.startsWith('flow-widget-')) {
+        localStorage.removeItem(`flow_widget_${id}`);
+      }
+      
       return prev.filter(w => w.id !== id);
     });
   };
@@ -514,6 +522,26 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             onRemove={handleRemoveWidget}
           />
         );
+      case 'flow-widget':
+        return (
+          <ResizableWidget
+            key={widget.id}
+            className="rounded-2xl transition-all duration-300 hover:shadow-lg"
+            isRearrangeMode={isRearrangeMode}
+            onSizePresetSelect={handleSizePresetSelect}
+            currentSize={currentSize}
+            widgetType={widget.type}
+          >
+            <div className="h-full">
+              <FlowWidget
+                id={widget.id}
+                name={widget.name || 'Flow Widget'}
+                flowData={widget.flowData}
+                onRemove={handleRemoveWidget}
+              />
+            </div>
+          </ResizableWidget>
+        );
       default:
         console.warn('Unknown widget type:', widget.type);
         return null;
@@ -646,6 +674,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       systemPrompt,
       prePrompt
     }));
+    setShowAddWidget(false);
+    // Automatically enter rearrange mode after adding widget
+    setIsRearrangeMode(true);
+  };
+
+  const handleAddFlowWidget = (name: string, flowData: any) => {
+    const widgetId = `flow-widget-${Date.now()}`;
+    const newWidget: Widget = {
+      id: widgetId,
+      type: 'flow-widget',
+      name,
+      flowData,
+      order: widgets.length
+    };
+    setWidgets(prev => [...prev, newWidget]);
+    localStorage.setItem(`flow_widget_${widgetId}`, JSON.stringify({ name, flowData }));
     setShowAddWidget(false);
     // Automatically enter rearrange mode after adding widget
     setIsRearrangeMode(true);
@@ -898,9 +942,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         <AddWidgetModal
           onClose={() => setShowAddWidget(false)}
           onAddWidget={handleAddWidget}
-          onAddWebhookWidget={handleAddWebhookWidget}
-          onAddEmailWidget={handleAddEmailWidget}
-          onAddQuickChatWidget={handleAddQuickChatWidget}
+          onAddFlowWidget={handleAddFlowWidget}
           onResetDefault={() => {
             setWidgets(DEFAULT_WIDGETS);
             localStorage.setItem('dashboard_widgets', JSON.stringify(DEFAULT_WIDGETS));

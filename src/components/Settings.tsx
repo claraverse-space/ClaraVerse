@@ -12,6 +12,8 @@ import LocalModelsTab from './Settings/LocalModelsTab';
 import ServicesTab from './Settings/ServicesTab';
 import ExportCodeTab from './Settings/ExportCodeTab';
 import UpdatesTab from './Settings/UpdatesTab';
+import GPUDiagnostics from './GPUDiagnostics';
+import WatchdogStatus from './WatchdogStatus';
 
 type TabId = 'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers';
 
