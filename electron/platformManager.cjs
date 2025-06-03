@@ -62,10 +62,10 @@ class PlatformManager {
       },
       'linux-x64': {
         name: 'Linux (x64)',
-        binaries: ['llama-swap-linux-x64', 'llama-server'],
+        binaries: ['llama-swap-linux', 'llama-server'],
         libraries: ['*.so'],
         headers: ['*.h'],
-        supported: false // Will be added in future
+        supported: true // Enable Linux support since binaries are working
       },
       'linux-arm64': {
         name: 'Linux (ARM64)',
