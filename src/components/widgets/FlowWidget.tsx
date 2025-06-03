@@ -568,12 +568,9 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
             {!hasExecuted && (
               <div>
                 <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                  <span>Flow Inputs</span>
+                  {/* <span>Flow Inputs</span> */}
                   <span className="text-xs bg-blue-100/50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full backdrop-blur-sm">
                     {inputs.length} inputs
-                  </span>
-                  <span className="text-xs bg-purple-100/50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full backdrop-blur-sm">
-                    Real Execution
                   </span>
                 </h4>
                 <div className="space-y-4">
@@ -658,7 +655,7 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
                 ) : (
                   <>
                     <Play className="w-4 h-4" />
-                    Run Flow (Real Execution)
+                    Send
                   </>
                 )}
               </button>
@@ -688,7 +685,7 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
           )}
           {!isExecuting && !hasExecuted && (
             <p className="text-xs text-purple-600 dark:text-purple-400 mt-2 text-center font-medium">
-              🧠 Powered by Agent Studio - Real AI execution with Ollama
+              {/* 🧠 Powered by Agent Studio - Real AI execution with Ollama */}
             </p>
           )}
         </div>
