@@ -257,7 +257,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
         setIsInitialSetupComplete(true);
       } catch (err) {
-        setConnectionError('Failed to connect to comfyui-api.');
+        setConnectionError('Cannot connect to ComfyUI API. Please check your ComfyUI server is running and configure the correct URL in Settings.');
         setLoadingStatus(prev => ({ ...prev, connection: 'error', systemStats: 'error', sdModels: 'error', loras: 'error', vaes: 'error' }));
         setIsInitialSetupComplete(true);
       }
@@ -281,6 +281,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           return;
         }
       }
+      
+      // Check if we have a connection error before attempting generation
+      if (connectionError) {
+        setGenerationError('Cannot generate images: ComfyUI is not connected. Please check your ComfyUI server is running and configure the correct URL in Settings.');
+        return;
+      }
+      
       setMustSelectModel(false);
       setIsGenerating(true);
       // Build workflow JSON for comfyui-api
@@ -351,7 +358,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         }
       });
     } catch (err) {
-      setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+      const errorMessage = (err as Error)?.message || 'Unknown error';
+      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('connect')) {
+        setGenerationError(`Connection failed: Cannot reach ComfyUI server. Please check if ComfyUI is running and configure the correct URL in Settings.`);
+      } else {
+        setGenerationError(`Failed to generate image: ${errorMessage}`);
+      }
     } finally {
       setProgress(null);
       setIsGenerating(false);
@@ -459,7 +471,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Add enhance prompt handler
   const handleEnhancePrompt = async (currentPrompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }) => {
-    if (!isLLMConnected) return;
+    if (!isLLMConnected) {
+      setNotificationMessage('LLM is not connected. Please configure your Ollama or OpenAI settings to use prompt enhancement.');
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 5000);
+      return;
+    }
     
     setIsEnhancing(true);
     try {
@@ -531,9 +548,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     } catch (error) {
       console.error('Error enhancing prompt:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
+      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('connect')) {
+        setNotificationMessage('Cannot connect to LLM service. Please check your Ollama server is running or configure your OpenAI API key in Settings.');
+      } else {
+        setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
+      }
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 3000);
+      setTimeout(() => setShowNotification(false), 5000);
       throw error;
     } finally {
       setIsEnhancing(false);
@@ -655,6 +676,40 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         <div className="flex-1 overflow-hidden flex">
           <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
             <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
+              {/* Connection Status Warning */}
+              {(connectionError || !isLLMConnected) && (
+                <div className="bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Service Connection Issues</h3>
+                  </div>
+                  <div className="text-sm text-yellow-700 dark:text-yellow-400 space-y-2">
+                    {connectionError && (
+                      <p>• ComfyUI is not connected - Image generation is unavailable</p>
+                    )}
+                    {!isLLMConnected && (
+                      <p>• LLM service is not connected - Prompt enhancement is unavailable</p>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => onPageChange?.('settings')}
+                      className="text-sm bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded-md transition-colors"
+                    >
+                      Configure Settings
+                    </button>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="text-sm text-yellow-600 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-300 underline"
+                    >
+                      Retry Connection
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               <PromptArea
                 prompt={prompt}
                 setPrompt={setPrompt}
