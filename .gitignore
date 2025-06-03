@@ -80,3 +80,5 @@ testing_sdk/*
 sdk/node_modules/*
 
 clara-sdk-docs/*
+
+electron/llamacpp-binaries/config.yaml

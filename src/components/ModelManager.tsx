@@ -459,6 +459,19 @@ const ModelManager: React.FC = () => {
   const [modelManagerTab, setModelManagerTab] = useState<'discover' | 'library'>('discover');
   const [trendingFilter, setTrendingFilter] = useState<'all' | 'month' | 'week' | 'today'>('month');
   const [isSettingCustomPath, setIsSettingCustomPath] = useState(false);
+  
+  // Initialize downloadToCustomPath directly from localStorage to avoid race condition
+  const [downloadToCustomPath, setDownloadToCustomPath] = useState(() => {
+    try {
+      const savedSetting = localStorage.getItem('downloadToCustomPath');
+      console.log('Initializing download setting from localStorage:', savedSetting);
+      return savedSetting ? JSON.parse(savedSetting) : false;
+    } catch (error) {
+      console.error('Error initializing download setting from localStorage:', error);
+      return false;
+    }
+  });
+  
   const { customModelPath, setCustomModelPath } = useProviders();
 
   // UI state for notifications and confirmations
@@ -476,6 +489,28 @@ const ModelManager: React.FC = () => {
     onConfirm: () => void;
     onCancel: () => void;
   } | null>(null);
+
+  // Initial load of local models on mount
+  useEffect(() => {
+    // Add a small delay to ensure backend is ready and custom path is set
+    const timer = setTimeout(() => {
+      loadLocalModels();
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Save download setting to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      console.log('Saving download setting to localStorage:', downloadToCustomPath);
+      localStorage.setItem('downloadToCustomPath', JSON.stringify(downloadToCustomPath));
+      // Also save to sessionStorage as backup
+      sessionStorage.setItem('downloadToCustomPath', JSON.stringify(downloadToCustomPath));
+    } catch (error) {
+      console.error('Error saving download setting to localStorage:', error);
+    }
+  }, [downloadToCustomPath]);
 
   // Load local models on mount and set up download progress listener
   const loadLocalModels = async () => {
@@ -495,16 +530,6 @@ const ModelManager: React.FC = () => {
   useEffect(() => {
     loadLocalModels();
   }, [customModelPath]);
-
-  // Initial load of local models on mount
-  useEffect(() => {
-    // Add a small delay to ensure backend is ready and custom path is set
-    const timer = setTimeout(() => {
-      loadLocalModels();
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   // Load popular models on mount and when filter changes
   useEffect(() => {
@@ -640,18 +665,40 @@ const ModelManager: React.FC = () => {
     
     setDownloading(prev => new Set([...prev, fileName]));
     try {
-      const result = await window.modelManager.downloadModel(modelId, fileName);
+      // Pass custom download path if enabled and custom path is set
+      const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
+      
+      const result = await window.modelManager.downloadModel(modelId, fileName, downloadPath);
       if (result.success) {
         // Refresh local models
         const localResult = await window.modelManager.getLocalModels();
         if (localResult.success) {
           setLocalModels(localResult.models);
         }
+        
+        // Show success notification with download location
+        setNotification({
+          type: 'success',
+          title: 'Download Complete',
+          message: downloadPath 
+            ? `Model downloaded to custom directory: ${downloadPath}`
+            : 'Model downloaded to default directory'
+        });
       } else {
         console.error('Download failed:', result.error);
+        setNotification({
+          type: 'error',
+          title: 'Download Failed',
+          message: result.error || 'Unknown error occurred during download'
+        });
       }
     } catch (error) {
       console.error('Error downloading model:', error);
+      setNotification({
+        type: 'error',
+        title: 'Download Error',
+        message: 'An unexpected error occurred during download'
+      });
     } finally {
       setDownloading(prev => {
         const newSet = new Set(prev);
@@ -675,7 +722,10 @@ const ModelManager: React.FC = () => {
     setDownloading(prev => new Set([...prev, fileName]));
     
     try {
-      const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles);
+      // Pass custom download path if enabled and custom path is set
+      const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
+      
+      const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
         // Refresh local models
@@ -683,11 +733,30 @@ const ModelManager: React.FC = () => {
         if (localResult.success) {
           setLocalModels(localResult.models);
         }
+        
+        // Show success notification with download location
+        setNotification({
+          type: 'success',
+          title: 'Download Complete',
+          message: downloadPath 
+            ? `Model with dependencies downloaded to custom directory: ${downloadPath}`
+            : 'Model with dependencies downloaded to default directory'
+        });
       } else {
         console.error('Download with dependencies failed:', result.error);
+        setNotification({
+          type: 'error',
+          title: 'Download Failed',
+          message: result.error || 'Unknown error occurred during download with dependencies'
+        });
       }
     } catch (error) {
       console.error('Error downloading model with dependencies:', error);
+      setNotification({
+        type: 'error',
+        title: 'Download Error',
+        message: 'An unexpected error occurred during download with dependencies'
+      });
     } finally {
       // Clean up downloading state for all files that might have been downloaded
       setDownloading(prev => {
@@ -791,17 +860,9 @@ const ModelManager: React.FC = () => {
           // First, scan for models in the selected path
           if (window.llamaSwap?.scanCustomPathModels) {
             const scanResult = await window.llamaSwap.scanCustomPathModels(selectedPath);
-            if (scanResult.success && scanResult.models && scanResult.models.length >= 0) {
-              if (scanResult.models.length === 0) {
-                setNotification({
-                  type: 'error',
-                  title: 'No Models Found',
-                  message: `No .gguf model files found in the selected folder. Please select a folder containing .gguf model files.`
-                });
-                return;
-              }
-              
-              // Show confirmation dialog with proper UI
+            
+            if (scanResult.success && scanResult.models && scanResult.models.length > 0) {
+              // Models found, show confirmation dialog with model details
               setConfirmation({
                 title: 'Confirm Model Directory',
                 message: 'Do you want to use this folder as your custom model directory?',
@@ -824,7 +885,32 @@ const ModelManager: React.FC = () => {
                   setConfirmation(null);
                 }
               });
+            } else if (scanResult.success && (!scanResult.models || scanResult.models.length === 0)) {
+              // No models found, ask user if they still want to use this directory
+              setConfirmation({
+                title: 'No Models Found',
+                message: 'No GGUF models found in this directory. Do you still want to select it?',
+                modelCount: 0,
+                modelNames: ['You can add models to this directory later.'],
+                selectedPath,
+                onConfirm: async () => {
+                  setConfirmation(null);
+                  // Set the custom model path even though no models found
+                  await setCustomModelPath(selectedPath);
+                  
+                  // Show success notification
+                  setNotification({
+                    type: 'success',
+                    title: 'Directory Set Successfully',
+                    message: 'Custom model directory has been set. You can now download or copy models to this location.'
+                  });
+                },
+                onCancel: () => {
+                  setConfirmation(null);
+                }
+              });
             } else {
+              // Scan failed
               setNotification({
                 type: 'error',
                 title: 'Scan Error',
@@ -865,6 +951,12 @@ const ModelManager: React.FC = () => {
     await setCustomModelPath(null);
   };
 
+  // Handler to manually toggle and verify persistence
+  const handleDownloadToggle = (checked: boolean) => {
+    console.log('Manual toggle to:', checked);
+    setDownloadToCustomPath(checked);
+  };
+
   return (
     <div className="space-y-6">
       {/* Custom Model Path UI */}
@@ -901,9 +993,54 @@ const ModelManager: React.FC = () => {
             </div>
           </div>
         ) : customModelPath ? (
-          <div className="text-xs text-gray-600 dark:text-gray-300 break-all">
-            <span>Current: </span>
-            <span className="font-mono">{customModelPath}</span>
+          <div className="space-y-4">
+            <div className="text-xs text-gray-600 dark:text-gray-300 break-all">
+              <span>Current: </span>
+              <span className="font-mono">{customModelPath}</span>
+            </div>
+            
+            {/* Download to Custom Path Toggle */}
+            <div className="flex items-center justify-between p-4 bg-gray-50/50 dark:bg-gray-700/30 rounded-lg border border-gray-200/50 dark:border-gray-600/50">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    Download New Models Here
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  When enabled, new model downloads will be saved to your custom directory instead of the default location
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer ml-4">
+                <input
+                  type="checkbox"
+                  checked={downloadToCustomPath}
+                  onChange={(e) => handleDownloadToggle(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sakura-300 dark:peer-focus:ring-sakura-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-sakura-600"></div>
+              </label>
+            </div>
+            
+            {downloadToCustomPath && (
+              <div className="p-3 bg-green-50/50 dark:bg-green-900/20 rounded-lg border border-green-200/50 dark:border-green-700/50">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                  <div className="w-4 h-4">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium">
+                    New downloads will be saved to custom directory
+                  </span>
+                </div>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1 ml-6">
+                  Downloaded models will appear in both your library and be available for use immediately
+                </p>
+                
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-xs text-gray-500 dark:text-gray-400">No custom model directory set. Using default location.</div>
