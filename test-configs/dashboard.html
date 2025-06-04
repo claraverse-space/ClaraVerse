@@ -4,318 +4,404 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Performance Monitor | Llama.cpp Configuration Testing</title>
+    <script src="https://cdn.tailwindcss.com/3.4.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script>
+        // Suppress Tailwind development warnings
+        if (typeof window !== 'undefined' && window.tailwind) {
+            window.tailwind.config = {
+                mode: 'production',
+                theme: {
+                    extend: {
+                        animation: {
+                            'pulse-soft': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            'fade-in': 'fadeIn 0.5s ease-in-out',
+                            'slide-up': 'slideUp 0.5s ease-out',
+                            'bounce-gentle': 'bounceGentle 2s infinite',
+                        },
+                        keyframes: {
+                            fadeIn: {
+                                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                                '100%': { opacity: '1', transform: 'translateY(0)' },
+                            },
+                            slideUp: {
+                                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                                '100%': { transform: 'translateY(0)', opacity: '1' },
+                            },
+                            bounceGentle: {
+                                '0%, 100%': { transform: 'translateY(0)' },
+                                '50%': { transform: 'translateY(-4px)' },
+                            }
+                        },
+                        colors: {
+                            primary: {
+                                50: '#eff6ff',
+                                100: '#dbeafe',
+                                500: '#3b82f6',
+                                600: '#2563eb',
+                                700: '#1d4ed8',
+                                900: '#1e3a8a',
+                            }
+                        }
+                    }
+                }
+            };
+        } else {
+            tailwind.config = {
+                mode: 'production',
+                theme: {
+                    extend: {
+                        animation: {
+                            'pulse-soft': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            'fade-in': 'fadeIn 0.5s ease-in-out',
+                            'slide-up': 'slideUp 0.5s ease-out',
+                            'bounce-gentle': 'bounceGentle 2s infinite',
+                        },
+                        keyframes: {
+                            fadeIn: {
+                                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                                '100%': { opacity: '1', transform: 'translateY(0)' },
+                            },
+                            slideUp: {
+                                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                                '100%': { transform: 'translateY(0)', opacity: '1' },
+                            },
+                            bounceGentle: {
+                                '0%, 100%': { transform: 'translateY(0)' },
+                                '50%': { transform: 'translateY(-4px)' },
+                            }
+                        },
+                        colors: {
+                            primary: {
+                                50: '#eff6ff',
+                                100: '#dbeafe',
+                                500: '#3b82f6',
+                                600: '#2563eb',
+                                700: '#1d4ed8',
+                                900: '#1e3a8a',
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
         }
-
-        .header {
-            background: rgba(255, 255, 255, 0.95);
+        .glass-effect {
             backdrop-filter: blur(10px);
-            padding: 20px 0;
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            background: rgba(255, 255, 255, 0.9);
         }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px;
+        .chart-container canvas {
+            border-radius: 8px;
         }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #4ade80;
+        .status-pulse {
             animation: pulse 2s infinite;
         }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .floating-card {
+            transform: translateY(0);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-
-        .stats-bar {
-            background: rgba(255, 255, 255, 0.9);
-            margin: 20px 0;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-        }
-
-        .stat-card {
-            text-align: center;
-            padding: 15px;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-
-        .stat-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            font-size: 14px;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .chart-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .chart-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #1e293b;
-            text-align: center;
-        }
-
-        .chart-wrapper {
-            position: relative;
-            height: 350px;
-        }
-
-        .best-config {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
-        }
-
-        .best-config h3 {
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-
-        .config-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .config-item {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 10px;
-            border-radius: 6px;
-            text-align: center;
-        }
-
-        .config-item.highlight {
-            background: rgba(255, 255, 255, 0.4);
-            border: 2px solid rgba(255, 255, 255, 0.6);
-            font-weight: bold;
-        }
-
-        .config-value {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .config-label {
-            font-size: 12px;
-            opacity: 0.8;
-            text-transform: uppercase;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #64748b;
-        }
-
-        .loading::after {
-            content: '';
-            animation: dots 1.5s infinite;
-        }
-
-        @keyframes dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60%, 100% { content: '...'; }
-        }
-
-        .error {
-            background: #fee2e2;
-            color: #dc2626;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #dc2626;
-        }
-
-        @media (max-width: 768px) {
-            .charts-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .chart-wrapper {
-                height: 300px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        .floating-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
-<body>
-    <div class="header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">🚀 Llama.cpp Performance Monitor</div>
-                <div class="status-indicator">
-                    <div class="status-dot"></div>
-                    <span id="status-text">Live Monitoring</span>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <!-- Header -->
+    <header class="glass-effect border-b border-white/20 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center space-x-4">
+                    <div class="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-xl">
+                        <i class="fas fa-rocket text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                            Llama.cpp Performance Monitor
+                        </h1>
+                        <p class="text-sm text-gray-600">Real-time configuration testing dashboard</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-green-500 rounded-full status-pulse"></div>
+                        <span id="status-text" class="text-sm font-medium text-gray-700">Live Monitoring</span>
+                    </div>
+                    <div class="hidden sm:block text-xs text-gray-500" id="last-update">
+                        Last update: Never
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </header>
 
-    <div class="container">
-        <div class="stats-bar">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value" id="total-tests">0</div>
-                    <div class="stat-label">Tests Completed</div>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Performance Summary Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Tests</p>
+                        <p id="total-tests" class="text-2xl font-bold text-gray-900">0</p>
+                    </div>
+                    <div class="bg-blue-100 p-2 rounded-lg">
+                        <i class="fas fa-vial text-blue-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="best-first-token">0ms</div>
-                    <div class="stat-label">Best First Token Time</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Best Token</p>
+                        <p id="best-first-token" class="text-2xl font-bold text-green-600">0ms</p>
+                    </div>
+                    <div class="bg-green-100 p-2 rounded-lg">
+                        <i class="fas fa-bolt text-green-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="best-performance">0.00</div>
-                    <div class="stat-label">Best Tokens/sec</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Best Perf</p>
+                        <p id="best-performance" class="text-2xl font-bold text-purple-600">0.0</p>
+                    </div>
+                    <div class="bg-purple-100 p-2 rounded-lg">
+                        <i class="fas fa-chart-line text-purple-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="avg-first-token">0ms</div>
-                    <div class="stat-label">Avg First Token Time</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Avg Token</p>
+                        <p id="avg-first-token" class="text-2xl font-bold text-orange-600">0ms</p>
+                    </div>
+                    <div class="bg-orange-100 p-2 rounded-lg">
+                        <i class="fas fa-clock text-orange-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="avg-performance">0.00</div>
-                    <div class="stat-label">Average Tokens/sec</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Avg Perf</p>
+                        <p id="avg-performance" class="text-2xl font-bold text-indigo-600">0.0</p>
+                    </div>
+                    <div class="bg-indigo-100 p-2 rounded-lg">
+                        <i class="fas fa-tachometer-alt text-indigo-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="success-rate">0%</div>
-                    <div class="stat-label">Success Rate</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Success</p>
+                        <p id="success-rate" class="text-2xl font-bold text-emerald-600">0%</p>
+                    </div>
+                    <div class="bg-emerald-100 p-2 rounded-lg">
+                        <i class="fas fa-check-circle text-emerald-600"></i>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="last-update">Never</div>
-                    <div class="stat-label">Last Update</div>
+            </div>
+
+            <div class="floating-card bg-white rounded-xl shadow-lg p-4 border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-gray-600 uppercase tracking-wide">Status</p>
+                        <p class="text-sm font-bold text-gray-900">Active</p>
+                    </div>
+                    <div class="bg-gray-100 p-2 rounded-lg">
+                        <i class="fas fa-heartbeat text-gray-600"></i>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="best-config-card" class="best-config" style="display: none;">
-            <h3>🏆 Best Configuration (Optimized for First Token + Overall Performance)</h3>
-            <div class="config-details" id="best-config-details">
-                <!-- Dynamic content -->
+        <!-- Best Configuration Card -->
+        <div id="best-config-card" class="hidden mb-8 animate-slide-up">
+            <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-xl p-6 text-white">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="bg-white/20 p-2 rounded-lg">
+                        <i class="fas fa-trophy text-yellow-300 text-xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold">Best Configuration Found</h3>
+                </div>
+                <div id="best-config-details" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+                    <!-- Dynamic content -->
+                </div>
             </div>
         </div>
 
-        <div class="charts-grid">
-            <div class="chart-container">
-                <div class="chart-title">⚡ First Token Performance Over Time</div>
-                <div class="chart-wrapper">
+        <!-- Configuration Optimizer -->
+        <div class="mb-8">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="bg-blue-100 p-2 rounded-lg">
+                        <i class="fas fa-brain text-blue-600 text-xl"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-900">AI Configuration Optimizer</h2>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-microchip mr-1"></i>CPU Cores
+                        </label>
+                        <input type="number" id="cpuCores" value="8" min="1" max="32" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-memory mr-1"></i>GPU Memory (GB)
+                        </label>
+                        <input type="number" id="gpuMemory" value="8" min="1" max="80" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-server mr-1"></i>System Memory (GB)
+                        </label>
+                        <input type="number" id="systemMemory" value="16" min="4" max="256" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-target mr-1"></i>Priority
+                        </label>
+                        <select id="priority" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                            <option value="balanced">⚖️ Balanced</option>
+                            <option value="speed">⚡ Speed (Low Latency)</option>
+                            <option value="throughput">🚀 Throughput (High T/s)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button onclick="getOptimalConfig()" 
+                        class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-3 px-6 rounded-lg transition-all transform hover:scale-105 hover:shadow-lg">
+                    <i class="fas fa-magic mr-2"></i>Get Optimal Configuration
+                </button>
+
+                <div id="optimizerResult" class="hidden mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 class="font-bold text-green-800 mb-3 flex items-center">
+                        <i class="fas fa-trophy mr-2"></i>Recommended Configuration
+                    </h3>
+                    <div class="bg-gray-900 rounded-lg p-4 mb-4">
+                        <pre id="optimizerConfig" class="text-green-400 text-sm font-mono overflow-x-auto"></pre>
+                    </div>
+                    <div id="optimizerPerformance" class="text-sm text-green-700 bg-white rounded-lg p-3 border border-green-200"></div>
+                </div>
+
+                <div id="optimizerError" class="hidden mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center text-red-700">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <span class="font-medium">Error</span>
+                    </div>
+                    <div class="text-sm text-red-600 mt-1"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-bolt text-red-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">First Token Performance</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="firstTokenChart"></canvas>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div class="chart-title">📊 Overall Performance Over Time</div>
-                <div class="chart-wrapper">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-chart-line text-blue-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">Overall Performance</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="performanceChart"></canvas>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div class="chart-title">🎯 Performance vs First Token Time (Efficiency Plot)</div>
-                <div class="chart-wrapper">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-crosshairs text-purple-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">Efficiency Analysis</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="scatterChart"></canvas>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div class="chart-title">🔧 Configuration Impact Analysis</div>
-                <div class="chart-wrapper">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-cog text-green-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">Thread Performance</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="threadChart"></canvas>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div class="chart-title">📈 Parameter Correlations with First Token Speed</div>
-                <div class="chart-wrapper">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-project-diagram text-orange-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">Parameter Correlations</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="correlationChart"></canvas>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div class="chart-title">🏁 First Token Speed by Thread Count</div>
-                <div class="chart-wrapper">
+            <div class="floating-card bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-center space-x-2 mb-4">
+                    <i class="fas fa-stopwatch text-indigo-500"></i>
+                    <h3 class="text-lg font-semibold text-gray-800">First Token by Threads</h3>
+                </div>
+                <div class="h-80">
                     <canvas id="firstTokenThreadChart"></canvas>
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="text-center py-12">
+            <div class="inline-flex items-center space-x-2 text-gray-600">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span>Loading performance data...</span>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+            <div class="flex items-center justify-center text-red-700">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span class="font-medium">Error loading data</span>
+            </div>
+            <p class="text-sm text-red-600 mt-1">Please check if the test is running and try refreshing the page.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="text-center text-sm text-gray-600">
+                <p>🚀 Llama.cpp Performance Monitor | Real-time configuration testing and optimization</p>
+            </div>
+        </div>
+    </footer>
 
     <script>
         class PerformanceMonitor {
@@ -326,8 +412,83 @@
                 this.startMonitoring();
             }
 
+            async fetchData() {
+                try {
+                    const response = await fetch('/api/data');
+                    const data = await response.json();
+                    if (data.error) {
+                        console.error('API Error:', data.error);
+                        return null;
+                    }
+                    return data;
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    return null;
+                }
+            }
+
             initCharts() {
-                // First Token Performance over time chart
+                const chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#f9fafb',
+                            bodyColor: '#f9fafb',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            callbacks: {
+                                title: function(context) {
+                                    return `Test ${context[0].dataIndex + 1}`;
+                                },
+                                beforeBody: function(context) {
+                                    const dataIndex = context[0].dataIndex;
+                                    const test = window.currentTestData ? window.currentTestData[dataIndex] : null;
+                                    if (!test) return '';
+                                    
+                                    return [
+                                        `First Token: ${test.first_token_time_ms?.toFixed(0)}ms`,
+                                        `Performance: ${test.tokens_per_sec?.toFixed(2)} tokens/sec`,
+                                        `────────────────────────`,
+                                        `Configuration:`
+                                    ];
+                                },
+                                label: function(context) { return ''; },
+                                afterBody: function(context) {
+                                    const dataIndex = context[0].dataIndex;
+                                    const test = window.currentTestData ? window.currentTestData[dataIndex] : null;
+                                    if (!test) return '';
+                                    
+                                    return [
+                                        `• Threads: ${test.threads || 'N/A'}`,
+                                        `• Context Size: ${test.ctx_size || 'N/A'}`,
+                                        `• Batch Size: ${test.batch_size || 'N/A'}`,
+                                        `• UBatch Size: ${test.ubatch_size || 'N/A'}`,
+                                        `• Parallel: ${test.parallel || 'N/A'}`,
+                                        `• GPU Layers: ${test.n_gpu_layers || 'N/A'}`,
+                                        `• Keep: ${test.keep || 'N/A'}`,
+                                        `• Defrag Thold: ${test.defrag_thold || 'N/A'}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            grid: { color: '#f3f4f6' },
+                            ticks: { color: '#6b7280' }
+                        },
+                        y: { 
+                            grid: { color: '#f3f4f6' },
+                            ticks: { color: '#6b7280' }
+                        }
+                    }
+                };
+
+                // First Token Chart
                 const firstTokenCtx = document.getElementById('firstTokenChart').getContext('2d');
                 this.charts.firstToken = new Chart(firstTokenCtx, {
                     type: 'line',
@@ -340,353 +501,234 @@
                             backgroundColor: 'rgba(239, 68, 68, 0.1)',
                             borderWidth: 3,
                             fill: true,
-                            tension: 0.4
+                            tension: 0.4,
+                            pointBackgroundColor: '#ef4444',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8
                         }]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'First Token Time (ms)'
-                                },
-                                grid: {
-                                    color: 'rgba(0,0,0,0.1)'
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    color: 'rgba(0,0,0,0.1)'
-                                }
-                            }
-                        }
-                    }
+                    options: chartOptions
                 });
 
-                // Performance over time chart
+                // Performance Chart
                 const performanceCtx = document.getElementById('performanceChart').getContext('2d');
                 this.charts.performance = new Chart(performanceCtx, {
                     type: 'line',
                     data: {
                         labels: [],
                         datasets: [{
-                            label: 'Tokens/sec',
+                            label: 'Tokens per Second',
                             data: [],
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
                             borderWidth: 3,
                             fill: true,
-                            tension: 0.4
+                            tension: 0.4,
+                            pointBackgroundColor: '#3b82f6',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8
                         }]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Tokens per Second'
-                                },
-                                grid: {
-                                    color: 'rgba(0,0,0,0.1)'
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    color: 'rgba(0,0,0,0.1)'
-                                }
-                            }
-                        }
-                    }
+                    options: chartOptions
                 });
 
-                // Speed vs Latency scatter chart with efficiency zones
+                // Scatter Chart
                 const scatterCtx = document.getElementById('scatterChart').getContext('2d');
                 this.charts.scatter = new Chart(scatterCtx, {
                     type: 'scatter',
                     data: {
                         datasets: [{
-                            label: 'Tests',
+                            label: 'Performance vs First Token',
                             data: [],
-                            backgroundColor: function(context) {
-                                if (!context.parsed) return 'rgba(102, 126, 234, 0.6)';
-                                const firstToken = context.parsed.x;
-                                const tokensPerSec = context.parsed.y;
-                                // Color code by efficiency: low first token + high throughput = green
-                                if (firstToken < 500 && tokensPerSec > 15) return 'rgba(34, 197, 94, 0.8)'; // Excellent
-                                if (firstToken < 1000 && tokensPerSec > 10) return 'rgba(59, 130, 246, 0.8)'; // Good
-                                if (firstToken < 1500 && tokensPerSec > 5) return 'rgba(251, 191, 36, 0.8)'; // Fair
-                                return 'rgba(239, 68, 68, 0.8)'; // Poor
-                            },
-                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(168, 85, 247, 0.6)',
+                            borderColor: '#a855f7',
                             borderWidth: 2,
-                            pointRadius: 6
+                            pointRadius: 8,
+                            pointHoverRadius: 10
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `First Token: ${context.parsed.x.toFixed(1)}ms, Throughput: ${context.parsed.y.toFixed(2)} t/s`;
-                                    }
-                                }
-                            }
-                        },
+                        ...chartOptions,
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'First Token Time (ms) - Lower is Better'
-                                }
+                            x: { 
+                                title: { display: true, text: 'First Token Time (ms)', color: '#6b7280' },
+                                grid: { color: '#f3f4f6' },
+                                ticks: { color: '#6b7280' }
                             },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tokens/sec - Higher is Better'
-                                }
+                            y: { 
+                                title: { display: true, text: 'Tokens per Second', color: '#6b7280' },
+                                grid: { color: '#f3f4f6' },
+                                ticks: { color: '#6b7280' }
                             }
                         }
                     }
                 });
 
-                // Thread performance chart
+                // Thread Chart
                 const threadCtx = document.getElementById('threadChart').getContext('2d');
                 this.charts.thread = new Chart(threadCtx, {
                     type: 'bar',
                     data: {
                         labels: [],
                         datasets: [{
-                            label: 'Average Tokens/sec',
+                            label: 'Average Performance',
                             data: [],
-                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                            borderColor: '#10b981',
-                            borderWidth: 2
+                            backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                            borderColor: '#22c55e',
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            borderSkipped: false
                         }]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Average Tokens/sec'
-                                }
-                            }
-                        }
-                    }
+                    options: chartOptions
                 });
 
-                // First Token Thread Performance Chart
-                const firstTokenThreadCtx = document.getElementById('firstTokenThreadChart').getContext('2d');
-                this.charts.firstTokenThread = new Chart(firstTokenThreadCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'Average First Token Time (ms)',
-                            data: [],
-                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                            borderColor: '#ef4444',
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Average First Token Time (ms) - Lower is Better'
-                                }
-                            }
-                        }
-                    }
-                });
-
-                // Correlation chart (simplified as bar chart for top correlations)
+                // Correlation Chart
                 const correlationCtx = document.getElementById('correlationChart').getContext('2d');
                 this.charts.correlation = new Chart(correlationCtx, {
                     type: 'bar',
                     data: {
                         labels: [],
                         datasets: [{
-                            label: 'Correlation with First Token Speed',
+                            label: 'Correlation with First Token',
                             data: [],
                             backgroundColor: function(context) {
-                                if (!context.parsed || context.parsed.y === undefined) {
-                                    return 'rgba(102, 126, 234, 0.8)'; // Default color
+                                if (!context || !context.parsed || context.parsed.y === undefined || context.parsed.y === null) {
+                                    return 'rgba(59, 130, 246, 0.8)'; // Default blue color
                                 }
                                 const value = context.parsed.y;
-                                return value > 0 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(16, 185, 129, 0.8)'; // Red = slower, Green = faster
+                                return value > 0 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(34, 197, 94, 0.8)';
                             },
                             borderColor: function(context) {
-                                if (!context.parsed || context.parsed.y === undefined) {
-                                    return '#667eea'; // Default color
+                                if (!context || !context.parsed || context.parsed.y === undefined || context.parsed.y === null) {
+                                    return '#3b82f6'; // Default blue color
                                 }
                                 const value = context.parsed.y;
-                                return value > 0 ? '#ef4444' : '#10b981';
+                                return value > 0 ? '#ef4444' : '#22c55e';
                             },
-                            borderWidth: 2
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            borderSkipped: false
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
+                        ...chartOptions,
                         indexAxis: 'y',
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const correlation = context.parsed.x;
-                                        const direction = correlation > 0 ? 'increases' : 'decreases';
-                                        return `${context.label} ${direction} first token time (r=${correlation.toFixed(3)})`;
-                                    }
-                                }
-                            }
-                        },
                         scales: {
-                            x: {
-                                min: -1,
-                                max: 1,
-                                title: {
-                                    display: true,
-                                    text: 'Correlation (Green=Faster, Red=Slower)'
-                                }
+                            x: { 
+                                min: -1, max: 1,
+                                grid: { color: '#f3f4f6' },
+                                ticks: { color: '#6b7280' }
+                            },
+                            y: { 
+                                grid: { color: '#f3f4f6' },
+                                ticks: { color: '#6b7280' }
                             }
                         }
                     }
                 });
-            }
 
-            async fetchData() {
-                try {
-                    const response = await fetch('/api/data');
-                    if (!response.ok) throw new Error('Failed to fetch data');
-                    return await response.json();
-                } catch (error) {
-                    console.error('Error fetching data:', error);
-                    return null;
-                }
+                // First Token Thread Chart
+                const firstTokenThreadCtx = document.getElementById('firstTokenThreadChart').getContext('2d');
+                this.charts.firstTokenThread = new Chart(firstTokenThreadCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Average First Token Time',
+                            data: [],
+                            backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                            borderColor: '#6366f1',
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: chartOptions
+                });
             }
 
             updateStats(data) {
                 if (!data || !data.tests) return;
-
-                const tests = data.tests;
-                const successfulTests = tests.filter(t => t.success);
                 
-                document.getElementById('total-tests').textContent = tests.length;
-                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+                const successfulTests = data.tests.filter(t => t.success);
+                const total = data.tests.length;
+                
+                // Update summary cards
+                document.getElementById('total-tests').textContent = total;
                 
                 if (successfulTests.length > 0) {
-                    const performances = successfulTests.map(t => t.tokens_per_sec);
-                    const firstTokenTimes = successfulTests.map(t => t.first_token_time_ms);
+                    const firstTokenTimes = successfulTests.map(t => t.first_token_time_ms).filter(t => t != null);
+                    const performances = successfulTests.map(t => t.tokens_per_sec).filter(t => t != null);
                     
-                    const bestPerf = Math.max(...performances);
-                    const avgPerf = performances.reduce((a, b) => a + b, 0) / performances.length;
-                    const bestFirstToken = Math.min(...firstTokenTimes);
-                    const avgFirstToken = firstTokenTimes.reduce((a, b) => a + b, 0) / firstTokenTimes.length;
-                    
-                    document.getElementById('best-performance').textContent = bestPerf.toFixed(2);
-                    document.getElementById('avg-performance').textContent = avgPerf.toFixed(2);
-                    document.getElementById('best-first-token').textContent = bestFirstToken.toFixed(0) + 'ms';
-                    document.getElementById('avg-first-token').textContent = avgFirstToken.toFixed(0) + 'ms';
-                    
-                    // Find best config using composite score: prioritize first token speed
-                    const bestTest = this.findBestConfiguration(successfulTests);
-                    this.updateBestConfig(bestTest);
-                }
-                
-                const successRate = (successfulTests.length / tests.length * 100).toFixed(1);
-                document.getElementById('success-rate').textContent = successRate + '%';
-            }
-
-            findBestConfiguration(tests) {
-                // Calculate composite score: 60% first token speed, 40% overall performance
-                let bestScore = -1;
-                let bestTest = null;
-                
-                const maxTokensPerSec = Math.max(...tests.map(t => t.tokens_per_sec));
-                const minFirstToken = Math.min(...tests.map(t => t.first_token_time_ms));
-                
-                for (const test of tests) {
-                    // Normalize scores (0-1)
-                    const perfScore = test.tokens_per_sec / maxTokensPerSec;
-                    const firstTokenScore = minFirstToken / test.first_token_time_ms; // Inverted: lower time = higher score
-                    
-                    // Composite score with 60% weight on first token speed
-                    const compositeScore = (firstTokenScore * 0.6) + (perfScore * 0.4);
-                    
-                    if (compositeScore > bestScore) {
-                        bestScore = compositeScore;
-                        bestTest = test;
+                    if (firstTokenTimes.length > 0) {
+                        const bestFirstToken = Math.min(...firstTokenTimes);
+                        const avgFirstToken = firstTokenTimes.reduce((a, b) => a + b, 0) / firstTokenTimes.length;
+                        
+                        document.getElementById('best-first-token').textContent = `${bestFirstToken.toFixed(0)}ms`;
+                        document.getElementById('avg-first-token').textContent = `${avgFirstToken.toFixed(0)}ms`;
                     }
+                    
+                    if (performances.length > 0) {
+                        const bestPerformance = Math.max(...performances);
+                        const avgPerformance = performances.reduce((a, b) => a + b, 0) / performances.length;
+                        
+                        document.getElementById('best-performance').textContent = bestPerformance.toFixed(1);
+                        document.getElementById('avg-performance').textContent = avgPerformance.toFixed(1);
+                    }
+                    
+                    const successRate = (successfulTests.length / total * 100);
+                    document.getElementById('success-rate').textContent = `${successRate.toFixed(1)}%`;
                 }
                 
-                return bestTest;
+                // Update best configuration
+                this.updateBestConfig(successfulTests);
+                
+                // Update last update time
+                if (data.last_update) {
+                    const updateTime = new Date(data.last_update).toLocaleTimeString();
+                    document.getElementById('last-update').textContent = `Last update: ${updateTime}`;
+                }
+                
+                // Hide loading state
+                document.getElementById('loading-state').style.display = 'none';
             }
 
-            updateBestConfig(bestTest) {
-                if (!bestTest) return;
+            updateBestConfig(tests) {
+                if (tests.length === 0) return;
+                
+                // Find best configuration (balanced score: low first token + high performance)
+                const bestTest = tests.reduce((best, current) => {
+                    const bestScore = (best.tokens_per_sec || 0) / Math.max(best.first_token_time_ms || 1000, 1);
+                    const currentScore = (current.tokens_per_sec || 0) / Math.max(current.first_token_time_ms || 1000, 1);
+                    return currentScore > bestScore ? current : best;
+                });
                 
                 const configCard = document.getElementById('best-config-card');
                 const configDetails = document.getElementById('best-config-details');
                 
                 configCard.style.display = 'block';
+                configCard.classList.add('animate-fade-in');
                 
                 const configs = [
-                    { label: 'First Token', value: `${bestTest.first_token_time_ms.toFixed(0)}ms`, highlight: true },
-                    { label: 'Performance', value: `${bestTest.tokens_per_sec.toFixed(2)} t/s`, highlight: true },
-                    { label: 'Threads', value: bestTest.threads },
-                    { label: 'Context Size', value: bestTest.ctx_size },
-                    { label: 'Parallel', value: bestTest.parallel },
-                    { label: 'Batch Size', value: bestTest.batch_size },
-                    { label: 'GPU Layers', value: bestTest.n_gpu_layers },
-                    { label: 'UBatch Size', value: bestTest.ubatch_size }
+                    { label: 'First Token', value: `${bestTest.first_token_time_ms?.toFixed(0) || 'N/A'}ms`, highlight: true },
+                    { label: 'Performance', value: `${bestTest.tokens_per_sec?.toFixed(2) || 'N/A'} t/s`, highlight: true },
+                    { label: 'Threads', value: bestTest.threads || 'N/A' },
+                    { label: 'Context Size', value: bestTest.ctx_size || 'N/A' },
+                    { label: 'Parallel', value: bestTest.parallel || 'N/A' },
+                    { label: 'Batch Size', value: bestTest.batch_size || 'N/A' },
+                    { label: 'GPU Layers', value: bestTest.n_gpu_layers || 'N/A' },
+                    { label: 'UBatch Size', value: bestTest.ubatch_size || 'N/A' }
                 ];
                 
                 configDetails.innerHTML = configs.map(config => `
-                    <div class="config-item ${config.highlight ? 'highlight' : ''}">
-                        <div class="config-value">${config.value}</div>
-                        <div class="config-label">${config.label}</div>
+                    <div class="bg-white/20 rounded-lg p-3 text-center ${config.highlight ? 'ring-2 ring-yellow-300' : ''}">
+                        <div class="text-lg font-bold mb-1">${config.value}</div>
+                        <div class="text-xs opacity-80 uppercase tracking-wide">${config.label}</div>
                     </div>
                 `).join('');
             }
@@ -696,6 +738,9 @@
                 
                 const successfulTests = data.tests.filter(t => t.success);
                 if (successfulTests.length === 0) return;
+
+                // Store successful test data globally for tooltip access
+                window.currentTestData = successfulTests;
 
                 // First Token Performance over time
                 this.charts.firstToken.data.labels = successfulTests.map((_, i) => `Test ${i + 1}`);
@@ -747,7 +792,7 @@
                 this.charts.firstTokenThread.data.datasets[0].data = threadFirstTokenAvgs;
                 this.charts.firstTokenThread.update('none');
 
-                // Enhanced correlation analysis with first token focus
+                // Enhanced correlation analysis
                 if (successfulTests.length > 3) {
                     const correlations = this.calculateFirstTokenCorrelations(successfulTests);
                     this.charts.correlation.data.labels = correlations.map(c => c.param);
@@ -766,7 +811,7 @@
                     return { param, correlation: correlation || 0 };
                 }).filter(c => !isNaN(c.correlation))
                   .sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation))
-                  .slice(0, 6); // Show top 6 correlations
+                  .slice(0, 6);
             }
 
             pearsonCorrelation(x, y) {
@@ -793,6 +838,8 @@
                     if (data) {
                         this.updateStats(data);
                         this.updateCharts(data);
+                    } else {
+                        document.getElementById('error-state').classList.remove('hidden');
                     }
                 };
                 
@@ -802,6 +849,77 @@
                 // Update every 2 seconds
                 setInterval(updateData, 2000);
             }
+        }
+
+        // Global configuration optimizer functions
+        async function getOptimalConfig() {
+            const cpuCores = parseInt(document.getElementById('cpuCores').value);
+            const gpuMemory = parseInt(document.getElementById('gpuMemory').value);
+            const systemMemory = parseInt(document.getElementById('systemMemory').value);
+            const priority = document.getElementById('priority').value;
+            
+            // Hide previous results
+            document.getElementById('optimizerResult').classList.add('hidden');
+            document.getElementById('optimizerError').classList.add('hidden');
+            
+            // Update button to show loading
+            const button = document.querySelector('button[onclick="getOptimalConfig()"]');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Optimizing...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch('/api/optimize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cpu_cores: cpuCores,
+                        gpu_memory_gb: gpuMemory,
+                        system_memory_gb: systemMemory,
+                        priority: priority
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.optimal_config) {
+                    showOptimalConfig(data.optimal_config);
+                } else {
+                    showOptimizerError(data.error || 'Failed to get optimal configuration');
+                }
+                
+            } catch (error) {
+                console.error('Error getting optimal config:', error);
+                showOptimizerError('Network error: ' + error.message);
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        function showOptimalConfig(config) {
+            const configText = `--threads ${config.threads}
+--ctx-size ${config.ctx_size}
+--batch-size ${config.batch_size}
+--ubatch-size ${config.ubatch_size}
+--parallel ${config.parallel}
+--n-gpu-layers ${config.n_gpu_layers}
+--keep ${config.keep}
+--defrag-thold ${config.defrag_thold}${config.mlock ? '\n--mlock' : ''}`;
+            
+            const performanceText = `🚀 Predicted Performance:
+• First Token Time: ${config.predicted_first_token?.toFixed(0) || 'N/A'}ms
+• Throughput: ${config.predicted_throughput?.toFixed(1) || 'N/A'} tokens/sec  
+• Efficiency Score: ${config.efficiency_score?.toFixed(1) || 'N/A'}/100`;
+            
+            document.getElementById('optimizerConfig').textContent = configText;
+            document.getElementById('optimizerPerformance').textContent = performanceText;
+            document.getElementById('optimizerResult').classList.remove('hidden');
+        }
+        
+        function showOptimizerError(error) {
+            document.getElementById('optimizerError').querySelector('div:last-child').textContent = error;
+            document.getElementById('optimizerError').classList.remove('hidden');
         }
 
         // Start monitoring when page loads

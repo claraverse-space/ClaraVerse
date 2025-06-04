@@ -5,7 +5,7 @@ Dashboard Server for Live Performance Monitoring
 Serves the HTML dashboard and provides API endpoints for real-time data.
 """
 
-from flask import Flask, jsonify, render_template_string, send_from_directory
+from flask import Flask, jsonify, render_template_string, send_from_directory, request
 import pandas as pd
 import os
 import json
@@ -13,10 +13,18 @@ from datetime import datetime
 import threading
 import time
 
+# Import the optimizer
+try:
+    from config_optimizer import LlamaConfigOptimizer
+    OPTIMIZER_AVAILABLE = True
+except ImportError:
+    OPTIMIZER_AVAILABLE = False
+    print("⚠️  Configuration optimizer not available. Install scikit-learn to enable optimization features.")
+
 app = Flask(__name__)
 
 class DataManager:
-    def __init__(self, csv_file="config_test_results_quick.csv"):
+    def __init__(self, csv_file="config_test_results.csv"):
         self.csv_files = [
             csv_file,
             "focused_first_token_results.csv"  # Also check for focused results
@@ -35,6 +43,7 @@ class DataManager:
                     current_files[csv_file] = os.path.getmtime(csv_file)
             
             if not current_files:
+                print("❌ No CSV files found")
                 return {"tests": [], "last_update": None}
             
             with self.lock:
@@ -53,28 +62,49 @@ class DataManager:
                 
                 for csv_file in current_files.keys():
                     try:
-                        df = pd.read_csv(csv_file, sep='|', on_bad_lines='skip')
+                        print(f"📊 Reading {csv_file}...")
+                        # First try to read with comma separation (default)
+                        df = pd.read_csv(csv_file, on_bad_lines='skip')
+                        
+                        # If that fails or has only one column, try pipe separation
+                        if len(df.columns) == 1:
+                            df = pd.read_csv(csv_file, sep='|', on_bad_lines='skip')
+                        
+                        print(f"📋 Found {len(df)} rows and {len(df.columns)} columns in {csv_file}")
+                        print(f"📝 Columns: {list(df.columns)}")
                         
                         if len(df) > 0:
                             # Convert to list of dictionaries
                             tests = df.to_dict('records')
                             
-                            # Clean up data types
+                            # Clean up data types and handle missing values
                             for test in tests:
                                 for key, value in test.items():
                                     if pd.isna(value):
                                         test[key] = None
-                                    elif isinstance(value, (int, float)) and not pd.isna(value):
-                                        test[key] = float(value) if '.' in str(value) else int(value)
+                                    elif isinstance(value, str) and value.strip() == '':
+                                        test[key] = None
+                                    elif key in ['first_token_time_ms', 'tokens_per_sec', 'total_time_sec', 'threads', 'ctx_size', 'batch_size', 'ubatch_size', 'parallel', 'n_gpu_layers']:
+                                        try:
+                                            test[key] = float(value) if value is not None else 0.0
+                                        except (ValueError, TypeError):
+                                            test[key] = 0.0
+                                    elif key == 'success':
+                                        test[key] = str(value).lower() in ['true', '1', 'yes', 'on']
                                 
                                 # Add source file info
                                 test['source_file'] = csv_file
                             
                             all_tests.extend(tests)
-                            print(f"📊 Loaded {len(tests)} tests from {csv_file}")
+                            print(f"✅ Loaded {len(tests)} tests from {csv_file}")
+                            
+                            # Show a sample of the data for debugging
+                            if tests:
+                                sample_test = tests[0]
+                                print(f"📊 Sample test data: {sample_test}")
                         
                     except Exception as e:
-                        print(f"Error reading {csv_file}: {e}")
+                        print(f"❌ Error reading {csv_file}: {e}")
                         continue
                 
                 # Sort by test_id if available, otherwise by timestamp
@@ -84,13 +114,17 @@ class DataManager:
                     else:
                         all_tests.sort(key=lambda x: x.get('timestamp', ''))
                 
+                successful_tests = [t for t in all_tests if t.get('success', False)]
+                
                 self.cached_data = {
                     "tests": all_tests,
                     "last_update": datetime.now().isoformat(),
                     "total_tests": len(all_tests),
-                    "successful_tests": len([t for t in all_tests if t.get('success', False)]),
+                    "successful_tests": len(successful_tests),
                     "source_files": list(current_files.keys())
                 }
+                
+                print(f"📈 Cache updated: {len(all_tests)} total tests, {len(successful_tests)} successful")
                 
                 # Update modification times
                 self.last_modified = current_files
@@ -98,11 +132,13 @@ class DataManager:
                 return self.cached_data
                     
         except Exception as e:
-            print(f"Error in get_data: {e}")
+            print(f"❌ Error in get_data: {e}")
             return {"tests": [], "last_update": None, "error": str(e)}
 
-# Global data manager
+# Global data manager and optimizer
 data_manager = DataManager()
+if OPTIMIZER_AVAILABLE:
+    optimizer = LlamaConfigOptimizer()
 
 @app.route('/')
 def dashboard():
@@ -129,17 +165,88 @@ def get_data():
 @app.route('/api/status')
 def get_status():
     """API endpoint to get server status"""
+    existing_files = [f for f in data_manager.csv_files if os.path.exists(f)]
     return jsonify({
         "status": "running",
         "timestamp": datetime.now().isoformat(),
         "csv_files": data_manager.csv_files,
-        "csv_exists": all(os.path.exists(csv_file) for csv_file in data_manager.csv_files)
+        "existing_files": existing_files,
+        "csv_exists": len(existing_files) > 0,
+        "optimizer_available": OPTIMIZER_AVAILABLE
     })
 
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+@app.route('/api/optimize', methods=['POST'])
+def optimize_config():
+    """API endpoint to get optimal configuration for given system specs"""
+    if not OPTIMIZER_AVAILABLE:
+        return jsonify({"error": "Optimizer not available. Install scikit-learn to enable optimization."}), 400
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Get system specs from request
+        system_specs = {
+            'cpu_cores': data.get('cpu_cores', 8),
+            'gpu_memory_gb': data.get('gpu_memory_gb', 8),
+            'system_memory_gb': data.get('system_memory_gb', 16)
+        }
+        
+        priority = data.get('priority', 'balanced')
+        
+        # Train model if not already trained
+        if not optimizer.model_trained:
+            if not optimizer.load_models():
+                print("🧠 Training new models...")
+                result = optimizer.train_models()
+                if not result:
+                    return jsonify({"error": "Failed to train optimization models"}), 500
+        
+        # Get optimal configuration
+        config = optimizer.optimize_config(system_specs, priority)
+        
+        if not config:
+            return jsonify({"error": "Failed to find optimal configuration"}), 500
+        
+        return jsonify({
+            "optimal_config": config,
+            "system_specs": system_specs,
+            "priority": priority,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in optimize_config: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/train-optimizer', methods=['POST'])
+def train_optimizer():
+    """API endpoint to train the optimization models"""
+    if not OPTIMIZER_AVAILABLE:
+        return jsonify({"error": "Optimizer not available. Install scikit-learn to enable optimization."}), 400
+    
+    try:
+        print("🧠 Training optimization models...")
+        result = optimizer.train_models()
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "training_results": result,
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            return jsonify({"error": "Training failed"}), 500
+            
+    except Exception as e:
+        print(f"❌ Error training optimizer: {e}")
+        return jsonify({"error": str(e)}), 500
 
 def monitor_csv_file():
     """Background thread to monitor CSV file changes"""

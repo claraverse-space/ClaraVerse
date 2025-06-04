@@ -27,7 +27,7 @@ class LlamaConfigTester:
         self.csv_output = csv_output
         self.current_process = None
         self.base_port = 8081
-        self.test_prompt = "Explain quantum computing in simple terms."
+        self.test_prompt = "Write a detailed explanation of machine learning algorithms and their applications in modern technology."
         
         # Initialize CSV file with headers
         self.init_csv()
@@ -51,17 +51,17 @@ class LlamaConfigTester:
     def get_parameter_combinations(self) -> List[Dict[str, Any]]:
         """Generate all parameter combinations to test"""
         
-        # Define parameter ranges to test
+        # Define parameter ranges to test - focused on GPU performance
         param_ranges = {
-            'n_gpu_layers': [0, 5, 10, 20, 50, 1000],  # 1000 = full offload
-            'ctx_size': [512, 1024, 2048, 4096, 8192],
-            'batch_size': [128, 256, 512, 1024, 2048],
-            'ubatch_size': [32, 64, 128, 256],
-            'threads': [4, 6, 8, 12, 16],
-            'parallel': [1, 2, 4, 8],
-            'keep': [256, 512, 1024, 2048],
-            'defrag_thold': [0.1, 0.2, 0.5],
-            'mlock': [True, False]
+            'n_gpu_layers': [1000],  # Full GPU offload only
+            'ctx_size': [2048, 4096, 8192],  # Context sizes that matter for GPU
+            'batch_size': [512, 1024, 2048],  # Batch sizes good for GPU
+            'ubatch_size': [128, 256, 512, 1028],  # Micro-batch sizes for GPU
+            'threads': [4, 8, 16],  # Thread counts
+            'parallel': [1, 2, 4, 8],  # Parallel processing
+            'keep': [1024, 2048],  # Keep in context
+            'defrag_thold': [0.1],  # Single defrag threshold
+            'mlock': [False]  # Disable mlock for GPU focus
         }
         
         # Generate all combinations (this will be a lot!)
@@ -109,6 +109,7 @@ class LlamaConfigTester:
             # Set environment variables
             env = os.environ.copy()
             env['DYLD_LIBRARY_PATH'] = f"{os.path.dirname(self.llama_server_path)}:"
+            env['LD_LIBRARY_PATH'] = f"{os.path.dirname(self.llama_server_path)}:{env.get('LD_LIBRARY_PATH', '')}"
             
             # Start the process
             self.current_process = subprocess.Popen(
@@ -166,7 +167,7 @@ class LlamaConfigTester:
             # Prepare the request
             request_data = {
                 "prompt": self.test_prompt,
-                "n_predict": 100,  # Generate 100 tokens
+                "n_predict": 200,  # Generate 200 tokens for better speed measurement
                 "temperature": 0.7,
                 "stream": True
             }
@@ -292,7 +293,9 @@ class LlamaConfigTester:
             writer.writerow(row)
         
         print(f"Test {test_id} completed - Success: {result.get('success')}, "
-              f"Tokens/sec: {result.get('tokens_per_sec', 0):.2f}")
+              f"First Token: {result.get('first_token_time_ms', 0):.1f}ms, "
+              f"Tokens/sec: {result.get('tokens_per_sec', 0):.2f}, "
+              f"Total tokens: {result.get('total_tokens', 0)}")
     
     def run_all_tests(self):
         """Run all configuration tests"""
@@ -337,11 +340,41 @@ class LlamaConfigTester:
         
         print(f"\nAll tests completed! Results saved to {self.csv_output}")
         print("You can analyze the CSV file to find the best performing configuration.")
+        print("\n" + "="*80)
+        print("QUICK ANALYSIS - TOP CONFIGURATIONS:")
+        print("="*80)
+        
+        # Quick analysis of results
+        try:
+            import pandas as pd
+            df = pd.read_csv(self.csv_output)
+            successful_tests = df[df['success'] == True]
+            
+            if len(successful_tests) > 0:
+                # Best first token time
+                best_first_token = successful_tests.loc[successful_tests['first_token_time_ms'].idxmin()]
+                print(f"\nBEST FIRST TOKEN TIME: {best_first_token['first_token_time_ms']:.1f}ms")
+                print(f"Config: ctx={best_first_token['ctx_size']}, batch={best_first_token['batch_size']}, "
+                      f"ubatch={best_first_token['ubatch_size']}, threads={best_first_token['threads']}, "
+                      f"parallel={best_first_token['parallel']}")
+                
+                # Best tokens per second
+                best_throughput = successful_tests.loc[successful_tests['tokens_per_sec'].idxmax()]
+                print(f"\nBEST THROUGHPUT: {best_throughput['tokens_per_sec']:.2f} tokens/sec")
+                print(f"Config: ctx={best_throughput['ctx_size']}, batch={best_throughput['batch_size']}, "
+                      f"ubatch={best_throughput['ubatch_size']}, threads={best_throughput['threads']}, "
+                      f"parallel={best_throughput['parallel']}")
+                
+                print(f"\nTotal successful tests: {len(successful_tests)}/{total_tests}")
+            else:
+                print("No successful tests found!")
+        except ImportError:
+            print("Install pandas for automatic analysis: pip install pandas")
 
 def main():
     # Configuration - modify these paths according to your setup
-    model_path = "/Users/badfy17g/.clara/llama-models/Qwen3-30B-A3B-Q4_K_M.gguf"
-    llama_server_path = "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+    model_path = "/home/badboy17g/.clara/llama-models/Qwen3-14B-Q4_K_M.gguf"
+    llama_server_path = "/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
     
     # Check if files exist
     if not os.path.exists(model_path):
