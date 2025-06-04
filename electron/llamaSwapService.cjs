@@ -615,8 +615,17 @@ models:
         perfConfig = this.getSafeDefaultConfig();
       }
       
-      // Calculate optimal GPU layers for this specific model
-      const optimalGpuLayers = await this.calculateOptimalGPULayers(model.path, model.size);
+      // Determine GPU layers to use - prioritize user setting over automatic calculation
+      let gpuLayersToUse;
+      if (globalPerfSettings.gpuLayers !== undefined && globalPerfSettings.gpuLayers !== null) {
+        // User has explicitly set GPU layers - use their setting
+        gpuLayersToUse = globalPerfSettings.gpuLayers;
+        log.info(`Model ${model.name}: Using user-configured GPU layers: ${gpuLayersToUse}`);
+      } else {
+        // No user setting - calculate optimal GPU layers for this specific model
+        gpuLayersToUse = await this.calculateOptimalGPULayers(model.path, model.size);
+        log.info(`Model ${model.name}: Using auto-calculated GPU layers: ${gpuLayersToUse}`);
+      }
       
       // Find matching mmproj model for this main model
       const matchingMmproj = this.findMatchingMmproj(model, mmprojModels);
@@ -628,10 +637,10 @@ models:
       // Add --jinja parameter for all models
       cmdLine += ` --jinja`;
       
-      // Add dynamic GPU layers based on calculation
-      if (optimalGpuLayers > 0) {
-        cmdLine += ` --n-gpu-layers ${optimalGpuLayers}`;
-        log.info(`Model ${model.name}: Using ${optimalGpuLayers} GPU layers`);
+      // Add GPU layers based on user setting or calculation
+      if (gpuLayersToUse > 0) {
+        cmdLine += ` --n-gpu-layers ${gpuLayersToUse}`;
+        log.info(`Model ${model.name}: Using ${gpuLayersToUse} GPU layers`);
       } else {
         log.info(`Model ${model.name}: Using CPU only (0 GPU layers)`);
       }
@@ -650,16 +659,28 @@ models:
       // 1. Context window optimization - use saved setting or calculate optimal
       const contextSize = perfConfig.contextSize || this.calculateOptimalContextSize(
         model.size / (1024 * 1024 * 1024), // Convert to GB
-        optimalGpuLayers > 0,
+        gpuLayersToUse > 0,
         16 // Assume reasonable memory amount, will be detected properly later
       );
       cmdLine += ` --ctx-size ${contextSize}`;
       
-      // 2. Batch size optimization for both TTFT and conversation continuation
-      const { batchSize, ubatchSize } = this.calculateTTFTOptimizedBatchSizes(
-        model.size / (1024 * 1024 * 1024),
-        { hasGPU: optimalGpuLayers > 0, gpuMemoryGB: 16 }
-      );
+      // 2. Batch size optimization - prioritize user settings over automatic calculation
+      let batchSize, ubatchSize;
+      if (globalPerfSettings.batchSize !== undefined && globalPerfSettings.ubatchSize !== undefined) {
+        // User has explicitly set batch sizes - use their settings
+        batchSize = globalPerfSettings.batchSize;
+        ubatchSize = globalPerfSettings.ubatchSize;
+        log.info(`Model ${model.name}: Using user-configured batch sizes: ${batchSize}/${ubatchSize}`);
+      } else {
+        // No user setting - calculate optimal batch sizes
+        const calculatedSizes = this.calculateTTFTOptimizedBatchSizes(
+          model.size / (1024 * 1024 * 1024),
+          { hasGPU: gpuLayersToUse > 0, gpuMemoryGB: 16 }
+        );
+        batchSize = calculatedSizes.batchSize;
+        ubatchSize = calculatedSizes.ubatchSize;
+        log.info(`Model ${model.name}: Using auto-calculated batch sizes: ${batchSize}/${ubatchSize}`);
+      }
       cmdLine += ` --batch-size ${batchSize}`;
       cmdLine += ` --ubatch-size ${ubatchSize}`;
       
@@ -671,8 +692,13 @@ models:
       const defragThreshold = perfConfig.defragThreshold || 0.1;
       cmdLine += ` --defrag-thold ${defragThreshold}`;
       
-      // 5. Memory optimization for conversations
-      cmdLine += ` --mlock`; // Lock model in memory for consistent performance
+      // 5. Memory optimization for conversations - respect user setting
+      if (globalPerfSettings.memoryLock !== false) {
+        cmdLine += ` --mlock`; // Lock model in memory for consistent performance
+        log.info(`Model ${model.name}: Memory lock enabled`);
+      } else {
+        log.info(`Model ${model.name}: Memory lock disabled by user setting`);
+      }
       
       // 6. Parallel processing optimization - use saved setting
       cmdLine += ` --parallel ${perfConfig.parallelSequences || 1}`;
@@ -2069,7 +2095,12 @@ ${cmdLine}`;
       keepTokens: 1024,
       defragThreshold: 0.1,
       enableContinuousBatching: true,
-      conversationMode: 'balanced'
+      conversationMode: 'balanced',
+      // GPU and batch settings - set to undefined by default so auto-calculation kicks in
+      gpuLayers: undefined,   // undefined = auto-calculate, number = user override
+      batchSize: 256,
+      ubatchSize: 256,
+      memoryLock: true
     };
   }
 

@@ -323,39 +323,168 @@ const MessageMetadata: React.FC<{
 }> = ({ message, showFullMetadata = false }) => {
   if (!message.metadata) return null;
 
+  const [showDetailedStats, setShowDetailedStats] = useState(false);
+
+  // Helper function to format tokens per second
+  const formatTokensPerSecond = (tokensPerSec: number): string => {
+    return tokensPerSec >= 100 ? tokensPerSec.toFixed(0) : tokensPerSec.toFixed(1);
+  };
+
+  // Helper function to format time in milliseconds
+  const formatTime = (ms: number): string => {
+    if (ms >= 1000) {
+      return `${(ms / 1000).toFixed(1)}s`;
+    }
+    return `${ms.toFixed(0)}ms`;
+  };
+
+  const hasDetailedStats = message.metadata.usage || message.metadata.timings;
+
   return (
-    <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 dark:text-gray-400">
-      {message.metadata.model && (
-        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-gray-600 dark:text-gray-400">
-          {message.metadata.model}
-        </span>
-      )}
-      
-      {message.metadata.tokens && (
-        <span className="flex items-center gap-1">
-          <MessageSquare className="w-3 h-3" />
-          {message.metadata.tokens} tokens
-        </span>
-      )}
-      
-      {message.metadata.processingTime && (
-        <span className="flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {message.metadata.processingTime}ms
-        </span>
-      )}
+    <div className="mt-2">
+      {/* Main metadata row */}
+      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        {message.metadata.model && (
+          <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-gray-600 dark:text-gray-400">
+            {message.metadata.model}
+          </span>
+        )}
+        
+        {/* Enhanced token display with detailed usage */}
+        {(message.metadata.usage || message.metadata.tokens) && (
+          <button
+            onClick={() => setShowDetailedStats(!showDetailedStats)}
+            className="flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded transition-colors"
+            title={hasDetailedStats ? "Click for detailed statistics" : undefined}
+          >
+            <MessageSquare className="w-3 h-3" />
+            {message.metadata.usage?.total_tokens || message.metadata.tokens} tokens
+            {hasDetailedStats && (
+              <span className={`ml-1 transform transition-transform ${showDetailedStats ? 'rotate-180' : ''}`}>
+                ↓
+              </span>
+            )}
+          </button>
+        )}
+        
+        {/* Timing information */}
+        {message.metadata.timings?.predicted_per_second && (
+          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+            <Clock className="w-3 h-3" />
+            {formatTokensPerSecond(message.metadata.timings.predicted_per_second)} tok/s
+          </span>
+        )}
 
-      {showFullMetadata && message.metadata.toolsUsed && message.metadata.toolsUsed.length > 0 && (
-        <span className="flex items-center gap-1">
-          Tools: {message.metadata.toolsUsed.join(', ')}
-        </span>
-      )}
+        {message.metadata.processingTime && (
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {message.metadata.processingTime}ms
+          </span>
+        )}
 
-      {message.metadata.error && (
-        <span className="flex items-center gap-1 text-red-500 dark:text-red-400">
-          <AlertCircle className="w-3 h-3" />
-          Error
-        </span>
+        {showFullMetadata && message.metadata.toolsUsed && message.metadata.toolsUsed.length > 0 && (
+          <span className="flex items-center gap-1">
+            Tools: {message.metadata.toolsUsed.join(', ')}
+          </span>
+        )}
+
+        {message.metadata.error && (
+          <span className="flex items-center gap-1 text-red-500 dark:text-red-400">
+            <AlertCircle className="w-3 h-3" />
+            Error
+          </span>
+        )}
+      </div>
+
+      {/* Detailed statistics panel (similar to LM Studio) */}
+      {showDetailedStats && hasDetailedStats && (
+        <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            {/* Token Usage */}
+            {message.metadata.usage && (
+              <div>
+                <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Token Usage</h4>
+                <div className="space-y-1">
+                  {message.metadata.usage.prompt_tokens !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Prompt:</span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.usage.prompt_tokens.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {message.metadata.usage.completion_tokens !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Completion:</span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.usage.completion_tokens.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {message.metadata.usage.total_tokens !== undefined && (
+                    <div className="flex justify-between border-t border-gray-300 dark:border-gray-600 pt-1">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Total:</span>
+                      <span className="font-mono font-medium text-gray-900 dark:text-gray-100">{message.metadata.usage.total_tokens.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Performance Timings */}
+            {message.metadata.timings && (
+              <div>
+                <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Performance</h4>
+                <div className="space-y-1">
+                  {message.metadata.timings.prompt_ms !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Prompt eval:</span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{formatTime(message.metadata.timings.prompt_ms)}</span>
+                    </div>
+                  )}
+                  {message.metadata.timings.predicted_ms !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Generation:</span>
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{formatTime(message.metadata.timings.predicted_ms)}</span>
+                    </div>
+                  )}
+                  {message.metadata.timings.prompt_per_second !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Prompt speed:</span>
+                      <span className="font-mono text-blue-600 dark:text-blue-400">
+                        {formatTokensPerSecond(message.metadata.timings.prompt_per_second)} tok/s
+                      </span>
+                    </div>
+                  )}
+                  {message.metadata.timings.predicted_per_second !== undefined && (
+                    <div className="flex justify-between border-t border-gray-300 dark:border-gray-600 pt-1">
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">Gen speed:</span>
+                      <span className="font-mono font-medium text-green-600 dark:text-green-400">
+                        {formatTokensPerSecond(message.metadata.timings.predicted_per_second)} tok/s
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Additional timing details */}
+          {message.metadata.timings && (
+            <div className="mt-3 pt-2 border-t border-gray-300 dark:border-gray-600">
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                {message.metadata.timings.prompt_per_token_ms !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Time per prompt token:</span>
+                    <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.timings.prompt_per_token_ms.toFixed(2)}ms</span>
+                  </div>
+                )}
+                {message.metadata.timings.predicted_per_token_ms !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Time per gen token:</span>
+                    <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.timings.predicted_per_token_ms.toFixed(2)}ms</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

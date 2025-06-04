@@ -52,8 +52,27 @@ export interface ClaraMessageMetadata {
   /** AI model used to generate the response */
   model?: string;
   
-  /** Number of tokens used */
+  /** Number of tokens used (legacy) */
   tokens?: number;
+  
+  /** Detailed token usage information */
+  usage?: {
+    total_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens?: number;
+  };
+  
+  /** Detailed timing information from the API */
+  timings?: {
+    prompt_n?: number;
+    prompt_ms?: number;
+    prompt_per_token_ms?: number;
+    prompt_per_second?: number;
+    predicted_n?: number;
+    predicted_ms?: number;
+    predicted_per_token_ms?: number;
+    predicted_per_second?: number;
+  };
   
   /** Time taken to process the message (in milliseconds) */
   processingTime?: number;

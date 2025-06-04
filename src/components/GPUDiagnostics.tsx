@@ -33,6 +33,10 @@ interface PerformanceSettings {
   defragThreshold: number;
   enableContinuousBatching: boolean;
   conversationMode: string;
+  batchSize: number;
+  ubatchSize: number;
+  gpuLayers: number;
+  memoryLock: boolean;
 }
 
 const GPUDiagnostics: React.FC = () => {
@@ -54,7 +58,11 @@ const GPUDiagnostics: React.FC = () => {
     keepTokens: 1000,
     defragThreshold: 0.5,
     enableContinuousBatching: true,
-    conversationMode: 'balanced'
+    conversationMode: 'balanced',
+    batchSize: 256,
+    ubatchSize: 256,
+    gpuLayers: 50,
+    memoryLock: true
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'regenerating' | 'restarting'>('idle');
@@ -120,11 +128,36 @@ const GPUDiagnostics: React.FC = () => {
         const settings = await llamaSwap.getPerformanceSettings();
         if (settings.success) {
           setPerformanceSettings(settings.settings);
+          // Store as previous settings for restart detection
+          setPreviousSettings(settings.settings);
         }
       }
     } catch (error) {
       console.error('Error loading performance settings:', error);
     }
+  };
+
+  // Define which settings require a full restart vs hot reload
+  const RESTART_REQUIRED_SETTINGS = [
+    'gpuLayers', 'maxContextSize', 'memoryLock', 'threads', 'parallelSequences'
+  ];
+
+  const HOT_SWAPPABLE_SETTINGS = [
+    'batchSize', 'ubatchSize', 'flashAttention', 'autoOptimization', 
+    'aggressiveOptimization', 'prioritizeSpeed', 'optimizeFirstToken',
+    'optimizeConversations', 'keepTokens', 'defragThreshold', 
+    'enableContinuousBatching', 'conversationMode'
+  ];
+
+  // Check if any restart-required settings have changed
+  const [previousSettings, setPreviousSettings] = useState<PerformanceSettings | null>(null);
+
+  const requiresRestart = (newSettings: PerformanceSettings, oldSettings: PerformanceSettings | null): boolean => {
+    if (!oldSettings) return true; // First time setup needs restart
+    
+    return RESTART_REQUIRED_SETTINGS.some(setting => 
+      newSettings[setting as keyof PerformanceSettings] !== oldSettings[setting as keyof PerformanceSettings]
+    );
   };
 
   const savePerformanceSettings = async () => {
@@ -133,37 +166,71 @@ const GPUDiagnostics: React.FC = () => {
     try {
       const llamaSwap = (window as any).llamaSwap;
       if (llamaSwap?.savePerformanceSettings) {
+        // Check if restart is needed
+        const needsRestart = requiresRestart(performanceSettings, previousSettings);
+        
         // First save the performance settings
         const result = await llamaSwap.savePerformanceSettings(performanceSettings);
         if (result.success) {
           console.log('Performance settings saved successfully');
           
-          // Then regenerate config to apply the new settings
-          setSavingStatus('regenerating');
-          console.log('Regenerating config with new performance settings...');
-          if (llamaSwap?.regenerateConfig) {
-            const configResult = await llamaSwap.regenerateConfig();
-            if (configResult.success) {
-              console.log(`Config regenerated with ${configResult.models} models`);
-              
-              // Finally restart the llama server to apply changes
-              setSavingStatus('restarting');
-              console.log('Restarting llama server to apply new settings...');
-              if (llamaSwap?.restart) {
-                const restartResult = await llamaSwap.restart();
-                if (restartResult.success) {
-                  console.log('Llama server restarted successfully');
-                  // Refresh GPU diagnostics to show updated configs
-                  await fetchGPUDiagnostics();
-                } else {
-                  console.warn('Settings saved and config updated, but restart failed:', restartResult.error);
-                  // Still show success as the settings are saved and config updated
+          if (needsRestart) {
+            console.log('🔄 Critical settings changed - full restart required');
+            // Only restart for critical settings changes
+            setSavingStatus('regenerating');
+            console.log('Regenerating config with new performance settings...');
+            if (llamaSwap?.regenerateConfig) {
+              const configResult = await llamaSwap.regenerateConfig();
+              if (configResult.success) {
+                console.log(`Config regenerated with ${configResult.models} models`);
+                
+                setSavingStatus('restarting');
+                console.log('Restarting llama server to apply critical changes...');
+                if (llamaSwap?.restart) {
+                  const restartResult = await llamaSwap.restart();
+                  if (restartResult.success) {
+                    console.log('Llama server restarted successfully');
+                    await fetchGPUDiagnostics();
+                  } else {
+                    console.warn('Settings saved and config updated, but restart failed:', restartResult.error);
+                  }
+                }
+              } else {
+                console.warn('Settings saved but config regeneration failed:', configResult.error);
+              }
+            }
+          } else {
+            console.log('⚡ Hot-swappable settings changed - applying without restart');
+            // For hot-swappable settings, just apply them without restart
+            setSavingStatus('regenerating');
+            if (llamaSwap?.applyHotSettings) {
+              // Try to apply settings without restart
+              const hotResult = await llamaSwap.applyHotSettings(performanceSettings);
+              if (hotResult.success) {
+                console.log('Hot settings applied successfully - no restart needed');
+              } else {
+                console.warn('Hot settings failed, falling back to restart:', hotResult.error);
+                // Fallback to restart if hot reload fails
+                if (llamaSwap?.regenerateConfig) {
+                  const configResult = await llamaSwap.regenerateConfig();
+                  if (configResult.success && llamaSwap?.restart) {
+                    setSavingStatus('restarting');
+                    await llamaSwap.restart();
+                  }
                 }
               }
             } else {
-              console.warn('Settings saved but config regeneration failed:', configResult.error);
+              // If hot settings not available, just regenerate config without restart
+              if (llamaSwap?.regenerateConfig) {
+                await llamaSwap.regenerateConfig();
+              }
             }
+            // Refresh diagnostics even for hot changes
+            await fetchGPUDiagnostics();
           }
+          
+          // Update previous settings for next comparison
+          setPreviousSettings({ ...performanceSettings });
         } else {
           throw new Error(result.error || 'Failed to save settings');
         }
@@ -234,7 +301,11 @@ const GPUDiagnostics: React.FC = () => {
         keepTokens: 1024,
         defragThreshold: 0.1,
         enableContinuousBatching: true,
-        conversationMode: 'balanced'
+        conversationMode: 'balanced',
+        batchSize: 256,
+        ubatchSize: 256,
+        gpuLayers: 50,
+        memoryLock: true
       };
     }
 
@@ -289,7 +360,11 @@ const GPUDiagnostics: React.FC = () => {
       keepTokens: optimalKeepTokens,
       defragThreshold: 0.1,
       enableContinuousBatching: true,
-      conversationMode: 'balanced'
+      conversationMode: 'balanced',
+      batchSize: 256,
+      ubatchSize: 256,
+      gpuLayers: gpuInfo.hasGPU ? 50 : 0,
+      memoryLock: true
     };
   };
 
@@ -649,985 +724,245 @@ const GPUDiagnostics: React.FC = () => {
           <div className="flex items-center gap-3 mb-2">
             <Settings className="w-6 h-6 text-blue-500" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Make Your AI Faster
+              Performance Configuration
             </h3>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            These settings help your computer run AI models better. Don't worry - we'll explain everything! 😊
+            Adjust parameters to optimize model performance for your system.
           </p>
-          
-          <div className={`mt-4 px-4 py-2 rounded-lg ${getOptimizationLevel().bgColor}`}>
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${
-                getOptimizationLevel().level === 'Maximum' ? 'bg-red-500' :
-                getOptimizationLevel().level === 'High' ? 'bg-orange-500' :
-                getOptimizationLevel().level === 'Balanced' ? 'bg-blue-500' :
-                'bg-gray-500'
-              }`} />
-              <span className={`font-medium ${getOptimizationLevel().color}`}>
-                Current Mode: {getOptimizationLevel().level} Performance
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Threads Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">Threads</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.threads}
               </span>
             </div>
+            <input
+              type="range"
+              min="1"
+              max={Math.min(16, cpuCores)}
+              step="1"
+              value={performanceSettings.threads}
+              onChange={(e) => updateSetting('threads', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>1</span>
+              <span>{Math.min(16, cpuCores)}</span>
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-6">
-          {/* Flash Attention */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">Flash Attention ⚡</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  A special way to help AI think faster and use less memory
-                </p>
-              </div>
+          {/* Context Size Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">Context Size</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.maxContextSize.toLocaleString()}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1024"
+              max="32768"
+              step="1024"
+              value={performanceSettings.maxContextSize}
+              onChange={(e) => updateSetting('maxContextSize', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>1K</span>
+              <span>32K</span>
+            </div>
+          </div>
+
+          {/* Parallel Sequences Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">Parallel</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.parallelSequences}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="8"
+              step="1"
+              value={performanceSettings.parallelSequences}
+              onChange={(e) => updateSetting('parallelSequences', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>1</span>
+              <span>8</span>
+            </div>
+          </div>
+
+          {/* Batch Size Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">Batch Size</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.batchSize}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="32"
+              max="2048"
+              step="32"
+              value={performanceSettings.batchSize}
+              onChange={(e) => updateSetting('batchSize', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>32</span>
+              <span>2048</span>
+            </div>
+          </div>
+
+          {/* GPU Layers Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">GPU Layers</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.gpuLayers}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={performanceSettings.gpuLayers}
+              onChange={(e) => updateSetting('gpuLayers', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>0</span>
+              <span>100</span>
+            </div>
+          </div>
+
+          {/* UBatch Size Slider */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">UBatch Size</label>
+              <span className="text-lg font-mono text-sakura-600 dark:text-sakura-400 bg-sakura-50 dark:bg-sakura-900/20 px-3 py-1 rounded">
+                {performanceSettings.ubatchSize}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="16"
+              max="1024"
+              step="16"
+              value={performanceSettings.ubatchSize}
+              onChange={(e) => updateSetting('ubatchSize', parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>16</span>
+              <span>1024</span>
+            </div>
+          </div>
+
+          {/* Memory Lock Toggle */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-medium text-gray-900 dark:text-white">Memory Lock</label>
               <button
-                onClick={() => setPerformanceSettings(prev => ({ 
-                  ...prev, 
-                  flashAttention: !prev.flashAttention 
-                }))}
+                onClick={() => updateSetting('memoryLock', !performanceSettings.memoryLock)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  performanceSettings.flashAttention 
-                    ? 'bg-blue-500' 
+                  performanceSettings.memoryLock 
+                    ? 'bg-sakura-500' 
                     : 'bg-gray-300 dark:bg-gray-600'
                 }`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    performanceSettings.flashAttention ? 'translate-x-6' : 'translate-x-1'
+                    performanceSettings.memoryLock ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
             </div>
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                  {performanceSettings.flashAttention 
-                    ? '✅ ON: Your AI will think faster and use memory more efficiently!'
-                    : '❌ OFF: AI will work normally but might be slower and use more memory.'
-                  }
-                </p>
-              </div>
-              
-              {/* Pros and Cons */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Good Things:</h5>
-                  <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                    <li>• 30-50% faster processing</li>
-                    <li>• Uses less memory</li>
-                    <li>• Works great with modern models</li>
-                    <li>• Better for long conversations</li>
-                  </ul>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Watch Out:</h5>
-                  <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                    <li>• Might crash with older AI models</li>
-                    <li>• Can cause "compatibility errors"</li>
-                    <li>• Not all models support it yet</li>
-                    <li>• If AI stops working, turn this OFF</li>
-                  </ul>
-                </div>
-              </div>
+            <div className="text-center">
+              <span className={`text-sm font-medium ${
+                performanceSettings.memoryLock 
+                  ? 'text-sakura-600 dark:text-sakura-400' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                {performanceSettings.memoryLock ? 'Enabled' : 'Disabled'}
+              </span>
             </div>
-          </div>
-
-          {/* Auto Optimization */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">Smart Auto-Tuning 🧠</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Let your computer automatically figure out the best settings for each AI model
-                </p>
-              </div>
-              <button
-                onClick={() => updateSetting('autoOptimization', !performanceSettings.autoOptimization)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  performanceSettings.autoOptimization 
-                    ? 'bg-green-500' 
-                    : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    performanceSettings.autoOptimization ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  {performanceSettings.autoOptimization 
-                    ? '✅ ON: Your computer will automatically adjust settings for the best performance with each AI model!'
-                    : '❌ OFF: You have full control over all settings, but need to adjust them manually.'
-                  }
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Good Things:</h5>
-                  <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                    <li>• Perfect for beginners</li>
-                    <li>• Saves time configuring</li>
-                    <li>• Usually picks safe settings</li>
-                    <li>• Adapts to each model automatically</li>
-                  </ul>
-                </div>
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">⚠️ Keep in Mind:</h5>
-                  <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
-                    <li>• Might not be the absolute fastest</li>
-                    <li>• Less control over specific settings</li>
-                    <li>• Computer decides, not you</li>
-                    <li>• May be conservative for safety</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Speed Priority */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">Prioritize Speed 🏎️</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Make AI respond as fast as possible, even if it uses more memory
-                </p>
-              </div>
-              <button
-                onClick={() => updateSetting('prioritizeSpeed', !performanceSettings.prioritizeSpeed)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  performanceSettings.prioritizeSpeed 
-                    ? 'bg-orange-500' 
-                    : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    performanceSettings.prioritizeSpeed ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  {performanceSettings.prioritizeSpeed 
-                    ? '🏎️ ON: Maximum speed mode! AI will respond as fast as possible.'
-                    : '⚖️ OFF: Balanced mode - good speed while being careful with memory.'
-                  }
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Good Things:</h5>
-                  <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                    <li>• Much faster responses</li>
-                    <li>• Great for quick questions</li>
-                    <li>• Less waiting time</li>
-                    <li>• Feels more responsive</li>
-                  </ul>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Watch Out:</h5>
-                  <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                    <li>• Uses much more memory</li>
-                    <li>• Might make computer slower</li>
-                    <li>• Can cause "out of memory" crashes</li>
-                    <li>• May overheat your computer</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Optimize First Token */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">Optimize First Response ⚡</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Make the very first word appear super fast (but rest might be slower)
-                </p>
-              </div>
-              <button
-                onClick={() => setPerformanceSettings(prev => ({ 
-                  ...prev, 
-                  optimizeFirstToken: !prev.optimizeFirstToken 
-                }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  performanceSettings.optimizeFirstToken 
-                    ? 'bg-blue-500' 
-                    : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    performanceSettings.optimizeFirstToken ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  {performanceSettings.optimizeFirstToken 
-                    ? '⚡ ON: First word appears instantly, but overall response might be slower.'
-                    : '🔄 OFF: Consistent speed throughout the entire response.'
-                  }
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Good Things:</h5>
-                  <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                    <li>• AI starts responding immediately</li>
-                    <li>• Feels super responsive</li>
-                    <li>• Good for showing AI is "thinking"</li>
-                    <li>• Less waiting for first word</li>
-                  </ul>
-                </div>
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">⚠️ Trade-offs:</h5>
-                  <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
-                    <li>• Rest of response might be slower</li>
-                    <li>• Total time could be longer</li>
-                    <li>• Quality might be slightly lower</li>
-                    <li>• Uses more processing power</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Conversation Optimization */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-1">Optimize Conversations 💬</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Remember conversation context to make follow-up responses much faster
-                </p>
-              </div>
-              <button
-                onClick={() => setPerformanceSettings(prev => ({ 
-                  ...prev, 
-                  optimizeConversations: !prev.optimizeConversations 
-                }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  performanceSettings.optimizeConversations 
-                    ? 'bg-green-500' 
-                    : 'bg-gray-300 dark:bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    performanceSettings.optimizeConversations ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  {performanceSettings.optimizeConversations 
-                    ? '🚀 ON: After the first message, follow-ups will be lightning fast!'
-                    : '🐌 OFF: Every message takes the same time (AI "forgets" between messages).'
-                  }
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Amazing Benefits:</h5>
-                  <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                    <li>• 50-90% faster follow-up responses</li>
-                    <li>• Perfect for long conversations</li>
-                    <li>• AI remembers what you talked about</li>
-                    <li>• Biggest performance boost you'll notice!</li>
-                  </ul>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                  <h5 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Big Warning:</h5>
-                  <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                    <li>• Can use A LOT of memory</li>
-                    <li>• Might crash with "out of memory"</li>
-                    <li>• Long conversations = more memory used</li>
-                    <li>• If crashes happen, turn this OFF</li>
-                  </ul>
-                </div>
-              </div>
-              
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                <p className="text-xs text-blue-700 dark:text-blue-300">
-                  💡 <strong>Learning Tip:</strong> This is like keeping a conversation "warm" in memory. 
-                  The AI doesn't have to re-read everything from the beginning each time, but it uses more "brain space" to remember!
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Conversation Optimization Details */}
-          {performanceSettings.optimizeConversations && (
-            <div className="border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="w-5 h-5 text-green-600" />
-                <h4 className="font-semibold text-green-900 dark:text-green-100">Conversation Super Speed Settings 🚀</h4>
-              </div>
-              
-              <div className="space-y-4">
-                {/* Conversation Mode Selector */}
-                <div>
-                  <h5 className="font-medium text-green-900 dark:text-green-100 mb-2">How fast should conversations be?</h5>
-                  <div className="grid grid-cols-3 gap-2 mb-2">
-                    {(['speed', 'balanced', 'memory'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => updateSetting('conversationMode', mode)}
-                        className={`px-3 py-2 text-sm rounded-lg font-medium transition-colors ${
-                          performanceSettings.conversationMode === mode
-                            ? 'bg-green-600 text-white shadow-md'
-                            : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-green-100 dark:hover:bg-green-800 border border-gray-200 dark:border-gray-600'
-                        }`}
-                      >
-                        {mode === 'speed' && '⚡ Super Fast'}
-                        {mode === 'balanced' && '⚖️ Just Right'}
-                        {mode === 'memory' && '💾 Save Memory'}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  {/* Mode-specific explanations with pros/cons */}
-                  <div className="space-y-3">
-                    {performanceSettings.conversationMode === 'speed' && (
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                        <h6 className="font-medium text-green-800 dark:text-green-200 mb-2">🏎️ Super Fast Mode</h6>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ You Get:</h6>
-                            <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                              <li>• 70-90% faster responses</li>
-                              <li>• Instant follow-up answers</li>
-                              <li>• Smooth conversation flow</li>
-                              <li>• Best for quick back-and-forth</li>
-                            </ul>
-                          </div>
-                          <div className="bg-red-50 dark:bg-red-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ But Watch Out:</h6>
-                            <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                              <li>• Uses 2-3x more memory</li>
-                              <li>• Might crash after long chats</li>
-                              <li>• Can slow down other apps</li>
-                              <li>• Not good for weak computers</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {performanceSettings.conversationMode === 'balanced' && (
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                        <h6 className="font-medium text-blue-800 dark:text-blue-200 mb-2">⚖️ Just Right Mode (Recommended)</h6>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Perfect Balance:</h6>
-                            <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                              <li>• 50-70% faster responses</li>
-                              <li>• Safe memory usage</li>
-                              <li>• Works on most computers</li>
-                              <li>• Rarely crashes</li>
-                            </ul>
-                          </div>
-                          <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">📝 Good to Know:</h6>
-                            <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
-                              <li>• Not the absolute fastest</li>
-                              <li>• Still uses extra memory</li>
-                              <li>• Best choice for most people</li>
-                              <li>• Great starting point</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {performanceSettings.conversationMode === 'memory' && (
-                      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                        <h6 className="font-medium text-purple-800 dark:text-purple-200 mb-2">💾 Save Memory Mode</h6>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ Safe Choice:</h6>
-                            <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                              <li>• 30-50% faster (still good!)</li>
-                              <li>• Very safe memory usage</li>
-                              <li>• Won't slow other apps</li>
-                              <li>• Perfect for older computers</li>
-                            </ul>
-                          </div>
-                          <div className="bg-yellow-50 dark:bg-yellow-900/30 p-3 rounded">
-                            <h6 className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">📋 Trade-off:</h6>
-                            <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
-                              <li>• Not as dramatically fast</li>
-                              <li>• Still faster than no optimization</li>
-                              <li>• More conservative approach</li>
-                              <li>• Good if you multitask a lot</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Keep Tokens Slider */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h5 className="font-medium text-green-900 dark:text-green-100">How much conversation to remember?</h5>
-                    <span className="text-sm font-mono bg-white dark:bg-gray-800 px-2 py-1 rounded text-green-700 dark:text-green-300">
-                      {performanceSettings.keepTokens} words
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="256"
-                    max="2048"
-                    step="128"
-                    value={performanceSettings.keepTokens}
-                    onChange={(e) => updateSetting('keepTokens', parseInt(e.target.value))}
-                    className="w-full h-3 bg-green-200 dark:bg-green-700 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-green-600 dark:text-green-400 mt-1">
-                    <span>256 (small)</span>
-                    <span>1024 (perfect)</span>
-                    <span>2048 (lots)</span>
-                  </div>
-                  
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded-lg">
-                      <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ More Memory =</h6>
-                      <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                        <li>• Faster follow-up questions</li>
-                        <li>• AI remembers more context</li>
-                        <li>• Better for long discussions</li>
-                        <li>• Can reference earlier topics</li>
-                      </ul>
-                    </div>
-                    <div className="bg-red-50 dark:bg-red-900/30 p-3 rounded-lg">
-                      <h6 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Too Much =</h6>
-                      <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                        <li>• Computer runs out of memory</li>
-                        <li>• Sudden crashes mid-conversation</li>
-                        <li>• Other apps become slow</li>
-                        <li>• System might freeze</li>
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
-                      💡 <strong>Sweet Spot:</strong> 1024 words is perfect for most people. It's like giving your AI a good notebook to remember your conversation, 
-                      but not so big that it fills up your computer's memory!
-                    </p>
-                  </div>
-                </div>
-
-                {/* Continuous Batching */}
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex-1">
-                      <h5 className="font-medium text-green-900 dark:text-green-100 mb-1">Smart Conversation Processing 🤖</h5>
-                      <p className="text-sm text-green-700 dark:text-green-300">
-                        Let your computer handle multiple conversation parts efficiently
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => updateSetting('enableContinuousBatching', !performanceSettings.enableContinuousBatching)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        performanceSettings.enableContinuousBatching 
-                          ? 'bg-green-500' 
-                          : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          performanceSettings.enableContinuousBatching ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded-lg">
-                      <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ When ON:</h6>
-                      <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                        <li>• Processes conversation chunks together</li>
-                        <li>• More efficient use of AI brain</li>
-                        <li>• Smoother conversation flow</li>
-                        <li>• Works well with other optimizations</li>
-                      </ul>
-                    </div>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/30 p-3 rounded-lg">
-                      <h6 className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">📝 When OFF:</h6>
-                      <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
-                        <li>• Processes each part separately</li>
-                        <li>• More predictable behavior</li>
-                        <li>• Easier to debug problems</li>
-                        <li>• Slightly less efficient</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Performance Impact Indicator */}
-                <div className="bg-gradient-to-r from-white to-green-50 dark:from-gray-800 dark:to-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-700">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      performanceSettings.conversationMode === 'speed' ? 'bg-orange-400' :
-                      performanceSettings.conversationMode === 'balanced' ? 'bg-green-400' :
-                      'bg-blue-400'
-                    }`} />
-                    <span className="font-medium text-gray-800 dark:text-gray-200">
-                      Expected Speed Boost: {
-                        performanceSettings.conversationMode === 'speed' ? '70-90%' :
-                        performanceSettings.conversationMode === 'balanced' ? '50-70%' :
-                        '30-50%'
-                      } faster!
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    After the first message, follow-up responses in the same conversation will be much faster because 
-                    your AI won't need to "re-read" the whole conversation every time! 🏃‍♂️💨
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Advanced Settings Toggle */}
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-            <button
-              onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-              className="flex items-center gap-2 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium"
-            >
-              <Settings className="w-5 h-5" />
-              {showAdvancedSettings ? 'Hide' : 'Show'} Advanced Settings (For Experts) 🔧
-            </button>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              These are more technical settings. Only change if you know what you're doing!
+            <p className="text-xs text-gray-500 text-center">
+              {performanceSettings.memoryLock 
+                ? 'Model stays in memory - no warmup needed' 
+                : 'Model may be swapped out of memory'
+              }
             </p>
           </div>
+        </div>
 
-          {/* Advanced Settings */}
-          {showAdvancedSettings && (
-            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-6 space-y-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Settings className="w-5 h-5 text-purple-600" />
-                <h4 className="font-semibold text-purple-900 dark:text-purple-100">Expert Settings</h4>
-              </div>
+        {/* Save/Reset buttons */}
+        <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={savePerformanceSettings}
+            disabled={savingSettings}
+            className="flex items-center gap-2 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            {savingSettings ? 'Saving...' : 'Save Settings'}
+          </button>
+          
+          <button
+            onClick={resetToOptimalDefaults}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset to Defaults
+          </button>
+        </div>
 
-              {/* Aggressive Optimization */}
-              <div className="border border-purple-200 dark:border-purple-700 rounded-lg p-4 bg-white dark:bg-gray-800">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex-1">
-                    <h5 className="font-medium text-gray-900 dark:text-white mb-1">Maximum Power Mode 🚀</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      Use every trick to make AI super fast (DANGER: High crash risk!)
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => updateSetting('aggressiveOptimization', !performanceSettings.aggressiveOptimization)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      performanceSettings.aggressiveOptimization 
-                        ? 'bg-red-500' 
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        performanceSettings.aggressiveOptimization ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      {performanceSettings.aggressiveOptimization 
-                        ? '🚨 ON: MAXIMUM POWER! Your computer will work extremely hard.'
-                        : '✅ OFF: Normal performance settings. Safer for your computer.'
-                      }
-                    </p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                      <h5 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">🚀 Incredible Speed:</h5>
-                      <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                        <li>• Absolutely fastest possible performance</li>
-                        <li>• Uses all available tricks and hacks</li>
-                        <li>• Perfect for powerful gaming computers</li>
-                        <li>• Amazing if it works!</li>
-                      </ul>
-                    </div>
-                    <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                      <h5 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">💥 SERIOUS RISKS:</h5>
-                      <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                        <li>• High chance of sudden crashes</li>
-                        <li>• Might freeze your entire computer</li>
-                        <li>• Can overheat and damage hardware</li>
-                        <li>• Makes other apps unusable</li>
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 p-3 rounded-lg">
-                    <p className="text-xs text-red-800 dark:text-red-200">
-                      ⚠️ <strong>Only for Experts:</strong> Turn this on only if you have a powerful computer and know how to fix problems. 
-                      If weird things happen, turn this OFF immediately!
-                    </p>
-                  </div>
-                </div>
-              </div>
+        {/* Save Status */}
+        {savingStatus === 'regenerating' && (
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              {requiresRestart(performanceSettings, previousSettings) 
+                ? '🔄 Regenerating configuration files...' 
+                : '⚡ Applying hot settings - no restart needed...'}
+            </p>
+          </div>
+        )}
 
-              {/* Max Context Size */}
-              <div className="border border-purple-200 dark:border-purple-700 rounded-lg p-4 bg-white dark:bg-gray-800">
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h5 className="font-medium text-gray-900 dark:text-white">Maximum Memory for Conversations 🧠</h5>
-                    <span className="text-sm font-mono bg-purple-100 dark:bg-purple-900/50 px-2 py-1 rounded text-purple-700 dark:text-purple-300">
-                      {performanceSettings.maxContextSize.toLocaleString()} words
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                    How much conversation history your AI can remember at once
-                  </p>
-                  <input
-                    type="range"
-                    min="2048"
-                    max="131072"
-                    step="2048"
-                    value={performanceSettings.maxContextSize}
-                    onChange={(e) => updateSetting('maxContextSize', parseInt(e.target.value))}
-                    className="w-full h-3 bg-purple-200 dark:bg-purple-700 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    <span>2K (short)</span>
-                    <span>32K (good)</span>
-                    <span>131K (huge!)</span>
-                  </div>
-                  
-                  <div className="mt-4 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ More Context =</h6>
-                        <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                          <li>• AI remembers much longer conversations</li>
-                          <li>• Can discuss complex topics in detail</li>
-                          <li>• Perfect for research and long chats</li>
-                          <li>• AI understands full context better</li>
-                        </ul>
-                      </div>
-                      <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Too Much =</h6>
-                        <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                          <li>• Massive memory usage</li>
-                          <li>• "Out of memory" crashes</li>
-                          <li>• Very slow responses</li>
-                          <li>• Computer becomes unusable</li>
-                        </ul>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                      <p className="text-xs text-blue-700 dark:text-blue-300">
-                        💡 <strong>Learning Tip:</strong> Think of this like how many pages of a book your AI can remember at once. 
-                        More pages = better understanding but uses more "brain space". Most people need 8K-32K words (like a short essay).
-                      </p>
-                    </div>
-                    
-                    {performanceSettings.maxContextSize > 65536 && (
-                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 p-3 rounded-lg">
-                        <p className="text-xs text-amber-800 dark:text-amber-200">
-                          ⚠️ <strong>Warning:</strong> You're using a huge context size! This might crash on computers with less than 16GB RAM.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+        {savingStatus === 'restarting' && (
+          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              ⚡ Restarting model servers with critical settings...
+            </p>
+          </div>
+        )}
 
-              {/* CPU Threads */}
-              <div className="border border-purple-200 dark:border-purple-700 rounded-lg p-4 bg-white dark:bg-gray-800">
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex-1">
-                      <h5 className="font-medium text-gray-900 dark:text-white">CPU Workers (Threads) 🧵</h5>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        How many workers your processor uses at the same time
-                      </p>
-                    </div>
-                    <span className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                      {performanceSettings.threads}
-                    </span>
-                  </div>
-                  
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg mb-3">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      👨‍💼 Your CPU has {cpuCores} cores. We recommend {Math.max(1, Math.min(8, Math.floor(cpuCores / 2)))} threads.
-                      {performanceSettings.threads > cpuCores && (
-                        <span className="text-orange-600 dark:text-orange-400 block mt-1">
-                          ⚠️ You're using more threads than CPU cores - this might slow things down!
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  
-                  <input
-                    type="range"
-                    min="1"
-                    max={Math.min(16, cpuCores)}
-                    step="1"
-                    value={performanceSettings.threads}
-                    onChange={(e) => updateSetting('threads', parseInt(e.target.value))}
-                    className="w-full h-3 bg-purple-200 dark:bg-purple-700 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    <span>1 (slow)</span>
-                    <span>{Math.max(1, Math.min(8, Math.floor(cpuCores / 2)))} (recommended)</span>
-                    <span>{Math.min(16, cpuCores)} (max)</span>
-                  </div>
-                  
-                  <div className="mt-4 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ More Threads =</h6>
-                        <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                          <li>• Faster AI processing</li>
-                          <li>• Better use of your CPU power</li>
-                          <li>• Good for multi-core processors</li>
-                          <li>• Can handle bigger models better</li>
-                        </ul>
-                      </div>
-                      <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Too Many =</h6>
-                        <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                          <li>• Other apps become very slow</li>
-                          <li>• Computer might freeze or lag</li>
-                          <li>• CPU gets very hot</li>
-                          <li>• Actually slower due to fighting</li>
-                        </ul>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        🏭 <strong>Factory Analogy:</strong> Imagine threads as workers in a factory. If you have 8 machines but hire 16 workers, 
-                        they'll bump into each other and work slower! The sweet spot is usually half your CPU cores.
-                      </p>
-                    </div>
-                    
-                    {performanceSettings.threads > Math.max(1, Math.min(8, Math.floor(cpuCores * 0.75))) && (
-                      <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700 p-3 rounded-lg">
-                        <p className="text-xs text-orange-800 dark:text-orange-200">
-                          ⚠️ <strong>High Thread Warning:</strong> You're using a lot of threads. If your computer becomes slow or unresponsive, lower this number!
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Parallel Sequences */}
-              <div className="border border-purple-200 dark:border-purple-700 rounded-lg p-4 bg-white dark:bg-gray-800">
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex-1">
-                      <h5 className="font-medium text-gray-900 dark:text-white">Multiple Conversations ⚡</h5>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        How many conversations your AI can handle at the same time
-                      </p>
-                    </div>
-                    <span className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                      {performanceSettings.parallelSequences}
-                    </span>
-                  </div>
-                  
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg mb-3">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      🎮 Your graphics memory: {gpuInfo?.gpuMemoryGB?.toFixed(1) || 'Unknown'} GB. 
-                      We recommend: {gpuInfo && gpuInfo.gpuMemoryGB >= 8 ? (gpuInfo.gpuMemoryGB >= 16 ? '4' : '2') : '1'} parallel conversations.
-                      {gpuInfo && performanceSettings.parallelSequences > (gpuInfo.gpuMemoryGB >= 8 ? (gpuInfo.gpuMemoryGB >= 16 ? 4 : 2) : 1) && (
-                        <span className="text-orange-600 dark:text-orange-400 block mt-1">
-                          ⚠️ This might be too much for your graphics memory!
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  
-                  <input
-                    type="range"
-                    min="1"
-                    max={gpuInfo && gpuInfo.gpuMemoryGB >= 16 ? 8 : gpuInfo && gpuInfo.gpuMemoryGB >= 8 ? 4 : 2}
-                    step="1"
-                    value={performanceSettings.parallelSequences}
-                    onChange={(e) => updateSetting('parallelSequences', parseInt(e.target.value))}
-                    className="w-full h-3 bg-purple-200 dark:bg-purple-700 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    <span>1 (safe)</span>
-                    <span>{gpuInfo && gpuInfo.gpuMemoryGB >= 16 ? 8 : gpuInfo && gpuInfo.gpuMemoryGB >= 8 ? 4 : 2} (max)</span>
-                  </div>
-                  
-                  <div className="mt-4 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">✅ More Sequences =</h6>
-                        <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                          <li>• Handle multiple requests at once</li>
-                          <li>• Great for busy applications</li>
-                          <li>• Better throughput overall</li>
-                          <li>• Multiple users can chat simultaneously</li>
-                        </ul>
-                      </div>
-                      <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                        <h6 className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">⚠️ Too Many =</h6>
-                        <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                          <li>• "Out of GPU memory" crashes</li>
-                          <li>• Each conversation becomes slower</li>
-                          <li>• Quality might be lower</li>
-                          <li>• Graphics card gets very hot</li>
-                        </ul>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        🎪 <strong>Stage Analogy:</strong> Think of this like having multiple AI performers on stage at once. Each performer needs stage space (memory). 
-                        Too many performers and they can't move around properly!
-                      </p>
-                    </div>
-                    
-                    {gpuInfo && performanceSettings.parallelSequences > (gpuInfo.gpuMemoryGB >= 8 ? (gpuInfo.gpuMemoryGB >= 16 ? 4 : 2) : 1) && (
-                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 p-3 rounded-lg">
-                        <p className="text-xs text-red-800 dark:text-red-200">
-                          💥 <strong>Memory Warning:</strong> You're using more parallel sequences than recommended for {gpuInfo.gpuMemoryGB.toFixed(1)}GB graphics memory. 
-                          This might cause sudden crashes!
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-6">
-            <div className="text-center mb-6">
-              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Ready to Make Changes? 🚀</h4>
-              <p className="text-gray-600 dark:text-gray-400">
-                Choose how you want to optimize your AI performance!
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {/* Reset to Optimal Defaults Button */}
-              <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center">
-                    <RotateCcw className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h5 className="font-medium text-gray-900 dark:text-white">Smart Auto-Setup (Recommended!) ⭐</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Let us figure out the perfect settings for your computer automatically
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={resetToOptimalDefaults}
-                  disabled={savingSettings}
-                  className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  {savingSettings && savingStatus !== 'idle' ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      {savingStatus === 'saving' && 'Setting up your computer...'}
-                      {savingStatus === 'regenerating' && 'Updating AI configurations...'}
-                      {savingStatus === 'restarting' && 'Restarting AI system...'}
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw className="w-5 h-5" />
-                      Use Smart Auto-Setup
-                    </>
-                  )}
-                </button>
-                <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                  This will automatically choose the best settings based on your computer's capabilities
-                </p>
-              </div>
-
-              {/* Apply Custom Settings Button */}
-              <div className="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/50 rounded-full flex items-center justify-center">
-                    <Save className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h5 className="font-medium text-gray-900 dark:text-white">Apply My Custom Settings 🎯</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Use the exact settings you've chosen above
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={savePerformanceSettings}
-                  disabled={savingSettings}
-                  className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 font-medium"
-                >
-                  {savingSettings && savingStatus !== 'idle' ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      {savingStatus === 'saving' && 'Saving your settings...'}
-                      {savingStatus === 'regenerating' && 'Updating AI configurations...'}
-                      {savingStatus === 'restarting' && 'Restarting AI system...'}
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-5 h-5" />
-                      Apply My Settings
-                    </>
-                  )}
-                </button>
-                <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                  This will save your custom settings and restart the AI system to use them
-                </p>
-              </div>
-            </div>
-            
-            {/* Information Box */}
-            <div className="mt-6 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+        {/* Settings Impact Info */}
+        <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Performance Settings Impact</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <h5 className="font-medium text-green-900 dark:text-green-100 mb-1">What happens when I apply settings?</h5>
-                  <div className="text-sm text-green-700 dark:text-green-300 space-y-1">
-                    <p>1. 💾 Your settings get saved safely</p>
-                    <p>2. 🔧 All AI models get updated with new settings</p>
-                    <p>3. 🔄 The AI system restarts to use the new settings</p>
-                    <p>4. ⚡ You'll see improved performance in your conversations!</p>
-                  </div>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                    Don't worry - this process is automatic and takes about 10-15 seconds!
-                  </p>
+                  <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">🔄 Requires Restart:</p>
+                  <p className="text-gray-600 dark:text-gray-400">GPU Layers, Context Size, Memory Lock, Threads, Parallel Sequences</p>
+                  <p className="text-xs text-gray-500 mt-1">These settings need model reload (~10-30 seconds)</p>
+                </div>
+                <div>
+                  <p className="font-medium text-green-700 dark:text-green-300 mb-1">⚡ Hot Reload:</p>
+                  <p className="text-gray-600 dark:text-gray-400">Batch Sizes, Flash Attention, Optimization Settings</p>
+                  <p className="text-xs text-gray-500 mt-1">Applied instantly without restart (~1-2 seconds)</p>
                 </div>
               </div>
             </div>
@@ -1635,91 +970,7 @@ const GPUDiagnostics: React.FC = () => {
         </div>
       </div>
 
-      {/* Tips Section */}
-      <div className="bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-700 rounded-xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center">
-            💡
-          </div>
-          <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">
-            Tips to Make Your AI Even Better!
-          </h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Hardware-specific tips */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-gray-900 dark:text-white">For Your Hardware:</h4>
-            <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
-              {gpuInfo.gpuType === 'apple_silicon' && (
-                <>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-500 mt-0.5">🍎</span>
-                    <span>Your Apple computer shares memory between graphics and processing - this is actually great for AI!</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">⚡</span>
-                    <span>Bigger AI models will work better on your machine than smaller computers</span>
-                  </li>
-                </>
-              )}
-              {gpuInfo.gpuType === 'nvidia' && (
-                <>
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">🚀</span>
-                    <span>NVIDIA graphics cards are excellent for AI - you have great hardware!</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-500 mt-0.5">💾</span>
-                    <span>More graphics memory = ability to run bigger, smarter AI models</span>
-                  </li>
-                </>
-              )}
-              {gpuInfo.gpuType === 'integrated' && (
-                <>
-                  <li className="flex items-start gap-2">
-                    <span className="text-yellow-500 mt-0.5">⚡</span>
-                    <span>Built-in graphics work great with smaller AI models</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-500 mt-0.5">🧠</span>
-                    <span>Adding more system memory (RAM) can help performance</span>
-                  </li>
-                </>
-              )}
-              {!gpuInfo.hasGPU && (
-                <li className="flex items-start gap-2">
-                  <span className="text-purple-500 mt-0.5">🧠</span>
-                  <span>CPU-only mode still works great - consider a graphics card for even better speed!</span>
-                </li>
-              )}
-            </ul>
-          </div>
-
-          {/* General tips */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-gray-900 dark:text-white">General Tips:</h4>
-            <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-green-500 mt-0.5">🔄</span>
-                <span>If you upgrade your hardware, come back here to refresh settings</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-0.5">⚖️</span>
-                <span>Start with "Smart Auto-Setup" - you can always adjust later</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-500 mt-0.5">💡</span>
-                <span>Conversation optimization gives the biggest speed boost for daily use</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">⚠️</span>
-                <span>If things get slow or crash, try "Smart Auto-Setup" to reset to safe settings</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
+  
     </div>
   );
 };

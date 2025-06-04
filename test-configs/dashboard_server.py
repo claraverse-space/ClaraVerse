@@ -27,6 +27,8 @@ class DataManager:
     def __init__(self, csv_file="config_test_results.csv"):
         self.csv_files = [
             csv_file,
+            "config_test_results_quick.csv",  # Quick test results
+            "smart_config_results.csv",  # Smart test results
             "focused_first_token_results.csv"  # Also check for focused results
         ]
         self.last_modified = {}
