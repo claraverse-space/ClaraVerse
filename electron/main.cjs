@@ -1832,20 +1832,26 @@ async function initializeApp() {
     // Initialize Docker setup
     dockerSetup = new DockerSetup();
     
-    // Setup Docker environment
-    loadingScreen.setStatus('Setting up Docker environment...', 'info');
-    const success = await dockerSetup.setup((status, type = 'info') => {
-      loadingScreen.setStatus(status, type);
-      
-      if (type === 'error') {
-        dialog.showErrorBox('Setup Error', status);
-      }
-    });
+    // Setup Docker environment (skip during build/CI if specified)
+    if (process.env.SKIP_DOCKER_SETUP === 'true') {
+      log.info('Skipping Docker setup due to SKIP_DOCKER_SETUP environment variable');
+      loadingScreen.setStatus('Docker setup skipped. Some features may be limited.', 'info');
+    } else {
+      loadingScreen.setStatus('Setting up Docker environment...', 'info');
+      const success = await dockerSetup.setup((status, type = 'info') => {
+        loadingScreen.setStatus(status, type);
+        
+        // Only show error dialogs for critical errors, not Docker unavailability during startup
+        if (type === 'error' && !status.includes('Docker is not running')) {
+          dialog.showErrorBox('Setup Error', status);
+        }
+      });
 
-    if (!success) {
-      loadingScreen.setStatus('Docker not available. Some features may be limited.', 'warning');
-      log.warn('Docker setup incomplete. Continuing without Docker services.');
-      // Continue with app initialization even without Docker
+      if (!success) {
+        loadingScreen.setStatus('Docker not available. Some features may be limited.', 'warning');
+        log.warn('Docker setup incomplete. Continuing without Docker services.');
+        // Continue with app initialization even without Docker
+      }
     }
 
     // Initialize llama-swap service
@@ -1939,37 +1945,15 @@ async function initializeApp() {
     log.error(`Initialization error: ${error.message}`, error);
     loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
     
-    if (error.message.includes('Docker is not running')) {
-      const downloadLink = error.message.split('\n')[1];
-      let options;
-      if (process.platform === 'linux') {
-        options = {
-          type: 'info',
-          title: 'Docker Required',
-          message: 'Docker Engine is required but not installed.',
-          detail: 'Please install Docker Engine by following the instructions at the provided link, then restart Clara.',
-          buttons: ['Open Docker Docs', 'Close'],
-          defaultId: 0,
-          cancelId: 1
-        };
-      } else {
-        options = {
-          type: 'info',
-          title: 'Docker Required',
-          message: 'Docker Desktop is required but not installed.',
-          detail: 'Please download and install Docker Desktop, then restart Clara.',
-          buttons: ['Download Docker Desktop', 'Close'],
-          defaultId: 0,
-          cancelId: 1
-        };
-      }
-      dialog.showMessageBox(null, options).then(({ response }) => {
-        if (response === 0) {
-          require('electron').shell.openExternal(downloadLink);
-        }
-        loadingScreen?.close();
-        app.quit();
-      });
+    // Don't show dialogs for Docker-related issues during startup - let the app continue
+    if (error.message.includes('Docker is not running') || error.message.includes('Docker')) {
+      log.warn('Docker-related error during startup, continuing without Docker services');
+      loadingScreen?.setStatus('Docker not available. Some features may be limited.', 'warning');
+      
+      // Continue with app initialization
+      setTimeout(() => {
+        createMainWindow();
+      }, 2000);
     } else {
       dialog.showErrorBox('Setup Error', error.message);
       // Keep loading screen open on error for a bit before quitting
