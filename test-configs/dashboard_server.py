@@ -17,54 +17,85 @@ app = Flask(__name__)
 
 class DataManager:
     def __init__(self, csv_file="config_test_results_quick.csv"):
-        self.csv_file = csv_file
-        self.last_modified = 0
+        self.csv_files = [
+            csv_file,
+            "focused_first_token_results.csv"  # Also check for focused results
+        ]
+        self.last_modified = {}
         self.cached_data = None
         self.lock = threading.Lock()
         
     def get_data(self):
-        """Get current data, using cache if file hasn't changed"""
+        """Get current data from all available CSV files, using cache if files haven't changed"""
         try:
-            if not os.path.exists(self.csv_file):
+            # Check which files exist and their modification times
+            current_files = {}
+            for csv_file in self.csv_files:
+                if os.path.exists(csv_file):
+                    current_files[csv_file] = os.path.getmtime(csv_file)
+            
+            if not current_files:
                 return {"tests": [], "last_update": None}
             
-            current_modified = os.path.getmtime(self.csv_file)
-            
             with self.lock:
-                if current_modified <= self.last_modified and self.cached_data:
+                # Check if any file has been modified
+                files_changed = False
+                for csv_file, mod_time in current_files.items():
+                    if csv_file not in self.last_modified or mod_time > self.last_modified[csv_file]:
+                        files_changed = True
+                        break
+                
+                if not files_changed and self.cached_data:
                     return self.cached_data
                 
-                # Read fresh data
-                try:
-                    df = pd.read_csv(self.csv_file, sep='|', on_bad_lines='skip')
-                    
-                    if len(df) == 0:
-                        return {"tests": [], "last_update": None}
-                    
-                    # Convert to list of dictionaries
-                    tests = df.to_dict('records')
-                    
-                    # Clean up data types
-                    for test in tests:
-                        for key, value in test.items():
-                            if pd.isna(value):
-                                test[key] = None
-                            elif isinstance(value, (int, float)) and not pd.isna(value):
-                                test[key] = float(value) if '.' in str(value) else int(value)
-                    
-                    self.cached_data = {
-                        "tests": tests,
-                        "last_update": datetime.now().isoformat(),
-                        "total_tests": len(tests),
-                        "successful_tests": len([t for t in tests if t.get('success', False)])
-                    }
-                    
-                    self.last_modified = current_modified
-                    return self.cached_data
-                    
-                except Exception as e:
-                    print(f"Error reading CSV: {e}")
-                    return {"tests": [], "last_update": None, "error": str(e)}
+                # Read fresh data from all files
+                all_tests = []
+                
+                for csv_file in current_files.keys():
+                    try:
+                        df = pd.read_csv(csv_file, sep='|', on_bad_lines='skip')
+                        
+                        if len(df) > 0:
+                            # Convert to list of dictionaries
+                            tests = df.to_dict('records')
+                            
+                            # Clean up data types
+                            for test in tests:
+                                for key, value in test.items():
+                                    if pd.isna(value):
+                                        test[key] = None
+                                    elif isinstance(value, (int, float)) and not pd.isna(value):
+                                        test[key] = float(value) if '.' in str(value) else int(value)
+                                
+                                # Add source file info
+                                test['source_file'] = csv_file
+                            
+                            all_tests.extend(tests)
+                            print(f"📊 Loaded {len(tests)} tests from {csv_file}")
+                        
+                    except Exception as e:
+                        print(f"Error reading {csv_file}: {e}")
+                        continue
+                
+                # Sort by test_id if available, otherwise by timestamp
+                if all_tests:
+                    if 'test_id' in all_tests[0]:
+                        all_tests.sort(key=lambda x: x.get('test_id', 0))
+                    else:
+                        all_tests.sort(key=lambda x: x.get('timestamp', ''))
+                
+                self.cached_data = {
+                    "tests": all_tests,
+                    "last_update": datetime.now().isoformat(),
+                    "total_tests": len(all_tests),
+                    "successful_tests": len([t for t in all_tests if t.get('success', False)]),
+                    "source_files": list(current_files.keys())
+                }
+                
+                # Update modification times
+                self.last_modified = current_files
+                
+                return self.cached_data
                     
         except Exception as e:
             print(f"Error in get_data: {e}")
@@ -101,8 +132,8 @@ def get_status():
     return jsonify({
         "status": "running",
         "timestamp": datetime.now().isoformat(),
-        "csv_file": data_manager.csv_file,
-        "csv_exists": os.path.exists(data_manager.csv_file)
+        "csv_files": data_manager.csv_files,
+        "csv_exists": all(os.path.exists(csv_file) for csv_file in data_manager.csv_files)
     })
 
 @app.route('/api/health')
@@ -112,11 +143,11 @@ def health_check():
 
 def monitor_csv_file():
     """Background thread to monitor CSV file changes"""
-    print(f"📊 Monitoring CSV file: {data_manager.csv_file}")
+    print(f"📊 Monitoring CSV files: {', '.join(data_manager.csv_files)}")
     
     while True:
         try:
-            if os.path.exists(data_manager.csv_file):
+            if all(os.path.exists(csv_file) for csv_file in data_manager.csv_files):
                 # Just trigger a data refresh by calling get_data
                 data_manager.get_data()
             time.sleep(1)  # Check every second
@@ -135,12 +166,12 @@ def main():
         print("   Make sure dashboard.html is in the same directory as this server.")
         return
     
-    # Check if CSV file exists or create empty one
-    if not os.path.exists(data_manager.csv_file):
-        print(f"⏳ Waiting for CSV file: {data_manager.csv_file}")
+    # Check if any CSV files exist or create empty ones
+    if not any(os.path.exists(csv_file) for csv_file in data_manager.csv_files):
+        print(f"⏳ Waiting for CSV files: {', '.join(data_manager.csv_files)}")
         print("   The dashboard will show data once the test starts generating results.")
     else:
-        print(f"✅ Found CSV file: {data_manager.csv_file}")
+        print(f"✅ Found CSV files: {', '.join(data_manager.csv_files)}")
     
     # Start background monitor thread
     monitor_thread = threading.Thread(target=monitor_csv_file, daemon=True)
