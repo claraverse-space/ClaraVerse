@@ -189,6 +189,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Provider health check caching to reduce latency
+  const [providerHealthCache, setProviderHealthCache] = useState<Map<string, {isHealthy: boolean, timestamp: number}>>(new Map());
+  const HEALTH_CHECK_CACHE_TIME = 30000; // 30 seconds cache
+
   // Session configuration with new AI config structure
   const [sessionConfig, setSessionConfig] = useState<ClaraSessionConfig>({
     aiConfig: {
@@ -234,6 +238,45 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     },
     contextWindow: 50 // Include last 50 messages in conversation history
   });
+
+  // Cached provider health check to reduce latency
+  const checkProviderHealthCached = useCallback(async (provider: ClaraProvider): Promise<boolean> => {
+    const now = Date.now();
+    const cached = providerHealthCache.get(provider.id);
+    
+    // Return cached result if still valid
+    if (cached && (now - cached.timestamp < HEALTH_CHECK_CACHE_TIME)) {
+      console.log(`✅ Using cached health status for ${provider.name}: ${cached.isHealthy}`);
+      return cached.isHealthy;
+    }
+    
+    // Perform actual health check
+    console.log(`🏥 Performing health check for ${provider.name}...`);
+    try {
+      const isHealthy = await claraApiService.testProvider(provider);
+      
+      // Cache the result
+      setProviderHealthCache(prev => {
+        const newCache = new Map(prev);
+        newCache.set(provider.id, { isHealthy, timestamp: now });
+        return newCache;
+      });
+      
+      console.log(`${isHealthy ? '✅' : '❌'} Health check result for ${provider.name}: ${isHealthy}`);
+      return isHealthy;
+    } catch (error) {
+      console.warn(`⚠️ Health check failed for ${provider.name}:`, error);
+      
+      // Cache the failure
+      setProviderHealthCache(prev => {
+        const newCache = new Map(prev);
+        newCache.set(provider.id, { isHealthy: false, timestamp: now });
+        return newCache;
+      });
+      
+      return false;
+    }
+  }, [providerHealthCache, HEALTH_CHECK_CACHE_TIME]);
 
   // Refresh providers, models, and MCP services
   const refreshProvidersAndServices = useCallback(async (force: boolean = false) => {
@@ -1151,15 +1194,23 @@ Would you like me to help with text-only responses for now?`,
           return;
         }
       }
-      // STEP 1: Health check the provider before proceeding
+      // STEP 1: Health check the provider before proceeding (with caching)
       console.log('🏥 Testing provider health...');
-      addInfoNotification(
-        'Testing Provider',
-        `Checking connection to ${provider.name}...`,
-        2000
-      );
+      
+      // Only show notification for non-cached health checks
+      const cached = providerHealthCache.get(provider.id);
+      const now = Date.now();
+      const isCacheValid = cached && (now - cached.timestamp < HEALTH_CHECK_CACHE_TIME);
+      
+      if (!isCacheValid) {
+        addInfoNotification(
+          'Testing Provider',
+          `Checking connection to ${provider.name}...`,
+          2000
+        );
+      }
 
-      const isHealthy = await claraApiService.testProvider(provider);
+      const isHealthy = await checkProviderHealthCached(provider);
       if (!isHealthy) {
         console.error('❌ Provider health check failed for:', provider.name);
         
@@ -1176,11 +1227,13 @@ Would you like me to help with text-only responses for now?`,
       }
       
       console.log('✅ Provider health check passed for:', provider.name);
-      addInfoNotification(
-        'Provider Connected',
-        `Successfully connected to ${provider.name}`,
-        2000
-      );
+      if (!isCacheValid) {
+        addInfoNotification(
+          'Provider Connected',
+          `Successfully connected to ${provider.name}`,
+          2000
+        );
+      }
       
       // STEP 2: Update API service to use selected provider
       claraApiService.updateProvider(provider);
@@ -1334,7 +1387,22 @@ Would you like me to help with text-only responses for now?`,
     } finally {
       setIsLoadingProviders(false);
     }
-  }, [providers]);
+  }, [providers, checkProviderHealthCached, providerHealthCache, HEALTH_CHECK_CACHE_TIME]);
+
+  // Clear health cache for a specific provider (useful when we know something changed)
+  const clearProviderHealthCache = useCallback((providerId?: string) => {
+    if (providerId) {
+      setProviderHealthCache(prev => {
+        const newCache = new Map(prev);
+        newCache.delete(providerId);
+        return newCache;
+      });
+      console.log(`🧹 Cleared health cache for provider: ${providerId}`);
+    } else {
+      setProviderHealthCache(new Map());
+      console.log('🧹 Cleared all provider health cache');
+    }
+  }, []);
 
   // Handle model change
   const handleModelChange = useCallback((modelId: string, type: 'text' | 'vision' | 'code') => {
@@ -1419,89 +1487,25 @@ Would you like me to help with text-only responses for now?`,
     setIsLoading(false);
   }, []);
 
-  // Handle model preloading when user starts typing
+  // Simple preload - only if server is down
   const handlePreloadModel = useCallback(async () => {
-    if (sessionConfig.aiConfig) {
-      console.log('🚀 Advanced TTFT preload triggered...');
-      
-      // Strategy 1: Immediate health check with timeout
+    if (!sessionConfig.aiConfig) return;
+    
+    // Only preload for local services that might be down
+    if (sessionConfig.aiConfig.provider === 'claras-pocket') {
       try {
-        const healthCheckPromise = claraApiService.healthCheck();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Health check timeout')), 2000)
-        );
-        
-        const isHealthy = await Promise.race([healthCheckPromise, timeoutPromise]) as boolean;
-        if (!isHealthy) {
-          console.warn('⚠️ Fast health check failed during preload');
-          return;
+        const status = await window.llamaSwap?.getStatus();
+        if (!status?.isRunning) {
+          console.log('🚀 Starting local server...');
+          await claraApiService.preloadModel(sessionConfig.aiConfig, messages);
         }
-        
-        // Strategy 2: Enhanced preloading with multiple techniques
-        await claraApiService.preloadModel(sessionConfig.aiConfig, messages);
-        
-        // Strategy 3: Prime GPU/CPU for local models
-        if (sessionConfig.aiConfig.provider === 'claras-pocket' || 
-            sessionConfig.aiConfig.provider === 'ollama') {
-          console.log('🔥 Triggering local model warmup...');
-          await primeLocalModel(sessionConfig.aiConfig);
-        }
-        
+        // If server is running, no preload needed - it handles automatically
       } catch (error) {
-        console.warn('⚠️ Advanced preload failed:', error);
+        console.warn('⚠️ Simple preload check failed:', error);
       }
     }
+    // For cloud providers (OpenAI, etc.), no preload needed
   }, [sessionConfig.aiConfig, messages]);
-
-  // Prime local models for better TTFT
-  const primeLocalModel = useCallback(async (config: ClaraAIConfig) => {
-    try {
-      // For Clara's Pocket (llama-swap), trigger model preparation
-      if (config.provider === 'claras-pocket' && window.llamaSwap) {
-        const status = await window.llamaSwap.getStatus();
-        if (status?.isRunning) {
-          console.log('🎯 Priming Clara Pocket for faster response...');
-          // The existing llamaSwapService with TTFT optimizations will handle this
-        }
-      }
-    } catch (error) {
-      console.warn('Local model priming failed:', error);
-    }
-  }, []);
-
-  // Enhanced typing detection with multiple trigger points
-  const handleAdvancedTypingDetection = useCallback(() => {
-    // Trigger preload on various user interaction events for maximum speed
-    console.log('⚡ Early typing detection - triggering aggressive preload');
-    handlePreloadModel();
-  }, [handlePreloadModel]);
-
-  // Auto-preload when user focuses on input
-  useEffect(() => {
-    const inputElement = document.querySelector('[data-chat-input]');
-    if (inputElement) {
-      inputElement.addEventListener('focus', handleAdvancedTypingDetection);
-      inputElement.addEventListener('input', handleAdvancedTypingDetection, { once: true });
-      
-      return () => {
-        inputElement.removeEventListener('focus', handleAdvancedTypingDetection);
-        inputElement.removeEventListener('input', handleAdvancedTypingDetection);
-      };
-    }
-  }, [handleAdvancedTypingDetection]);
-
-  // Predictive preloading when Clara becomes visible
-  useEffect(() => {
-    if (isVisible && !isLoadingProviders && sessionConfig.aiConfig) {
-      // Small delay then preload for when user is likely to type
-      const timer = setTimeout(() => {
-        console.log('👁️ Clara visible - predictive preload starting...');
-        handlePreloadModel();
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isVisible, isLoadingProviders, sessionConfig.aiConfig, handlePreloadModel]);
 
   // Handle session config changes
   const handleConfigChange = useCallback((newConfig: Partial<ClaraSessionConfig>) => {
@@ -1666,6 +1670,46 @@ Would you like me to help with text-only responses for now?`,
       console.log('- Total providers:', providers.length);
     };
 
+    // Add health cache debugging functions
+    (window as any).debugHealthCache = () => {
+      console.log('🏥 Provider Health Cache Status:');
+      const now = Date.now();
+      Array.from(providerHealthCache.entries()).forEach(([providerId, cache]) => {
+        const ageSeconds = Math.round((now - cache.timestamp) / 1000);
+        const isValid = ageSeconds < (HEALTH_CHECK_CACHE_TIME / 1000);
+        console.log(`- ${providerId}: ${cache.isHealthy ? '✅' : '❌'} (${ageSeconds}s ago, ${isValid ? 'valid' : 'expired'})`);
+      });
+      console.log(`Cache TTL: ${HEALTH_CHECK_CACHE_TIME / 1000} seconds`);
+    };
+
+    (window as any).clearHealthCache = (providerId?: string) => {
+      clearProviderHealthCache(providerId);
+    };
+
+    (window as any).testHealthCachePerformance = async () => {
+      const provider = providers[0];
+      if (!provider) {
+        console.log('No providers available for testing');
+        return;
+      }
+
+      console.log('🏥 Testing health cache performance...');
+      
+      // First call (uncached)
+      const start1 = performance.now();
+      await checkProviderHealthCached(provider);
+      const uncachedTime = performance.now() - start1;
+      
+      // Second call (cached)
+      const start2 = performance.now();
+      await checkProviderHealthCached(provider);
+      const cachedTime = performance.now() - start2;
+      
+      console.log(`Uncached health check: ${uncachedTime.toFixed(2)}ms`);
+      console.log(`Cached health check: ${cachedTime.toFixed(2)}ms`);
+      console.log(`Performance improvement: ${((uncachedTime - cachedTime) / uncachedTime * 100).toFixed(1)}%`);
+    };
+
     // Add provider-specific debugging functions
     (window as any).debugProblematicTools = (providerId?: string) => {
       console.log('=== Provider-Specific Problematic Tools Debug ===');
@@ -1686,32 +1730,14 @@ Would you like me to help with text-only responses for now?`,
       }
     };
 
-    // Add test for auto-enable autonomous mode functionality
-    (window as any).testAutoEnableAutonomous = () => {
-      console.log('🧪 Testing Auto-Enable Autonomous Mode Feature...');
-      console.log('Current config:', {
-        streaming: sessionConfig.aiConfig?.features?.enableStreaming,
-        tools: sessionConfig.aiConfig?.features?.enableTools,
-        autonomous: sessionConfig.aiConfig?.autonomousAgent?.enabled,
-        provider: sessionConfig.aiConfig?.provider
+    // Simple debug for current config
+    (window as any).debugClara = () => {
+      console.log('Clara Status:', {
+        provider: sessionConfig.aiConfig?.provider,
+        hasModels: models.length > 0,
+        isVisible: isVisible,
+        currentSession: currentSession?.title
       });
-      
-      console.log('\n📝 Expected behavior:');
-      console.log('1. When Tools Mode is enabled → Autonomous Mode automatically enabled');
-      console.log('2. When Streaming Mode is enabled → Autonomous Mode automatically disabled');
-      console.log('3. Mode toggle button switches both streaming/tools AND autonomous');
-      
-      console.log('\n🔧 Test Steps:');
-      console.log('1. Open Advanced Options panel');
-      console.log('2. Toggle "Enable Tools" checkbox');
-      console.log('3. Watch console for "🛠️ Tools enabled" message');
-      console.log('4. Verify Autonomous Agent is automatically enabled');
-      console.log('5. Toggle mode button between Streaming ↔ Tools');
-      console.log('6. Watch console for mode switch messages');
-      console.log('7. Verify autonomous mode follows tools mode automatically');
-      
-      console.log('\n✅ Auto-enable autonomous mode test ready.');
-      console.log('💡 Use the UI controls to test the automatic behavior!');
     };
 
     return () => {
@@ -1727,10 +1753,14 @@ Would you like me to help with text-only responses for now?`,
       delete (window as any).testBackgroundService;
       delete (window as any).refreshClaraServices;
       delete (window as any).debugRefreshStatus;
+      delete (window as any).debugHealthCache;
+      delete (window as any).clearHealthCache;
+      delete (window as any).testHealthCachePerformance;
       delete (window as any).debugProblematicTools;
-      delete (window as any).testAutoEnableAutonomous;
+      delete (window as any).debugClara;
     };
-  }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage]);
+  }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
+      providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);
 
   // Initialize with a new session if none exists
   useEffect(() => {

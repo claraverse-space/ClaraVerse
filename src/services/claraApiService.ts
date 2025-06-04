@@ -1257,6 +1257,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
     let responseContent = '';
     let totalTokens = 0;
     let allToolResults: any[] = [];
+    let finalUsage: any = {};
+    let finalTimings: any = {};
     let conversationMessages = [...messages];
     
     // Track processed tool call IDs to prevent duplicates
@@ -1434,6 +1436,10 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
                 }
                 if (chunk.usage?.total_tokens) {
                   totalTokens = chunk.usage.total_tokens;
+                  finalUsage = chunk.usage;
+                }
+                if (chunk.timings) {
+                  finalTimings = chunk.timings;
                 }
               }
 
@@ -1491,6 +1497,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
                 stepResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
                 responseContent += stepResponse.message?.content || '';
                 totalTokens = stepResponse.usage?.total_tokens || 0;
+                if (stepResponse.usage) finalUsage = stepResponse.usage;
+                if (stepResponse.timings) finalTimings = stepResponse.timings;
                 console.log(`✅ Non-streaming fallback completed. Content: ${stepResponse.message?.content?.length || 0} chars`);
               } else {
                 throw streamError;
@@ -1504,6 +1512,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
           const stepContent = stepResponse.message?.content || '';
           responseContent += stepContent;
           totalTokens = stepResponse.usage?.total_tokens || 0;
+          if (stepResponse.usage) finalUsage = stepResponse.usage;
+          if (stepResponse.timings) finalTimings = stepResponse.timings;
           
           console.log(`✅ Non-streaming completed. Content: ${stepContent.length} chars, Tool calls: ${stepResponse.message?.tool_calls?.length || 0}`);
           
@@ -1769,6 +1779,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
       metadata: {
         model: `${config.provider}:${modelId}`,
         tokens: totalTokens,
+        usage: finalUsage,
+        timings: finalTimings,
         temperature: config.parameters.temperature,
         toolsUsed: allToolResults.map(tc => tc.toolName),
         agentSteps: context.currentStep + 1,
@@ -2028,6 +2040,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
     let responseContent = '';
     let totalTokens = 0;
     let toolResults: any[] = [];
+    let finalUsage: any = {};
+    let finalTimings: any = {};
 
     try {
       let response;
@@ -2046,6 +2060,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
           response = await this.client!.sendChat(modelId, messages, options, tools);
           responseContent = response.message?.content || '';
           totalTokens = response.usage?.total_tokens || 0;
+          finalUsage = response.usage || {};
+          finalTimings = response.timings || {};
           
           if (onContentChunk && responseContent) {
             onContentChunk(responseContent);
@@ -2110,6 +2126,10 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
 
               if (chunk.usage?.total_tokens) {
                 totalTokens = chunk.usage.total_tokens;
+                finalUsage = chunk.usage;
+              }
+              if (chunk.timings) {
+                finalTimings = chunk.timings;
               }
             }
 
@@ -2162,6 +2182,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
               response = await this.client!.sendChat(modelId, messages, options, tools);
               responseContent = response.message?.content || '';
               totalTokens = response.usage?.total_tokens || 0;
+              finalUsage = response.usage || {};
+              finalTimings = response.timings || {};
               
               if (onContentChunk && responseContent) {
                 onContentChunk(responseContent);
@@ -2176,6 +2198,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
         response = await this.client!.sendChat(modelId, messages, options, tools);
         responseContent = response.message?.content || '';
         totalTokens = response.usage?.total_tokens || 0;
+        finalUsage = response.usage || {};
+        finalTimings = response.timings || {};
         
         if (onContentChunk && responseContent) {
           onContentChunk(responseContent);
@@ -2297,6 +2321,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
       metadata: {
         model: `${config.provider}:${modelId}`,
         tokens: totalTokens,
+        usage: finalUsage,
+        timings: finalTimings,
         temperature: config.parameters.temperature,
         toolsUsed: toolResults.map(tc => tc.toolName),
         autonomousMode: false

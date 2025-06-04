@@ -38,6 +38,7 @@ interface APIResponse {
         arguments: string | Record<string, unknown>;
       };
     }[];
+    reasoning_content?: string; // For reasoning models like QwQ
   };
   choices?: [{
     message: {
@@ -49,12 +50,25 @@ interface APIResponse {
       content?: string;
       role?: string;
       tool_calls?: any[];
+      reasoning_content?: string; // For reasoning models like QwQ
     };
     finish_reason?: string;
   }];
   finish_reason?: string;
   usage?: {
     total_tokens: number;
+    completion_tokens?: number;
+    prompt_tokens?: number;
+  };
+  timings?: {
+    prompt_n?: number;
+    prompt_ms?: number;
+    prompt_per_token_ms?: number;
+    prompt_per_second?: number;
+    predicted_n?: number;
+    predicted_ms?: number;
+    predicted_per_token_ms?: number;
+    predicted_per_second?: number;
   };
 }
 
@@ -359,6 +373,9 @@ export class APIClient {
     tools?: Tool[],
     attempt: number = 1
   ): AsyncGenerator<APIResponse> {
+    // Track reasoning state for proper <think> block handling
+    let isInReasoningMode = false;
+    let hasStartedReasoning = false;
     // Set maximum attempts to prevent infinite loops
     const MAX_ATTEMPTS = 10;
     
@@ -541,14 +558,38 @@ export class APIClient {
             const choice = parsed.choices?.[0];
             
             if (choice) {
+              // Handle both regular content and reasoning content from reasoning models
+              let content = choice.delta?.content || '';
+              let reasoningContent = choice.delta?.reasoning_content || '';
+              
+              // Handle reasoning content from models like QwQ
+              if (reasoningContent) {
+                if (!hasStartedReasoning) {
+                  // Start of reasoning - open <think> block
+                  content = '<think>' + reasoningContent;
+                  hasStartedReasoning = true;
+                  isInReasoningMode = true;
+                } else if (isInReasoningMode) {
+                  // Continue reasoning - just add the content
+                  content = reasoningContent;
+                }
+              } else if (content && hasStartedReasoning && isInReasoningMode) {
+                // We have regular content after reasoning - close thinking and start response
+                content = '</think>\n\n' + content;
+                isInReasoningMode = false;
+              }
+              
               const data: APIResponse = {
                 message: {
-                  content: choice.delta?.content || '',
+                  content: content,
                   role: choice.delta?.role || 'assistant',
-                  tool_calls: choice.delta?.tool_calls
+                  tool_calls: choice.delta?.tool_calls,
+                  // Store raw reasoning content for potential future use
+                  reasoning_content: reasoningContent || undefined
                 },
                 finish_reason: choice.finish_reason,
-                usage: parsed.usage
+                usage: parsed.usage,
+                timings: parsed.timings
               };
               
               yield data;

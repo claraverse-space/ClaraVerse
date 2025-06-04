@@ -1426,6 +1426,13 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
+  // Provider health check state
+  const [providerHealthStatus, setProviderHealthStatus] = useState<'unknown' | 'checking' | 'healthy' | 'unhealthy'>('unknown');
+  const [showProviderOfflineModal, setShowProviderOfflineModal] = useState(false);
+  const [providerOfflineMessage, setProviderOfflineMessage] = useState('');
+  const [offlineProvider, setOfflineProvider] = useState<ClaraProvider | null>(null);
+  const [showClaraCoreOffer, setShowClaraCoreOffer] = useState(false);
+
   // Progress tracking state for context loading feedback
   const [progressState, setProgressState] = useState<{
     isActive: boolean;
@@ -1594,6 +1601,13 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, [isLoading, progressState.isActive]);
 
+  // Also check health when provider changes
+  useEffect(() => {
+    if (sessionConfig?.aiConfig?.provider) {
+      setProviderHealthStatus('unknown');
+    }
+  }, [sessionConfig?.aiConfig?.provider]);
+
   // Sync streaming mode state with session config changes
   useEffect(() => {
     if (sessionConfig?.aiConfig?.features) {
@@ -1645,6 +1659,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }, 100);
   }, []);
 
+
+
   // Auto-focus when loading state changes (response completes)
   useEffect(() => {
     // When loading changes from true to false (response completed), focus the textarea
@@ -1666,6 +1682,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     if (value.trim() && showAdvancedOptionsPanel && onAdvancedOptionsToggle) {
       onAdvancedOptionsToggle(false);
     }
+    
+
     
     // Trigger model preloading when user starts typing (debounced) - COMPLETELY SILENT
     if (value.trim() && !hasPreloaded && onPreloadModel && !isLoading) {
@@ -1970,9 +1988,150 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     return attachments;
   }, []);
 
+  // Provider health check function
+  const checkProviderHealth = useCallback(async (): Promise<boolean> => {
+    if (!sessionConfig?.aiConfig?.provider) {
+      console.warn('No provider configured');
+      return false;
+    }
+
+    const currentProvider = providers.find(p => p.id === sessionConfig.aiConfig.provider);
+    if (!currentProvider) {
+      console.warn('Current provider not found');
+      return false;
+    }
+
+    setProviderHealthStatus('checking');
+
+    try {
+      // Check if it's Clara's Pocket (Clara Core)
+      if (currentProvider.type === 'claras-pocket') {
+        const llamaSwap = (window as any).llamaSwap;
+        if (llamaSwap?.getStatus) {
+          const status = await llamaSwap.getStatus();
+          const isHealthy = status.isRunning;
+          
+          if (!isHealthy) {
+            setOfflineProvider(currentProvider);
+            setProviderOfflineMessage(`Clara's Pocket is not running. Would you like to start it?`);
+            setShowClaraCoreOffer(false); // Don't offer switch since this IS Clara Core
+            setShowProviderOfflineModal(true);
+            setProviderHealthStatus('unhealthy');
+            return false;
+          }
+        } else {
+          setOfflineProvider(currentProvider);
+          setProviderOfflineMessage(`Clara's Pocket service is not available.`);
+          setShowClaraCoreOffer(false);
+          setShowProviderOfflineModal(true);
+          setProviderHealthStatus('unhealthy');
+          return false;
+        }
+      } else {
+        // For other providers, use the health check API
+        const isHealthy = await claraApiService.testProvider(currentProvider);
+        
+        if (!isHealthy) {
+          setOfflineProvider(currentProvider);
+          setProviderOfflineMessage(`${currentProvider.name} is not responding. The service may be down or unreachable.`);
+          setShowClaraCoreOffer(true); // Offer to switch to Clara Core
+          setShowProviderOfflineModal(true);
+          setProviderHealthStatus('unhealthy');
+          return false;
+        }
+      }
+
+      setProviderHealthStatus('healthy');
+      return true;
+    } catch (error) {
+      console.error('Provider health check failed:', error);
+      setOfflineProvider(currentProvider);
+      setProviderOfflineMessage(`Failed to check ${currentProvider.name} status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setShowClaraCoreOffer(currentProvider.type !== 'claras-pocket');
+      setShowProviderOfflineModal(true);
+      setProviderHealthStatus('unhealthy');
+      return false;
+    }
+  }, [sessionConfig?.aiConfig?.provider, providers]);
+
+  // Handle starting Clara Core
+  const handleStartClaraCore = useCallback(async () => {
+    if (offlineProvider?.type === 'claras-pocket') {
+      try {
+        const llamaSwap = (window as any).llamaSwap;
+        if (llamaSwap?.start) {
+          const result = await llamaSwap.start();
+          if (result.success) {
+            setShowProviderOfflineModal(false);
+            setProviderHealthStatus('healthy');
+          } else {
+            setProviderOfflineMessage(`Failed to start Clara's Pocket: ${result.error || 'Unknown error'}`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to start Clara Core:', error);
+        setProviderOfflineMessage(`Failed to start Clara's Pocket: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }, [offlineProvider]);
+
+  // Handle switching to Clara Core
+  const handleSwitchToClaraCore = useCallback(async () => {
+    try {
+      // Find Clara Core provider
+      const claraCoreProvider = providers.find(p => p.type === 'claras-pocket');
+      
+      if (!claraCoreProvider) {
+        console.error('Clara Core provider not found');
+        setProviderOfflineMessage('Clara Core provider is not available.');
+        return;
+      }
+
+      // Check if Clara Core is running
+      const llamaSwap = (window as any).llamaSwap;
+      if (llamaSwap?.getStatus) {
+        const status = await llamaSwap.getStatus();
+        
+        if (!status.isRunning) {
+          // Try to start Clara Core
+          if (llamaSwap?.start) {
+            const startResult = await llamaSwap.start();
+            if (!startResult.success) {
+              setProviderOfflineMessage(`Failed to start Clara's Pocket: ${startResult.error || 'Unknown error'}`);
+              return;
+            }
+            // Wait a moment for service to be ready
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            setProviderOfflineMessage('Clara Core service is not available.');
+            return;
+          }
+        }
+
+        // Switch to Clara Core provider
+        if (onProviderChange) {
+          onProviderChange(claraCoreProvider.id);
+          setShowProviderOfflineModal(false);
+          setProviderHealthStatus('healthy');
+        }
+      } else {
+        setProviderOfflineMessage('Clara Core service is not available.');
+      }
+    } catch (error) {
+      console.error('Failed to switch to Clara Core:', error);
+      setProviderOfflineMessage(`Failed to switch to Clara Core: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [providers, onProviderChange]);
+
   // Send message
   const handleSend = useCallback(async () => {
     if (!input.trim() && files.length === 0) return;
+
+    // Check provider health before sending
+    const isProviderHealthy = await checkProviderHealth();
+    if (!isProviderHealthy) {
+      return; // Don't send message if provider is not healthy
+    }
     
     let attachments: ClaraFileAttachment[] | undefined;
     let enhancedPrompt = input; // For AI processing
@@ -2688,6 +2847,62 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Provider Offline Modal */}
+      {showProviderOfflineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 m-4 max-w-md w-full mx-auto">
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-3">
+              Provider Not Responding
+            </h2>
+
+            {/* Message */}
+            <p className="text-gray-600 dark:text-gray-300 text-center mb-6 leading-relaxed">
+              {providerOfflineMessage}
+            </p>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col space-y-3">
+              {offlineProvider?.type === 'claras-pocket' ? (
+                // If current provider is Clara Core, offer to start it
+                <button
+                  onClick={handleStartClaraCore}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+                >
+                  <Server className="w-5 h-5" />
+                  <span>Start Clara's Pocket</span>
+                </button>
+              ) : (
+                // If current provider is not Clara Core, offer to switch
+                showClaraCoreOffer && (
+                  <button
+                    onClick={handleSwitchToClaraCore}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+                  >
+                    <Server className="w-5 h-5" />
+                    <span>Switch to Clara's Pocket</span>
+                  </button>
+                )
+              )}
+              
+              <button
+                onClick={() => setShowProviderOfflineModal(false)}
+                className="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
