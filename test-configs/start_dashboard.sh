@@ -23,4 +23,4 @@ echo "==============================================="
 echo ""
 
 # Start the dashboard server
-python dashboard_server.py 
+python3 dashboard_server.py 

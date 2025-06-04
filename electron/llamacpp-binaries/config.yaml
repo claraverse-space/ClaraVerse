@@ -1,27 +1,27 @@
 # Auto-generated llama-swap configuration
-# Models directory: /Users/badfy17g/.clara/llama-models
+# Models directory: /home/badboy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "qwen3:30b":
+  "qwen3:14b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-30B-A3B-Q4_K_M.gguf"
-      --port 9999 --jinja --n-gpu-layers 1000 --threads 8 --ctx-size 4096 --batch-size 1024 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8
+      "/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17g/.clara/llama-models/Qwen3-14B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 60 --threads 8 --ctx-size 8192 --batch-size 1024 --ubatch-size 256 --keep 2048 --defrag-thold 0.05 --mlock --parallel 4 --flash-attn --threads-batch 4 --no-warmup
     env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+      - "LD_LIBRARY_PATH=/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64:/tmp/.mount_CursorwYz1Ja/usr/lib/:/tmp/.mount_CursorwYz1Ja/usr/lib32/:/tmp/.mount_CursorwYz1Ja/usr/lib64/:/tmp/.mount_CursorwYz1Ja/lib/:/tmp/.mount_CursorwYz1Ja/lib/i386-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib/x86_64-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib/aarch64-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib32/:/tmp/.mount_CursorwYz1Ja/lib64/:"
     ttl: 300
 
-  "qwen3:0.6b":
+  "llama32:3b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/Downloads/Qwen3 0.6B GGUF.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8
+      "/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17g/.clara/llama-models/llama-3.2-3b-instruct-q4_k_m.gguf"
+      --port 9999 --jinja --n-gpu-layers 26 --threads 8 --ctx-size 8192 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.05 --mlock --parallel 4 --flash-attn --threads-batch 4 --no-warmup
     env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+      - "LD_LIBRARY_PATH=/home/badboy17g/ClaraVerse/electron/llamacpp-binaries/linux-x64:/tmp/.mount_CursorwYz1Ja/usr/lib/:/tmp/.mount_CursorwYz1Ja/usr/lib32/:/tmp/.mount_CursorwYz1Ja/usr/lib64/:/tmp/.mount_CursorwYz1Ja/lib/:/tmp/.mount_CursorwYz1Ja/lib/i386-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib/x86_64-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib/aarch64-linux-gnu/:/tmp/.mount_CursorwYz1Ja/lib32/:/tmp/.mount_CursorwYz1Ja/lib64/:"
     ttl: 300
 
 groups:
@@ -29,5 +29,5 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "qwen3:30b"
-      - "qwen3:0.6b"
+      - "qwen3:14b"
+      - "llama32:3b"

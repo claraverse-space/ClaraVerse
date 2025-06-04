@@ -8,7 +8,7 @@ if curl -s http://localhost:5002/api/health > /dev/null 2>&1; then
     echo "✅ Dashboard is already running"
 else
     echo "🚀 Starting dashboard server in background..."
-    python dashboard_server.py &
+    python3 dashboard_server.py &
     DASHBOARD_PID=$!
     sleep 3
     echo "📊 Dashboard available at: http://localhost:5002"
@@ -28,7 +28,7 @@ echo ""
 chmod +x focused_first_token_tests.py
 
 # Run the focused tests
-python focused_first_token_tests.py
+python3 focused_first_token_tests.py
 
 echo ""
 echo "🎉 Focused tests completed!"
