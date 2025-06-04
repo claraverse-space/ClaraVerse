@@ -179,6 +179,8 @@ npm run build              # Web
 npm run electron:build     # Desktop
 ```
 
+**Note**: During build/CI processes, Docker-related popups are automatically suppressed. Set `SKIP_DOCKER_SETUP=true` to completely skip Docker initialization if needed.
+
 ---
 
 ## 📈 GitHub Star Growth

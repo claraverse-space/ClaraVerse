@@ -15,6 +15,7 @@ class WatchdogService extends EventEmitter {
       retryAttempts: 3,
       retryDelay: 10000, // 10 seconds between retries
       notificationTimeout: 5000, // Auto-dismiss notifications after 5 seconds
+      maxNotificationAttempts: 3, // Stop showing notifications after this many attempts
     };
     
     // Service status tracking
@@ -157,13 +158,19 @@ class WatchdogService extends EventEmitter {
 
     log.error(`${service.name} health check failed (attempt ${service.failureCount}):`, error?.message || 'Service not responding');
 
-    // Show notification on first failure or every 3rd failure to avoid spam
-    if (service.failureCount === 1 || service.failureCount % 3 === 0) {
-      this.showNotification(
-        `${service.name} Issue Detected`,
-        `${service.name} is not responding. Attempting to restart...`,
-        'warning'
-      );
+    // Show notifications only for the first maxNotificationAttempts failures to avoid spam
+    // After that, work silently
+    if (service.failureCount <= this.config.maxNotificationAttempts) {
+      // Show notification on first failure or every 3rd failure to avoid spam
+      if (service.failureCount === 1 || service.failureCount % 3 === 0) {
+        this.showNotification(
+          `${service.name} Issue Detected`,
+          `${service.name} is not responding. Attempting to restart...`,
+          'warning'
+        );
+      }
+    } else {
+      log.info(`${service.name} notification suppressed (attempt ${service.failureCount} > max ${this.config.maxNotificationAttempts}) - working silently`);
     }
 
     // Attempt to restart the service if not already retrying
@@ -173,11 +180,17 @@ class WatchdogService extends EventEmitter {
       log.error(`${service.name} has exceeded maximum retry attempts (${this.config.retryAttempts})`);
       service.status = 'failed';
       
-      this.showNotification(
-        `${service.name} Failed`,
-        `${service.name} could not be restarted after ${this.config.retryAttempts} attempts. Manual intervention may be required.`,
-        'error'
-      );
+      // Only show failure notification if we haven't exceeded maxNotificationAttempts yet
+      // This prevents spam when retryAttempts > maxNotificationAttempts
+      if (service.failureCount <= this.config.maxNotificationAttempts) {
+        this.showNotification(
+          `${service.name} Failed`,
+          `${service.name} could not be restarted after ${this.config.retryAttempts} attempts. Manual intervention may be required.`,
+          'error'
+        );
+      } else {
+        log.info(`${service.name} failure notification suppressed (attempt ${service.failureCount} > max ${this.config.maxNotificationAttempts}) - working silently`);
+      }
       
       this.emit('serviceFailed', serviceKey, service);
     }
@@ -213,6 +226,7 @@ class WatchdogService extends EventEmitter {
         service.failureCount = 0;
         service.isRetrying = false;
         
+        // Always show success notifications as they indicate problem resolution
         this.showNotification(
           `${service.name} Restarted`,
           `${service.name} has been successfully restarted.`,
@@ -228,11 +242,17 @@ class WatchdogService extends EventEmitter {
       log.error(`Error restarting ${service.name}:`, error);
       service.isRetrying = false;
       
-      this.showNotification(
-        `${service.name} Restart Failed`,
-        `Failed to restart ${service.name}: ${error.message}`,
-        'error'
-      );
+      // Only show restart failure notifications for the first maxNotificationAttempts attempts
+      // After that, work silently to avoid notification spam
+      if (service.failureCount <= this.config.maxNotificationAttempts) {
+        this.showNotification(
+          `${service.name} Restart Failed`,
+          `Failed to restart ${service.name}: ${error.message}`,
+          'error'
+        );
+      } else {
+        log.info(`${service.name} restart failure notification suppressed (attempt ${service.failureCount} > max ${this.config.maxNotificationAttempts}) - working silently`);
+      }
     }
   }
 

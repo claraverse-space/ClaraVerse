@@ -14,6 +14,7 @@ interface WatchdogConfig {
   retryAttempts: number;
   retryDelay: number;
   notificationTimeout: number;
+  maxNotificationAttempts: number;
 }
 
 interface WatchdogStatusProps {
@@ -30,6 +31,7 @@ const WatchdogStatus: React.FC<WatchdogStatusProps> = ({ className = '' }) => {
     retryAttempts: 3,
     retryDelay: 10000,
     notificationTimeout: 5000,
+    maxNotificationAttempts: 3,
   });
 
   // Fetch services status
@@ -276,6 +278,22 @@ const WatchdogStatus: React.FC<WatchdogStatusProps> = ({ className = '' }) => {
                 min="5"
                 max="60"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Max Notification Attempts
+              </label>
+              <input
+                type="number"
+                value={config.maxNotificationAttempts}
+                onChange={(e) => updateConfig({ maxNotificationAttempts: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                min="1"
+                max="10"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Stop showing notifications after this many failed attempts (service continues working silently)
+              </p>
             </div>
             <div className="flex space-x-2 pt-2">
               <button
