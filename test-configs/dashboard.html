@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Performance Monitor | Llama.cpp Configuration Testing</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px 0;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stats-bar {
+            background: rgba(255, 255, 255, 0.9);
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1e293b;
+            text-align: center;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 350px;
+        }
+
+        .best-config {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+        }
+
+        .best-config h3 {
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .config-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .config-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .config-item.highlight {
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            font-weight: bold;
+        }
+
+        .config-value {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .config-label {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .loading::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #dc2626;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-wrapper {
+                height: 300px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">🚀 Llama.cpp Performance Monitor</div>
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="status-text">Live Monitoring</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats-bar">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-tests">0</div>
+                    <div class="stat-label">Tests Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="best-first-token">0ms</div>
+                    <div class="stat-label">Best First Token Time</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="best-performance">0.00</div>
+                    <div class="stat-label">Best Tokens/sec</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avg-first-token">0ms</div>
+                    <div class="stat-label">Avg First Token Time</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avg-performance">0.00</div>
+                    <div class="stat-label">Average Tokens/sec</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="success-rate">0%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="last-update">Never</div>
+                    <div class="stat-label">Last Update</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="best-config-card" class="best-config" style="display: none;">
+            <h3>🏆 Best Configuration (Optimized for First Token + Overall Performance)</h3>
+            <div class="config-details" id="best-config-details">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <div class="chart-title">⚡ First Token Performance Over Time</div>
+                <div class="chart-wrapper">
+                    <canvas id="firstTokenChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">📊 Overall Performance Over Time</div>
+                <div class="chart-wrapper">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">🎯 Performance vs First Token Time (Efficiency Plot)</div>
+                <div class="chart-wrapper">
+                    <canvas id="scatterChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">🔧 Configuration Impact Analysis</div>
+                <div class="chart-wrapper">
+                    <canvas id="threadChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">📈 Parameter Correlations with First Token Speed</div>
+                <div class="chart-wrapper">
+                    <canvas id="correlationChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">🏁 First Token Speed by Thread Count</div>
+                <div class="chart-wrapper">
+                    <canvas id="firstTokenThreadChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PerformanceMonitor {
+            constructor() {
+                this.charts = {};
+                this.lastDataSize = 0;
+                this.initCharts();
+                this.startMonitoring();
+            }
+
+            initCharts() {
+                // First Token Performance over time chart
+                const firstTokenCtx = document.getElementById('firstTokenChart').getContext('2d');
+                this.charts.firstToken = new Chart(firstTokenCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'First Token Time (ms)',
+                            data: [],
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'First Token Time (ms)'
+                                },
+                                grid: {
+                                    color: 'rgba(0,0,0,0.1)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(0,0,0,0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Performance over time chart
+                const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+                this.charts.performance = new Chart(performanceCtx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Tokens/sec',
+                            data: [],
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Tokens per Second'
+                                },
+                                grid: {
+                                    color: 'rgba(0,0,0,0.1)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(0,0,0,0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Speed vs Latency scatter chart with efficiency zones
+                const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+                this.charts.scatter = new Chart(scatterCtx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Tests',
+                            data: [],
+                            backgroundColor: function(context) {
+                                if (!context.parsed) return 'rgba(102, 126, 234, 0.6)';
+                                const firstToken = context.parsed.x;
+                                const tokensPerSec = context.parsed.y;
+                                // Color code by efficiency: low first token + high throughput = green
+                                if (firstToken < 500 && tokensPerSec > 15) return 'rgba(34, 197, 94, 0.8)'; // Excellent
+                                if (firstToken < 1000 && tokensPerSec > 10) return 'rgba(59, 130, 246, 0.8)'; // Good
+                                if (firstToken < 1500 && tokensPerSec > 5) return 'rgba(251, 191, 36, 0.8)'; // Fair
+                                return 'rgba(239, 68, 68, 0.8)'; // Poor
+                            },
+                            borderColor: '#667eea',
+                            borderWidth: 2,
+                            pointRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `First Token: ${context.parsed.x.toFixed(1)}ms, Throughput: ${context.parsed.y.toFixed(2)} t/s`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'First Token Time (ms) - Lower is Better'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tokens/sec - Higher is Better'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Thread performance chart
+                const threadCtx = document.getElementById('threadChart').getContext('2d');
+                this.charts.thread = new Chart(threadCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Average Tokens/sec',
+                            data: [],
+                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                            borderColor: '#10b981',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Average Tokens/sec'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // First Token Thread Performance Chart
+                const firstTokenThreadCtx = document.getElementById('firstTokenThreadChart').getContext('2d');
+                this.charts.firstTokenThread = new Chart(firstTokenThreadCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Average First Token Time (ms)',
+                            data: [],
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                            borderColor: '#ef4444',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Average First Token Time (ms) - Lower is Better'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Correlation chart (simplified as bar chart for top correlations)
+                const correlationCtx = document.getElementById('correlationChart').getContext('2d');
+                this.charts.correlation = new Chart(correlationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Correlation with First Token Speed',
+                            data: [],
+                            backgroundColor: function(context) {
+                                if (!context.parsed || context.parsed.y === undefined) {
+                                    return 'rgba(102, 126, 234, 0.8)'; // Default color
+                                }
+                                const value = context.parsed.y;
+                                return value > 0 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(16, 185, 129, 0.8)'; // Red = slower, Green = faster
+                            },
+                            borderColor: function(context) {
+                                if (!context.parsed || context.parsed.y === undefined) {
+                                    return '#667eea'; // Default color
+                                }
+                                const value = context.parsed.y;
+                                return value > 0 ? '#ef4444' : '#10b981';
+                            },
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const correlation = context.parsed.x;
+                                        const direction = correlation > 0 ? 'increases' : 'decreases';
+                                        return `${context.label} ${direction} first token time (r=${correlation.toFixed(3)})`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                min: -1,
+                                max: 1,
+                                title: {
+                                    display: true,
+                                    text: 'Correlation (Green=Faster, Red=Slower)'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            async fetchData() {
+                try {
+                    const response = await fetch('/api/data');
+                    if (!response.ok) throw new Error('Failed to fetch data');
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    return null;
+                }
+            }
+
+            updateStats(data) {
+                if (!data || !data.tests) return;
+
+                const tests = data.tests;
+                const successfulTests = tests.filter(t => t.success);
+                
+                document.getElementById('total-tests').textContent = tests.length;
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+                
+                if (successfulTests.length > 0) {
+                    const performances = successfulTests.map(t => t.tokens_per_sec);
+                    const firstTokenTimes = successfulTests.map(t => t.first_token_time_ms);
+                    
+                    const bestPerf = Math.max(...performances);
+                    const avgPerf = performances.reduce((a, b) => a + b, 0) / performances.length;
+                    const bestFirstToken = Math.min(...firstTokenTimes);
+                    const avgFirstToken = firstTokenTimes.reduce((a, b) => a + b, 0) / firstTokenTimes.length;
+                    
+                    document.getElementById('best-performance').textContent = bestPerf.toFixed(2);
+                    document.getElementById('avg-performance').textContent = avgPerf.toFixed(2);
+                    document.getElementById('best-first-token').textContent = bestFirstToken.toFixed(0) + 'ms';
+                    document.getElementById('avg-first-token').textContent = avgFirstToken.toFixed(0) + 'ms';
+                    
+                    // Find best config using composite score: prioritize first token speed
+                    const bestTest = this.findBestConfiguration(successfulTests);
+                    this.updateBestConfig(bestTest);
+                }
+                
+                const successRate = (successfulTests.length / tests.length * 100).toFixed(1);
+                document.getElementById('success-rate').textContent = successRate + '%';
+            }
+
+            findBestConfiguration(tests) {
+                // Calculate composite score: 60% first token speed, 40% overall performance
+                let bestScore = -1;
+                let bestTest = null;
+                
+                const maxTokensPerSec = Math.max(...tests.map(t => t.tokens_per_sec));
+                const minFirstToken = Math.min(...tests.map(t => t.first_token_time_ms));
+                
+                for (const test of tests) {
+                    // Normalize scores (0-1)
+                    const perfScore = test.tokens_per_sec / maxTokensPerSec;
+                    const firstTokenScore = minFirstToken / test.first_token_time_ms; // Inverted: lower time = higher score
+                    
+                    // Composite score with 60% weight on first token speed
+                    const compositeScore = (firstTokenScore * 0.6) + (perfScore * 0.4);
+                    
+                    if (compositeScore > bestScore) {
+                        bestScore = compositeScore;
+                        bestTest = test;
+                    }
+                }
+                
+                return bestTest;
+            }
+
+            updateBestConfig(bestTest) {
+                if (!bestTest) return;
+                
+                const configCard = document.getElementById('best-config-card');
+                const configDetails = document.getElementById('best-config-details');
+                
+                configCard.style.display = 'block';
+                
+                const configs = [
+                    { label: 'First Token', value: `${bestTest.first_token_time_ms.toFixed(0)}ms`, highlight: true },
+                    { label: 'Performance', value: `${bestTest.tokens_per_sec.toFixed(2)} t/s`, highlight: true },
+                    { label: 'Threads', value: bestTest.threads },
+                    { label: 'Context Size', value: bestTest.ctx_size },
+                    { label: 'Parallel', value: bestTest.parallel },
+                    { label: 'Batch Size', value: bestTest.batch_size },
+                    { label: 'GPU Layers', value: bestTest.n_gpu_layers },
+                    { label: 'UBatch Size', value: bestTest.ubatch_size }
+                ];
+                
+                configDetails.innerHTML = configs.map(config => `
+                    <div class="config-item ${config.highlight ? 'highlight' : ''}">
+                        <div class="config-value">${config.value}</div>
+                        <div class="config-label">${config.label}</div>
+                    </div>
+                `).join('');
+            }
+
+            updateCharts(data) {
+                if (!data || !data.tests) return;
+                
+                const successfulTests = data.tests.filter(t => t.success);
+                if (successfulTests.length === 0) return;
+
+                // First Token Performance over time
+                this.charts.firstToken.data.labels = successfulTests.map((_, i) => `Test ${i + 1}`);
+                this.charts.firstToken.data.datasets[0].data = successfulTests.map(t => t.first_token_time_ms);
+                this.charts.firstToken.update('none');
+
+                // Performance over time
+                this.charts.performance.data.labels = successfulTests.map((_, i) => `Test ${i + 1}`);
+                this.charts.performance.data.datasets[0].data = successfulTests.map(t => t.tokens_per_sec);
+                this.charts.performance.update('none');
+
+                // Scatter plot - Performance vs First Token Time
+                this.charts.scatter.data.datasets[0].data = successfulTests.map(t => ({
+                    x: t.first_token_time_ms,
+                    y: t.tokens_per_sec
+                }));
+                this.charts.scatter.update('none');
+
+                // Thread performance analysis
+                const threadGroups = {};
+                const threadFirstTokenGroups = {};
+                successfulTests.forEach(t => {
+                    if (!threadGroups[t.threads]) {
+                        threadGroups[t.threads] = [];
+                        threadFirstTokenGroups[t.threads] = [];
+                    }
+                    threadGroups[t.threads].push(t.tokens_per_sec);
+                    threadFirstTokenGroups[t.threads].push(t.first_token_time_ms);
+                });
+
+                const threadLabels = Object.keys(threadGroups).sort((a, b) => parseInt(a) - parseInt(b));
+                const threadAvgs = threadLabels.map(threads => {
+                    const perfs = threadGroups[threads];
+                    return perfs.reduce((a, b) => a + b, 0) / perfs.length;
+                });
+
+                const threadFirstTokenAvgs = threadLabels.map(threads => {
+                    const times = threadFirstTokenGroups[threads];
+                    return times.reduce((a, b) => a + b, 0) / times.length;
+                });
+
+                // Update thread performance chart
+                this.charts.thread.data.labels = threadLabels.map(t => `${t} threads`);
+                this.charts.thread.data.datasets[0].data = threadAvgs;
+                this.charts.thread.update('none');
+
+                // Update first token thread chart
+                this.charts.firstTokenThread.data.labels = threadLabels.map(t => `${t} threads`);
+                this.charts.firstTokenThread.data.datasets[0].data = threadFirstTokenAvgs;
+                this.charts.firstTokenThread.update('none');
+
+                // Enhanced correlation analysis with first token focus
+                if (successfulTests.length > 3) {
+                    const correlations = this.calculateFirstTokenCorrelations(successfulTests);
+                    this.charts.correlation.data.labels = correlations.map(c => c.param);
+                    this.charts.correlation.data.datasets[0].data = correlations.map(c => c.correlation);
+                    this.charts.correlation.update('none');
+                }
+            }
+
+            calculateFirstTokenCorrelations(tests) {
+                const params = ['threads', 'ctx_size', 'parallel', 'batch_size', 'ubatch_size', 'n_gpu_layers'];
+                const firstTokenTimes = tests.map(t => t.first_token_time_ms);
+                
+                return params.map(param => {
+                    const values = tests.map(t => t[param]);
+                    const correlation = this.pearsonCorrelation(values, firstTokenTimes);
+                    return { param, correlation: correlation || 0 };
+                }).filter(c => !isNaN(c.correlation))
+                  .sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation))
+                  .slice(0, 6); // Show top 6 correlations
+            }
+
+            pearsonCorrelation(x, y) {
+                const n = x.length;
+                if (n === 0) return 0;
+                
+                const sumX = x.reduce((a, b) => a + b, 0);
+                const sumY = y.reduce((a, b) => a + b, 0);
+                const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+                const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
+                const sumYY = y.reduce((sum, yi) => sum + yi * yi, 0);
+                
+                const numerator = n * sumXY - sumX * sumY;
+                const denominator = Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
+                
+                return denominator === 0 ? 0 : numerator / denominator;
+            }
+
+            async startMonitoring() {
+                console.log('🔴 Live monitoring started');
+                
+                const updateData = async () => {
+                    const data = await this.fetchData();
+                    if (data) {
+                        this.updateStats(data);
+                        this.updateCharts(data);
+                    }
+                };
+                
+                // Initial load
+                await updateData();
+                
+                // Update every 2 seconds
+                setInterval(updateData, 2000);
+            }
+        }
+
+        // Start monitoring when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PerformanceMonitor();
+        });
+    </script>
+</body>
+</html> 

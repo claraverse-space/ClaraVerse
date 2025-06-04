@@ -4,22 +4,12 @@ healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "qwen3:8b":
+  "qwen3:30b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 40 --threads 4 --ctx-size 32768 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
-    ttl: 300
-
-  "llama32:1b":
-    proxy: "http://127.0.0.1:9999"
-    cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Llama-3.2-1B-Instruct-IQ4_XS.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-30B-A3B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 1000 --threads 8 --ctx-size 4096 --batch-size 1024 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8
     env:
       - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
@@ -28,28 +18,8 @@ models:
     proxy: "http://127.0.0.1:9999"
     cmd: |
       "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-0.6B-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
-    ttl: 300
-
-  "qwen3:4b":
-    proxy: "http://127.0.0.1:9999"
-    cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-4B-Q4_K_M.gguf"
-      --port 9999 --jinja --n-gpu-layers 32 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
-    ttl: 300
-
-  "rwkv7:0.1b":
-    proxy: "http://127.0.0.1:9999"
-    cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/rwkv7-0.1B-g1.IQ4_XS.gguf"
-      --port 9999 --jinja --n-gpu-layers 22 --threads 4 --ctx-size 32768 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      -m "/Users/badfy17g/Downloads/Qwen3 0.6B GGUF.gguf"
+      --port 9999 --jinja --n-gpu-layers 22 --threads 8 --ctx-size 4096 --batch-size 256 --ubatch-size 64 --keep 2048 --defrag-thold 0.1 --mlock --parallel 8
     env:
       - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
@@ -59,8 +29,5 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "qwen3:8b"
-      - "llama32:1b"
+      - "qwen3:30b"
       - "qwen3:0.6b"
-      - "qwen3:4b"
-      - "rwkv7:0.1b"
