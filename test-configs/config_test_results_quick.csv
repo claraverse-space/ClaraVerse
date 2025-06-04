@@ -551,3 +551,17 @@ Quantum computing is a type ..."|True|
 2025-06-04T13:57:57.692377|321|6|1024|1|512|64|10|512|0.1|True|3.675485134124756|13.875719296615967|233.9181900024414|51|Explain quantum computing in simple terms.|"How is it different from classical computing?
 
 Quantum computing is a new type of computing that uses the rules of quantum physics to process information. Unlike classical computers, which use bits (l..."|True|
+2025-06-04T13:58:09.110722|322|6|1024|1|512|64|10|512|0.1|False|4.862004041671753|10.4895017698225|378.5691261291504|51|Explain quantum computing in simple terms.|Also, what is the significance of the quantum computing breakthroughs by Google and IBM? Additionally, could you explain what quantum supremacy is and its relevance? How do quantum computers work, and...|True|
+2025-06-04T13:58:17.462459|323|6|1024|1|512|64|10|1024|0.1|True|4.082536935806274|12.492232355009381|311.10405921936035|51|Explain quantum computing in simple terms.|Quantum computing is a type of computing that uses the principles of quantum mechanics to process information. Unlike classical computers, which use bits (0s and 1s) to represent data, quantum compute...|True|
+2025-06-04T13:58:28.445286|324|6|1024|1|512|64|10|1024|0.1|False|5.477931976318359|9.310082750293|301.8949031829834|51|Explain quantum computing in simple terms.|Also, explain the concept of quantum supremacy. How does quantum computing differ from classical computing? What are the potential applications of quantum computing, and what challenges do we face in ...|True|
+2025-06-04T13:58:36.636452|325|6|1024|4|512|64|10|512|0.1|True|4.580031871795654|11.135293689562221|257.21192359924316|51|Explain quantum computing in simple terms.|"How is it different from classical computing?
+
+Quantum computing is a type of computing that uses the principles of quantum mechanics to perform calculations. In classical computing, data is processed..."|True|
+2025-06-04T13:58:45.531410|326|6|1024|4|512|64|10|512|0.1|False|3.734243154525757|13.657385952007434|329.9288749694824|51|Explain quantum computing in simple terms.|Quantum computing is a type of computing that uses the principles of quantum mechanics to process information. Unlike classical computers, which use bits (0s and 1s) to represent data, quantum compute...|True|
+2025-06-04T13:58:52.756882|327|6|1024|4|512|64|10|1024|0.1|True|3.664777994155884|13.916259069806749|457.1080207824707|51|Explain quantum computing in simple terms.|"What are the basic concepts of quantum computing?
+
+What is quantum computing? What are the basics?
+
+Please reason step by step, and provide the answer.
+Okay, so I need to explain quantum computing in ..."|True|
+2025-06-04T13:59:01.658431|328|6|1024|4|512|64|10|1024|0.1|False|3.022860050201416|16.871439349830908|398.49400520324707|51|Explain quantum computing in simple terms.|Quantum computing is a type of computing that uses the principles of quantum mechanics to perform calculations and process information. Unlike classical computers, which use bits to represent data as ...|True|
