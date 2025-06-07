@@ -22,6 +22,8 @@ import { useResizable } from '../hooks/useResizable';
 import { Project, FileNode } from '../types';
 import { useIndexedDB } from '../hooks/useIndexedDB';
 import { ProjectScaffolder, PROJECT_CONFIGS, ScaffoldProgress } from '../services/projectScaffolder';
+import { TemplateScaffolder } from '../services/templateScaffolder';
+import { getTemplateById } from './templates';
 import { LumaUIAPIClient } from './lumaui_components/services/lumaUIApiClient';
 import { useProviders } from '../contexts/ProvidersContext';
 import { db } from '../db';
@@ -33,7 +35,7 @@ import { CheckpointProvider } from './lumaui_components/CheckpointManager';
 
 const LumaUICore: React.FC = () => {
   // Provider context
-  const { providers, primaryProvider } = useProviders();
+  const { } = useProviders();
   
   // State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -200,7 +202,7 @@ const LumaUICore: React.FC = () => {
   };
 
   // Project handlers
-  const handleCreateProject = async (name: string, configId: string) => {
+  const handleCreateProject = async (name: string, configId: string, templateId?: string) => {
     // Check WebContainer compatibility
     if (!window.crossOriginIsolated) {
       const errorMsg = `WebContainer requires cross-origin isolation to run properly.
@@ -303,6 +305,30 @@ This is a browser security requirement for WebContainer.`;
       if (!success) {
         writeToTerminal('\x1b[31m❌ Project scaffolding failed - check output above for details\x1b[0m\n');
         throw new Error('Project scaffolding failed - check terminal output for details');
+      }
+
+      // Apply template if selected
+      if (templateId) {
+        writeToTerminal('\x1b[36m🎨 Applying application template...\x1b[0m\n');
+        const template = getTemplateById(templateId);
+        
+        if (template) {
+          const templateScaffolder = new TemplateScaffolder(container, writeToTerminal);
+          const templateSuccess = await templateScaffolder.applyTemplate(
+            template,
+            configId,
+            name,
+            (step, progress) => {
+              writeToTerminal(`\x1b[36m📊 Template Progress: ${Math.round(progress)}% - ${step}\x1b[0m\n`);
+            }
+          );
+          
+          if (!templateSuccess) {
+            writeToTerminal('\x1b[33m⚠️ Template application failed, but continuing with basic project\x1b[0m\n');
+          }
+        } else {
+          writeToTerminal(`\x1b[31m❌ Template "${templateId}" not found\x1b[0m\n`);
+        }
       }
       
       // Build file tree from the scaffolded project
