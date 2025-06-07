@@ -9,6 +9,7 @@ import NodeCreator from './AgentBuilder/NodeCreator/NodeCreator';
 import ExportModal from './AgentBuilder/ExportModal';
 import { CustomNodeDefinition } from '../types/agent/types';
 import { customNodeManager } from './AgentBuilder/NodeCreator/CustomNodeManager';
+import { db } from '../db';
 
 interface AgentStudioProps {
   onPageChange: (page: string) => void;
@@ -43,8 +44,8 @@ const NewFlowModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="glassmorphic rounded-xl shadow-xl w-full max-w-md mx-4">
+        <div className="flex items-center justify-between p-6 border-b border-white/20 dark:border-gray-700/50">
           <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
             Create New Flow
           </h2>
@@ -66,7 +67,7 @@ const NewFlowModal: React.FC<{
               value={flowName}
               onChange={(e) => setFlowName(e.target.value)}
               placeholder="My Awesome Flow"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500"
+              className="w-full px-3 py-2 border border-white/30 dark:border-gray-700/50 rounded-lg glassmorphic-card text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500"
               required
               autoFocus
             />
@@ -81,7 +82,7 @@ const NewFlowModal: React.FC<{
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what this flow does..."
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 resize-none"
+              className="w-full px-3 py-2 border border-white/30 dark:border-gray-700/50 rounded-lg glassmorphic-card text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 resize-none"
             />
           </div>
           
@@ -134,12 +135,28 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
   const [editingCustomNode, setEditingCustomNode] = useState<CustomNodeDefinition | null>(null);
   const [customNodes, setCustomNodes] = useState<CustomNodeDefinition[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
 
   // Load custom nodes on mount
   useEffect(() => {
     setCustomNodes(customNodeManager.getCustomNodes());
     syncCustomNodes();
   }, [syncCustomNodes]);
+
+  // Load wallpaper from database
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
 
   // Prevent body scrolling and ensure proper viewport containment
   useEffect(() => {
@@ -266,15 +283,32 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
   );
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar activePage="agents" onPageChange={onPageChange} />
+    <div className="flex h-screen overflow-hidden relative">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="absolute top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+
+      {/* Content with relative z-index */}
+      <div className="relative z-10 flex h-screen w-full">
+        <Sidebar activePage="agents" onPageChange={onPageChange} />
       
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <Topbar userName={userName} onPageChange={onPageChange} />
         
         <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 min-h-0 overflow-hidden">
           {/* Agent Studio Header */}
-          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex-shrink-0">
+          <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -382,8 +416,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
           <div className="flex-1 flex overflow-hidden min-h-0">
             {/* Node Palette Sidebar */}
             {isNodePaletteOpen && (
-              <div className="w-80 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-h-0">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <div className="w-80 glassmorphic border-r border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden min-h-0">
+                <div className="p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0">
                   <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
                     Node Library
                   </h2>
@@ -392,7 +426,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                   <input
                     type="text"
                     placeholder="Search nodes..."
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                    className="w-full px-3 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500"
                   />
                 </div>
                 
@@ -470,12 +504,12 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             features: ['Text extraction', 'Multi-page support']
                           },
                         ].map((node) => (
-                          <div
-                            key={node.name}
-                            className="group p-4 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500 hover:shadow-md cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
-                            draggable
-                            onDragStart={(e) => onDragStart(e, node.type)}
-                          >
+                                                      <div
+                              key={node.name}
+                              className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                              draggable
+                              onDragStart={(e) => onDragStart(e, node.type)}
+                            >
                             <div className="flex items-start gap-3">
                               <div className={`p-2.5 ${node.color} rounded-lg text-white text-lg flex-shrink-0 group-hover:scale-110 transition-transform`}>
                                 {node.icon}
@@ -528,7 +562,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                         ].map((node) => (
                           <div
                             key={node.name}
-                            className="group p-4 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
                             draggable
                             onDragStart={(e) => onDragStart(e, node.type)}
                           >
@@ -576,7 +610,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                         ].map((node) => (
                           <div
                             key={node.name}
-                            className="group p-4 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 hover:shadow-md cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-purple-300 dark:hover:border-purple-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
                             draggable
                             onDragStart={(e) => onDragStart(e, node.type)}
                           >
@@ -632,7 +666,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                         ].map((node) => (
                           <div
                             key={node.name}
-                            className="group p-4 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                            className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
                             draggable
                             onDragStart={(e) => onDragStart(e, node.type)}
                           >
@@ -677,7 +711,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           {customNodes.map((node) => (
                             <div
                               key={node.id}
-                              className="group p-4 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
+                              className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-purple-300 dark:hover:border-purple-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative overflow-hidden"
                               draggable
                               onDragStart={(e) => onDragStart(e, node.type)}
                             >
@@ -736,7 +770,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                           {/* Add New Custom Node Button */}
                           <div
                             onClick={handleCreateCustomNode}
-                            className="group p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-dashed border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                            className="group p-4 glassmorphic-card rounded-xl border-2 border-dashed border-purple-300/50 dark:border-purple-700/50 hover:border-purple-400 dark:hover:border-purple-500 cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
                           >
                             <div className="flex items-center justify-center gap-3">
                               <div className="p-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-lg text-white text-lg group-hover:scale-110 transition-transform">
@@ -752,8 +786,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                     )}
 
                     {/* Pro Tips */}
-                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                    <div className="pt-4 border-t border-white/20 dark:border-gray-700/50">
+                      <div className="p-4 glassmorphic-card rounded-xl border border-blue-300/50 dark:border-blue-800/50">
                         <div className="flex items-start gap-3">
                           <div className="p-2 bg-blue-500 rounded-lg text-white text-sm flex-shrink-0">
                             💡
@@ -782,7 +816,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
             {/* Canvas Area */}
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               {/* Canvas Header */}
-              <div className="bg-white/30 dark:bg-gray-800/30 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
+              <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Canvas • {currentFlow ? `${currentFlow.name}` : 'No flow selected'}
@@ -832,8 +866,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
 
             {/* Execution Log Panel */}
             {isExecutionLogOpen && (
-              <div className="w-96 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-h-0">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <div className="w-96 glassmorphic border-l border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden min-h-0">
+                <div className="p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                       <Terminal className="w-5 h-5" />
@@ -996,6 +1030,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
         currentFlow={currentFlow ? { ...currentFlow, nodeCount: nodes.length } : null}
         hasCustomNodes={hasCustomNodes}
       />
+      </div>
     </div>
   );
 };

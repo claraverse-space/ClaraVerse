@@ -12,6 +12,7 @@ import Help from './components/Help';
 import N8N from './components/N8N';
 import Servers from './components/Servers';
 import AgentStudio from './components/AgentStudio';
+import Lumaui from './components/Lumaui';
 import { db } from './db';
 import { InterpreterProvider } from './contexts/InterpreterContext';
 import { ProvidersProvider } from './contexts/ProvidersContext';
@@ -65,6 +66,8 @@ function App() {
       return <AgentStudio onPageChange={setActivePage} userName={userInfo?.name} />;
     }
     
+
+    
     if (activePage === 'image-gen') {
       return <ImageGen onPageChange={setActivePage} />;
     }
@@ -97,6 +100,8 @@ function App() {
                   return <Debug />;
                 case 'help':
                   return <Help />;
+                case 'lumaui':
+                  return <Lumaui onPageChange={setActivePage} />;
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;

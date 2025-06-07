@@ -522,6 +522,55 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         // Get primary provider and set it in config
         const primaryProvider = loadedProviders.find(p => p.isPrimary) || loadedProviders[0];
         if (primaryProvider) {
+          // AUTO-START CLARA'S POCKET IF IT'S THE PRIMARY PROVIDER
+          if (primaryProvider.type === 'claras-pocket' && window.llamaSwap) {
+            try {
+              console.log("🚀 Checking Clara's Core status on startup...");
+              const status = await window.llamaSwap.getStatus?.();
+              if (!status?.isRunning) {
+                console.log("🔄 Clara's Core is not running, starting automatically...");
+                addInfoNotification(
+                  "Starting Clara's Core...",
+                  'Clara is starting up her local AI service for you. This may take a moment.',
+                  6000
+                );
+                
+                const result = await window.llamaSwap.start();
+                if (!result.success) {
+                  addErrorNotification(
+                    "Failed to Start Clara's Core",
+                    result.error || 'Could not start the local AI service. Please check your installation.',
+                    10000
+                  );
+                  console.error("❌ Failed to start Clara's Core:", result.error);
+                } else {
+                  console.log("✅ Clara's Core started successfully");
+                  addInfoNotification(
+                    "Clara's Core Ready",
+                    'Your local AI service is now running and ready to chat!',
+                    4000
+                  );
+                  // Wait a moment for service to be fully ready
+                  await new Promise(res => setTimeout(res, 2000));
+                }
+              } else {
+                console.log("✅ Clara's Core is already running");
+                addInfoNotification(
+                  "Clara's Core Online",
+                  'Your local AI service is ready and waiting for your messages.',
+                  3000
+                );
+              }
+            } catch (err) {
+              console.error("⚠️ Error checking/starting Clara's Core:", err);
+              addErrorNotification(
+                "Clara's Core Startup Error",
+                err instanceof Error ? err.message : 'Could not communicate with the local AI service.',
+                8000
+              );
+            }
+          }
+
           // Update API service to use primary provider
           claraApiService.updateProvider(primaryProvider);
 
@@ -1163,31 +1212,43 @@ Would you like me to help with text-only responses for now?`,
       // POCKET PROVIDER AUTO-START LOGIC
       if (provider.type === 'claras-pocket' && window.llamaSwap) {
         try {
+          console.log("🚀 Switching to Clara's Core - checking status...");
           // Check if running
           const status = await window.llamaSwap.getStatus?.();
           if (!status?.isRunning) {
+            console.log("🔄 Clara's Core is not running, starting for provider switch...");
             addInfoNotification(
-              "Starting Clara's Pocket LLM Service...",
-              'Attempting to start the native LLM service for you.',
-              4000
+              "Starting Clara's Core...",
+              'Clara is starting up her local AI service. Please wait a moment.',
+              6000
             );
             const result = await window.llamaSwap.start();
             if (!result.success) {
               addErrorNotification(
-                "Failed to Start Clara's Pocket",
-                result.error || 'Could not start the native LLM service. Please check your installation.',
-                8000
+                "Failed to Start Clara's Core",
+                result.error || 'Could not start the local AI service. Please check your installation.',
+                10000
               );
+              console.error("❌ Failed to start Clara's Core for provider switch:", result.error);
               setIsLoadingProviders(false);
               return;
             }
+            console.log("✅ Clara's Core started successfully for provider switch");
+            addInfoNotification(
+              "Clara's Core Ready",
+              'Local AI service is now running and ready!',
+              3000
+            );
             // Wait a moment for service to be ready
-            await new Promise(res => setTimeout(res, 1500));
+            await new Promise(res => setTimeout(res, 2000));
+          } else {
+            console.log("✅ Clara's Core is already running for provider switch");
           }
         } catch (err) {
+          console.error("⚠️ Error starting Clara's Core for provider switch:", err);
           addErrorNotification(
-            "Error Starting Clara's Pocket",
-            err instanceof Error ? err.message : String(err),
+            "Clara's Core Startup Error",
+            err instanceof Error ? err.message : 'Could not communicate with the local AI service.',
             8000
           );
           setIsLoadingProviders(false);

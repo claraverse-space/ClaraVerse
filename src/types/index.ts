@@ -20,3 +20,20 @@ export interface GalleryImage {
   model: string;
   resolution: string;
 }
+
+export interface Project {
+  id: string;
+  name: string;
+  framework: string;
+  status: 'idle' | 'running' | 'error';
+  createdAt: Date;
+  previewUrl?: string;
+}
+
+export interface FileNode {
+  name: string;
+  type: 'file' | 'directory';
+  path: string;
+  content?: string;
+  children?: FileNode[];
+}

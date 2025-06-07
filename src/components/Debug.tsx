@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Send, RefreshCw, CheckCircle2, XCircle, Copy, CheckCheck, ImagePlus, X, Image as ImageIcon } from 'lucide-react';
+import { Terminal, Send, RefreshCw, CheckCircle2, XCircle, Copy, CheckCheck, ImagePlus, X, Image as ImageIcon, Database } from 'lucide-react';
 import { OllamaClient } from '../utils';
 import { db } from '../db';
 import ErrorTester from './ErrorTester';
+// import DebugProjectStorage from './DebugProjectStorage';
 
 interface UploadedImage {
   id: string;
@@ -11,6 +12,7 @@ interface UploadedImage {
 }
 
 const Debug = () => {
+  const [activeTab, setActiveTab] = useState<'ollama' | 'storage' | 'errors'>('ollama');
   const [baseUrl, setBaseUrl] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [models, setModels] = useState<any[]>([]);
@@ -294,13 +296,60 @@ Environment="OLLAMA_ORIGINS=*"`;
         <ErrorTester />
       )}
       
+      {/* Tab Navigation */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <Terminal className="w-6 h-6 text-sakura-500" />
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Ollama Debug Console
+            Debug Console
           </h2>
         </div>
+        
+        <div className="flex space-x-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveTab('ollama')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'ollama'
+                ? 'bg-white dark:bg-gray-700 text-sakura-600 dark:text-sakura-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <Terminal className="w-4 h-4" />
+            Ollama
+          </button>
+          <button
+            onClick={() => setActiveTab('storage')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'storage'
+                ? 'bg-white dark:bg-gray-700 text-sakura-600 dark:text-sakura-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            Project Storage
+          </button>
+          <button
+            onClick={() => setActiveTab('errors')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'errors'
+                ? 'bg-white dark:bg-gray-700 text-sakura-600 dark:text-sakura-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <XCircle className="w-4 h-4" />
+            Error Testing
+          </button>
+        </div>
+
+        {activeTab === 'storage' ? (
+          <DebugProjectStorage />
+        ) : activeTab === 'errors' ? (
+          <ErrorTester />
+        ) : (
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Ollama Debug Console
+            </h3>
 
         <div className="space-y-6">
           <div className="flex items-center gap-4">
@@ -470,7 +519,9 @@ Environment="OLLAMA_ORIGINS=*"`;
           )}
 
           {renderTroubleshooting()}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
