@@ -1,31 +1,68 @@
 # Auto-generated llama-swap configuration
-# Models directory: C:\Users\prave\.clara\llama-models
+# Models directory: /Users/badfy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "gemma3:12b":
+  "qwen25:7b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\gemma-3-12b-it-Q4_K_M.gguf"
-      --port 9999 --jinja --n-gpu-layers 40 --threads 16 --ctx-size 2048 --batch-size 512 --ubatch-size 128 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/Qwen2.5-VL-7B-Instruct-q4_0.gguf"
+      --port 9999 --jinja --n-gpu-layers 50
+      --mmproj "/Volumes/BackUp Drive/models-gguf/Qwen2.5-VL-7B-Instruct-mmproj-f16.gguf" --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
-  "llama32:3b":
+  "qwen3:0.6b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\Llama-3.2-3B-Instruct-IQ4_XS.gguf"
-      --port 9999 --jinja --n-gpu-layers 26 --threads 16 --ctx-size 2048 --batch-size 256 --ubatch-size 64 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/Qwen3-0.6B-Q4_K_S.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
-  "qwen3:14b":
+  "qwen3:30b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\prave\.clara\llama-models\Qwen3-14B-UD-Q4_K_XL.gguf"
-      --port 9999 --jinja --n-gpu-layers 60 --threads 16 --ctx-size 2048 --batch-size 1024 --ubatch-size 256 --keep 256 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/Qwen3-30B-A3B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "gemma3:4b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/gemma-3-4b-it-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "llama32:1b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/llama-3.2-1b-instruct-q4_k_m.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+    ttl: 300
+
+  "llama11:1.1b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Volumes/BackUp Drive/models-gguf/tinyllama-1.1b-chat-v1.0.Q4_K_S.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 6 --ctx-size 4096 --batch-size 657 --ubatch-size 161 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
 groups:
@@ -33,6 +70,9 @@ groups:
     swap: true
     exclusive: true
     members:
-      - "gemma3:12b"
-      - "llama32:3b"
-      - "qwen3:14b"
+      - "qwen25:7b"
+      - "qwen3:0.6b"
+      - "qwen3:30b"
+      - "gemma3:4b"
+      - "llama32:1b"
+      - "llama11:1.1b"

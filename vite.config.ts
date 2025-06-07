@@ -35,13 +35,68 @@ function copyPdfWorker(): PluginOption {
   };
 }
 
+// Plugin to add WebContainer headers for production
+function webContainerHeaders(): PluginOption {
+  return {
+    name: 'webcontainer-headers',
+    generateBundle() {
+      // Create _headers file for Netlify
+      const netlifyHeaders = `/*
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: cross-origin`;
+      
+      // Create vercel.json for Vercel
+      const vercelConfig = {
+        headers: [
+          {
+            source: "/(.*)",
+            headers: [
+              {
+                key: "Cross-Origin-Embedder-Policy",
+                value: "require-corp"
+              },
+              {
+                key: "Cross-Origin-Opener-Policy", 
+                value: "same-origin"
+              },
+              {
+                key: "Cross-Origin-Resource-Policy",
+                value: "cross-origin"
+              }
+            ]
+          }
+        ]
+      };
+
+      this.emitFile({
+        type: 'asset',
+        fileName: '_headers',
+        source: netlifyHeaders
+      });
+
+      this.emitFile({
+        type: 'asset',
+        fileName: 'vercel.json',
+        source: JSON.stringify(vercelConfig, null, 2)
+      });
+    }
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), copyPdfWorker()],
+  plugins: [react(), copyPdfWorker(), webContainerHeaders()],
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
   base: process.env.ELECTRON_START_URL ? '/' : './',
+  server: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -52,6 +107,12 @@ export default defineConfig({
           pdfjs: ['pdfjs-dist']
         },
       },
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
     },
   },
   resolve: {

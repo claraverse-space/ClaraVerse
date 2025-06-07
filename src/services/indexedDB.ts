@@ -1,5 +1,5 @@
 const DB_NAME = 'clara_db';
-const DB_VERSION = 8; // Increment version to trigger upgrade for agent workflow stores
+const DB_VERSION = 9; // Increment version to trigger upgrade for Lumaui project stores
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -121,6 +121,29 @@ export class IndexedDBService {
           workflowStore.createIndex('starred_index', 'metadata.isStarred', { unique: false });
           workflowStore.createIndex('archived_index', 'metadata.isArchived', { unique: false });
           workflowStore.createIndex('tags_index', 'metadata.tags', { unique: false, multiEntry: true });
+        }
+
+        // Add Lumaui Project stores
+        if (!db.objectStoreNames.contains('lumaui_projects')) {
+          console.log('🔧 IndexedDB: Creating lumaui_projects store');
+          const projectStore = db.createObjectStore('lumaui_projects', { keyPath: 'id' });
+          projectStore.createIndex('name_index', 'name', { unique: false });
+          projectStore.createIndex('framework_index', 'framework', { unique: false });
+          projectStore.createIndex('created_at_index', 'createdAt', { unique: false });
+          projectStore.createIndex('last_modified_index', 'lastModified', { unique: false });
+          projectStore.createIndex('status_index', 'status', { unique: false });
+          console.log('✅ IndexedDB: lumaui_projects store created successfully');
+        } else {
+          console.log('ℹ️ IndexedDB: lumaui_projects store already exists');
+        }
+
+        if (!db.objectStoreNames.contains('lumaui_project_files')) {
+          console.log('🔧 IndexedDB: Creating lumaui_project_files store');
+          const filesStore = db.createObjectStore('lumaui_project_files', { keyPath: 'id' });
+          filesStore.createIndex('project_id_index', 'projectId', { unique: false });
+          console.log('✅ IndexedDB: lumaui_project_files store created successfully');
+        } else {
+          console.log('ℹ️ IndexedDB: lumaui_project_files store already exists');
         }
 
         if (!db.objectStoreNames.contains('workflow_templates')) {
