@@ -332,55 +332,106 @@ class LlamaSwapService {
   }
 
   generateModelName(filename) {
-    // Convert filename to a readable model name
-    // Example: "gemma-3-1b-it.Q4_K_M.gguf" -> "gemma3:1b"
-    // Example: "Llama-3.2-1B-Instruct-Q4_K_M.gguf" -> "llama3.2:1b"
+    const raw = filename.replace('.gguf', '');
+    const name = raw.toLowerCase();
     
-    let name = filename
-      .replace('.gguf', '')
-      .toLowerCase();
+    // Fixed mappings (override everything else)
+    const fixedMappings = {
+      'mxbai': 'mxbai-embed-large:embed',
+    };
     
-    // Extract base model name
-    let baseName = name;
-    
-    // Handle common model families
-    if (name.includes('llama')) {
-      baseName = name.match(/llama[.-]?(\d+(?:\.\d+)?)/)?.[0]?.replace(/[.-]/g, '') || 'llama';
-    } else if (name.includes('gemma')) {
-      baseName = name.match(/gemma[.-]?(\d+(?:\.\d+)?)/)?.[0]?.replace(/[.-]/g, '') || 'gemma';
-    } else if (name.includes('qwen')) {
-      baseName = name.match(/qwen[.-]?(\d+(?:\.\d+)?)/)?.[0]?.replace(/[.-]/g, '') || 'qwen';
-    } else if (name.includes('mxbai')) {
-      baseName = 'mxbai-embed-large';
-    } else if (name.includes('moondream')) {
-      baseName = 'moondream';
-    } else {
-      // For other models, take the first part before any numbers or separators
-      baseName = name.split(/[-._]/)[0];
-    }
-    
-    // Extract size information
-    const sizeMatch = name.match(/(\d+(?:\.\d+)?)\s*b(?:illion)?/i);
-    let size = sizeMatch ? `${sizeMatch[1]}b` : null;
-    
-    // If no size found, check for common patterns
-    if (!size) {
-      if (name.includes('large') || name.includes('7b') || name.includes('8b')) {
-        if (name.includes('7b')) size = '7b';
-        else if (name.includes('8b')) size = '8b';
-        else size = 'large';
-      } else if (name.includes('small') || name.includes('1b')) {
-        size = '1b';
-      } else if (name.includes('medium') || name.includes('3b') || name.includes('4b')) {
-        if (name.includes('3b')) size = '3b';
-        else if (name.includes('4b')) size = '4b';
-        else size = 'medium';
-      } else {
-        size = 'latest';
+    for (const key in fixedMappings) {
+      if (name.includes(key)) {
+        return fixedMappings[key];
       }
     }
     
-    return `${baseName}:${size}`;
+    // Special case for moondream - extract version number
+    if (name.includes('moondream')) {
+      const versionMatch = name.match(/moondream[-_.]?(\d+(?:\.\d+)?)/);
+      const version = versionMatch ? versionMatch[1] : '2';
+      return `moondream:${version}`;
+    }
+    
+    // Try to match size - improved regex to handle various formats
+    let size = null;
+    
+    // Look for patterns like "3B", "8B", "1B" etc.
+    const sizeMatch = name.match(/(?:^|[^a-z\d])(\d+(?:\.\d+)?)b(?:[^a-z]|$)/i);
+    if (sizeMatch) {
+      size = `${sizeMatch[1]}b`;
+    }
+    
+    // Fallback size detection for edge cases
+    if (!size) {
+      if (name.includes('large')) size = 'large';
+      else if (name.includes('medium')) size = 'medium';
+      else if (name.includes('small')) size = 'small';
+      else size = 'unknown';
+    }
+    
+    // Ordered patterns — first match wins (most specific first)
+    const patterns = [
+      // TinyLlama patterns - MUST come before Llama patterns
+      { 
+        regex: /(tinyllama)/i, 
+        format: (m) => 'tinyllama' 
+      },
+      
+      // DeepSeek patterns - handle R1 and version numbers
+      { 
+        regex: /(deepseek[-_.]r\d+(?:[-_.]?\d+)*)/i, 
+        format: (m) => m[1].toLowerCase().replace(/[-_.]/g, '-') 
+      },
+      
+      // Nomic embed patterns
+      { 
+        regex: /(nomic[-_.]?embed[-_.]?text[-_.]?v\d+(?:\.\d+)?)/i, 
+        format: (m) => m[1].toLowerCase().replace(/[-_.]/g, '-') 
+      },
+      
+      // Llama patterns - handle version numbers like 3.2
+      { 
+        regex: /(llama)[-_.]?(\d+(?:\.\d+)?)/i, 
+        format: (m) => `llama${m[2]}` 
+      },
+      
+      // Gemma patterns
+      { 
+        regex: /(gemma)[-_.]?(\d+(?:\.\d+)?)/i, 
+        format: (m) => `gemma${m[2]}` 
+      },
+      
+      // Qwen patterns - handle version numbers like 2.5
+      { 
+        regex: /(qwen)(\d+(?:\.\d+)?)/i, 
+        format: (m) => `qwen${m[2]}` 
+      },
+      
+      // Mistral patterns
+      { 
+        regex: /(mistral)/i, 
+        format: (m) => 'mistral' 
+      },
+      
+      // Devstral patterns
+      { 
+        regex: /(devstral)/i, 
+        format: (m) => 'devstral' 
+      },
+    ];
+    
+    for (const { regex, format } of patterns) {
+      const match = name.match(regex);
+      if (match) {
+        const base = format(match);
+        return size !== 'unknown' ? `${base}:${size}` : base;
+      }
+    }
+    
+    // Fallback: clean up the filename and use as-is
+    const fallback = raw.toLowerCase().replace(/[-_.]/g, '-');
+    return size !== 'unknown' ? `${fallback}:${size}` : fallback;
   }
 
   /**
