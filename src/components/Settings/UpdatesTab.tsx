@@ -27,7 +27,12 @@ interface LlamacppUpdateInfo {
   publishedAt?: string;
 }
 
-const UpdatesTab: React.FC = () => {
+interface UpdatesTabProps {
+  alphaFeaturesEnabled: boolean;
+  setAlphaFeaturesEnabled: (enabled: boolean) => void;
+}
+
+const UpdatesTab: React.FC<UpdatesTabProps> = ({ alphaFeaturesEnabled, setAlphaFeaturesEnabled }) => {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<Date | null>(null);
@@ -326,6 +331,20 @@ const UpdatesTab: React.FC = () => {
             Keep Clara up to date with the latest features and improvements
           </p>
         </div>
+      </div>
+
+      {/* Alpha Features Toggle */}
+      <div className="flex items-center gap-4 mb-6">
+        <input
+          type="checkbox"
+          id="alpha-features-toggle"
+          checked={alphaFeaturesEnabled}
+          onChange={e => setAlphaFeaturesEnabled(e.target.checked)}
+          className="accent-sakura-500 w-5 h-5"
+        />
+        <label htmlFor="alpha-features-toggle" className="text-sm font-medium text-gray-700">
+          Enable Alpha Features
+        </label>
       </div>
 
       {/* Current Version Info */}

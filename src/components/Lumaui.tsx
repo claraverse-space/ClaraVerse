@@ -22,8 +22,6 @@ import { useResizable } from '../hooks/useResizable';
 import { Project, FileNode } from '../types';
 import { useIndexedDB } from '../hooks/useIndexedDB';
 import { ProjectScaffolder, PROJECT_CONFIGS, ScaffoldProgress } from '../services/projectScaffolder';
-import { TemplateScaffolder } from '../services/templateScaffolder';
-import { getTemplateById } from './templates';
 import { LumaUIAPIClient } from './lumaui_components/services/lumaUIApiClient';
 import { useProviders } from '../contexts/ProvidersContext';
 import { db } from '../db';
@@ -34,7 +32,7 @@ import { ProvidersProvider } from '../contexts/ProvidersContext';
 import { CheckpointProvider } from './lumaui_components/CheckpointManager';
 
 const LumaUICore: React.FC = () => {
-  // Provider context
+  // Provider context (currently unused but available for future features)
   const { } = useProviders();
   
   // State
@@ -202,7 +200,7 @@ const LumaUICore: React.FC = () => {
   };
 
   // Project handlers
-  const handleCreateProject = async (name: string, configId: string, templateId?: string) => {
+  const handleCreateProject = async (name: string, configId: string) => {
     // Check WebContainer compatibility
     if (!window.crossOriginIsolated) {
       const errorMsg = `WebContainer requires cross-origin isolation to run properly.
@@ -305,30 +303,6 @@ This is a browser security requirement for WebContainer.`;
       if (!success) {
         writeToTerminal('\x1b[31m❌ Project scaffolding failed - check output above for details\x1b[0m\n');
         throw new Error('Project scaffolding failed - check terminal output for details');
-      }
-
-      // Apply template if selected
-      if (templateId) {
-        writeToTerminal('\x1b[36m🎨 Applying application template...\x1b[0m\n');
-        const template = getTemplateById(templateId);
-        
-        if (template) {
-          const templateScaffolder = new TemplateScaffolder(container, writeToTerminal);
-          const templateSuccess = await templateScaffolder.applyTemplate(
-            template,
-            configId,
-            name,
-            (step, progress) => {
-              writeToTerminal(`\x1b[36m📊 Template Progress: ${Math.round(progress)}% - ${step}\x1b[0m\n`);
-            }
-          );
-          
-          if (!templateSuccess) {
-            writeToTerminal('\x1b[33m⚠️ Template application failed, but continuing with basic project\x1b[0m\n');
-          }
-        } else {
-          writeToTerminal(`\x1b[31m❌ Template "${templateId}" not found\x1b[0m\n`);
-        }
       }
       
       // Build file tree from the scaffolded project
@@ -903,6 +877,187 @@ This is a browser security requirement for WebContainer.`;
     });
   };
 
+  // File operation handlers
+  const handleCreateFile = async (parentPath: string, fileName: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      const fullPath = parentPath ? `${parentPath}/${fileName}` : fileName;
+      
+      // Create the file with empty content
+      await webContainer.fs.writeFile(fullPath, '');
+      writeToTerminal(`\x1b[32m✅ Created file: ${fullPath}\x1b[0m\n`);
+      
+      // Refresh file tree
+      await refreshFileTree();
+      
+      // Auto-select the new file
+      handleFileSelect(fullPath, '');
+    } catch (error) {
+      writeToTerminal(`\x1b[31m❌ Failed to create file: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
+  const handleCreateFolder = async (parentPath: string, folderName: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
+      
+      // Create the directory
+      await webContainer.fs.mkdir(fullPath, { recursive: true });
+      writeToTerminal(`\x1b[32m✅ Created folder: ${fullPath}\x1b[0m\n`);
+      
+      // Refresh file tree and expand the parent folder
+      await refreshFileTree();
+      setExpandedFolders(prev => new Set([...prev, parentPath, fullPath]));
+    } catch (error) {
+      writeToTerminal(`\x1b[31m❌ Failed to create folder: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
+  const handleDeleteFile = async (path: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      console.log(`🗑️ Attempting to delete file: ${path}`);
+      await webContainer.fs.rm(path);
+      writeToTerminal(`\x1b[32m✅ Deleted file: ${path}\x1b[0m\n`);
+      
+      // Clear selection if deleted file was selected
+      if (selectedFile === path) {
+        setSelectedFile(null);
+        setSelectedFileContent('');
+      }
+      
+      // Refresh file tree
+      console.log('🔄 Refreshing file tree after deletion...');
+      await refreshFileTree();
+      console.log('✅ File tree refreshed');
+    } catch (error) {
+      console.error('❌ Delete file error:', error);
+      writeToTerminal(`\x1b[31m❌ Failed to delete file: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
+  const handleDeleteFolder = async (path: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      await webContainer.fs.rm(path, { recursive: true });
+      writeToTerminal(`\x1b[32m✅ Deleted folder: ${path}\x1b[0m\n`);
+      
+      // Clear selection if deleted folder contained selected file
+      if (selectedFile?.startsWith(path)) {
+        setSelectedFile(null);
+        setSelectedFileContent('');
+      }
+      
+      // Remove from expanded folders
+      setExpandedFolders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(path);
+        // Also remove any child folders
+        for (const expandedPath of prev) {
+          if (expandedPath.startsWith(path + '/')) {
+            newSet.delete(expandedPath);
+          }
+        }
+        return newSet;
+      });
+      
+      // Refresh file tree
+      await refreshFileTree();
+    } catch (error) {
+      writeToTerminal(`\x1b[31m❌ Failed to delete folder: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
+  const handleRenameFile = async (oldPath: string, newPath: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      // Read the current content
+      const content = await webContainer.fs.readFile(oldPath, 'utf-8');
+      
+      // Create the new file
+      await webContainer.fs.writeFile(newPath, content);
+      
+      // Delete the old file
+      await webContainer.fs.rm(oldPath);
+      
+      writeToTerminal(`\x1b[32m✅ Renamed: ${oldPath} → ${newPath}\x1b[0m\n`);
+      
+      // Update selection if renamed file was selected
+      if (selectedFile === oldPath) {
+        setSelectedFile(newPath);
+      }
+      
+      // Refresh file tree
+      await refreshFileTree();
+    } catch (error) {
+      writeToTerminal(`\x1b[31m❌ Failed to rename file: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
+  const handleDuplicateFile = async (path: string) => {
+    if (!webContainer) {
+      writeToTerminal('\x1b[31m❌ WebContainer not available\x1b[0m\n');
+      return;
+    }
+
+    try {
+      // Read the current content
+      const content = await webContainer.fs.readFile(path, 'utf-8');
+      
+      // Generate new filename
+      const pathParts = path.split('/');
+      const fileName = pathParts.pop() || '';
+      const dir = pathParts.join('/');
+      
+      const nameParts = fileName.split('.');
+      const ext = nameParts.length > 1 ? nameParts.pop() : '';
+      const baseName = nameParts.join('.');
+      
+      const newFileName = ext ? `${baseName}_copy.${ext}` : `${baseName}_copy`;
+      const newPath = dir ? `${dir}/${newFileName}` : newFileName;
+      
+      // Create the duplicate
+      await webContainer.fs.writeFile(newPath, content);
+      
+      writeToTerminal(`\x1b[32m✅ Duplicated: ${path} → ${newPath}\x1b[0m\n`);
+      
+      // Refresh file tree
+      await refreshFileTree();
+      
+      // Auto-select the new file
+      handleFileSelect(newPath, content);
+    } catch (error) {
+      writeToTerminal(`\x1b[31m❌ Failed to duplicate file: ${error}\x1b[0m\n`);
+      throw error;
+    }
+  };
+
   // Create LumaTools instance for AI operations (after all handlers are defined)
   const lumaTools = useMemo(() => {
     const tools = createLumaTools({
@@ -1075,13 +1230,19 @@ This is a browser security requirement for WebContainer.`;
 
                 {/* File Explorer Content */}
                 <div className="flex-1 overflow-auto min-h-0 p-2">
-                  <FileExplorer
-                    files={files}
-                    selectedFile={selectedFile}
-                    onFileSelect={handleFileSelect}
-                    expandedFolders={expandedFolders}
-                    onToggleFolder={handleToggleFolder}
-                  />
+                                  <FileExplorer
+                  files={files}
+                  selectedFile={selectedFile}
+                  onFileSelect={handleFileSelect}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={handleToggleFolder}
+                  onCreateFile={handleCreateFile}
+                  onCreateFolder={handleCreateFolder}
+                  onDeleteFile={handleDeleteFile}
+                  onDeleteFolder={handleDeleteFolder}
+                  onRenameFile={handleRenameFile}
+                  onDuplicateFile={handleDuplicateFile}
+                />
                 </div>
               </div>
 
@@ -1154,6 +1315,8 @@ This is a browser security requirement for WebContainer.`;
                       isPreviewVisible={false}
                       onTogglePreview={() => setActiveTab('preview')}
                       showPreviewToggle={selectedProject !== null}
+                      projectFiles={files}
+                      webContainer={webContainer}
                     />
                   )}
                   
@@ -1205,6 +1368,7 @@ This is a browser security requirement for WebContainer.`;
                   lumaTools={lumaTools}
                   projectId={selectedProject?.id}
                   projectName={selectedProject?.name}
+                  refreshFileTree={refreshFileTree}
                 />
                 </div>
             </>

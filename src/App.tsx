@@ -22,6 +22,7 @@ function App() {
   const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userInfo, setUserInfo] = useState<{ name: string } | null>(null);
+  const [alphaFeaturesEnabled, setAlphaFeaturesEnabled] = useState(false);
 
   useEffect(() => {
     const checkUserInfo = async () => {
@@ -39,6 +40,10 @@ function App() {
     if (import.meta.env.DEV) {
       (window as typeof window & { db: typeof db }).db = db;
     }
+  }, []);
+
+  useEffect(() => {
+    db.getAlphaFeaturesEnabled?.().then(val => setAlphaFeaturesEnabled(!!val));
   }, []);
 
   const handleOnboardingComplete = async () => {
@@ -86,7 +91,7 @@ function App() {
 
     return (
       <div className="flex h-screen">
-        <Sidebar activePage={activePage} onPageChange={setActivePage} />
+        <Sidebar activePage={activePage} onPageChange={setActivePage} alphaFeaturesEnabled={alphaFeaturesEnabled} />
         
         <div className="flex-1 flex flex-col">
           <Topbar userName={userInfo?.name} onPageChange={setActivePage} />
@@ -95,7 +100,7 @@ function App() {
             {(() => {
               switch (activePage) {
                 case 'settings':
-                  return <Settings />;
+                  return <Settings alphaFeaturesEnabled={alphaFeaturesEnabled} setAlphaFeaturesEnabled={setAlphaFeaturesEnabled} />;
                 case 'debug':
                   return <Debug />;
                 case 'help':

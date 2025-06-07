@@ -1,4 +1,5 @@
 import { WebContainer } from '@webcontainer/api';
+import phaserSnakeGameConfig from '../components/scaffolding_templates/phaser_snake_game';
 
 export interface ProjectScaffoldConfig {
   id: string;
@@ -173,6 +174,14 @@ export const PROJECT_CONFIGS: Record<string, ProjectScaffoldConfig> = {
         args: ['--yes', 'create-vite@latest', '.', '--template', 'react-ts'],
         successMessage: '✅ Vite project created',
         timeout: 120000
+      },
+      {
+        name: 'fix-plugin-react-version',
+        description: 'Ensure latest @vitejs/plugin-react is installed',
+        command: 'npm',
+        args: ['install', '@vitejs/plugin-react@latest'],
+        successMessage: '✅ @vitejs/plugin-react updated',
+        timeout: 60000
       },
       {
         name: 'install-deps',
@@ -677,5 +686,6 @@ module.exports = {
         timeout: 60000
       }
     ]
-  }
+  },
+  'phaser-snake-game': phaserSnakeGameConfig,
 }; 

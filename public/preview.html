@@ -131,6 +131,14 @@
                 const consoleOutput = document.getElementById('console-output');
                 consoleOutput.appendChild(createLogElement('log', arguments));
                 consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                
+                // Send to parent window
+                window.parent.postMessage({
+                    type: 'console-message',
+                    level: 'log',
+                    args: Array.from(arguments),
+                    timestamp: new Date().toISOString()
+                }, '*');
             };
             
             console.error = function() {
@@ -138,6 +146,14 @@
                 const consoleOutput = document.getElementById('console-output');
                 consoleOutput.appendChild(createLogElement('error', arguments));
                 consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                
+                // Send to parent window
+                window.parent.postMessage({
+                    type: 'console-message',
+                    level: 'error',
+                    args: Array.from(arguments),
+                    timestamp: new Date().toISOString()
+                }, '*');
             };
             
             console.warn = function() {
@@ -145,6 +161,14 @@
                 const consoleOutput = document.getElementById('console-output');
                 consoleOutput.appendChild(createLogElement('warn', arguments));
                 consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                
+                // Send to parent window
+                window.parent.postMessage({
+                    type: 'console-message',
+                    level: 'warn',
+                    args: Array.from(arguments),
+                    timestamp: new Date().toISOString()
+                }, '*');
             };
             
             console.info = function() {
@@ -152,6 +176,14 @@
                 const consoleOutput = document.getElementById('console-output');
                 consoleOutput.appendChild(createLogElement('info', arguments));
                 consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                
+                // Send to parent window
+                window.parent.postMessage({
+                    type: 'console-message',
+                    level: 'info',
+                    args: Array.from(arguments),
+                    timestamp: new Date().toISOString()
+                }, '*');
             };
         })();
 
@@ -187,6 +219,104 @@ ${css}
 <body>
 ${html}
 <script>
+// Console interception for user code
+(function() {
+    const originalConsole = {
+        log: console.log,
+        error: console.error,
+        warn: console.warn,
+        info: console.info,
+        debug: console.debug,
+        table: console.table,
+        group: console.group,
+        groupEnd: console.groupEnd,
+        clear: console.clear
+    };
+    
+    function sendToParent(level, args) {
+        try {
+            // Send to the parent preview window
+            window.parent.postMessage({
+                type: 'console-message',
+                level: level,
+                args: Array.from(args).map(arg => {
+                    if (typeof arg === 'object' && arg !== null) {
+                        try {
+                            return JSON.stringify(arg, null, 2);
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    }
+                    return String(arg);
+                }),
+                timestamp: new Date().toISOString()
+            }, '*');
+        } catch (e) {
+            originalConsole.error('Failed to send console message to parent:', e);
+        }
+    }
+    
+    // Override all console methods
+    console.log = function() {
+        originalConsole.log.apply(console, arguments);
+        sendToParent('log', arguments);
+    };
+    
+    console.error = function() {
+        originalConsole.error.apply(console, arguments);
+        sendToParent('error', arguments);
+    };
+    
+    console.warn = function() {
+        originalConsole.warn.apply(console, arguments);
+        sendToParent('warn', arguments);
+    };
+    
+    console.info = function() {
+        originalConsole.info.apply(console, arguments);
+        sendToParent('info', arguments);
+    };
+    
+    console.debug = function() {
+        originalConsole.debug.apply(console, arguments);
+        sendToParent('debug', arguments);
+    };
+    
+    console.table = function() {
+        originalConsole.table.apply(console, arguments);
+        sendToParent('table', arguments);
+    };
+    
+    console.group = function() {
+        originalConsole.group.apply(console, arguments);
+        sendToParent('group', arguments);
+    };
+    
+    console.groupEnd = function() {
+        originalConsole.groupEnd.apply(console, arguments);
+        sendToParent('groupEnd', arguments);
+    };
+    
+    console.clear = function() {
+        originalConsole.clear.apply(console, arguments);
+        sendToParent('clear', []);
+    };
+    
+    // Capture runtime errors
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('Runtime Error:', msg, 'at line', lineNo);
+        return false; // Let the error bubble up
+    };
+    
+    // Capture unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled Promise Rejection:', event.reason);
+    });
+    
+    // Send initial message to indicate console is ready
+    sendToParent('info', ['🚀 User code console initialized']);
+})();
+
 ${js}
 <\/script>
 </body>
@@ -239,8 +369,29 @@ ${js}
                         iframe.contentWindow.onerror = function(msg, url, lineNo, columnNo, error) {
                             console.error(`🛑 Error in preview: ${msg} (Line: ${lineNo}, Column: ${columnNo})`);
                             showError(msg, lineNo, columnNo);
+                            
+                            // Send detailed error to parent
+                            window.parent.postMessage({
+                                type: 'console-message',
+                                level: 'error',
+                                args: [`🛑 Runtime Error: ${msg}`, `Line: ${lineNo}`, `Column: ${columnNo}`],
+                                timestamp: new Date().toISOString()
+                            }, '*');
+                            
                             return true; // Prevents the error from bubbling up
                         };
+                        
+                        // Handle unhandled promise rejections
+                        iframe.contentWindow.addEventListener('unhandledrejection', function(event) {
+                            console.error('🛑 Unhandled Promise Rejection:', event.reason);
+                            
+                            window.parent.postMessage({
+                                type: 'console-message',
+                                level: 'error',
+                                args: [`🛑 Unhandled Promise Rejection: ${event.reason}`],
+                                timestamp: new Date().toISOString()
+                            }, '*');
+                        });
                         
                         updateStatus(`Preview loaded successfully (Run #${runId})`, 'info');
                         console.info(`✅ Preview loaded (Run #${runId})`);
@@ -284,8 +435,54 @@ ${js}
                 console.info('📨 Received update-preview message');
                 const { html, css, js } = event.data;
                 updatePreview(html, css, js);
+            } else if (event.data.type === 'execute-command') {
+                console.info('📨 Received execute-command message');
+                const { command } = event.data;
+                executeCommandInIframe(command);
             }
         });
+
+        // Function to execute commands in the current iframe context
+        function executeCommandInIframe(command) {
+            try {
+                // Get the current iframe (user code context)
+                const contentContainer = document.getElementById('content-container');
+                const iframe = contentContainer.querySelector('iframe');
+                
+                if (iframe && iframe.contentWindow) {
+                    try {
+                        // Execute the command in the iframe context
+                        const result = iframe.contentWindow.eval(command);
+                        
+                        // Send result back to parent
+                        window.parent.postMessage({
+                            type: 'command-result',
+                            result: result,
+                            error: null
+                        }, '*');
+                    } catch (error) {
+                        // Send error back to parent
+                        window.parent.postMessage({
+                            type: 'command-result',
+                            result: null,
+                            error: error.message
+                        }, '*');
+                    }
+                } else {
+                    window.parent.postMessage({
+                        type: 'command-result',
+                        result: null,
+                        error: 'No active preview context available'
+                    }, '*');
+                }
+            } catch (error) {
+                window.parent.postMessage({
+                    type: 'command-result',
+                    result: null,
+                    error: `Command execution failed: ${error.message}`
+                }, '*');
+            }
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Loader2, Bot, Trash2, Settings, ChevronDown } from 'lucide-react';
+import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors } from 'lucide-react';
 import { useProviders } from '../../contexts/ProvidersContext';
 import { LumaUIAPIClient, ChatMessage as LumaChatMessage } from './services/lumaUIApiClient';
 import type { Tool } from '../../db';
@@ -43,6 +43,29 @@ interface ToolExecution {
   error?: string;
 }
 
+// AI Planning and Reflection Interface
+interface AIReflection {
+  id: string;
+  step: number;
+  toolResults: string[];
+  currentSituation: string;
+  nextSteps: string[];
+  reasoning: string;
+  confidence: number; // 0-100
+  shouldContinue: boolean;
+  timestamp: Date;
+}
+
+interface PlanningExecution {
+  id: string;
+  status: 'planning' | 'executing' | 'reflecting' | 'completed';
+  currentStep: number;
+  totalSteps: number;
+  reflections: AIReflection[];
+  startTime: Date;
+  endTime?: Date;
+}
+
 interface ChatWindowProps {
   selectedFile?: string | null;
   fileContent?: string;
@@ -59,6 +82,7 @@ interface ChatWindowProps {
   lumaTools?: Record<string, any>;
   projectId?: string;
   projectName?: string;
+  refreshFileTree?: () => void | Promise<void>;
 }
 
 // LumaUI Tool Definitions (matching db Tool interface)
@@ -292,7 +316,109 @@ const calculateDynamicTokens = (messages: Message[], retryCount: number = 0): nu
   return Math.min(maxTokens, Math.max(baseTokens, calculatedTokens));
 };
 
+// Initial Planning System Prompt - Before any tool execution
+const INITIAL_PLANNING_SYSTEM_PROMPT = `You are Clara's strategic planning module. Before executing any tools, you must analyze the project structure and create a comprehensive execution plan.
+
+Your response must be a JSON object with this exact structure:
+{
+  "projectAnalysis": "Analysis of current project structure, files, and architecture",
+  "userRequestBreakdown": "Breakdown of what the user is asking for",
+  "executionPlan": [
+    {
+      "step": 1,
+      "action": "read_file",
+      "target": "src/App.tsx",
+      "purpose": "Understand current app structure before adding new component"
+    },
+    {
+      "step": 2,
+      "action": "create_file", 
+      "target": "src/components/LoginForm.tsx",
+      "purpose": "Create the main login component with form structure"
+    }
+  ],
+  "estimatedSteps": 5,
+  "dependencies": ["react-hook-form", "zod"],
+  "potentialChallenges": ["Existing routing might need updates", "Styling consistency"],
+  "confidence": 90
+}
+
+INITIAL PLANNING RULES:
+1. Analyze the complete project structure first
+2. Break down the user's request into logical steps
+3. Plan the EXACT sequence of tool calls needed
+4. Identify dependencies that need to be installed
+5. Consider existing code patterns and architecture
+6. Plan for potential challenges and how to handle them
+7. Be specific about file paths and tool actions
+8. Estimate total number of steps realistically
+
+TOOL ACTIONS AVAILABLE:
+- read_file: Read existing files to understand current code
+- create_file: Create new files with complete content
+- edit_file_section: Make targeted edits to existing files
+- install_package: Install npm dependencies
+- run_command: Execute shell commands
+- list_files: Explore directory structure
+
+PLANNING STRATEGY:
+1. Always read existing files BEFORE making changes
+2. Install dependencies BEFORE using them in code
+3. Create files in logical order (utilities first, then components)
+4. Plan for integration with existing code patterns
+5. Consider responsive design and accessibility from the start
+
+Be thorough and strategic in your planning.`;
+
+// Reflection Planning System Prompt - After tool execution
+const REFLECTION_PLANNING_SYSTEM_PROMPT = `You are Clara's reflection and adaptation module. After each tool execution, you must analyze the results and plan the next steps.
+
+Your response must be a JSON object with this exact structure:
+{
+  "currentSituation": "Brief description of what has been accomplished so far",
+  "nextSteps": ["Step 1", "Step 2", "Step 3"],
+  "reasoning": "Detailed explanation of why these next steps are needed",
+  "confidence": 85,
+  "shouldContinue": true
+}
+
+REFLECTION RULES:
+1. Always analyze what was just accomplished
+2. Identify what still needs to be done to complete the user's request
+3. Plan 1-3 specific next steps
+4. Set confidence (0-100) based on how clear the path forward is
+5. Set shouldContinue to false only when the task is completely done
+6. Be specific about file operations, installations, or commands needed
+7. Consider dependencies and order of operations
+8. If errors occurred, plan how to fix them
+
+EXAMPLE REFLECTION SCENARIOS:
+- After creating a file: Plan to add imports, implement functions, or style components
+- After reading a file: Plan specific edits or additions needed
+- After installing packages: Plan to configure or use the new dependencies
+- After errors: Plan alternative approaches or debugging steps
+
+Be concise but thorough in your reflection.`;
+
 const SYSTEM_PROMPT = `You are Clara, an expert AI assistant and exceptional senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices. You are a Bolt-like AI agent that works automatically using the provided tools.
+
+<strategic_planning_workflow>
+  You follow a sophisticated planning-first approach that prevents repetitive actions:
+  
+  1. INITIAL STRATEGIC PLANNING: Before any tool execution, a comprehensive plan is created analyzing the project structure and breaking down the user's request into logical steps
+  2. SYSTEMATIC EXECUTION: Follow the planned sequence of actions step by step, avoiding redundant operations
+  3. REFLECTION AFTER EACH STEP: Analyze results and adapt the plan as needed
+  4. COMPLETION AWARENESS: Recognize when the task is complete and stop automatically
+  
+  This prevents local models from repeating the same actions and ensures efficient, goal-oriented execution.
+  
+  EXECUTION PRINCIPLES:
+  - Always read existing files BEFORE making changes (as planned)
+  - Install dependencies BEFORE using them (as planned)
+  - Follow the logical sequence from the initial plan
+  - Adapt the plan based on actual results, but don't deviate unnecessarily
+  - Stop when the planned objectives are achieved
+</strategic_planning_workflow>
 
 <system_constraints>
   You are operating in a WebContainer environment that runs in the browser. This is a Node.js runtime that emulates a Linux system to some degree. All code is executed in the browser environment.
@@ -535,10 +661,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   selectedFile,
   files = [],
   onFileSelect,
+  onFileContentChange,
   workingDirectory = '.',
   lumaTools,
   projectId,
-  projectName
+  projectName,
+  refreshFileTree
 }) => {
   const { createCheckpoint, revertToCheckpoint, clearCheckpoints, getCheckpointByMessageId, checkpoints, setCurrentProject, loadProjectData } = useCheckpoints();
   
@@ -559,6 +687,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentToolExecution, setCurrentToolExecution] = useState<ToolExecution | null>(null);
   const [showLiveExecution, setShowLiveExecution] = useState(false);
+  const [currentPlanning, setCurrentPlanning] = useState<PlanningExecution | null>(null);
+  const [showPlanning, setShowPlanning] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -714,10 +844,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  // Animate header when tools are executing
+  // Animate header when tools are executing or AI is planning
   useEffect(() => {
-    if (showLiveExecution && currentToolExecution) {
-      // Add subtle glow to header when tools are running
+    if (showPlanning && currentPlanning) {
+      // Add purple glow for planning
+      gsap.to(".chat-header", {
+        boxShadow: "0 0 20px rgba(147, 51, 234, 0.3), 0 0 40px rgba(147, 51, 234, 0.1)",
+        duration: 1.5,
+        repeat: -1,
+        yoyo: true,
+        ease: "power2.inOut"
+      });
+    } else if (showLiveExecution && currentToolExecution) {
+      // Add pink glow for tool execution
       gsap.to(".chat-header", {
         boxShadow: "0 0 20px rgba(244, 114, 182, 0.3), 0 0 40px rgba(244, 114, 182, 0.1)",
         duration: 1,
@@ -726,17 +865,208 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ease: "power2.inOut"
       });
     } else {
-      // Remove glow when tools are done
+      // Remove glow when done
       gsap.to(".chat-header", {
         boxShadow: "none",
         duration: 0.5,
         ease: "power2.out"
       });
     }
-  }, [showLiveExecution, currentToolExecution]);
+  }, [showLiveExecution, currentToolExecution, showPlanning, currentPlanning]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Initial Strategic Planning - Before any tool execution
+  const performInitialPlanning = async (
+    userQuery: string,
+    projectTree: string,
+    filesList: string,
+    conversationHistory: Array<{ role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }>
+  ): Promise<any | null> => {
+    if (!apiClient || !selectedModel) return null;
+
+    try {
+      setShowPlanning(true);
+      setCurrentTask('🧠 Analyzing project and creating execution plan...');
+
+      const initialPlanningPrompt = `
+USER REQUEST: "${userQuery}"
+
+COMPLETE PROJECT STRUCTURE:
+${projectTree}
+
+AVAILABLE FILES:
+${filesList}
+
+CONVERSATION CONTEXT:
+${conversationHistory.slice(-2).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
+
+Analyze the project structure, understand the user's request, and create a comprehensive step-by-step execution plan. Consider existing code patterns, dependencies, and architecture.`;
+
+      const planningMessages = [
+        { role: 'system', content: INITIAL_PLANNING_SYSTEM_PROMPT },
+        { role: 'user', content: initialPlanningPrompt }
+      ];
+
+      const provider = new BoltLikeProvider(apiClient, selectedModel, {
+        ...aiParameters,
+        maxTokens: 3000, // Larger token limit for initial planning
+        temperature: 0.2 // Lower temperature for more focused planning
+      });
+
+      const planningResponse = await provider.sendMessage(planningMessages);
+      
+      if (planningResponse.message?.content) {
+        try {
+          // Parse the JSON response
+          const planningData = JSON.parse(planningResponse.message.content);
+          
+          // Show initial planning result in UI
+          const planningMessage: Message = {
+            id: `initial_planning_${Date.now()}`,
+            type: 'assistant',
+            content: `🧠 **Strategic Planning & Analysis**
+
+**Project Analysis:** ${planningData.projectAnalysis || 'Analyzing project structure...'}
+
+**Request Breakdown:** ${planningData.userRequestBreakdown || 'Breaking down user requirements...'}
+
+**Execution Plan:**
+${planningData.executionPlan?.map((step: any, i: number) => 
+  `${step.step}. **${step.action}** → \`${step.target}\`\n   Purpose: ${step.purpose}`
+).join('\n') || 'Creating execution plan...'}
+
+**Dependencies:** ${planningData.dependencies?.join(', ') || 'None identified'}
+
+**Potential Challenges:** ${planningData.potentialChallenges?.join(', ') || 'None identified'}
+
+**Estimated Steps:** ${planningData.estimatedSteps || 'Calculating...'} | **Confidence:** ${planningData.confidence || 50}%
+
+---
+*Now executing the plan step by step...*`,
+            timestamp: new Date()
+          };
+
+          setMessages(prev => [...prev, planningMessage]);
+          
+          return planningData;
+        } catch (parseError) {
+          console.error('Failed to parse initial planning response:', parseError);
+          
+          // Show fallback planning message
+          const fallbackMessage: Message = {
+            id: `planning_fallback_${Date.now()}`,
+            type: 'assistant',
+            content: `🧠 **Strategic Planning**\n\nAnalyzing project structure and creating execution plan...\n\n*Proceeding with adaptive approach.*`,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, fallbackMessage]);
+          
+          return null;
+        }
+      }
+    } catch (error) {
+      console.error('Initial planning failed:', error);
+    } finally {
+      setShowPlanning(false);
+    }
+
+    return null;
+  };
+
+  // AI Planning and Reflection System
+  const performAIReflection = async (
+    toolResults: Array<{id: string, result: string, success: boolean}>,
+    step: number,
+    originalQuery: string,
+    conversationHistory: Array<{ role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }>
+  ): Promise<AIReflection | null> => {
+    if (!apiClient || !selectedModel) return null;
+
+    try {
+      setShowPlanning(true);
+      setCurrentTask('🧠 Planning next steps...');
+
+      // Create reflection prompt
+      const toolResultsSummary = toolResults.map(r => 
+        `${r.success ? '✅' : '❌'} ${r.result}`
+      ).join('\n');
+
+      const reflectionPrompt = `
+ORIGINAL USER REQUEST: "${originalQuery}"
+
+TOOL EXECUTION RESULTS (Step ${step}):
+${toolResultsSummary}
+
+CONVERSATION CONTEXT:
+${conversationHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
+
+Based on these results, analyze the current situation and plan the next steps to complete the user's request.`;
+
+      const reflectionMessages = [
+        { role: 'system', content: REFLECTION_PLANNING_SYSTEM_PROMPT },
+        { role: 'user', content: reflectionPrompt }
+      ];
+
+      const provider = new BoltLikeProvider(apiClient, selectedModel, {
+        ...aiParameters,
+        maxTokens: 2000, // Smaller token limit for planning
+        temperature: 0.3 // Lower temperature for more focused planning
+      });
+
+      const planningResponse = await provider.sendMessage(reflectionMessages);
+      
+      if (planningResponse.message?.content) {
+        try {
+          // Parse the JSON response
+          const planningData = JSON.parse(planningResponse.message.content);
+          
+          const reflection: AIReflection = {
+            id: `reflection_${Date.now()}`,
+            step,
+            toolResults: toolResults.map(r => r.result),
+            currentSituation: planningData.currentSituation || 'Analysis in progress',
+            nextSteps: planningData.nextSteps || [],
+            reasoning: planningData.reasoning || 'Planning next actions',
+            confidence: planningData.confidence || 50,
+            shouldContinue: planningData.shouldContinue !== false,
+            timestamp: new Date()
+          };
+
+          // Show planning result in UI
+          const planningMessage: Message = {
+            id: `planning_${Date.now()}`,
+            type: 'assistant',
+            content: `🧠 **AI Planning & Reflection (Step ${step})**
+
+**Current Situation:** ${reflection.currentSituation}
+
+**Next Steps:**
+${reflection.nextSteps.map((step, i) => `${i + 1}. ${step}`).join('\n')}
+
+**Reasoning:** ${reflection.reasoning}
+
+**Confidence:** ${reflection.confidence}% | **Continue:** ${reflection.shouldContinue ? 'Yes' : 'No'}`,
+            timestamp: new Date()
+          };
+
+          setMessages(prev => [...prev, planningMessage]);
+          
+          return reflection;
+        } catch (parseError) {
+          console.error('Failed to parse planning response:', parseError);
+          return null;
+        }
+      }
+    } catch (error) {
+      console.error('AI reflection failed:', error);
+    } finally {
+      setShowPlanning(false);
+    }
+
+    return null;
   };
 
   // Execute tool calls from OpenAI function calling with live animations and retry logic
@@ -992,12 +1322,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       };
       
       const projectTree = createFileTree(flatFiles);
+      
+      // Get conversation history context if available
+      let conversationContext = '';
+      if (projectId) {
+        const lastConversationContext = ChatPersistence.getLastConversationContext(projectId);
+        if (lastConversationContext) {
+          conversationContext = `\n\n**CONVERSATION HISTORY:**\n${lastConversationContext}\n\nUse this context to understand what was previously discussed and maintain continuity in your responses.`;
+        }
+      }
         
       const systemPrompt = SYSTEM_PROMPT
         .replace('{{PROJECT_TREE}}', projectTree || 'Loading project structure...')
         .replace('{{FILE_LIST}}', filesList || 'Loading file list...')
         .replace('{{WORKING_DIRECTORY}}', workingDirectory)
-        .replace('{{SELECTED_FILE}}', selectedFile ? `Currently selected file: ${selectedFile}` : 'No file currently selected');
+        .replace('{{SELECTED_FILE}}', selectedFile ? `Currently selected file: ${selectedFile}` : 'No file currently selected') + conversationContext;
 
       setCurrentTask('Getting AI response...');
       
@@ -1006,34 +1345,99 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         userTokens: aiParameters.maxTokens,
         dynamicTokens: dynamicTokens,
         finalTokens: sessionParameters.maxTokens,
-        maxIterations: sessionParameters.maxIterations,
+        maxToolCalls: sessionParameters.maxIterations,
         projectFiles: flatFiles.length,
         messageHistory: messages.length,
         parameters: sessionParameters
       });
       
+      // STEP 1: Initial Strategic Planning - Analyze project and create execution plan
+      setCurrentTask('🧠 Creating strategic execution plan...');
+      
+      const initialPlan = await performInitialPlanning(
+        currentInput,
+        projectTree,
+        filesList,
+        [{ role: 'user', content: currentInput }]
+      );
+
       // Build conversation history following OpenAI format
       let conversationHistory: Array<{ role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: currentInput }
       ];
 
-      let iteration = 0;
+      // Add initial planning context to system prompt if available
+      if (initialPlan) {
+        const planningContext = `
 
-      // Use user-defined max iterations with safety bounds
-      const userMaxIterations = Math.min(50, Math.max(1, sessionParameters.maxIterations));
+EXECUTION PLAN CONTEXT:
+The following strategic plan has been created for this request:
+- Project Analysis: ${initialPlan.projectAnalysis}
+- Estimated Steps: ${initialPlan.estimatedSteps}
+- Dependencies: ${initialPlan.dependencies?.join(', ') || 'None'}
+- Execution Plan: ${initialPlan.executionPlan?.map((step: any) => `${step.step}. ${step.action} → ${step.target} (${step.purpose})`).join(', ') || 'Adaptive approach'}
+
+Follow this plan systematically, but adapt as needed based on actual results.`;
+
+        conversationHistory[0].content += planningContext;
+      }
+
+      let conversationIteration = 0;
+      let totalToolCalls = 0;
+      let currentPlanning: PlanningExecution | null = null;
+
+      // Use user-defined max tool calls with safety bounds
+      const maxToolCalls = Math.min(50, Math.max(1, sessionParameters.maxIterations));
+      const maxConversationTurns = Math.min(20, Math.max(5, Math.ceil(maxToolCalls / 2))); // Reasonable conversation limit
       
-      while (iteration < userMaxIterations) {
-        iteration++;
+      // Initialize planning execution
+      currentPlanning = {
+        id: `planning_${Date.now()}`,
+        status: 'planning',
+        currentStep: 0,
+        totalSteps: maxToolCalls,
+        reflections: [],
+        startTime: new Date()
+      };
+      setCurrentPlanning(currentPlanning);
+      
+      console.log('🎯 Auto mode limits:', {
+        maxToolCalls,
+        maxConversationTurns,
+        userSetting: sessionParameters.maxIterations
+      });
+      
+      while (conversationIteration < maxConversationTurns && totalToolCalls < maxToolCalls) {
+        conversationIteration++;
+        currentPlanning.currentStep = totalToolCalls;
+        currentPlanning.status = 'executing';
+        setCurrentPlanning({...currentPlanning});
         
         // Get AI response
         const currentResponse = await provider.sendMessage(conversationHistory);
         
         // Check if AI wants to use tools
         if (currentResponse.message?.tool_calls && currentResponse.message.tool_calls.length > 0) {
+          // Check if we would exceed tool call limit
+          const newToolCallCount = totalToolCalls + currentResponse.message.tool_calls.length;
+          if (newToolCallCount > maxToolCalls) {
+            const limitMessage: Message = {
+              id: (Date.now() + conversationIteration * 1000).toString(),
+              type: 'assistant',
+              content: `⚠️ **Tool call limit reached!** Would execute ${currentResponse.message.tool_calls.length} more tools, but limit is ${maxToolCalls}. Current count: ${totalToolCalls}.\n\nIncrease the limit in AI settings or break your request into smaller parts.`,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, limitMessage]);
+            break;
+          }
+
+          // Update tool call count
+          totalToolCalls += currentResponse.message.tool_calls.length;
+          
           // Add assistant message with tool calls
           const assistantMessage: Message = {
-            id: (Date.now() + iteration * 1000).toString(),
+            id: (Date.now() + conversationIteration * 1000).toString(),
             type: 'assistant',
             content: currentResponse.message.content || `Using ${currentResponse.message.tool_calls.length} tool${currentResponse.message.tool_calls.length > 1 ? 's' : ''}...`,
             timestamp: new Date(),
@@ -1049,7 +1453,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           });
 
           // Execute tools
-          setCurrentTask(`Executing ${currentResponse.message.tool_calls.length} operation${currentResponse.message.tool_calls.length > 1 ? 's' : ''}... (Step ${iteration})`);
+          setCurrentTask(`Executing ${currentResponse.message.tool_calls.length} operation${currentResponse.message.tool_calls.length > 1 ? 's' : ''}... (Tool calls: ${totalToolCalls}/${maxToolCalls})`);
           const toolResults = await executeTools(currentResponse.message.tool_calls);
           
           // Add tool result messages following OpenAI format
@@ -1072,7 +1476,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
           // Show tool results in UI
           const toolMessage: Message = {
-            id: (Date.now() + iteration * 1000 + 1).toString(),
+            id: (Date.now() + conversationIteration * 1000 + 1).toString(),
             type: 'tool',
             content: toolResults.map(r => r.result).join('\n'),
             timestamp: new Date(),
@@ -1089,6 +1493,34 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           
           setMessages(prev => [...prev, toolMessage]);
 
+          // Perform AI reflection and planning after tool execution
+          currentPlanning.status = 'reflecting';
+          setCurrentPlanning({...currentPlanning});
+          
+          const reflection = await performAIReflection(
+            toolResults,
+            conversationIteration,
+            currentInput,
+            conversationHistory
+          );
+          
+          if (reflection) {
+            currentPlanning.reflections.push(reflection);
+            setCurrentPlanning({...currentPlanning});
+            
+            // If AI decides not to continue, break the loop
+            if (!reflection.shouldContinue) {
+              const completionMessage: Message = {
+                id: (Date.now() + conversationIteration * 1000 + 3).toString(),
+                type: 'assistant',
+                content: `✅ **Task completed!** The AI has determined that the request has been fulfilled successfully.`,
+                timestamp: new Date()
+              };
+              setMessages(prev => [...prev, completionMessage]);
+              break;
+            }
+          }
+
           setCurrentTask('Analyzing next steps...');
           // Continue the loop to get next AI response
           
@@ -1096,7 +1528,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           // No more tool calls, show final response
           if (currentResponse.message?.content) {
             const finalMessage: Message = {
-              id: (Date.now() + iteration * 1000 + 2).toString(),
+              id: (Date.now() + conversationIteration * 1000 + 2).toString(),
               type: 'assistant',
               content: currentResponse.message.content,
               timestamp: new Date()
@@ -1107,15 +1539,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       }
 
-      if (iteration >= userMaxIterations) {
-        const warningMessage: Message = {
-          id: (Date.now() + 999999).toString(),
-          type: 'assistant',
-          content: `⚠️ Maximum tool iterations (${userMaxIterations}) reached. Task may be incomplete. You can increase the limit in AI settings or break your request into smaller parts.`,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, warningMessage]);
+      // Complete planning execution
+      if (currentPlanning) {
+        currentPlanning.status = 'completed';
+        currentPlanning.endTime = new Date();
+        setCurrentPlanning({...currentPlanning});
       }
+
+      // Show completion summary
+      const completionSummary: Message = {
+        id: (Date.now() + 999998).toString(),
+        type: 'assistant',
+        content: `📊 **Session Summary**\n\n• **Tool calls executed:** ${totalToolCalls}/${maxToolCalls}\n• **Conversation turns:** ${conversationIteration}/${maxConversationTurns}\n• **Status:** ${totalToolCalls >= maxToolCalls ? 'Tool limit reached' : conversationIteration >= maxConversationTurns ? 'Conversation limit reached' : 'Completed naturally'}`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, completionSummary]);
 
       setCurrentTask('Task completed!');
 
@@ -1133,6 +1571,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     } finally {
       setIsLoading(false);
       setCurrentTask('');
+      setShowPlanning(false);
+      setCurrentPlanning(null);
     }
   };
 
@@ -1146,7 +1586,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleRevert = (checkpointId: string) => {
     const checkpoint = revertToCheckpoint(checkpointId);
     if (checkpoint) {
-      setMessages(checkpoint.messages);
+      // Ensure timestamps are properly converted to Date objects
+      const messagesWithDates = checkpoint.messages.map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp)
+      }));
+      
+      setMessages(messagesWithDates);
       
       // Restore file states if available
       if (checkpoint.fileStates && onFileSelect) {
@@ -1173,9 +1619,309 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (date: Date | string | number | undefined) => {
+    if (!date) return '';
+    
+    let dateObj: Date;
+    if (date instanceof Date) {
+      dateObj = date;
+    } else if (typeof date === 'string') {
+      dateObj = new Date(date);
+    } else if (typeof date === 'number') {
+      dateObj = new Date(date);
+    } else {
+      return '';
+    }
+    
+    // Check if the date is valid
+    if (isNaN(dateObj.getTime())) {
+      return '';
+    }
+    
+    return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  // --- AI Precision Edit Tool State ---
+  const [showPrecisionEdit, setShowPrecisionEdit] = useState(false);
+  const [precisionFile, setPrecisionFile] = useState<string>('');
+  const [precisionMode, setPrecisionMode] = useState<'precision' | 'full'>('precision');
+  const [precisionPrompt, setPrecisionPrompt] = useState('');
+  const [precisionStatus, setPrecisionStatus] = useState<string | null>(null);
+
+  // Define the structured output schema for precision editing
+  const PRECISION_EDIT_SCHEMA = {
+    type: "object",
+    properties: {
+      success: {
+        type: "boolean",
+        description: "Whether the edit was successful"
+      },
+      modified_content: {
+        type: "string",
+        description: "The complete modified file content"
+      },
+      changes_made: {
+        type: "array",
+        items: {
+          type: "string"
+        },
+        description: "List of changes made to the file"
+      },
+      explanation: {
+        type: "string",
+        description: "Brief explanation of what was changed and why"
+      },
+      error_message: {
+        type: "string",
+        description: "Error message if the edit failed"
+      }
+    },
+    required: ["success", "modified_content", "changes_made", "explanation"],
+    additionalProperties: false
+  };
+
+  const handleAIPrecisionEdit = async () => {
+    setPrecisionStatus(null);
+    if (!precisionFile) {
+      setPrecisionStatus('Please select a file to edit.');
+      return;
+    }
+    if (!precisionPrompt.trim()) {
+      setPrecisionStatus('Please enter your instruction for the AI.');
+      return;
+    }
+    if (!apiClient || !selectedModel) {
+      setPrecisionStatus('AI provider/model not configured.');
+      return;
+    }
+
+    try {
+      setPrecisionStatus('Analyzing file and generating changes...');
+      setIsLoading(true);
+      
+      // Get the current file content for context
+      const selectedFileNode = fileOptions.find(f => f.path === precisionFile);
+      const fileContent = selectedFileNode?.content || '';
+      
+      if (!fileContent) {
+        setPrecisionStatus('Error: Could not read file content.');
+        return;
+      }
+
+      // Create system prompt based on edit mode
+      const systemPrompt = precisionMode === 'precision' 
+        ? `You are an expert code editor that makes precise, targeted modifications to files. You will receive a file's current content and instructions for specific changes.
+
+Your task is to:
+1. Analyze the current file content
+2. Apply the requested changes precisely while preserving existing structure
+3. Return the complete modified file content
+4. Explain what changes were made
+
+IMPORTANT RULES:
+- Always preserve the file's structure, imports, and existing functionality unless specifically asked to change them
+- Make only the targeted changes requested in the user's instruction
+- Ensure the modified code is syntactically correct and follows best practices
+- If the request is unclear or would break the code, explain why in the error_message field
+- Return the COMPLETE file content, not just the changed parts`
+        : `You are an expert code editor that can make comprehensive modifications to files. You will receive a file's current content and instructions for how to transform it.
+
+Your task is to:
+1. Analyze the current file content
+2. Apply the requested changes with full creative freedom
+3. Return the complete modified file content
+4. Explain what changes were made
+
+IMPORTANT RULES:
+- You have full freedom to restructure, redesign, and reimagine the file as needed
+- Make comprehensive changes to fulfill the user's vision
+- Ensure the modified code is syntactically correct and follows best practices
+- If the request is unclear, make reasonable assumptions and explain your choices
+- Return the COMPLETE file content, not just the changed parts`;
+
+      // Create user instruction with file context
+      const userInstruction = precisionMode === 'precision'
+        ? `Please make targeted modifications to the following file according to my instructions:
+
+**File:** ${precisionFile}
+**Edit Mode:** Precision (preserve existing structure and functionality)
+
+**Current File Content:**
+\`\`\`
+${fileContent}
+\`\`\`
+
+**Instructions:**
+${precisionPrompt}
+
+Please analyze the file and apply only the specific changes requested while preserving the existing structure, imports, and functionality. Return the complete modified file content.`
+        : `Please transform the following file according to my vision:
+
+**File:** ${precisionFile}
+**Edit Mode:** Full Modification (complete creative freedom)
+
+**Current File Content:**
+\`\`\`
+${fileContent}
+\`\`\`
+
+**Transformation Request:**
+${precisionPrompt}
+
+You have full creative freedom to restructure, redesign, and reimagine this file to fulfill my vision. Make comprehensive changes as needed. Return the complete transformed file content.`;
+
+      // Prepare messages for structured output
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: userInstruction }
+      ];
+
+             // Calculate dynamic tokens (create temporary Message objects for calculation)
+       const tempMessages: Message[] = messages.map((msg, index) => ({
+         id: `temp-${index}`,
+         type: msg.role === 'user' ? 'user' : 'assistant',
+         content: msg.content,
+         timestamp: new Date()
+       }));
+       const dynamicTokens = calculateDynamicTokens(tempMessages);
+      const requestOptions = {
+        maxTokens: Math.max(aiParameters.maxTokens, dynamicTokens),
+        temperature: aiParameters.temperature,
+        topP: aiParameters.topP,
+        frequencyPenalty: aiParameters.frequencyPenalty,
+        presencePenalty: aiParameters.presencePenalty,
+        response_format: {
+          type: "json_schema" as const,
+          json_schema: {
+            name: "precision_edit_result",
+            description: "Result of precision file editing with complete modified content",
+            schema: PRECISION_EDIT_SCHEMA,
+            strict: true
+          }
+        }
+      };
+
+      setPrecisionStatus('Sending request to AI...');
+
+      // Send structured output request
+      const response = await apiClient.sendChatWithStructuredOutput(
+        selectedModel,
+        messages,
+        requestOptions
+      );
+
+      if (!response.message?.content) {
+        throw new Error('No response received from AI');
+      }
+
+      // Parse the structured response
+      let editResult;
+      try {
+        editResult = JSON.parse(response.message.content);
+      } catch (parseError) {
+        throw new Error('Failed to parse AI response as JSON');
+      }
+
+      // Validate the response structure
+      if (!editResult.success) {
+        throw new Error(editResult.error_message || 'AI reported edit failure');
+      }
+
+      if (!editResult.modified_content) {
+        throw new Error('AI did not provide modified content');
+      }
+
+      setPrecisionStatus('Applying changes to file...');
+
+      // Apply the changes to the file
+      if (onFileContentChange && selectedFile === precisionFile) {
+        // Update the currently selected file content in the editor
+        onFileContentChange(editResult.modified_content);
+      }
+
+      // Update the file in the WebContainer if available
+      if (lumaTools?.edit_file) {
+        try {
+          await lumaTools.edit_file({
+            path: precisionFile,
+            content: editResult.modified_content
+          });
+        } catch (toolError) {
+          console.warn('Failed to update WebContainer:', toolError);
+          // Continue anyway since we updated the UI
+        }
+      }
+
+      // Create success message for chat
+      const userMessage: Message = {
+        id: `precision-user-${Date.now()}`,
+        type: 'user',
+        content: `Precision Edit Request for ${precisionFile}:\n${precisionPrompt}`,
+        timestamp: new Date()
+      };
+
+      const assistantMessage: Message = {
+        id: `precision-assistant-${Date.now()}`,
+        type: 'assistant',
+        content: `✅ **File Successfully Modified: ${precisionFile}**
+
+**Changes Made:**
+${editResult.changes_made.map((change: string) => `• ${change}`).join('\n')}
+
+**Explanation:**
+${editResult.explanation}
+
+The file has been updated with your requested changes. You can see the modifications in the editor.`,
+        timestamp: new Date(),
+        files: [precisionFile]
+      };
+
+      // Add messages to chat history
+      setMessages(prev => [...prev, userMessage, assistantMessage]);
+
+      // Refresh file tree if available
+      if (refreshFileTree) {
+        try {
+          await refreshFileTree();
+        } catch (refreshError) {
+          console.warn('Failed to refresh file tree:', refreshError);
+        }
+      }
+
+      // Clear the precision edit form
+      setPrecisionFile('');
+      setPrecisionPrompt('');
+      setPrecisionStatus('✅ Precision edit completed successfully!');
+      
+      // Auto-hide status after 3 seconds
+      setTimeout(() => setPrecisionStatus(null), 3000);
+      
+    } catch (error) {
+      console.error('Precision edit failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setPrecisionStatus(`❌ Error: ${errorMessage}`);
+      
+      // Add error message to chat
+      const errorChatMessage: Message = {
+        id: `precision-error-${Date.now()}`,
+        type: 'assistant',
+        content: `❌ **Precision Edit Failed**
+
+**File:** ${precisionFile}
+**Error:** ${errorMessage}
+
+Please check your request and try again. Make sure the file exists and your instructions are clear.`,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorChatMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper: file options for select
+  const fileOptions = useMemo(() => flatFiles.filter(f => f.type === 'file'), [flatFiles]);
 
   return (
     <div className="h-full flex flex-col glassmorphic">
@@ -1199,9 +1945,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                {currentToolExecution && showLiveExecution 
-                  ? `${currentToolExecution.toolName.replace('_', ' ')} • ${currentToolExecution.status}` 
-                  : currentTask || (isLoading ? 'Working...' : 'Ready to help')}
+                {currentPlanning && showPlanning
+                  ? `🧠 Planning • Step ${currentPlanning.currentStep}/${currentPlanning.totalSteps}`
+                  : currentToolExecution && showLiveExecution 
+                    ? `${currentToolExecution.toolName.replace('_', ' ')} • ${currentToolExecution.status}` 
+                    : currentTask || (isLoading ? 'Working...' : 'Ready to help')}
               </p>
             </div>
           </div>
@@ -1455,6 +2203,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 <Send className="w-5 h-5" />
               )}
             </button>
+            
+            {/* AI Precision Editor Button */}
+            <button
+              onClick={() => setShowPrecisionEdit(v => !v)}
+              className="p-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl hover:from-purple-600 hover:to-indigo-600 transition-all duration-200 shadow-lg hover:shadow-xl shadow-purple-500/25 transform hover:scale-105 flex items-center justify-center"
+              title="AI Precision Editor"
+            >
+              <Scissors className="w-4 h-4" />
+            </button>
           </div>
         </div>
         
@@ -1464,6 +2221,107 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <Settings className="w-4 h-4" />
               Please configure a provider and model in settings to start chatting
             </p>
+          </div>
+        )}
+
+        {/* AI Precision Edit Tool Modal */}
+        {showPrecisionEdit && (
+          <div className="mt-3 glassmorphic-card border border-purple-200/30 dark:border-purple-700/30 rounded-xl p-4 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-900/20 dark:to-indigo-900/20">
+            <div className="mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Scissors className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <h4 className="text-sm font-semibold text-purple-800 dark:text-purple-200">
+                  AI Precision Editor
+                </h4>
+                <div className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 rounded-full font-medium">
+                  Structured Output
+                </div>
+              </div>
+              <p className="text-xs text-purple-600 dark:text-purple-400 leading-relaxed">
+                AI analyzes your file and returns complete modified content using structured output. 
+                <strong>Precision mode</strong> preserves structure, <strong>Full Transform</strong> allows complete redesign.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                  Target File
+                </label>
+                <select
+                  className="w-full text-xs rounded-lg border border-purple-200 dark:border-purple-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  value={precisionFile}
+                  onChange={e => setPrecisionFile(e.target.value)}
+                >
+                  <option value="">Select file to edit…</option>
+                  {fileOptions.map(f => (
+                    <option key={f.path} value={f.path}>{f.path}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                  Edit Mode
+                </label>
+                <select
+                  className="w-full text-xs rounded-lg border border-purple-200 dark:border-purple-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  value={precisionMode}
+                  onChange={e => setPrecisionMode(e.target.value as any)}
+                >
+                  <option value="precision">🎯 Precision (targeted changes)</option>
+                  <option value="full">🚀 Full Transform (creative freedom)</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                Edit Instructions
+              </label>
+              <input
+                className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                type="text"
+                placeholder={precisionMode === 'precision' 
+                  ? "Describe specific changes (e.g., 'Add a dark mode toggle button to the header')"
+                  : "Describe your vision (e.g., 'Transform this into a modern landing page for a chatbot company')"
+                }
+                value={precisionPrompt}
+                onChange={e => setPrecisionPrompt(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <button
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl"
+                onClick={handleAIPrecisionEdit}
+                disabled={isLoading || !precisionFile || !precisionPrompt.trim()}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-4 h-4" />
+                    Apply AI Edit
+                  </>
+                )}
+              </button>
+              
+              {precisionStatus && (
+                <div className={`text-xs px-3 py-1.5 rounded-lg font-medium ${
+                  precisionStatus.startsWith('✅') 
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700' 
+                    : precisionStatus.startsWith('❌')
+                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
+                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
+                }`}>
+                  {precisionStatus}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1481,6 +2339,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         parameters={aiParameters}
         onParametersChange={handleParametersChange}
       />
+
+
     </div>
   );
 };

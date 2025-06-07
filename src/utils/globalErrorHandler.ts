@@ -13,6 +13,14 @@ export const setupGlobalErrorHandlers = () => {
  
   // Handle other JavaScript errors
   window.addEventListener('error', (event) => {
+    // Filter out null errors and Monaco-related errors
+    if (event.error === null || 
+        event.message?.includes('monaco') || 
+        event.message?.includes('TypeScript') ||
+        event.filename?.includes('monaco')) {
+      return; // Ignore these errors
+    }
+    
     console.error('Global JavaScript error:', event.error);
     
     // Show a user-friendly error message
