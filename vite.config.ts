@@ -42,7 +42,7 @@ function webContainerHeaders(): PluginOption {
     generateBundle() {
       // Create _headers file for Netlify
       const netlifyHeaders = `/*
-  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Embedder-Policy: credentialless
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: cross-origin`;
       
@@ -54,7 +54,7 @@ function webContainerHeaders(): PluginOption {
             headers: [
               {
                 key: "Cross-Origin-Embedder-Policy",
-                value: "require-corp"
+                value: "credentialless"
               },
               {
                 key: "Cross-Origin-Opener-Policy", 
@@ -93,8 +93,9 @@ export default defineConfig({
   base: process.env.ELECTRON_START_URL ? '/' : './',
   server: {
     headers: {
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
       'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     },
   },
   build: {
@@ -111,8 +112,9 @@ export default defineConfig({
   },
   preview: {
     headers: {
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
       'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     },
   },
   resolve: {

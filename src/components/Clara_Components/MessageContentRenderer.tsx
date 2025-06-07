@@ -21,6 +21,7 @@ interface MessageContentRendererProps {
   content: string;
   className?: string;
   isDark?: boolean;
+  isStreaming?: boolean;
 }
 
 interface CodeBlockProps {
@@ -29,19 +30,35 @@ interface CodeBlockProps {
   language?: string;
   isInline?: boolean;
   isDark?: boolean;
+  isStreaming?: boolean;
 }
 
-const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, isInline = false, isDark = false }) => {
+const CodeBlock: React.FC<CodeBlockProps> = React.memo(({ children, className, language, isInline = false, isDark = false, isStreaming = false }) => {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   
   // Extract language from className (format: "language-javascript")
-  const lang = language || className?.replace('language-', '') || 'text';
+  const lang = useMemo(() => language || className?.replace('language-', '') || 'text', [language, className]);
   
-  // Check if this is HTML content that could be previewed
-  const isHtmlContent = lang === 'html' || lang === 'xml' || 
-    (children.trim().startsWith('<') && children.trim().endsWith('>'));
+  // Check if this is HTML content that could be previewed (memoized to prevent re-renders)
+  const isHtmlContent = useMemo(() => {
+    return lang === 'html' || lang === 'xml' || 
+      (children.trim().startsWith('<') && children.trim().endsWith('>'));
+  }, [lang, children]);
+  
+  // Initialize preview state only once when component mounts
+  useEffect(() => {
+    setShowPreview(isHtmlContent && !isStreaming);
+  }, [isHtmlContent]); // Only depend on isHtmlContent, not isStreaming
+  
+  // Force code view during streaming to prevent iframe reloading
+  const shouldShowPreview = showPreview && !isStreaming && isHtmlContent;
+  
+  // Create a stable key for the iframe that only changes when content actually changes
+  const iframeKey = useMemo(() => {
+    return `iframe-${lang}-${btoa(children.substring(0, 100))}`;
+  }, [lang, children]);
   
   const handleCopy = async () => {
     const success = await copyToClipboard(children);
@@ -55,7 +72,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
     setShowPreview(!showPreview);
   };
   
-  const createPreviewHtml = () => {
+  const previewHtml = useMemo(() => {
     if (!isHtmlContent) return '';
     
     // Basic sanitization and enhancement for preview
@@ -77,7 +94,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
     }
     
     return html;
-  };
+  }, [isHtmlContent, children]);
 
   // For inline code, render simply
   if (isInline) {
@@ -96,8 +113,14 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
           <Code2 className="w-4 h-4" />
           <span className="font-medium capitalize">{lang}</span>
           {isHtmlContent && (
-            <span className="text-xs bg-blue-500/20 dark:bg-blue-400/20 text-blue-700 dark:text-blue-300 px-2 py-1 rounded border border-blue-300/30 dark:border-blue-500/30">
-              HTML Preview Available
+            <span className={`text-xs px-2 py-1 rounded border ${
+              isStreaming 
+                ? 'bg-yellow-500/20 dark:bg-yellow-400/20 text-yellow-700 dark:text-yellow-300 border-yellow-300/30 dark:border-yellow-500/30'
+                : showPreview 
+                  ? 'bg-green-500/20 dark:bg-green-400/20 text-green-700 dark:text-green-300 border-green-300/30 dark:border-green-500/30'
+                  : 'bg-blue-500/20 dark:bg-blue-400/20 text-blue-700 dark:text-blue-300 border-blue-300/30 dark:border-blue-500/30'
+            }`}>
+              {isStreaming ? 'Streaming...' : shouldShowPreview ? 'Live Preview' : 'Source Code'}
             </span>
           )}
         </div>
@@ -106,11 +129,22 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
           {isHtmlContent && (
             <button
               onClick={handleTogglePreview}
-              className="flex items-center gap-1 px-2 py-1 hover:bg-gray-200/70 dark:hover:bg-gray-600/50 rounded transition-colors"
-              title={showPreview ? 'Show code' : 'Show preview'}
+              disabled={isStreaming}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                isStreaming 
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : 'hover:bg-gray-200/70 dark:hover:bg-gray-600/50'
+              }`}
+              title={
+                isStreaming 
+                  ? 'Preview disabled during streaming'
+                  : shouldShowPreview 
+                    ? 'Show source code' 
+                    : 'Show live preview'
+              }
             >
-              {showPreview ? <Code2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              <span className="text-xs">{showPreview ? 'Code' : 'Preview'}</span>
+              {shouldShowPreview ? <Code2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <span className="text-xs">{shouldShowPreview ? 'Source' : 'Preview'}</span>
             </button>
           )}
           
@@ -127,7 +161,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
 
       {/* Content area - either code or preview */}
       <div className="relative">
-        {showPreview && isHtmlContent ? (
+        {shouldShowPreview ? (
           /* HTML Preview */
           <div className="bg-white dark:bg-gray-900 rounded-b-lg overflow-hidden border border-gray-300 dark:border-gray-600 border-t-0">
             <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
@@ -135,10 +169,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
               Live Preview
             </div>
             <iframe
-              srcDoc={createPreviewHtml()}
+              key={iframeKey}
+              srcDoc={previewHtml}
               className="w-full h-96 border-0"
               title="HTML Preview"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts"
               style={{ minHeight: '300px' }}
             />
           </div>
@@ -168,12 +203,13 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, language, is
       </div>
     </div>
   );
-};
+});
 
-const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
+const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo(({ 
   content, 
   className = '',
-  isDark = false 
+  isDark = false,
+  isStreaming = false
 }) => {
   const [darkMode, setDarkMode] = useState(isDark);
 
@@ -241,6 +277,7 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({
                 className={className}
                 isInline={inline}
                 isDark={darkMode}
+                isStreaming={isStreaming}
                 {...props}
               >
                 {String(children).replace(/\n$/, '')}
@@ -315,6 +352,10 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({
       </ReactMarkdown>
     </div>
   );
-};
+});
+
+// Set display names for React DevTools
+CodeBlock.displayName = 'CodeBlock';
+MessageContentRenderer.displayName = 'MessageContentRenderer';
 
 export default MessageContentRenderer; 

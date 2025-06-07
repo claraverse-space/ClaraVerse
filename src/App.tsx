@@ -1,4 +1,3 @@
-import React from 'react';
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -13,6 +12,7 @@ import N8N from './components/N8N';
 import Servers from './components/Servers';
 import AgentStudio from './components/AgentStudio';
 import Lumaui from './components/Lumaui';
+import LumaUILite from './components/LumaUILite';
 import { db } from './db';
 import { InterpreterProvider } from './contexts/InterpreterContext';
 import { ProvidersProvider } from './contexts/ProvidersContext';
@@ -107,6 +107,8 @@ function App() {
                   return <Help />;
                 case 'lumaui':
                   return <Lumaui onPageChange={setActivePage} />;
+                case 'lumaui-lite':
+                  return <LumaUILite />;
                 case 'dashboard':
                 default:
                   return <Dashboard onPageChange={setActivePage} />;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Bot, Settings, HelpCircle, ChevronRight, ImageIcon, Network, Server, BrainCircuit, Download, X, Zap } from 'lucide-react';
+import { Home, Bot, Settings, HelpCircle, ChevronRight, ImageIcon, Network, Server, BrainCircuit, Download, X, Zap, Code2 } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 interface HuggingFaceModel {
@@ -195,6 +195,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
+    { icon: Code2, label: 'LumaUI-lite', id: 'lumaui-lite' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     // Only show n8n if Docker services are available
     ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 

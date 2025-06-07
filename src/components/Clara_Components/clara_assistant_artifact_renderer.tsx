@@ -180,7 +180,7 @@ const HtmlRenderer: React.FC<{ content: string }> = ({ content }) => {
         <iframe
           srcDoc={content}
           className="w-full h-full"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
           title="HTML Preview"
         />
       </div>
