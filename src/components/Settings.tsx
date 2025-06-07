@@ -15,7 +15,12 @@ import UpdatesTab from './Settings/UpdatesTab';
 
 type TabId = 'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers';
 
-const Settings = () => {
+interface SettingsProps {
+  alphaFeaturesEnabled: boolean;
+  setAlphaFeaturesEnabled: (enabled: boolean) => void;
+}
+
+const Settings = ({ alphaFeaturesEnabled, setAlphaFeaturesEnabled }: SettingsProps) => {
   const [activeTab, setActiveTab] = useState<TabId>('api');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
@@ -352,7 +357,10 @@ const Settings = () => {
 
           {/* Updates Tab */}
           {activeTab === 'updates' && (
-            <UpdatesTab />
+            <UpdatesTab
+              alphaFeaturesEnabled={alphaFeaturesEnabled}
+              setAlphaFeaturesEnabled={setAlphaFeaturesEnabled}
+            />
           )}
                 </div>
               </div>

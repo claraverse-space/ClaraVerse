@@ -1245,6 +1245,29 @@ export class LocalStorageDB {
       this.setItemToLocalStorage('custom_model_path', path);
     }
   }
+
+  async setAlphaFeaturesEnabled(enabled: boolean): Promise<void> {
+    if (this.useIndexedDB) {
+      await indexedDBService.put('settings', { key: 'alpha_features_enabled', value: enabled });
+    } else {
+      await this.setItem('alpha_features_enabled', enabled);
+    }
+  }
+
+  async getAlphaFeaturesEnabled(): Promise<boolean> {
+    try {
+      if (this.useIndexedDB) {
+        const settingItem = await indexedDBService.get<{key: string, value: boolean}>('settings', 'alpha_features_enabled');
+        return settingItem ? Boolean(settingItem.value) : false;
+      } else {
+        const result = await this.getItem<boolean>('alpha_features_enabled');
+        return !!result;
+      }
+    } catch (error) {
+      console.error('Error getting alpha features enabled:', error);
+      return false;
+    }
+  }
 }
 
 export const db = new LocalStorageDB();

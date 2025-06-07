@@ -77,9 +77,27 @@ const RevertButton: React.FC<RevertButtonProps> = ({
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatTime = (date: Date | string | number | undefined) => {
+  if (!date) return '';
+  
+  let dateObj: Date;
+  if (date instanceof Date) {
+    dateObj = date;
+  } else if (typeof date === 'string') {
+    dateObj = new Date(date);
+  } else if (typeof date === 'number') {
+    dateObj = new Date(date);
+  } else {
+    return '';
+  }
+  
+  // Check if the date is valid
+  if (isNaN(dateObj.getTime())) {
+    return '';
+  }
+  
+  return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 
   // Don't render anything if no checkpoint or if it's the latest checkpoint
   if (!shouldShow || !checkpoint) {

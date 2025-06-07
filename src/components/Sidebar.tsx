@@ -25,6 +25,7 @@ interface LocalModel {
 interface SidebarProps {
   activePage: string;
   onPageChange: (page: string) => void;
+  alphaFeaturesEnabled?: boolean;
 }
 
 interface DownloadProgress {
@@ -47,7 +48,7 @@ interface DockerServicesStatus {
   };
 }
 
-const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
+const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled = false }: SidebarProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<Record<string, DownloadProgress>>({});
   const [claraBackgroundActivity, setClaraBackgroundActivity] = useState(false);
@@ -193,7 +194,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange }: SidebarProps) => {
     // { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
-    { icon: Zap, label: 'Lumaui', id: 'lumaui' },
+    ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     // Only show n8n if Docker services are available
     ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 
