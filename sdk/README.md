@@ -17,11 +17,28 @@ Lightweight JavaScript SDK for running Clara agent flows with comprehensive node
 
 ## Installation
 
+### Node.js / npm
+
 ```bash
 npm install clara-flow-sdk
 ```
 
+### CDN / Browser
+
+```html
+<!-- Latest version -->
+<script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.js"></script>
+
+<!-- Minified version -->
+<script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.min.js"></script>
+
+<!-- Specific version -->
+<script src="https://unpkg.com/clara-flow-sdk@1.4.0/dist/clara-flow-sdk.umd.js"></script>
+```
+
 ## Quick Start
+
+### Node.js / ES Modules
 
 ```javascript
 import { ClaraFlowRunner } from 'clara-flow-sdk';
@@ -37,6 +54,61 @@ const result = await runner.executeFlow(flowData, {
 });
 
 console.log('Flow result:', result);
+```
+
+### Browser / CDN
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clara Flow SDK Example</title>
+</head>
+<body>
+    <!-- Load the SDK -->
+    <script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.js"></script>
+    
+    <script>
+        // Initialize the flow runner
+        const runner = new ClaraFlowSDK.ClaraFlowRunner({
+            enableLogging: true,
+            timeout: 30000
+        });
+        
+        // Execute a flow
+        runner.executeFlow(flowData, { inputValue: "Hello, World!" })
+            .then(result => {
+                console.log('Flow result:', result);
+            })
+            .catch(error => {
+                console.error('Flow error:', error);
+            });
+    </script>
+</body>
+</html>
+```
+
+### Browser-Specific Features
+
+The browser version includes additional utilities for web applications:
+
+```javascript
+// File upload handling
+const fileInput = document.getElementById('file-input');
+const file = fileInput.files[0];
+
+// Upload as base64
+runner.handleFileUpload(file, { outputFormat: 'base64' })
+    .then(base64Data => console.log('File as base64:', base64Data));
+
+// Browser utilities
+const browserInfo = ClaraFlowSDK.BrowserUtils.getBrowserInfo();
+const isBrowser = ClaraFlowSDK.BrowserUtils.isBrowser();
+
+// Flow import/export
+ClaraFlowSDK.BrowserUtils.downloadFlow(flowData, 'my-flow.json');
+ClaraFlowSDK.BrowserUtils.loadFlowFromFileInput(fileInput)
+    .then(flowData => console.log('Loaded flow:', flowData));
 ```
 
 ## Supported Node Types

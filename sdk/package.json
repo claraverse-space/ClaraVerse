@@ -1,18 +1,21 @@
 {
   "name": "clara-flow-sdk",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "description": "Lightweight JavaScript SDK for running Clara agent flows with comprehensive node support including AI, data processing, API operations, file handling, and audio transcription",
   "main": "dist/index.cjs",
   "module": "dist/index.esm.js",
+  "browser": "dist/clara-flow-sdk.umd.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "rollup -c",
+    "build:cdn": "rollup -c --environment BUILD:cdn",
     "dev": "rollup -c -w",
     "test": "node test-sdk.js",
     "test-example": "node test-with-example.js",
     "test-export": "node test-export-compatibility.js",
     "test-all": "npm run test && npm run test-example && npm run test-export",
+    "test-browser": "node test-browser-build.js",
     "debug": "node debug-llm-output.js",
     "response-extractor": "node response-extractor-example.js",
     "install-deps": "chmod +x install.sh && ./install.sh"
@@ -34,19 +37,22 @@
     "structured-data",
     "node-execution",
     "file-upload",
-    "audio-transcription",
-    "whisper",
-    "text-processing"
+          "audio-transcription",
+      "whisper",
+      "text-processing",
+      "cdn",
+      "browser",
+      "umd"
   ],
   "author": "Clara Team",
   "license": "MIT",
-  "dependencies": {},
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^15.0.1",
-    "@rollup/plugin-commonjs": "^24.0.1",
-    "@rollup/plugin-babel": "^6.0.3",
     "@babel/core": "^7.21.0",
-    "@babel/preset-env": "^7.21.0"
+    "@babel/preset-env": "^7.21.0",
+    "@rollup/plugin-babel": "^6.0.3",
+    "@rollup/plugin-commonjs": "^24.0.1",
+    "@rollup/plugin-node-resolve": "^15.0.1",
+    "rollup-plugin-terser": "^7.0.2"
   },
   "engines": {
     "node": ">=14.0.0"
