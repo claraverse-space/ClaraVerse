@@ -19,6 +19,9 @@ export class NodeExecutor {
       'image-input': this.executeImageInputNode.bind(this),
       'pdf-input': this.executePDFInputNode.bind(this),
       'api-request': this.executeAPIRequestNode.bind(this),
+      'combine-text': this.executeCombineTextNode.bind(this),
+      'file-upload': this.executeFileUploadNode.bind(this),
+      'whisper-transcription': this.executeWhisperTranscriptionNode.bind(this),
     };
   }
 
@@ -1172,5 +1175,289 @@ export class NodeExecutor {
     }
     
     return { type: 'string' }; // fallback
+  }
+
+  /**
+   * Execute Combine Text Node
+   * Combines two text inputs with configurable separation for prompt building
+   */
+  async executeCombineTextNode(inputs, data) {
+    const { 
+      mode = 'concatenate',
+      separator = ' ',
+      addSpaces = true,
+      customSeparator = ''
+    } = data;
+    
+    const text1 = String(inputs.text1 || '');
+    const text2 = String(inputs.text2 || '');
+    
+    if (!text1 && !text2) {
+      return '';
+    }
+    
+    if (!text1) return text2;
+    if (!text2) return text1;
+    
+    let actualSeparator = '';
+    
+    switch (mode) {
+      case 'concatenate':
+        actualSeparator = addSpaces ? ' ' : '';
+        break;
+      case 'newline':
+        actualSeparator = '\n';
+        break;
+      case 'space':
+        actualSeparator = ' ';
+        break;
+      case 'comma':
+        actualSeparator = addSpaces ? ', ' : ',';
+        break;
+      case 'custom':
+        actualSeparator = customSeparator || separator;
+        break;
+      default:
+        actualSeparator = separator;
+    }
+    
+    return text1 + actualSeparator + text2;
+  }
+
+  /**
+   * Execute File Upload Node
+   * Universal file upload with configurable output formats
+   */
+  async executeFileUploadNode(inputs, data) {
+    const { 
+      outputFormat = 'base64',
+      maxSize = 10485760, // 10MB default
+      allowedTypes = []
+    } = data;
+    
+    const fileData = inputs.file || inputs.data;
+    
+    if (!fileData) {
+      throw new Error('No file data provided to file upload node');
+    }
+    
+    // Handle different input formats
+    let processedData;
+    let fileName = 'uploaded_file';
+    let mimeType = 'application/octet-stream';
+    let fileSize = 0;
+    
+    if (typeof fileData === 'string') {
+      // Assume base64 string
+      try {
+        const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+        const binaryData = atob(base64Data);
+        fileSize = binaryData.length;
+        
+        if (maxSize && fileSize > maxSize) {
+          throw new Error(`File size (${fileSize} bytes) exceeds maximum allowed size (${maxSize} bytes)`);
+        }
+        
+        processedData = fileData;
+      } catch (error) {
+        throw new Error(`Invalid base64 file data: ${error.message}`);
+      }
+    } else if (fileData instanceof ArrayBuffer || fileData instanceof Uint8Array) {
+      // Binary data
+      const uint8Array = fileData instanceof ArrayBuffer ? new Uint8Array(fileData) : fileData;
+      fileSize = uint8Array.length;
+      
+      if (maxSize && fileSize > maxSize) {
+        throw new Error(`File size (${fileSize} bytes) exceeds maximum allowed size (${maxSize} bytes)`);
+      }
+      
+      // Convert to base64 for processing
+      const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+      processedData = btoa(binaryString);
+    } else if (typeof fileData === 'object' && fileData.data) {
+      // Object with file metadata
+      fileName = fileData.name || fileName;
+      mimeType = fileData.type || mimeType;
+      fileSize = fileData.size || 0;
+      processedData = fileData.data;
+      
+      if (maxSize && fileSize > maxSize) {
+        throw new Error(`File size (${fileSize} bytes) exceeds maximum allowed size (${maxSize} bytes)`);
+      }
+    } else {
+      throw new Error('Unsupported file data format');
+    }
+    
+    // Check allowed types if specified
+    if (allowedTypes.length > 0 && !allowedTypes.some(type => mimeType.includes(type))) {
+      throw new Error(`File type ${mimeType} is not allowed. Allowed types: ${allowedTypes.join(', ')}`);
+    }
+    
+    // Return data in requested format
+    const result = {
+      fileName,
+      mimeType,
+      size: fileSize,
+      timestamp: new Date().toISOString()
+    };
+    
+    switch (outputFormat) {
+      case 'base64':
+        result.data = processedData.includes('data:') ? processedData : `data:${mimeType};base64,${processedData}`;
+        break;
+      case 'base64_raw':
+        result.data = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+        break;
+      case 'binary':
+        try {
+          const base64Data = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+          const binaryString = atob(base64Data);
+          const uint8Array = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            uint8Array[i] = binaryString.charCodeAt(i);
+          }
+          result.data = uint8Array;
+        } catch (error) {
+          throw new Error(`Failed to convert to binary: ${error.message}`);
+        }
+        break;
+      case 'text':
+        try {
+          const base64Data = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+          result.data = atob(base64Data);
+        } catch (error) {
+          throw new Error(`Failed to convert to text: ${error.message}`);
+        }
+        break;
+      case 'metadata':
+        // Return only metadata without file content
+        break;
+      default:
+        result.data = processedData;
+    }
+    
+    return result;
+  }
+
+  /**
+   * Execute Whisper Transcription Node
+   * Transcribe binary audio data using OpenAI Whisper
+   */
+  async executeWhisperTranscriptionNode(inputs, data) {
+    const {
+      apiKey = '',
+      apiBaseUrl = 'https://api.openai.com/v1',
+      model = 'whisper-1',
+      language = '',
+      prompt = '',
+      responseFormat = 'text',
+      temperature = 0
+    } = data;
+    
+    const audioData = inputs.audio || inputs.file || inputs.data;
+    
+    if (!audioData) {
+      throw new Error('No audio data provided to Whisper transcription node');
+    }
+    
+    if (!apiKey) {
+      this.logger.warn('Whisper transcription: No API key provided. For production use, configure your OpenAI API key.');
+      return {
+        text: '[Transcription would be generated here for the provided audio]',
+        model: model,
+        note: 'API key required for actual Whisper transcription'
+      };
+    }
+    
+    try {
+      // Prepare audio data for API
+      let audioBlob;
+      let fileName = 'audio.wav';
+      
+      if (typeof audioData === 'string') {
+        // Base64 audio data
+        const base64Data = audioData.includes(',') ? audioData.split(',')[1] : audioData;
+        const binaryString = atob(base64Data);
+        const uint8Array = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          uint8Array[i] = binaryString.charCodeAt(i);
+        }
+        audioBlob = new Blob([uint8Array], { type: 'audio/wav' });
+      } else if (audioData instanceof ArrayBuffer || audioData instanceof Uint8Array) {
+        // Binary audio data
+        const uint8Array = audioData instanceof ArrayBuffer ? new Uint8Array(audioData) : audioData;
+        audioBlob = new Blob([uint8Array], { type: 'audio/wav' });
+      } else if (audioData instanceof Blob) {
+        // Already a blob
+        audioBlob = audioData;
+      } else if (typeof audioData === 'object' && audioData.data) {
+        // Object with audio metadata
+        fileName = audioData.name || fileName;
+        const base64Data = audioData.data.includes(',') ? audioData.data.split(',')[1] : audioData.data;
+        const binaryString = atob(base64Data);
+        const uint8Array = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          uint8Array[i] = binaryString.charCodeAt(i);
+        }
+        audioBlob = new Blob([uint8Array], { type: audioData.type || 'audio/wav' });
+      } else {
+        throw new Error('Unsupported audio data format');
+      }
+      
+      // Create form data for API request
+      const formData = new FormData();
+      formData.append('file', audioBlob, fileName);
+      formData.append('model', model);
+      
+      if (language) {
+        formData.append('language', language);
+      }
+      
+      if (prompt) {
+        formData.append('prompt', prompt);
+      }
+      
+      if (responseFormat !== 'text') {
+        formData.append('response_format', responseFormat);
+      }
+      
+      if (temperature !== 0) {
+        formData.append('temperature', temperature.toString());
+      }
+      
+      // Make API request
+      const response = await fetch(`${apiBaseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Whisper API error: ${response.status} ${response.statusText} - ${errorData}`);
+      }
+      
+      const result = await response.json();
+      
+      // Return structured response
+      return {
+        text: result.text || result,
+        language: result.language || language,
+        duration: result.duration,
+        model: model,
+        metadata: {
+          responseFormat,
+          temperature,
+          prompt: prompt || undefined,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+    } catch (error) {
+      this.logger.error('Whisper transcription failed:', error);
+      throw new Error(`Whisper transcription failed: ${error.message}`);
+    }
   }
 } 
