@@ -1,6 +1,6 @@
 # Clara Flow SDK
 
-Lightweight JavaScript SDK for running Clara agent flows with comprehensive node support including AI, data processing, and API operations.
+Lightweight JavaScript SDK for running Clara agent flows with comprehensive node support including AI, data processing, API operations, file handling, and audio transcription.
 
 ## Features
 
@@ -9,6 +9,9 @@ Lightweight JavaScript SDK for running Clara agent flows with comprehensive node
 - 📊 **Structured Data**: Generate JSON outputs with schema validation
 - 🌐 **API Operations**: Full-featured HTTP client with authentication and retries
 - 📄 **PDF Processing**: Extract text from PDF documents with formatting preservation
+- 📁 **File Handling**: Universal file upload with multiple output formats and validation
+- 🎙️ **Audio Transcription**: OpenAI Whisper integration for speech-to-text
+- 📝 **Text Processing**: Advanced text combination and manipulation tools
 - ⚡ **High Performance**: Optimized for fast execution and low memory usage
 - 🔧 **Extensible**: Support for custom nodes and validation rules
 
@@ -45,14 +48,17 @@ The SDK supports all built-in node types from Clara Studio:
 - **`output`** - Displays results with various formatting options
 - **`image-input`** - Processes image files and converts to base64
 - **`pdf-input`** - Extracts text from PDF documents with formatting options
+- **`file-upload`** - Universal file upload with configurable output formats and validation
 
 ### AI & Intelligence
 - **`llm`** - Large Language Model interface with multi-modal support
 - **`structured-llm`** - Generate structured JSON outputs using OpenAI's structured response format
+- **`whisper-transcription`** - Audio transcription using OpenAI Whisper API
 
 ### Data Processing
 - **`json-parse`** - Parse JSON strings and extract nested fields with dot notation
 - **`api-request`** - Production-grade HTTP client with comprehensive features
+- **`combine-text`** - Combines two text inputs with configurable separation for prompt building
 
 ### Logic & Control
 - **`if-else`** - Conditional logic with JavaScript expression evaluation
@@ -168,6 +174,82 @@ console.log('Metadata:', result.metadata);
 - Formatting preservation options
 - Comprehensive metadata (page count, word count, etc.)
 - Error handling and validation
+
+### Combine Text Node
+
+Combine two text inputs with configurable separation:
+
+```javascript
+const result = await runner.executeFlow(flowData, {
+  text1: "Hello",
+  text2: "World"
+});
+
+// With different modes:
+// mode: "concatenate" -> "Hello World"
+// mode: "newline" -> "Hello\nWorld"
+// mode: "comma" -> "Hello, World"
+// mode: "custom" -> "Hello[separator]World"
+```
+
+**Features:**
+- Multiple combination modes (concatenate, newline, space, comma, custom)
+- Configurable separators and spacing
+- Optimized for prompt building and text processing
+- Handles empty inputs gracefully
+
+### File Upload Node
+
+Universal file handling with multiple output formats:
+
+```javascript
+const result = await runner.executeFlow(flowData, {
+  file: base64FileData  // File as base64 string or binary data
+});
+
+console.log('File info:', result.fileName, result.mimeType, result.size);
+console.log('File data:', result.data);
+```
+
+**Configuration Options:**
+- `outputFormat`: "base64", "base64_raw", "binary", "text", "metadata"
+- `maxSize`: Maximum file size in bytes (default: 10MB)
+- `allowedTypes`: Array of allowed MIME types
+
+**Features:**
+- Universal file format support
+- Multiple output formats for different use cases
+- File size and type validation
+- Metadata extraction (name, type, size, timestamp)
+- Binary and text data handling
+
+### Whisper Transcription Node
+
+Transcribe audio using OpenAI's Whisper API:
+
+```javascript
+const result = await runner.executeFlow(flowData, {
+  audio: audioData  // Audio as base64, binary, or Blob
+});
+
+console.log('Transcription:', result.text);
+console.log('Language:', result.language);
+console.log('Duration:', result.duration);
+```
+
+**Configuration Options:**
+- `model`: Whisper model to use (default: "whisper-1")
+- `language`: Target language (optional, auto-detected if not specified)
+- `prompt`: Context prompt to improve accuracy
+- `responseFormat`: "text", "json", "verbose_json"
+- `temperature`: Sampling temperature (0-1)
+
+**Features:**
+- Multiple audio format support (WAV, MP3, M4A, etc.)
+- Language detection and specification
+- Context prompts for improved accuracy
+- Detailed metadata and timing information
+- Robust error handling and validation
 
 ## Error Handling
 
