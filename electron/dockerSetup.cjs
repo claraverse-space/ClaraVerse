@@ -3,7 +3,7 @@ const Docker = require('dockerode');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { app } = require('electron');
+const { app, dialog } = require('electron');
 const tar = require('tar-fs');
 const http = require('http');
 
@@ -22,11 +22,15 @@ class DockerSetup extends EventEmitter {
     // Path for storing pull timestamps
     this.pullTimestampsPath = path.join(this.appDataPath, 'pull_timestamps.json');
 
+    // Get system architecture
+    this.systemArch = this.getSystemArchitecture();
+    console.log(`Detected system architecture: ${this.systemArch}`);
+
     // Container configuration - Removed Ollama container
     this.containers = {
       python: {
         name: 'clara_python',
-        image: 'clara17verse/clara-backend:latest',
+        image: this.getArchSpecificImage('clara17verse/clara-backend', 'latest'),
         port: 5001,
         internalPort: 5000,
         healthCheck: this.isPythonRunning.bind(this),
@@ -36,7 +40,7 @@ class DockerSetup extends EventEmitter {
       },
       n8n: {
         name: 'clara_n8n',
-        image: 'n8nio/n8n',
+        image: this.getArchSpecificImage('n8nio/n8n', 'latest'),
         port: 5678,
         internalPort: 5678,
         healthCheck: this.checkN8NHealth.bind(this),
@@ -85,6 +89,229 @@ class DockerSetup extends EventEmitter {
       if (!fs.existsSync(servicePath)) {
         fs.mkdirSync(servicePath, { recursive: true });
       }
+    });
+  }
+
+  /**
+   * Get system architecture and map to Docker platform
+   */
+  getSystemArchitecture() {
+    const arch = os.arch();
+    const platform = os.platform();
+    
+    console.log(`System info - Platform: ${platform}, Arch: ${arch}`);
+    
+    // Map Node.js arch to Docker platform
+    const archMap = {
+      'x64': 'amd64',
+      'arm64': 'arm64',
+      'arm': 'arm/v7',
+      'ia32': '386'
+    };
+    
+    const dockerArch = archMap[arch] || arch;
+    return `${platform}/${dockerArch}`;
+  }
+
+  /**
+   * Get architecture-specific image name
+   */
+  getArchSpecificImage(baseImage, tag) {
+    // For multi-arch images, Docker will automatically pull the correct architecture
+    // But we can specify platform if needed
+    return `${baseImage}:${tag}`;
+  }
+
+  /**
+   * Check if container image has updates available
+   */
+  async checkForImageUpdates(imageName, statusCallback) {
+    try {
+      statusCallback(`Checking for updates to ${imageName}...`);
+      
+      // Get local image info
+      let localImage = null;
+      try {
+        localImage = await this.docker.getImage(imageName).inspect();
+      } catch (error) {
+        if (error.statusCode === 404) {
+          statusCallback(`${imageName} not found locally, will download...`);
+          return { hasUpdate: true, reason: 'Image not found locally' };
+        }
+        throw error;
+      }
+
+      // Pull latest image info without downloading
+      return new Promise((resolve, reject) => {
+        this.docker.pull(imageName, { platform: this.systemArch }, (err, stream) => {
+          if (err) {
+            console.error('Error checking for updates:', err);
+            resolve({ hasUpdate: false, reason: 'Failed to check for updates', error: err.message });
+            return;
+          }
+
+          let hasUpdate = false;
+          let updateReason = '';
+          let downloadingDetected = false;
+
+          stream.on('data', (data) => {
+            const lines = data.toString().split('\n').filter(Boolean);
+            lines.forEach(line => {
+              try {
+                const parsed = JSON.parse(line);
+                
+                // Check for various update indicators
+                if (parsed.status) {
+                  if (parsed.status.includes('Image is up to date')) {
+                    hasUpdate = false;
+                    updateReason = 'Image is up to date';
+                  } else if (parsed.status.includes('Downloading') || 
+                           parsed.status.includes('Extracting') ||
+                           parsed.status.includes('Pulling fs layer')) {
+                    hasUpdate = true;
+                    downloadingDetected = true;
+                    updateReason = 'New version available';
+                  } else if (parsed.status.includes('Pull complete')) {
+                    if (downloadingDetected) {
+                      hasUpdate = true;
+                      updateReason = 'Update downloaded';
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            });
+          });
+
+          stream.on('end', () => {
+            statusCallback(`Update check complete for ${imageName}`);
+            resolve({ 
+              hasUpdate, 
+              reason: updateReason || 'No updates available',
+              imageName 
+            });
+          });
+
+          stream.on('error', (error) => {
+            console.error('Stream error during update check:', error);
+            resolve({ 
+              hasUpdate: false, 
+              reason: 'Error checking for updates', 
+              error: error.message 
+            });
+          });
+        });
+      });
+    } catch (error) {
+      console.error('Error checking for image updates:', error);
+      return { 
+        hasUpdate: false, 
+        reason: 'Error checking for updates', 
+        error: error.message 
+      };
+    }
+  }
+
+  /**
+   * Show update dialog and handle user choice
+   */
+  async showUpdateDialog(updateInfo) {
+    const updatesAvailable = updateInfo.filter(info => info.hasUpdate);
+    
+    if (updatesAvailable.length === 0) {
+      return { updateAll: false, updates: [] };
+    }
+
+    const updateList = updatesAvailable.map(info => 
+      `• ${info.imageName}: ${info.reason}`
+    ).join('\n');
+
+    const response = await dialog.showMessageBox({
+      type: 'question',
+      buttons: ['Update Now', 'Skip Updates', 'Cancel'],
+      defaultId: 0,
+      title: 'Container Updates Available',
+      message: `Updates are available for the following containers:\n\n${updateList}\n\nWould you like to update them now?`,
+      detail: `Architecture: ${this.systemArch}\n\nUpdating will ensure you have the latest features and security fixes.`
+    });
+
+    return {
+      updateAll: response.response === 0,
+      skip: response.response === 1,
+      cancel: response.response === 2,
+      updates: updatesAvailable
+    };
+  }
+
+  /**
+   * Pull image with progress tracking and architecture specification
+   */
+  async pullImageWithProgress(imageName, statusCallback) {
+    return new Promise((resolve, reject) => {
+      statusCallback(`Pulling ${imageName} for ${this.systemArch}...`);
+      
+      this.docker.pull(imageName, { platform: this.systemArch }, (err, stream) => {
+        if (err) {
+          console.error('Error pulling image:', err);
+          reject(err);
+          return;
+        }
+
+        let lastStatus = '';
+        let progress = {};
+
+        stream.on('data', (data) => {
+          const lines = data.toString().split('\n').filter(Boolean);
+          lines.forEach(line => {
+            try {
+              const parsed = JSON.parse(line);
+              
+              if (parsed.error) {
+                console.error('Pull error:', parsed.error);
+                reject(new Error(parsed.error));
+                return;
+              }
+
+              if (parsed.status && parsed.status !== lastStatus) {
+                lastStatus = parsed.status;
+                
+                // Track progress for different layers
+                if (parsed.id && parsed.progressDetail) {
+                  progress[parsed.id] = parsed.progressDetail;
+                  
+                  // Calculate overall progress
+                  const layers = Object.values(progress);
+                  const totalCurrent = layers.reduce((sum, layer) => sum + (layer.current || 0), 0);
+                  const totalTotal = layers.reduce((sum, layer) => sum + (layer.total || 0), 0);
+                  
+                  if (totalTotal > 0) {
+                    const percentage = Math.round((totalCurrent / totalTotal) * 100);
+                    statusCallback(`Pulling ${imageName}: ${parsed.status} (${percentage}%)`);
+                  } else {
+                    statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+                  }
+                } else {
+                  statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+                }
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          });
+        });
+
+        stream.on('end', () => {
+          statusCallback(`✓ Successfully pulled ${imageName}`);
+          this.updatePullTimestamp(imageName);
+          resolve();
+        });
+
+        stream.on('error', (error) => {
+          console.error('Stream error:', error);
+          reject(error);
+        });
+      });
     });
   }
 
@@ -289,45 +516,8 @@ class DockerSetup extends EventEmitter {
   }
 
   async pullImage(imageName, statusCallback) {
-    return new Promise((resolve, reject) => {
-      this.docker.pull(imageName, (err, stream) => {
-        if (err) {
-          console.error('Error pulling image:', err);
-          reject(err);
-          return;
-        }
-
-        let lastStatus = '';
-        stream.on('data', (data) => {
-          const lines = data.toString().split('\n').filter(Boolean);
-          lines.forEach(line => {
-            try {
-              const parsed = JSON.parse(line);
-              if (parsed.status && parsed.status !== lastStatus) {
-                lastStatus = parsed.status;
-                statusCallback(`Pulling ${imageName}: ${parsed.status}`);
-              }
-              if (parsed.error) {
-                console.error('Pull error:', parsed.error);
-                reject(new Error(parsed.error));
-              }
-            } catch (e) {
-              // Ignore parse errors
-            }
-          });
-        });
-
-        stream.on('end', () => {
-          statusCallback(`Successfully pulled ${imageName}`);
-          resolve();
-        });
-
-        stream.on('error', (error) => {
-          console.error('Stream error:', error);
-          reject(error);
-        });
-      });
-    });
+    // Use the new architecture-aware pull method
+    return this.pullImageWithProgress(imageName, statusCallback);
   }
 
   async startContainer(config) {
@@ -367,8 +557,8 @@ class DockerSetup extends EventEmitter {
         await this.docker.getImage(config.image).inspect();
       } catch (error) {
         if (error.statusCode === 404) {
-          console.log(`Image ${config.image} not found locally, pulling...`);
-          await this.pullImage(config.image, (status) => console.log(status));
+          console.log(`Image ${config.image} not found locally, pulling for ${this.systemArch}...`);
+          await this.pullImageWithProgress(config.image, (status) => console.log(status));
         } else {
           throw error;
         }
@@ -587,16 +777,59 @@ class DockerSetup extends EventEmitter {
         statusCallback('⚠️ Ollama not detected. Please install Ollama manually if you want local AI models. Visit: https://ollama.com', 'warning');
       }
 
-      // Check and pull images if needed
+      // Check for container updates
+      statusCallback(`Checking for container updates (${this.systemArch})...`);
+      const updateChecks = [];
+      
       for (const [name, config] of Object.entries(this.containers)) {
-        // Check if image exists locally
+        updateChecks.push(
+          this.checkForImageUpdates(config.image, statusCallback)
+            .then(result => ({ ...result, containerName: name }))
+        );
+      }
+
+      const updateResults = await Promise.all(updateChecks);
+      const updatesAvailable = updateResults.filter(result => result.hasUpdate);
+
+      if (updatesAvailable.length > 0) {
+        statusCallback(`Found ${updatesAvailable.length} container update(s) available`);
+        
+        // Show update dialog
+        const updateChoice = await this.showUpdateDialog(updateResults);
+        
+        if (updateChoice.cancel) {
+          statusCallback('Setup cancelled by user', 'warning');
+          return false;
+        }
+        
+        if (updateChoice.updateAll) {
+          statusCallback('Updating containers...');
+          
+          // Pull updated images
+          for (const update of updateChoice.updates) {
+            try {
+              await this.pullImageWithProgress(update.imageName, statusCallback);
+            } catch (error) {
+              statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
+              console.error('Update error:', error);
+            }
+          }
+        } else if (updateChoice.skip) {
+          statusCallback('Skipping container updates');
+        }
+      } else {
+        statusCallback('All containers are up to date');
+      }
+
+      // Ensure all images are available locally
+      for (const [name, config] of Object.entries(this.containers)) {
         try {
           await this.docker.getImage(config.image).inspect();
-          statusCallback(`Using existing ${name} image...`);
+          statusCallback(`✓ ${name} image ready`);
         } catch (error) {
           if (error.statusCode === 404) {
-            statusCallback(`Pulling ${name} image...`);
-            await this.pullImage(config.image, statusCallback);
+            statusCallback(`Downloading ${name} image...`);
+            await this.pullImageWithProgress(config.image, statusCallback);
           } else {
             throw error;
           }
@@ -737,6 +970,112 @@ class DockerSetup extends EventEmitter {
       return response;
     } catch (error) {
       return false;
+    }
+  }
+
+  /**
+   * Manual update check that can be called from the main process
+   */
+  async checkForUpdates(statusCallback) {
+    try {
+      if (!await this.isDockerRunning()) {
+        throw new Error('Docker is not running');
+      }
+
+      statusCallback(`Checking for container updates (${this.systemArch})...`);
+      const updateChecks = [];
+      
+      for (const [name, config] of Object.entries(this.containers)) {
+        updateChecks.push(
+          this.checkForImageUpdates(config.image, statusCallback)
+            .then(result => ({ ...result, containerName: name }))
+        );
+      }
+
+      const updateResults = await Promise.all(updateChecks);
+      const updatesAvailable = updateResults.filter(result => result.hasUpdate);
+
+      return {
+        updatesAvailable: updatesAvailable.length > 0,
+        updates: updateResults,
+        architecture: this.systemArch
+      };
+    } catch (error) {
+      console.error('Error checking for updates:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update specific containers
+   */
+  async updateContainers(containerNames, statusCallback) {
+    try {
+      if (!await this.isDockerRunning()) {
+        throw new Error('Docker is not running');
+      }
+
+      const containersToUpdate = containerNames || Object.keys(this.containers);
+      const results = [];
+
+      for (const containerName of containersToUpdate) {
+        const config = this.containers[containerName];
+        if (!config) {
+          results.push({
+            container: containerName,
+            success: false,
+            error: 'Container not found'
+          });
+          continue;
+        }
+
+        try {
+          statusCallback(`Updating ${containerName}...`);
+          
+          // Stop and remove existing container
+          try {
+            const existingContainer = await this.docker.getContainer(config.name);
+            const containerInfo = await existingContainer.inspect();
+            
+            if (containerInfo.State.Running) {
+              await existingContainer.stop();
+            }
+            await existingContainer.remove({ force: true });
+            statusCallback(`Stopped and removed old ${containerName} container`);
+          } catch (error) {
+            // Container might not exist, which is fine
+            if (error.statusCode !== 404) {
+              console.warn(`Warning removing old container ${config.name}:`, error.message);
+            }
+          }
+
+          // Pull latest image
+          await this.pullImageWithProgress(config.image, statusCallback);
+          
+          // Start new container
+          await this.startContainer(config);
+          
+          results.push({
+            container: containerName,
+            success: true,
+            message: `Successfully updated ${containerName}`
+          });
+          
+          statusCallback(`✓ ${containerName} updated successfully`);
+        } catch (error) {
+          results.push({
+            container: containerName,
+            success: false,
+            error: error.message
+          });
+          statusCallback(`✗ Failed to update ${containerName}: ${error.message}`, 'error');
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error updating containers:', error);
+      throw error;
     }
   }
 }

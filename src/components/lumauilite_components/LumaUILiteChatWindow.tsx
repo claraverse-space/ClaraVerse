@@ -6,7 +6,6 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import LumaUILiteAPIClient, { ChatMessage as LiteChatMessage, ChatMessage } from './services/LumaUILiteAPIClient';
 import LumaUILiteTools, { createLumaUILiteTools } from './services/LumaUILiteTools';
-import AISettingsModal from './AISettingsModal';
 import { useProviders } from '../../contexts/ProvidersContext';
 import { Provider } from '../../db';
 import { useLumaUILiteCheckpoints } from './useLumaUILiteCheckpoints';
@@ -66,6 +65,22 @@ interface LumaUILiteChatWindowProps {
   onFileSelect: (path: string, content: string) => void;
   projectId: string;
   projectName: string;
+  // AI Settings Modal props
+  showAISettingsModal?: boolean;
+  onShowAISettingsModal?: () => void;
+  onCloseAISettingsModal?: () => void;
+  // AI Settings state exposure
+  onAISettingsChange?: (settings: {
+    selectedProviderId: string;
+    selectedModel: string;
+    parameters: AIParameters;
+    availableModels: string[];
+    customSystemPrompt: string;
+    handleProviderChange: (providerId: string) => void;
+    handleModelChange: (model: string) => void;
+    handleParametersChange: (params: AIParameters) => void;
+    handleSystemPromptChange: (prompt: string) => void;
+  }) => void;
 }
 
 // Tool definitions for LumaUI-lite - comprehensive toolkit inspired by lumaTools.ts
@@ -419,7 +434,13 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   selectedFile,
   onFileSelect,
   projectId,
-  projectName
+  projectName,
+  // AI Settings Modal props
+  showAISettingsModal,
+  onShowAISettingsModal,
+  onCloseAISettingsModal,
+  // AI Settings state exposure
+  onAISettingsChange
 }) => {
   // Get providers from context
   const { providers, loading: providersLoading } = useProviders();
@@ -450,7 +471,6 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
 
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentTask, setCurrentTask] = useState('');
   const [currentToolExecution, setCurrentToolExecution] = useState<ToolExecution | null>(null);
 
@@ -573,6 +593,23 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   useEffect(() => {
     setProjectFiles(initialProjectFiles);
   }, [initialProjectFiles]);
+
+  // Expose AI settings state to parent
+  useEffect(() => {
+    if (onAISettingsChange) {
+      onAISettingsChange({
+        selectedProviderId,
+        selectedModel,
+        parameters,
+        availableModels,
+        customSystemPrompt,
+        handleProviderChange,
+        handleModelChange,
+        handleParametersChange,
+        handleSystemPromptChange
+      });
+    }
+  }, [selectedProviderId, selectedModel, parameters, availableModels, customSystemPrompt, onAISettingsChange]);
 
   // Get current provider
   const currentProvider = providers.find(p => p.id === selectedProviderId);
@@ -1935,7 +1972,7 @@ Use this context to maintain continuity and understand the project's evolution. 
           </button>
           
           <button
-            onClick={() => setShowSettingsModal(true)}
+            onClick={() => onShowAISettingsModal?.()}
             className="p-2 text-gray-600 dark:text-gray-300 hover:text-sakura-500 hover:bg-sakura-50 dark:hover:bg-sakura-900/20 rounded-lg transition-colors"
             title="AI Settings"
           >
@@ -2267,21 +2304,7 @@ Use this context to maintain continuity and understand the project's evolution. 
         </div>
       </div>
 
-      {/* Settings Modal */}
-      <AISettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        providers={providers}
-        selectedProviderId={selectedProviderId}
-        selectedModel={selectedModel}
-        parameters={parameters}
-        systemPrompt={customSystemPrompt || SYSTEM_PROMPT}
-        availableModels={availableModels}
-        onProviderSelect={handleProviderChange}
-        onModelSelect={handleModelChange}
-        onParametersChange={handleParametersChange}
-        onSystemPromptChange={handleSystemPromptChange}
-      />
+      {/* Settings Modal is now handled by parent component */}
     </div>
   );
 };

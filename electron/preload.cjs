@@ -33,7 +33,8 @@ const validChannels = [
   'llama-progress-complete',
   'watchdog-service-restored',
   'watchdog-service-failed',
-  'watchdog-service-restarted'
+  'watchdog-service-restarted',
+  'docker-update-progress'
 ];
 
 // Add explicit logging for debugging
@@ -55,6 +56,11 @@ contextBridge.exposeInMainWorld('electron', {
   getPythonPort: () => ipcRenderer.invoke('get-python-port'),
   checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
   checkDockerServices: () => ipcRenderer.invoke('check-docker-services'),
+
+  // Docker Container Updates
+  checkDockerUpdates: () => ipcRenderer.invoke('docker-check-updates'),
+  updateDockerContainers: (containerNames) => ipcRenderer.invoke('docker-update-containers', containerNames),
+  getSystemInfo: () => ipcRenderer.invoke('docker-get-system-info'),
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

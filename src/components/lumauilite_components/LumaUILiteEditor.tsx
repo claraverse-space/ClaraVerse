@@ -7,6 +7,8 @@ import { LiteProject, LiteProjectFile } from '../LumaUILite';
 import Editor from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import LumaUILiteChatWindow from './LumaUILiteChatWindow';
+import AISettingsModal from './AISettingsModal';
+import { useProviders } from '../../contexts/ProvidersContext';
 import { WebContainer } from '@webcontainer/api';
 import type { FileSystemTree } from '@webcontainer/api';
 
@@ -22,6 +24,16 @@ interface ContainerState {
   previewUrl?: string;
   port?: number;
   error?: string;
+}
+
+// AI Parameters interface
+interface AIParameters {
+  temperature: number;
+  maxTokens: number;
+  topP: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  maxIterations: number;
 }
 
 const LumaUILiteEditor: React.FC<LumaUILiteEditorProps> = ({
@@ -40,6 +52,25 @@ const LumaUILiteEditor: React.FC<LumaUILiteEditorProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file?: LiteProjectFile } | null>(null);
   const [isRenaming, setIsRenaming] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState('');
+  
+  // AI Settings Modal state
+  const [showAISettingsModal, setShowAISettingsModal] = useState(false);
+  
+  // Providers context
+  const { providers } = useProviders();
+  
+  // AI Settings state from chat window
+  const [aiSettings, setAISettings] = useState<{
+    selectedProviderId: string;
+    selectedModel: string;
+    parameters: AIParameters;
+    availableModels: string[];
+    customSystemPrompt: string;
+    handleProviderChange: (providerId: string) => void;
+    handleModelChange: (model: string) => void;
+    handleParametersChange: (params: AIParameters) => void;
+    handleSystemPromptChange: (prompt: string) => void;
+  } | null>(null);
   
   // WebContainer state
   const [webContainer, setWebContainer] = useState<WebContainer | null>(null);
@@ -1265,6 +1296,10 @@ interface HTMLElement {
                 onProjectUpdate={setProjectFiles}
                 projectId={project.id}
                 projectName={project.name}
+                showAISettingsModal={showAISettingsModal}
+                onShowAISettingsModal={() => setShowAISettingsModal(true)}
+                onCloseAISettingsModal={() => setShowAISettingsModal(false)}
+                onAISettingsChange={setAISettings}
               />
             )}
           </div>
@@ -1983,6 +2018,24 @@ interface HTMLElement {
         <div
           className="fixed inset-0 z-40"
           onClick={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* AI Settings Modal - Rendered outside chat window */}
+      {aiSettings && (
+        <AISettingsModal
+          isOpen={showAISettingsModal}
+          onClose={() => setShowAISettingsModal(false)}
+          providers={providers}
+          selectedProviderId={aiSettings.selectedProviderId}
+          selectedModel={aiSettings.selectedModel}
+          parameters={aiSettings.parameters}
+          systemPrompt={aiSettings.customSystemPrompt}
+          availableModels={aiSettings.availableModels}
+          onProviderSelect={aiSettings.handleProviderChange}
+          onModelSelect={aiSettings.handleModelChange}
+          onParametersChange={aiSettings.handleParametersChange}
+          onSystemPromptChange={aiSettings.handleSystemPromptChange}
         />
       )}
     </div>

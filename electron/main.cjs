@@ -1756,6 +1756,60 @@ function registerHandlers() {
     }
   });
 
+  // Check for container updates
+  ipcMain.handle('docker-check-updates', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      return await dockerSetup.checkForUpdates((status) => {
+        log.info('Update check:', status);
+      });
+    } catch (error) {
+      log.error('Error checking for updates:', error);
+      throw error;
+    }
+  });
+
+  // Update containers
+  ipcMain.handle('docker-update-containers', async (event, containerNames) => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      return await dockerSetup.updateContainers(containerNames, (status, type = 'info') => {
+        log.info('Container update:', status);
+        // Send progress updates to the renderer
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('docker-update-progress', { status, type });
+        }
+      });
+    } catch (error) {
+      log.error('Error updating containers:', error);
+      throw error;
+    }
+  });
+
+  // Get system architecture info
+  ipcMain.handle('docker-get-system-info', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      return {
+        architecture: dockerSetup.systemArch,
+        platform: process.platform,
+        arch: process.arch
+      };
+    } catch (error) {
+      log.error('Error getting system info:', error);
+      throw error;
+    }
+  });
+
   // Event handlers
   ipcMain.on('backend-status', (event, status) => {
     if (mainWindow) {
