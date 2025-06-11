@@ -320,7 +320,8 @@ const StreamingIndicator: React.FC = () => {
 const MessageMetadata: React.FC<{ 
   message: ClaraMessage;
   showFullMetadata?: boolean;
-}> = ({ message, showFullMetadata = false }) => {
+  hasDetailedStats?: boolean;
+}> = ({ message, showFullMetadata = false, hasDetailedStats = false }) => {
   if (!message.metadata) return null;
 
   const [showDetailedStats, setShowDetailedStats] = useState(false);
@@ -338,7 +339,48 @@ const MessageMetadata: React.FC<{
     return `${ms.toFixed(0)}ms`;
   };
 
-  const hasDetailedStats = message.metadata.usage || message.metadata.timings;
+  // Helper function to extract user-friendly model name from technical model ID
+  const getDisplayModelName = (modelId: string): string => {
+    if (!modelId) return '';
+    
+    // Extract the model name part from technical IDs like "38364064-7f2f-421d-afd4-b78f5d574288:qwen3:30b-a3b"
+    // Split by colon and take the meaningful parts
+    const parts = modelId.split(':');
+    
+    if (parts.length >= 2) {
+      // If we have multiple parts, skip the first part if it looks like a UUID/hash
+      const firstPart = parts[0];
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(firstPart);
+      const isHash = /^[0-9a-f]{32,}$/i.test(firstPart);
+      
+      if (isUUID || isHash) {
+        // Skip the UUID/hash and join the rest
+        return parts.slice(1).join(':');
+      }
+    }
+    
+    // For provider:model format, just return the model part
+    if (parts.length === 2 && parts[0].length < 20) {
+      return parts[1];
+    }
+    
+    // If it's a simple model name or doesn't match patterns, return as is
+    return modelId;
+  };
+
+  // Check if we have meaningful token data to display
+  const hasTokenData = Boolean(
+    // Check for usage.total_tokens (preferred)
+    (message.metadata.usage?.total_tokens && 
+     typeof message.metadata.usage.total_tokens === 'number' && 
+     message.metadata.usage.total_tokens > 0) ||
+    // Fallback to direct tokens field
+    (message.metadata.tokens && 
+     typeof message.metadata.tokens === 'number' && 
+     message.metadata.tokens > 0)
+  );
+
+
 
   return (
     <div className="mt-2">
@@ -346,12 +388,12 @@ const MessageMetadata: React.FC<{
       <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         {message.metadata.model && (
           <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-gray-600 dark:text-gray-400">
-            {message.metadata.model}
+            {getDisplayModelName(message.metadata.model)}
           </span>
         )}
         
-        {/* Enhanced token display with detailed usage */}
-        {(message.metadata.usage || message.metadata.tokens) && (
+        {/* Enhanced token display with detailed usage - only show if we have meaningful data */}
+        {hasTokenData && (
           <button
             onClick={() => setShowDetailedStats(!showDetailedStats)}
             className="flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded transition-colors"
@@ -755,6 +797,23 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   const isSystem = message.role === 'system';
   const isAssistant = message.role === 'assistant';
 
+  // Check if we have detailed stats worth showing in the expandable panel
+  const hasDetailedStats = Boolean(
+    message.metadata && (
+      (message.metadata.usage && (
+        (typeof message.metadata.usage.prompt_tokens === 'number' && message.metadata.usage.prompt_tokens > 0) ||
+        (typeof message.metadata.usage.completion_tokens === 'number' && message.metadata.usage.completion_tokens > 0) ||
+        (typeof message.metadata.usage.total_tokens === 'number' && message.metadata.usage.total_tokens > 0)
+      )) ||
+      (message.metadata.timings && (
+        (typeof message.metadata.timings.prompt_ms === 'number' && message.metadata.timings.prompt_ms > 0) ||
+        (typeof message.metadata.timings.predicted_ms === 'number' && message.metadata.timings.predicted_ms > 0) ||
+        (typeof message.metadata.timings.prompt_per_second === 'number' && message.metadata.timings.prompt_per_second > 0) ||
+        (typeof message.metadata.timings.predicted_per_second === 'number' && message.metadata.timings.predicted_per_second > 0)
+      ))
+    )
+  );
+
   // Parse display metadata for user messages with attached files
   const displayMeta = isUser ? parseDisplayMetadata(message.content) : null;
   const actualContent = displayMeta?.originalMessage || message.content;
@@ -948,7 +1007,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
       </div>
 
       {/* Message Content Container */}
-      <div className={`flex-1 max-w-4xl ${isUser ? 'items-end' : ''}`}>
+      <div className={`flex-1 ${isUser ? 'max-w-2xl ml-auto items-end' : 'max-w-4xl'}`}>
         {/* Header with name and timestamp */}
         <div className={`flex items-center gap-2 mb-3 ${isUser ? 'justify-end' : ''}`}>
           <span className="text-[15px] font-semibold text-gray-900 dark:text-white">
@@ -1082,10 +1141,16 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
         <MessageMetadata 
           message={message} 
           showFullMetadata={showFullMetadata}
+          hasDetailedStats={hasDetailedStats}
         />
 
-        {/* Expandable metadata toggle */}
-        {message.metadata && Object.keys(message.metadata).length > 0 && (
+        {/* Expandable metadata toggle - only show if there's meaningful data to expand */}
+        {message.metadata && (
+          // Check if there's actually expandable content with meaningful values
+          hasDetailedStats ||
+          (message.metadata.toolsUsed && message.metadata.toolsUsed.length > 0) ||
+          message.metadata.error
+        ) && (
           <button
             onClick={() => setShowFullMetadata(!showFullMetadata)}
             className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mt-1 transition-colors"
