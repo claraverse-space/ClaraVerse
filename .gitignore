@@ -84,3 +84,6 @@ clara-sdk-docs/*
 electron/llamacpp-binaries/config.yaml
 
 sdk_examples/*
+electron/llamacpp-binaries/config.yaml
+battery-report.html
+electron/llamacpp-binaries/config.yaml
