@@ -39,7 +39,15 @@ import {
   XCircle,
   Waves,
   Cog,
-  MessageCircle
+  MessageCircle,
+  Palette,
+  Code,
+  BarChart3,
+  Table,
+  Workflow,
+  Globe,
+  FileText,
+  GitBranch
 } from 'lucide-react';
 
 // Import types
@@ -545,7 +553,8 @@ const AdvancedOptions: React.FC<{
     parameters: false,
     features: false,
     mcp: false,
-    autonomous: false
+    autonomous: false,
+    artifacts: true  // Changed from false to true to expand by default
   });
 
   // Load MCP servers when component mounts or when MCP is enabled
@@ -589,21 +598,242 @@ const AdvancedOptions: React.FC<{
     const provider = providers.find(p => p.id === providerId);
     const providerName = provider?.name || 'AI Assistant';
     
+    // Comprehensive artifact generation guidance that applies to all providers
+    const artifactGuidance = `
+
+## 🎨 COMPREHENSIVE ARTIFACT CREATION SYSTEM
+
+You have ADVANCED ARTIFACT GENERATION capabilities. Your responses automatically create beautiful, interactive components that enhance user experience. Follow these DETAILED guidelines to maximize artifact potential:
+
+### **🎯 WHEN TO CREATE ARTIFACTS (Complete List)**
+
+Create artifacts for ANY of these content types:
+
+#### **💻 CODE & PROGRAMMING**
+- **Any code examples** (Python, JavaScript, TypeScript, Java, C++, C#, Go, Rust, PHP, Ruby, Swift, Kotlin, etc.)
+- **Configuration files** (JSON, YAML, XML, TOML, INI)
+- **Shell scripts** (Bash, PowerShell, Zsh)
+- **Database queries** (SQL, MongoDB, GraphQL)
+- **Markup languages** (HTML, CSS, SCSS, Markdown)
+- **Template files** (Jinja2, Handlebars, Mustache)
+- **Regular expressions** with explanations
+- **API endpoints** and documentation
+
+#### **📊 DATA & VISUALIZATIONS**
+- **Any tabular data** (CSV, TSV, Excel-like data)
+- **JSON data structures** (API responses, configurations)
+- **Statistical data** (numbers, percentages, metrics)
+- **Chart data** (bar, line, pie, scatter, area, radar)
+- **Time series data** (dates, timestamps, trends)
+- **Geographic data** (coordinates, locations)
+- **Survey results** and poll data
+- **Financial data** (stocks, budgets, expenses)
+- **Performance metrics** (analytics, KPIs)
+
+#### **📈 CHARTS & GRAPHS**
+- **Bar charts** (vertical, horizontal, stacked)
+- **Line charts** (single, multiple series, area)
+- **Pie charts** and doughnut charts
+- **Scatter plots** and bubble charts
+- **Histograms** and distribution charts
+- **Radar/Spider charts**
+- **Gantt charts** for project timelines
+- **Heatmaps** for correlation data
+
+#### **🔄 DIAGRAMS & FLOWCHARTS**
+- **Flowcharts** (process flows, decision trees)
+- **Sequence diagrams** (interactions, API calls)
+- **Class diagrams** (UML, object relationships)
+- **Network diagrams** (system architecture)
+- **Entity relationship diagrams** (database schemas)
+- **Organizational charts** (hierarchies, teams)
+- **Mind maps** (concepts, brainstorming)
+- **Git graphs** (version control flows)
+
+#### **🌐 WEB & INTERACTIVE CONTENT**
+- **HTML pages** (complete or snippets)
+- **CSS demonstrations** (styling examples)
+- **Interactive forms** (contact, survey, registration)
+- **Web components** (buttons, cards, modals)
+- **Landing pages** and website mockups
+- **Email templates** (HTML emails)
+- **SVG graphics** and icons
+
+#### **📚 DOCUMENTATION & CONTENT**
+- **Technical documentation** (API docs, guides)
+- **Tutorials** and how-to guides
+- **README files** and project documentation
+- **Markdown content** (formatted text, lists)
+- **Educational content** (lessons, explanations)
+- **Checklists** and task lists
+- **FAQs** and Q&A content
+
+### **📝 DETAILED FORMATTING INSTRUCTIONS**
+
+#### **1. CODE ARTIFACTS - ALWAYS USE LANGUAGE TAGS**
+
+\`\`\`python
+def fibonacci_sequence(n):
+    """Generate Fibonacci sequence up to n terms."""
+    if n <= 0:
+        return []
+    elif n == 1:
+        return [0]
+    elif n == 2:
+        return [0, 1]
+    
+    sequence = [0, 1]
+    for i in range(2, n):
+        sequence.append(sequence[i-1] + sequence[i-2])
+    
+    return sequence
+
+# Example usage
+fib_numbers = fibonacci_sequence(10)
+print(f"First 10 Fibonacci numbers: {fib_numbers}")
+\`\`\`
+
+#### **2. DATA TABLES - MULTIPLE FORMATS SUPPORTED**
+
+**CSV Format:**
+\`\`\`csv
+Name,Age,Department,Salary,Performance Rating
+John Smith,32,Engineering,95000,4.5
+Sarah Johnson,28,Marketing,72000,4.8
+Mike Chen,35,Engineering,105000,4.6
+\`\`\`
+
+**JSON Format:**
+\`\`\`json
+[
+    {
+        "id": 1,
+        "product": "MacBook Pro 16\\"",
+        "category": "Laptops",
+        "price": 2499.99,
+        "stock": 15,
+        "rating": 4.8
+    }
+]
+\`\`\`
+
+#### **3. CHARTS & VISUALIZATIONS - CHART.JS FORMAT**
+
+\`\`\`json
+{
+    "type": "bar",
+    "data": {
+        "labels": ["January", "February", "March", "April", "May"],
+        "datasets": [{
+            "label": "Monthly Sales ($)",
+            "data": [12000, 15000, 18000, 22000, 25000],
+            "backgroundColor": [
+                "rgba(54, 162, 235, 0.6)",
+                "rgba(255, 99, 132, 0.6)",
+                "rgba(255, 205, 86, 0.6)",
+                "rgba(75, 192, 192, 0.6)",
+                "rgba(153, 102, 255, 0.6)"
+            ]
+        }]
+    },
+    "options": {
+        "responsive": true,
+        "plugins": {
+            "title": {
+                "display": true,
+                "text": "Monthly Sales Performance"
+            }
+        }
+    }
+}
+\`\`\`
+
+#### **4. MERMAID DIAGRAMS**
+
+\`\`\`mermaid
+graph TD
+    A[User Request] --> B{Authentication Required?}
+    B -->|Yes| C[Check Credentials]
+    B -->|No| D[Process Request]
+    C --> E{Valid Credentials?}
+    E -->|Yes| D
+    E -->|No| F[Return Error]
+    D --> G[Generate Response]
+    G --> H[Send Response]
+\`\`\`
+
+#### **5. HTML CONTENT**
+
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 Dashboard</h1>
+    <div class="card">
+        <h3>💰 Revenue</h3>
+        <div style="font-size: 2em; color: #FFD700;">$125,000</div>
+    </div>
+</body>
+</html>
+\`\`\`
+
+### **🎯 CRITICAL SUCCESS RULES**
+
+1. **ALWAYS USE PROPER FORMATTING**: Every code block MUST have a language identifier
+2. **PROVIDE COMPLETE EXAMPLES**: Don't show partial code - make it runnable
+3. **INCLUDE CONTEXT**: Explain what each artifact does and why it's useful
+4. **USE DESCRIPTIVE TITLES**: Help users understand the content immediately
+5. **MULTIPLE ARTIFACTS**: Create several artifacts in one response when appropriate
+6. **INTERACTIVE ELEMENTS**: Include buttons, forms, and interactive features
+7. **REAL DATA**: Use realistic, meaningful data in examples
+8. **RESPONSIVE DESIGN**: Make HTML/CSS examples mobile-friendly
+
+### **✅ ARTIFACT CHECKLIST**
+Before sending any response, ask yourself:
+- [ ] Does this response contain code? → Create code artifact
+- [ ] Does this response contain data? → Create table artifact  
+- [ ] Does this response contain numbers that could be visualized? → Create chart artifact
+- [ ] Does this response describe a process? → Create mermaid diagram
+- [ ] Does this response contain HTML/web content? → Create HTML artifact
+- [ ] Could this be made interactive? → Add interactive elements
+
+ALWAYS err on the side of creating MORE artifacts rather than fewer. Users love interactive, visual content!`;
+
     switch (provider?.type) {
       case 'ollama':
-        return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.`;
+        return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance}`;
         
       case 'openai':
-        return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.`;
+        return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance}`;
         
       case 'openrouter':
-        return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.`;
+        return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance}`;
         
       case 'claras-pocket':
-        return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.`;
+        return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance}`;
         
       default:
-        return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.`;
+        return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance}`;
     }
   };
 
@@ -1371,6 +1601,374 @@ const AdvancedOptions: React.FC<{
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Artifact Configuration */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Artifact Generation"
+              icon={<Palette className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.artifacts}
+              onToggle={() => toggleSection('artifacts')}
+              badge={aiConfig?.artifacts?.autoDetectArtifacts ? 'Auto' : 'Manual'}
+            />
+            
+            {expandedSections.artifacts && (
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-4">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                  Configure which types of content should be automatically detected and rendered as interactive artifacts.
+                  {/* Debug indicator */}
+                  <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+                    <strong>Current Status:</strong> Auto-detection is{' '}
+                    <span className={`font-semibold ${aiConfig?.artifacts?.autoDetectArtifacts ?? true ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {aiConfig?.artifacts?.autoDetectArtifacts ?? true ? 'ENABLED' : 'DISABLED'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Auto Detection Toggle */}
+                <div className="flex items-center justify-between p-2 bg-white/50 dark:bg-gray-700/30 rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto-Detect Artifacts</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Automatically create artifacts from AI responses</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const currentArtifacts = aiConfig?.artifacts || {
+                        enableCodeArtifacts: true,
+                        enableChartArtifacts: true,
+                        enableTableArtifacts: true,
+                        enableMermaidArtifacts: true,
+                        enableHtmlArtifacts: true,
+                        enableMarkdownArtifacts: true,
+                        enableJsonArtifacts: true,
+                        enableDiagramArtifacts: true,
+                        autoDetectArtifacts: true,
+                        maxArtifactsPerMessage: 10
+                      };
+                      
+                      const newValue = !(aiConfig?.artifacts?.autoDetectArtifacts ?? true);
+                      
+                      onConfigChange?.({
+                        artifacts: {
+                          ...currentArtifacts,
+                          autoDetectArtifacts: newValue
+                        }
+                      });
+                      
+                      console.log('🎨 Auto-detect artifacts toggled:', newValue);
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:ring-offset-2 hover:shadow-md ${
+                      aiConfig?.artifacts?.autoDetectArtifacts ?? true
+                        ? 'bg-sakura-500 hover:bg-sakura-600'
+                        : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    }`}
+                    title={`Click to ${aiConfig?.artifacts?.autoDetectArtifacts ?? true ? 'disable' : 'enable'} auto-detection`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-all duration-200 ease-in-out ${
+                        aiConfig?.artifacts?.autoDetectArtifacts ?? true
+                          ? 'translate-x-6'
+                          : 'translate-x-1'
+                      }`}
+                    />
+                    {/* Status indicator */}
+                    <span className="sr-only">
+                      {aiConfig?.artifacts?.autoDetectArtifacts ?? true ? 'Auto-detection enabled' : 'Auto-detection disabled'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Artifact Type Toggles */}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableCodeArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableCodeArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <Code className="w-3 h-3" />
+                    Code Blocks
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableChartArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableChartArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <BarChart3 className="w-3 h-3" />
+                    Charts & Graphs
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableTableArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableTableArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <Table className="w-3 h-3" />
+                    Data Tables
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableMermaidArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableMermaidArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <Workflow className="w-3 h-3" />
+                    Diagrams
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableHtmlArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableHtmlArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <Globe className="w-3 h-3" />
+                    HTML Content
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableMarkdownArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableMarkdownArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <FileText className="w-3 h-3" />
+                    Markdown
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableJsonArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableJsonArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <Database className="w-3 h-3" />
+                    JSON Data
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 p-2 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.artifacts?.enableDiagramArtifacts ?? true}
+                      onChange={(e) => {
+                        const currentArtifacts = aiConfig?.artifacts || {
+                          enableCodeArtifacts: true,
+                          enableChartArtifacts: true,
+                          enableTableArtifacts: true,
+                          enableMermaidArtifacts: true,
+                          enableHtmlArtifacts: true,
+                          enableMarkdownArtifacts: true,
+                          enableJsonArtifacts: true,
+                          enableDiagramArtifacts: true,
+                          autoDetectArtifacts: true,
+                          maxArtifactsPerMessage: 10
+                        };
+                        
+                        onConfigChange?.({
+                          artifacts: {
+                            ...currentArtifacts,
+                            enableDiagramArtifacts: e.target.checked
+                          }
+                        });
+                      }}
+                      className="w-3 h-3 text-sakura-500 rounded border-gray-300 focus:ring-sakura-500"
+                    />
+                    <GitBranch className="w-3 h-3" />
+                    Flowcharts
+                  </label>
+                </div>
+
+                {/* Max Artifacts Slider */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Max Artifacts per Message: {aiConfig?.artifacts?.maxArtifactsPerMessage || 10}
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={aiConfig?.artifacts?.maxArtifactsPerMessage || 10}
+                    onChange={(e) => {
+                      const currentArtifacts = aiConfig?.artifacts || {
+                        enableCodeArtifacts: true,
+                        enableChartArtifacts: true,
+                        enableTableArtifacts: true,
+                        enableMermaidArtifacts: true,
+                        enableHtmlArtifacts: true,
+                        enableMarkdownArtifacts: true,
+                        enableJsonArtifacts: true,
+                        enableDiagramArtifacts: true,
+                        autoDetectArtifacts: true,
+                        maxArtifactsPerMessage: 10
+                      };
+                      
+                      onConfigChange?.({
+                        artifacts: {
+                          ...currentArtifacts,
+                          maxArtifactsPerMessage: parseInt(e.target.value)
+                        }
+                      });
+                    }}
+                    className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Limit the number of artifacts created per AI response
+                  </div>
+                </div>
               </div>
             )}
           </div>

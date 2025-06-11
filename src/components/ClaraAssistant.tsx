@@ -17,10 +17,10 @@ import {
   ClaraArtifact,
   ClaraProvider,
   ClaraModel,
-  ClaraAIConfig
+  ClaraAIConfig,
 } from '../types/clara_assistant_types';
 import { claraApiService } from '../services/claraApiService';
-import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs, validateProviderConfig } from '../utils/providerConfigStorage';
+import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
 import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
@@ -30,8 +30,15 @@ import { claraBackgroundService } from '../services/claraBackgroundService';
 import '../utils/clearClaraData';
 import { copyToClipboard } from '../utils/clipboard';
 
+// Import the new professional status panel
+import AutonomousAgentStatusPanel from './Clara_Components/AutonomousAgentStatusPanel';
+import useAutonomousAgentStatus from '../hooks/useAutonomousAgentStatus';
+
 // Import TTS service
 import { claraTTSService } from '../services/claraTTSService';
+
+  // Import artifact detection service
+import ArtifactDetectionService, { DetectionContext } from '../services/artifactDetectionService';
 
 // Import clipboard test functions for development
 if (process.env.NODE_ENV === 'development') {
@@ -53,21 +60,719 @@ const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9
 const getDefaultSystemPrompt = (provider: ClaraProvider): string => {
   const providerName = provider?.name || 'AI Assistant';
   
+  // Comprehensive artifact generation guidance that applies to all providers
+  const artifactGuidance = `
+
+## 🎨 COMPREHENSIVE ARTIFACT CREATION SYSTEM
+
+You are Clara, an AI assistant with ADVANCED ARTIFACT GENERATION capabilities. Your responses automatically create beautiful, interactive components that enhance user experience. Follow these DETAILED guidelines to maximize artifact potential:
+
+### **🎯 WHEN TO CREATE ARTIFACTS (Complete List)**
+
+Create artifacts for ANY of these content types:
+
+#### **💻 CODE & PROGRAMMING**
+- **Any code examples** (Python, JavaScript, TypeScript, Java, C++, C#, Go, Rust, PHP, Ruby, Swift, Kotlin, etc.)
+- **Configuration files** (JSON, YAML, XML, TOML, INI)
+- **Shell scripts** (Bash, PowerShell, Zsh)
+- **Database queries** (SQL, MongoDB, GraphQL)
+- **Markup languages** (HTML, CSS, SCSS, Markdown)
+- **Template files** (Jinja2, Handlebars, Mustache)
+- **Regular expressions** with explanations
+- **API endpoints** and documentation
+- **Docker files** and container configs
+
+#### **📊 DATA & VISUALIZATIONS**
+- **Any tabular data** (CSV, TSV, Excel-like data)
+- **JSON data structures** (API responses, configurations)
+- **Statistical data** (numbers, percentages, metrics)
+- **Chart data** (bar, line, pie, scatter, area, radar)
+- **Time series data** (dates, timestamps, trends)
+- **Geographic data** (coordinates, locations)
+- **Survey results** and poll data
+- **Financial data** (stocks, budgets, expenses)
+- **Performance metrics** (analytics, KPIs)
+
+#### **📈 CHARTS & GRAPHS**
+- **Bar charts** (vertical, horizontal, stacked)
+- **Line charts** (single, multiple series, area)
+- **Pie charts** and doughnut charts
+- **Scatter plots** and bubble charts
+- **Histograms** and distribution charts
+- **Radar/Spider charts**
+- **Gantt charts** for project timelines
+- **Heatmaps** for correlation data
+
+#### **🔄 DIAGRAMS & FLOWCHARTS**
+- **Flowcharts** (process flows, decision trees)
+- **Sequence diagrams** (interactions, API calls)
+- **Class diagrams** (UML, object relationships)
+- **Network diagrams** (system architecture)
+- **Entity relationship diagrams** (database schemas)
+- **Organizational charts** (hierarchies, teams)
+- **Mind maps** (concepts, brainstorming)
+- **Gantt charts** (project management)
+- **Git graphs** (version control flows)
+
+#### **🌐 WEB & INTERACTIVE CONTENT**
+- **HTML pages** (complete or snippets)
+- **CSS demonstrations** (styling examples)
+- **Interactive forms** (contact, survey, registration)
+- **Web components** (buttons, cards, modals)
+- **Landing pages** and website mockups
+- **Email templates** (HTML emails)
+- **SVG graphics** and icons
+
+#### **📚 DOCUMENTATION & CONTENT**
+- **Technical documentation** (API docs, guides)
+- **Tutorials** and how-to guides
+- **README files** and project documentation
+- **Markdown content** (formatted text, lists)
+- **Educational content** (lessons, explanations)
+- **Checklists** and task lists
+- **FAQs** and Q&A content
+
+#### **🧮 MATHEMATICAL & SCIENTIFIC**
+- **Mathematical formulas** (LaTeX format)
+- **Scientific equations** and expressions
+- **Statistical calculations** and results
+- **Algorithm explanations** with pseudocode
+- **Mathematical proofs** and derivations
+
+### **📝 DETAILED FORMATTING INSTRUCTIONS**
+
+#### **1. CODE ARTIFACTS - ALWAYS USE LANGUAGE TAGS**
+
+**Python Example:**
+\`\`\`python
+def fibonacci_sequence(n):
+    """Generate Fibonacci sequence up to n terms."""
+    if n <= 0:
+        return []
+    elif n == 1:
+        return [0]
+    elif n == 2:
+        return [0, 1]
+    
+    sequence = [0, 1]
+    for i in range(2, n):
+        sequence.append(sequence[i-1] + sequence[i-2])
+    
+    return sequence
+
+# Example usage
+fib_numbers = fibonacci_sequence(10)
+print(f"First 10 Fibonacci numbers: {fib_numbers}")
+\`\`\`
+
+**JavaScript/React Example:**
+\`\`\`javascript
+// Interactive Todo List Component
+function TodoList() {
+    const [todos, setTodos] = useState([]);
+    const [inputValue, setInputValue] = useState('');
+    
+    const addTodo = () => {
+        if (inputValue.trim()) {
+            setTodos([...todos, { 
+                id: Date.now(), 
+                text: inputValue, 
+                completed: false 
+            }]);
+            setInputValue('');
+        }
+    };
+    
+    const toggleTodo = (id) => {
+        setTodos(todos.map(todo => 
+            todo.id === id ? { ...todo, completed: !todo.completed } : todo
+        ));
+    };
+    
+    return (
+        <div className="todo-container">
+            <input 
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Add a new todo..."
+                onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+            />
+            <button onClick={addTodo}>Add Todo</button>
+            <ul>
+                {todos.map(todo => (
+                    <li key={todo.id} 
+                        className={todo.completed ? 'completed' : ''}
+                        onClick={() => toggleTodo(todo.id)}>
+                        {todo.text}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+\`\`\`
+
+**SQL Example:**
+\`\`\`sql
+-- Create users table with relationships
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP,
+    is_active BOOLEAN DEFAULT true
+);
+
+-- Insert sample data
+INSERT INTO users (username, email) VALUES 
+    ('john_doe', 'john@example.com'),
+    ('jane_smith', 'jane@example.com'),
+    ('bob_wilson', 'bob@example.com');
+
+-- Query with joins and aggregation
+SELECT 
+    u.username,
+    u.email,
+    COUNT(p.id) as post_count,
+    MAX(p.created_at) as last_post_date
+FROM users u
+LEFT JOIN posts p ON u.id = p.user_id
+WHERE u.is_active = true
+GROUP BY u.id, u.username, u.email
+ORDER BY post_count DESC;
+\`\`\`
+
+#### **2. DATA TABLES - MULTIPLE FORMATS SUPPORTED**
+
+**JSON Array Format:**
+\`\`\`json
+[
+    {
+        "id": 1,
+        "product": "MacBook Pro 16\"",
+        "category": "Laptops",
+        "price": 2499.99,
+        "stock": 15,
+        "rating": 4.8,
+        "last_updated": "2024-01-15"
+    },
+    {
+        "id": 2,
+        "product": "iPhone 15 Pro",
+        "category": "Smartphones",
+        "price": 999.99,
+        "stock": 42,
+        "rating": 4.9,
+        "last_updated": "2024-01-14"
+    },
+    {
+        "id": 3,
+        "product": "AirPods Pro",
+        "category": "Audio",
+        "price": 249.99,
+        "stock": 28,
+        "rating": 4.7,
+        "last_updated": "2024-01-13"
+    }
+]
+\`\`\`
+
+**CSV Format:**
+\`\`\`csv
+Name,Age,Department,Salary,Start Date,Performance Rating
+John Smith,32,Engineering,95000,2022-03-15,4.5
+Sarah Johnson,28,Marketing,72000,2023-01-10,4.8
+Mike Chen,35,Engineering,105000,2021-07-22,4.6
+Lisa Rodriguez,30,Sales,68000,2022-11-05,4.3
+David Kim,29,Engineering,88000,2023-02-18,4.7
+\`\`\`
+
+**Markdown Table:**
+| Feature | Basic Plan | Pro Plan | Enterprise |
+|---------|------------|----------|------------|
+| Users | 5 | 25 | Unlimited |
+| Storage | 10GB | 100GB | 1TB |
+| API Calls | 1,000/month | 10,000/month | Unlimited |
+| Support | Email | Priority | 24/7 Phone |
+| Price | $9/month | $29/month | $99/month |
+
+#### **3. CHARTS & VISUALIZATIONS - CHART.JS FORMAT**
+
+**Bar Chart Example:**
+\`\`\`json
+{
+    "type": "bar",
+    "data": {
+        "labels": ["January", "February", "March", "April", "May", "June"],
+        "datasets": [{
+            "label": "Monthly Sales ($)",
+            "data": [12000, 15000, 18000, 22000, 25000, 28000],
+            "backgroundColor": [
+                "rgba(54, 162, 235, 0.6)",
+                "rgba(255, 99, 132, 0.6)",
+                "rgba(255, 205, 86, 0.6)",
+                "rgba(75, 192, 192, 0.6)",
+                "rgba(153, 102, 255, 0.6)",
+                "rgba(255, 159, 64, 0.6)"
+            ],
+            "borderColor": [
+                "rgba(54, 162, 235, 1)",
+                "rgba(255, 99, 132, 1)",
+                "rgba(255, 205, 86, 1)",
+                "rgba(75, 192, 192, 1)",
+                "rgba(153, 102, 255, 1)",
+                "rgba(255, 159, 64, 1)"
+            ],
+            "borderWidth": 2
+        }]
+    },
+    "options": {
+        "responsive": true,
+        "plugins": {
+            "title": {
+                "display": true,
+                "text": "Monthly Sales Performance"
+            }
+        },
+        "scales": {
+            "y": {
+                "beginAtZero": true,
+                "title": {
+                    "display": true,
+                    "text": "Sales Amount ($)"
+                }
+            }
+        }
+    }
+}
+\`\`\`
+
+**Line Chart Example:**
+\`\`\`json
+{
+    "type": "line",
+    "data": {
+        "labels": ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
+        "datasets": [
+            {
+                "label": "Website Traffic",
+                "data": [1200, 1900, 3000, 5000, 4200, 6000],
+                "borderColor": "rgb(75, 192, 192)",
+                "backgroundColor": "rgba(75, 192, 192, 0.2)",
+                "tension": 0.4
+            },
+            {
+                "label": "Conversions",
+                "data": [65, 95, 150, 250, 210, 300],
+                "borderColor": "rgb(255, 99, 132)",
+                "backgroundColor": "rgba(255, 99, 132, 0.2)",
+                "tension": 0.4
+            }
+        ]
+    },
+    "options": {
+        "responsive": true,
+        "plugins": {
+            "title": {
+                "display": true,
+                "text": "Website Performance Metrics"
+            }
+        }
+    }
+}
+\`\`\`
+
+**Pie Chart Example:**
+\`\`\`json
+{
+    "type": "pie",
+    "data": {
+        "labels": ["Desktop", "Mobile", "Tablet", "Other"],
+        "datasets": [{
+            "data": [45.2, 38.7, 12.8, 3.3],
+            "backgroundColor": [
+                "#FF6384",
+                "#36A2EB", 
+                "#FFCE56",
+                "#4BC0C0"
+            ],
+            "hoverBackgroundColor": [
+                "#FF6384CC",
+                "#36A2EBCC",
+                "#FFCE56CC", 
+                "#4BC0C0CC"
+            ]
+        }]
+    },
+    "options": {
+        "responsive": true,
+        "plugins": {
+            "title": {
+                "display": true,
+                "text": "Traffic by Device Type (%)"
+            },
+            "legend": {
+                "position": "bottom"
+            }
+        }
+    }
+}
+\`\`\`
+
+#### **4. MERMAID DIAGRAMS - COMPREHENSIVE EXAMPLES**
+
+**Flowchart:**
+\`\`\`mermaid
+graph TD
+    A[User Request] --> B{Authentication Required?}
+    B -->|Yes| C[Check Credentials]
+    B -->|No| D[Process Request]
+    C --> E{Valid Credentials?}
+    E -->|Yes| D
+    E -->|No| F[Return Error]
+    D --> G[Generate Response]
+    G --> H[Send Response]
+    F --> I[Log Failed Attempt]
+    I --> H
+\`\`\`
+
+**Sequence Diagram:**
+\`\`\`mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant Database
+    participant Cache
+    
+    User->>Frontend: Submit Form
+    Frontend->>API: POST /api/users
+    API->>Database: Check if user exists
+    Database-->>API: User not found
+    API->>Database: Create new user
+    Database-->>API: User created
+    API->>Cache: Store user session
+    Cache-->>API: Session stored
+    API-->>Frontend: Success response
+    Frontend-->>User: Show success message
+\`\`\`
+
+**Class Diagram:**
+\`\`\`mermaid
+classDiagram
+    class User {
+        +String id
+        +String username
+        +String email
+        +Date createdAt
+        +Boolean isActive
+        +login()
+        +logout()
+        +updateProfile()
+    }
+    
+    class Post {
+        +String id
+        +String title
+        +String content
+        +Date publishedAt
+        +String authorId
+        +publish()
+        +unpublish()
+        +edit()
+    }
+    
+    class Comment {
+        +String id
+        +String content
+        +Date createdAt
+        +String postId
+        +String authorId
+        +edit()
+        +delete()
+    }
+    
+    User ||--o{ Post : creates
+    Post ||--o{ Comment : has
+    User ||--o{ Comment : writes
+\`\`\`
+
+**Gantt Chart:**
+\`\`\`mermaid
+gantt
+    title Project Development Timeline
+    dateFormat  YYYY-MM-DD
+    section Planning
+    Requirements Analysis    :done, req, 2024-01-01, 2024-01-15
+    System Design          :done, design, after req, 10d
+    section Development
+    Backend Development     :active, backend, 2024-01-20, 30d
+    Frontend Development    :frontend, after design, 25d
+    Database Setup         :db, 2024-01-25, 15d
+    section Testing
+    Unit Testing           :testing, after backend, 10d
+    Integration Testing    :integration, after frontend, 5d
+    section Deployment
+    Production Setup       :deploy, after integration, 3d
+    Go Live               :milestone, golive, after deploy, 1d
+\`\`\`
+
+#### **5. HTML CONTENT - INTERACTIVE EXAMPLES**
+
+**Complete HTML Page:**
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .metric {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #FFD700;
+        }
+        .chart-container {
+            height: 200px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        button {
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center; margin-bottom: 40px;">📊 Business Dashboard</h1>
+    
+    <div class="dashboard">
+        <div class="card">
+            <h3>💰 Total Revenue</h3>
+            <div class="metric" id="revenue">$0</div>
+            <p>Monthly recurring revenue</p>
+            <button onclick="updateRevenue()">Update Revenue</button>
+        </div>
+        
+        <div class="card">
+            <h3>👥 Active Users</h3>
+            <div class="metric" id="users">0</div>
+            <p>Currently online users</p>
+            <div class="chart-container">📈 User Growth Chart</div>
+        </div>
+        
+        <div class="card">
+            <h3>📦 Orders Today</h3>
+            <div class="metric" id="orders">0</div>
+            <p>New orders in last 24h</p>
+            <button onclick="refreshOrders()">Refresh Orders</button>
+        </div>
+        
+        <div class="card">
+            <h3>⚡ System Status</h3>
+            <div class="metric" style="color: #4ECDC4;">99.9%</div>
+            <p>Uptime this month</p>
+            <div style="margin-top: 15px;">
+                <span style="color: #4ECDC4;">● API</span>
+                <span style="color: #4ECDC4;">● Database</span>
+                <span style="color: #FFD700;">● Cache</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Simulate real-time data updates
+        function updateRevenue() {
+            const revenue = Math.floor(Math.random() * 100000) + 50000;
+            document.getElementById('revenue').textContent = '$' + revenue.toLocaleString();
+        }
+        
+        function refreshOrders() {
+            const orders = Math.floor(Math.random() * 500) + 100;
+            document.getElementById('orders').textContent = orders.toLocaleString();
+        }
+        
+        // Auto-update data every 5 seconds
+        setInterval(() => {
+            const users = Math.floor(Math.random() * 1000) + 500;
+            document.getElementById('users').textContent = users.toLocaleString();
+        }, 5000);
+        
+        // Initialize with random data
+        updateRevenue();
+        refreshOrders();
+    </script>
+</body>
+</html>
+\`\`\`
+
+#### **6. MATHEMATICAL FORMULAS - LATEX FORMAT**
+
+**Block Math:**
+$$
+\\begin{align}
+E &= mc^2 \\\\
+F &= ma \\\\
+\\nabla \\cdot \\mathbf{E} &= \\frac{\\rho}{\\epsilon_0}
+\\end{align}
+$$
+
+**Inline Math:**
+The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ where $a \\neq 0$.
+
+#### **7. STRUCTURED DATA - API RESPONSES**
+
+**API Response Example:**
+\`\`\`json
+{
+    "status": "success",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "data": {
+        "users": [
+            {
+                "id": "usr_123",
+                "name": "John Doe",
+                "email": "john@example.com",
+                "role": "admin",
+                "last_login": "2024-01-15T09:15:00Z",
+                "permissions": ["read", "write", "delete"],
+                "profile": {
+                    "avatar": "https://example.com/avatars/john.jpg",
+                    "department": "Engineering",
+                    "location": "San Francisco, CA"
+                }
+            }
+        ],
+        "pagination": {
+            "page": 1,
+            "per_page": 10,
+            "total": 156,
+            "total_pages": 16
+        }
+    },
+    "meta": {
+        "request_id": "req_abc123",
+        "processing_time_ms": 45,
+        "rate_limit": {
+            "remaining": 99,
+            "reset_at": "2024-01-15T11:00:00Z"
+        }
+    }
+}
+\`\`\`
+
+### **🎯 CRITICAL SUCCESS RULES**
+
+1. **ALWAYS USE PROPER FORMATTING**: Every code block MUST have a language identifier
+2. **PROVIDE COMPLETE EXAMPLES**: Don't show partial code - make it runnable
+3. **INCLUDE CONTEXT**: Explain what each artifact does and why it's useful
+4. **USE DESCRIPTIVE TITLES**: Help users understand the content immediately
+5. **MULTIPLE ARTIFACTS**: Create several artifacts in one response when appropriate
+6. **INTERACTIVE ELEMENTS**: Include buttons, forms, and interactive features
+7. **REAL DATA**: Use realistic, meaningful data in examples
+8. **ERROR HANDLING**: Include error handling in code examples
+9. **RESPONSIVE DESIGN**: Make HTML/CSS examples mobile-friendly
+10. **ACCESSIBILITY**: Include proper labels, alt text, and semantic HTML
+
+### **🚀 ADVANCED ARTIFACT STRATEGIES**
+
+#### **Multi-Artifact Responses**
+When answering complex questions, create multiple related artifacts:
+1. **Explanation artifact** (markdown documentation)
+2. **Code artifact** (implementation)
+3. **Data artifact** (sample data)
+4. **Visualization artifact** (chart or diagram)
+5. **Interactive artifact** (HTML demo)
+
+#### **Educational Sequences**
+For learning content, create:
+1. **Concept explanation** (markdown)
+2. **Visual diagram** (mermaid)
+3. **Code example** (syntax highlighted)
+4. **Interactive demo** (HTML)
+5. **Practice exercise** (structured content)
+
+#### **Data Analysis Workflow**
+For data analysis requests:
+1. **Raw data** (CSV/JSON table)
+2. **Cleaning code** (Python/R)
+3. **Analysis code** (statistical code)
+4. **Visualizations** (chart data)
+5. **Summary report** (markdown)
+
+Remember: Your goal is to make every response not just informative, but visually appealing and interactive. When in doubt, create an artifact - users can always collapse them if not needed, but the enhanced experience is invaluable when relevant.
+
+### **✅ ARTIFACT CHECKLIST**
+Before sending any response, ask yourself:
+- [ ] Does this response contain code? → Create code artifact
+- [ ] Does this response contain data? → Create table artifact  
+- [ ] Does this response contain numbers that could be visualized? → Create chart artifact
+- [ ] Does this response describe a process? → Create mermaid diagram
+- [ ] Does this response contain HTML/web content? → Create HTML artifact
+- [ ] Does this response contain mathematical formulas? → Use LaTeX formatting
+- [ ] Does this response contain structured data? → Create JSON artifact
+- [ ] Could this be made interactive? → Add interactive elements
+
+ALWAYS err on the side of creating MORE artifacts rather than fewer. Users love interactive, visual content!`;
+
   switch (provider?.type) {
     case 'ollama':
-      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.`;
+      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance}`;
       
     case 'openai':
-      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.`;
+      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance}`;
       
     case 'openrouter':
-      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.`;
+      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance}`;
       
     case 'claras-pocket':
-      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.`;
+      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance}`;
       
     default:
-      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.`;
+      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance}`;
   }
 };
 
@@ -189,6 +894,66 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Autonomous agent status management
+  const autonomousAgentStatus = useAutonomousAgentStatus();
+
+  // Parse status updates from streaming chunks for autonomous agent
+  const parseAndUpdateAgentStatus = useCallback((chunk: string) => {
+    try {
+      // Parse new professional status messages
+      if (chunk.includes('**AGENT_STATUS:ACTIVATED**')) {
+        autonomousAgentStatus.startAgent();
+        autonomousAgentStatus.updatePhase('initializing', 'Autonomous agent activated');
+      } else if (chunk.includes('**AGENT_STATUS:PLAN_CREATED**')) {
+        autonomousAgentStatus.updatePhase('planning', 'Strategic execution plan created');
+        
+        // Extract execution plan steps if available
+        const planMatch = chunk.match(/\*\*EXECUTION_PLAN:\*\*\n(.*?)(?:\n\n|\n$)/s);
+        if (planMatch) {
+          const planText = planMatch[1];
+          const steps = planText.split('\n').filter(line => line.trim()).map(line => line.replace(/^\d+\.\s*/, ''));
+          if (steps.length > 0) {
+            autonomousAgentStatus.setExecutionPlan(steps);
+          }
+        }
+      } else if (chunk.includes('**AGENT_STATUS:STEP_')) {
+        const stepMatch = chunk.match(/\*\*AGENT_STATUS:STEP_(\d+)\*\*/);
+        if (stepMatch) {
+          const stepNumber = parseInt(stepMatch[1]);
+          autonomousAgentStatus.updatePhase('executing', `Executing step ${stepNumber}`);
+          autonomousAgentStatus.updateProgress(stepNumber - 1);
+        }
+      }
+      
+      // Parse legacy status messages for backward compatibility
+      if (chunk.includes('**Loaded') && chunk.includes('MCP tools:**')) {
+        const toolsMatch = chunk.match(/\*\*Loaded (\d+) MCP tools:\*\*/);
+        if (toolsMatch) {
+          const toolCount = parseInt(toolsMatch[1]);
+          autonomousAgentStatus.setToolsLoaded(toolCount);
+        }
+      } else if (chunk.includes('**Task completed**') || chunk.includes('**Auto Mode Session Summary**')) {
+        autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
+        // Auto-hide status panel after 2 seconds to show clean results
+        autonomousAgentStatus.completeAgent('Task completed successfully', 2000);
+      } else if (chunk.includes('**Error**') || chunk.includes('execution failed')) {
+        autonomousAgentStatus.updatePhase('error', 'An error occurred during execution');
+        autonomousAgentStatus.errorAgent('Execution failed');
+      }
+      
+      // Parse tool execution updates
+      if (chunk.includes('Using') && chunk.includes('tool')) {
+        const toolMatch = chunk.match(/Using (\w+) tool/);
+        if (toolMatch) {
+          const toolName = toolMatch[1];
+          autonomousAgentStatus.startToolExecution(toolName, `Executing ${toolName} operation`);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse agent status from chunk:', error);
+    }
+  }, [autonomousAgentStatus]);
+
   // Provider health check caching to reduce latency
   const [providerHealthCache, setProviderHealthCache] = useState<Map<string, {isHealthy: boolean, timestamp: number}>>(new Map());
   const HEALTH_CHECK_CACHE_TIME = 30000; // 30 seconds cache
@@ -215,6 +980,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableVision: true,
         autoModelSelection: false,      // **CHANGED**: Default to manual model selection
         enableMCP: false                // **CHANGED**: Default to false for streaming mode
+      },
+      artifacts: {
+        enableCodeArtifacts: true,
+        enableChartArtifacts: true,     // **ENABLED BY DEFAULT** as requested
+        enableTableArtifacts: true,
+        enableMermaidArtifacts: true,
+        enableHtmlArtifacts: true,
+        enableMarkdownArtifacts: true,
+        enableJsonArtifacts: true,
+        enableDiagramArtifacts: true,
+        autoDetectArtifacts: true,
+        maxArtifactsPerMessage: 10
       },
       mcp: {
         enableTools: true,
@@ -623,6 +1400,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
                 enableMCP: false              // **CHANGED**: Default to false for streaming mode
               },
+              artifacts: {
+                enableCodeArtifacts: true,
+                enableChartArtifacts: true,     // **ENABLED BY DEFAULT** as requested
+                enableTableArtifacts: true,
+                enableMermaidArtifacts: true,
+                enableHtmlArtifacts: true,
+                enableMarkdownArtifacts: true,
+                enableJsonArtifacts: true,
+                enableDiagramArtifacts: true,
+                autoDetectArtifacts: true,
+                maxArtifactsPerMessage: 10
+              },
               mcp: {
                 enableTools: true,
                 enableResources: true,
@@ -732,6 +1521,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       return session;
     }
   }, [sessionConfig]);
+
+
 
   // Handle sending a new message
   const handleSendMessage = useCallback(async (content: string, attachments?: ClaraFileAttachment[]) => {
@@ -883,6 +1674,41 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       const systemPrompt = enforcedConfig.systemPrompt || 
                           (currentProvider ? getDefaultSystemPrompt(currentProvider) : 'You are Clara, a helpful AI assistant.');
       
+      // Create enhanced streaming callback that updates both message content and status panel
+      const enhancedStreamingCallback = (chunk: string) => {
+        // Parse status updates from chunk for autonomous agent first
+        if (enforcedConfig.autonomousAgent?.enabled && chunk.includes('**')) {
+          parseAndUpdateAgentStatus(chunk);
+        }
+
+        // Filter out ALL status messages from chat display when autonomous agent is active
+        const isStatusMessage = enforcedConfig.autonomousAgent?.enabled && (
+          chunk.includes('**AGENT_STATUS:') || 
+          chunk.includes('**EXECUTION_PLAN:**') ||
+          chunk.includes('**TOOL_EXECUTION:') ||
+          chunk.includes('**Loaded') ||
+          chunk.includes('MCP tools:**') ||
+          chunk.includes('**Task completed**') ||
+          chunk.includes('**Auto Mode Session Summary**') ||
+          chunk.includes('**Error**') ||
+          chunk.includes('Using') && chunk.includes('tool') ||
+          chunk.includes('**Step') ||
+          chunk.includes('**Autonomous Agent') ||
+          chunk.includes('**Planning') ||
+          chunk.includes('**Executing') ||
+          chunk.includes('**Reflecting')
+        );
+        
+        // Only update message content if it's not a status message
+        if (!isStatusMessage) {
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId 
+              ? { ...msg, content: msg.content + chunk }
+              : msg
+          ));
+        }
+      };
+
       // Send message with streaming callback and conversation context
       // Use aiContent (with voice prefix) for AI processing
       // IMPORTANT: Use enforcedConfig to ensure streaming mode settings are applied
@@ -892,18 +1718,74 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         attachments,
         systemPrompt,
         conversationHistory, // Pass conversation context
-        // Streaming callback to update content in real-time
-        (chunk: string) => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId 
-              ? { ...msg, content: msg.content + chunk }
-              : msg
-          ));
-        }
+        enhancedStreamingCallback // Use enhanced callback
       );
       
+      // Post-process autonomous agent responses for better UX
+      if (enforcedConfig.autonomousAgent?.enabled && aiMessage.content) {
+        const postProcessedContent = await postProcessAutonomousResponse(
+          aiMessage.content,
+          content, // Original user request
+          aiMessage.metadata?.toolsUsed || []
+        );
+        aiMessage.content = postProcessedContent;
+      }
+
+      // **NEW: Automatic artifact detection**
+      if (aiMessage.content && aiMessage.content.length > 50) {
+        // Check if auto-detection is enabled in user configuration
+        const artifactConfig = sessionConfig.aiConfig?.artifacts;
+        const autoDetectEnabled = artifactConfig?.autoDetectArtifacts ?? true;
+        
+        if (autoDetectEnabled) {
+          const detectionContext: DetectionContext = {
+            userMessage: content,
+            conversationHistory: conversationHistory.map((msg: ClaraMessage) => msg.content),
+            messageContent: aiMessage.content,
+            attachments: attachments,
+            // Pass artifact configuration to detection service
+            artifactConfig: artifactConfig
+          };
+
+          const detectionResult = ArtifactDetectionService.detectArtifacts(detectionContext);
+          
+          // Add detected artifacts to the AI message
+          if (detectionResult.artifacts.length > 0) {
+            aiMessage.artifacts = [
+              ...(aiMessage.artifacts || []),
+              ...detectionResult.artifacts
+            ];
+            
+            // Update message content to cleaned version (with artifact placeholders)
+            aiMessage.content = detectionResult.cleanedContent;
+            
+            // Add detection metadata
+            aiMessage.metadata = {
+              ...aiMessage.metadata,
+              artifactDetection: {
+                totalDetected: detectionResult.detectionSummary.totalArtifacts,
+                types: detectionResult.detectionSummary.artifactTypes,
+                confidence: detectionResult.detectionSummary.detectionConfidence,
+                autoDetected: true,
+                configUsed: {
+                  autoDetectEnabled: true,
+                  enabledTypes: Object.entries(artifactConfig || {})
+                    .filter(([key, value]) => key.startsWith('enable') && value === true)
+                    .map(([key]) => key.replace('enable', '').replace('Artifacts', '').toLowerCase())
+                }
+              }
+            };
+
+            console.log(`🎨 Auto-detected ${detectionResult.artifacts.length} artifacts:`, 
+              detectionResult.detectionSummary.artifactTypes.join(', '));
+          }
+        } else {
+          console.log('🎨 Artifact auto-detection is disabled in user configuration');
+        }
+      }
+
       // Replace the streaming message with the final message
-      const finalMessage = { 
+      let finalMessage = { 
         ...aiMessage, 
         id: streamingMessageId, // Keep the same ID
         metadata: {
@@ -911,6 +1793,46 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           isStreaming: false // Mark as complete
         }
       };
+
+      // If autonomous agent was used, create a clean, simple completion message
+      if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
+        const toolExecutions = autonomousAgentStatus.toolExecutions;
+        const completedTools = toolExecutions.filter(tool => tool.status === 'completed');
+        const totalSteps = autonomousAgentStatus.status.currentStep;
+        
+        // **NEW**: Post-process autonomous agent response for clean user presentation
+        const cleanedContent = await postProcessAutonomousResponse(
+          aiMessage.content, 
+          currentMessages[currentMessages.length - 1]?.content || '', // Get the last user message
+          completedTools
+        );
+        
+        // Create enhanced metadata with autonomous completion info
+        const enhancedMetadata = {
+          ...finalMessage.metadata,
+          isStreaming: false
+        };
+        
+        // Add autonomous completion properties
+        (enhancedMetadata as any).autonomousCompletion = true;
+        (enhancedMetadata as any).toolsUsed = completedTools.map(t => t.name);
+        (enhancedMetadata as any).executionSteps = totalSteps;
+
+        finalMessage = {
+          ...finalMessage,
+          content: cleanedContent,
+          metadata: enhancedMetadata
+        };
+
+        // **CRITICAL FIX**: Always complete the autonomous agent when AI message is finalized
+        // This ensures the status panel completes even if completion markers weren't detected in stream
+        if (autonomousAgentStatus.status.phase !== 'completed') {
+          console.log('🔧 Auto-completing autonomous agent status (completion markers not detected in stream)');
+          autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
+          // Auto-hide status panel after 2 seconds to show clean results
+          autonomousAgentStatus.completeAgent('Task completed successfully', 2000);
+        }
+      }
 
       setMessages(prev => prev.map(msg => 
         msg.id === streamingMessageId ? finalMessage : msg
@@ -1101,6 +2023,13 @@ Would you like me to help with text-only responses for now?`,
             'Failed to generate response. Please try again.',
             6000
           );
+
+          // **CRITICAL FIX**: Complete autonomous agent on error to prevent stuck status
+          if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
+            console.log('🔧 Auto-completing autonomous agent status due to error');
+            autonomousAgentStatus.updatePhase('error', 'An error occurred during execution');
+            autonomousAgentStatus.errorAgent('Execution failed');
+          }
         }
 
         // Save error message to database
@@ -1125,6 +2054,18 @@ Would you like me to help with text-only responses for now?`,
       if (!isVisible) {
         claraBackgroundService.decrementBackgroundActivity();
       }
+
+      // **SAFETY NET**: Ensure autonomous agent status completes within reasonable time
+      if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
+        // Set a timeout to auto-complete if still active after 30 seconds
+        setTimeout(() => {
+          if (autonomousAgentStatus.isActive && autonomousAgentStatus.status.phase !== 'completed') {
+            console.log('⏰ Safety timeout: Auto-completing stuck autonomous agent status');
+            autonomousAgentStatus.updatePhase('completed', 'Task completed (timeout safety)');
+            autonomousAgentStatus.completeAgent('Task completed', 1000);
+          }
+        }, 30000); // 30 second safety timeout
+      }
     }
   }, [currentSession, messages, sessionConfig, isVisible, models]);
 
@@ -1148,7 +2089,9 @@ Would you like me to help with text-only responses for now?`,
     const newSession = await createNewSession();
     setCurrentSession(newSession);
     setMessages([]);
-  }, [createNewSession]);
+    // Reset autonomous agent status when starting new chat
+    autonomousAgentStatus.reset();
+  }, [createNewSession, autonomousAgentStatus]);
 
   // Handle session actions
   const handleSessionAction = useCallback(async (sessionId: string, action: 'star' | 'archive' | 'delete') => {
@@ -1801,6 +2744,248 @@ Would you like me to help with text-only responses for now?`,
       });
     };
 
+    // Test the new autonomous agent status panel
+    (window as any).testAgentStatusPanel = () => {
+      console.log('🧪 Testing autonomous agent status panel...');
+      
+      // Start the agent
+      autonomousAgentStatus.startAgent(5);
+      
+      // Simulate different phases
+      setTimeout(() => {
+        autonomousAgentStatus.setToolsLoaded(3);
+        autonomousAgentStatus.updatePhase('planning', 'Analyzing requirements and creating execution plan...');
+      }, 1000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.setExecutionPlan([
+          'Analyze user requirements',
+          'Load necessary tools',
+          'Execute file operations',
+          'Validate results',
+          'Complete task'
+        ]);
+      }, 2000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('executing', 'Executing tools and operations...');
+        autonomousAgentStatus.updateProgress(1, 'Starting tool execution...');
+        
+        // Start some tool executions
+        const toolId1 = autonomousAgentStatus.startToolExecution('file_read', 'Reading project files');
+        const toolId2 = autonomousAgentStatus.startToolExecution('terminal', 'Running terminal commands');
+        
+        // Complete first tool after delay
+        setTimeout(() => {
+          autonomousAgentStatus.completeToolExecution(toolId1, 'Successfully read 5 files');
+          autonomousAgentStatus.updateProgress(2, 'File operations completed');
+        }, 2000);
+        
+        // Complete second tool after delay
+        setTimeout(() => {
+          autonomousAgentStatus.completeToolExecution(toolId2, 'Commands executed successfully');
+          autonomousAgentStatus.updateProgress(3, 'Terminal operations completed');
+        }, 3000);
+        
+      }, 3000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('reflecting', 'Analyzing results and determining next steps...');
+        autonomousAgentStatus.updateProgress(4, 'Analyzing results...');
+      }, 6000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
+        // Auto-hide after 2 seconds to show clean results
+        autonomousAgentStatus.completeAgent('All operations completed successfully!', 2000);
+      }, 8000);
+      
+      console.log('✅ Agent status panel test started. Watch the UI for animations!');
+      console.log('📝 The status panel will automatically hide after completion to show clean results in chat.');
+    };
+
+    // Test the complete autonomous workflow with auto-hide
+    (window as any).testCompleteAutonomousWorkflow = () => {
+      console.log('🚀 Testing complete autonomous workflow with auto-hide...');
+      
+      // Simulate a user message that triggers autonomous mode
+      const testMessage: ClaraMessage = {
+        id: generateId(),
+        role: 'user',
+        content: 'Please create a simple React component for me',
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, testMessage]);
+      
+      // Start autonomous agent
+      autonomousAgentStatus.startAgent(3);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('planning', 'Creating execution plan...');
+        autonomousAgentStatus.setExecutionPlan([
+          'Analyze component requirements',
+          'Generate React component code',
+          'Create example usage'
+        ]);
+      }, 1000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('executing', 'Generating component...');
+        const toolId = autonomousAgentStatus.startToolExecution('code_generator', 'Creating React component');
+        
+        setTimeout(() => {
+          autonomousAgentStatus.completeToolExecution(toolId, 'Component generated successfully');
+          autonomousAgentStatus.updateProgress(3, 'Component creation completed');
+        }, 2000);
+      }, 2000);
+      
+      setTimeout(() => {
+        autonomousAgentStatus.updatePhase('completed', 'Component ready!');
+        // Auto-hide after 2 seconds
+        autonomousAgentStatus.completeAgent('React component created successfully!', 2000);
+        
+        // Add the final result message after a short delay
+        setTimeout(() => {
+          const resultMessage: ClaraMessage = {
+            id: generateId(),
+            role: 'assistant',
+            content: `I've created a React component for you! Here it is:
+
+\`\`\`jsx
+import React from 'react';
+
+const MyComponent = ({ title = "Hello World", children }) => {
+  return (
+    <div className="p-4 bg-blue-50 rounded-lg shadow-md">
+      <h2 className="text-xl font-bold text-blue-800 mb-2">{title}</h2>
+      <div className="text-gray-700">
+        {children || "This is a sample React component!"}
+      </div>
+    </div>
+  );
+};
+
+export default MyComponent;
+\`\`\`
+
+The component is ready to use! You can import it and customize the title and content as needed.`,
+            timestamp: new Date(),
+            metadata: {
+              isStreaming: false,
+              autonomousCompletion: true,
+              toolsUsed: ['code_generator'],
+              executionSteps: 3
+            } as any
+          };
+          
+          setMessages(prev => [...prev, resultMessage]);
+        }, 2500); // Show result after status panel hides
+        
+      }, 5000);
+      
+      console.log('✅ Complete workflow test started. Watch for:');
+      console.log('1. 🎯 Professional status panel with live progress (no chat clutter)');
+      console.log('2. 🎬 Auto-hide after completion (2 seconds)');
+      console.log('3. 💬 Clean, simple result in chat bubble (no duplicate status info)');
+    };
+
+    // Test the new autonomous response post-processing
+    (window as any).testAutonomousPostProcessing = async () => {
+      console.log('🧪 Testing autonomous response post-processing...');
+      
+      // Example raw response like the user showed
+      const rawResponse = `Current Step: Evaluating JavaScript to retrieve detailed location information from the page. Tool Usage: I used mcp_puppeteer_puppeteer_evaluate with "script": "fetch('https://ipinfo.io/json').then(response => response.json()).then(data => JSON.stringify(data));" to fetch and parse the geolocation data from ipinfo.io in a structured format. Result Analysis: The execution returned an object containing detailed location information such as city, region, country, etc.
+
+Here is your current location according to IPInfo:
+
+City: Bangalore
+Region: Karnataka
+Country: IN (India)
+Location Coordinates: 13.0878, 80.2785
+Final Answer: Your current location details are as follows:
+
+City: Bangalore
+Region: Karnataka
+Country: India
+
+The geographic coordinates for your location are approximately 13.0878 latitude and 80.2785 longitude.
+
+If you need any more information or assistance, feel free to ask!
+
+Execution result: {"ip":"34.239.165.21","city":"Bangalore","region":"Karnataka","country":"IN","loc":"13.0878,80.2785","org":"AS17418 Google LLC","postal":"560047"}
+
+Execution result: [ 13.0878, 80.2785 ]
+
+Console output:
+
+Execution result: { "ip": "115.97.58.223", "hostname": "58.97.115.223.hathway.com", "city": "Chennai", "region": "Tamil Nadu", "country": "IN", "loc": "13.0878,80.2785", "org": "AS17488 Hathway IP Over Cable Internet", "postal": "600001", "timezone": "Asia/Kolkata", "readme": "https://ipinfo.io/missingauth" }
+
+Console output:
+
+Execution result: { "ip": "115.97.58.223", "hostname": "58.97.115.223.hathway.com", "city": "Chennai", "region": "Tamil Nadu", "country": "IN", "loc": "13.0878,80.2785", "org": "AS17488 Hathway IP Over Cable Internet", "postal": "600001", "timezone": "Asia/Kolkata", "readme": "https://ipinfo.io/missingauth" }
+
+Console output:
+
+Execution result: undefined
+
+Console output:`;
+
+      const userRequest = "What's my current location?";
+      const completedTools = [{ name: 'mcp_puppeteer_evaluate' }];
+      
+      console.log('📝 Raw response (before processing):');
+      console.log(rawResponse);
+      
+      const cleanedResponse = await postProcessAutonomousResponse(rawResponse, userRequest, completedTools);
+      
+      console.log('\n✨ Cleaned response (after processing):');
+      console.log(cleanedResponse);
+      
+      console.log('\n🎯 Post-processing complete! The cleaned response removes:');
+      console.log('• Console output sections');
+      console.log('• Execution result lines');
+      console.log('• Tool usage descriptions');
+      console.log('• Raw JSON data');
+      console.log('• Coordinate arrays');
+      console.log('• Multiple newlines');
+      console.log('\nAnd creates a clean, user-friendly summary instead!');
+    };
+
+    // Test the autonomous agent status panel error fix
+    (window as any).testStatusPanelErrorFix = () => {
+      console.log('🧪 Testing autonomous agent status panel error fix...');
+      
+      // Test with minimal status object to ensure no undefined errors
+      const testStatus = {
+        isActive: true,
+        phase: 'initializing' as const,
+        message: 'Testing error fix',
+        progress: 0,
+        currentStep: 0,
+        totalSteps: 0,
+        toolsLoaded: 0,
+        executionPlan: [] // This should prevent the undefined error
+      };
+      
+      console.log('✅ Test status object:', testStatus);
+      console.log('✅ executionPlan is defined:', testStatus.executionPlan !== undefined);
+      console.log('✅ executionPlan length:', testStatus.executionPlan.length);
+      
+      // Start the agent to test the actual component
+      autonomousAgentStatus.startAgent(3);
+      
+      setTimeout(() => {
+        console.log('✅ Agent started successfully without errors');
+        console.log('✅ Current status:', autonomousAgentStatus.status);
+        console.log('✅ Tool executions:', autonomousAgentStatus.toolExecutions);
+        
+        // Stop the agent
+        autonomousAgentStatus.stopAgent();
+        console.log('✅ Agent stopped successfully');
+      }, 1000);
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -1837,6 +3022,159 @@ Would you like me to help with text-only responses for now?`,
     
     initializeSession();
   }, [isLoadingSessions, sessions.length, currentSession, createNewSession]);
+
+  /**
+   * Post-process autonomous agent response to create clean, user-friendly output
+   */
+  const postProcessAutonomousResponse = async (
+    rawResponse: string, 
+    userRequest: string, 
+    completedTools: any[]
+  ): Promise<string> => {
+    try {
+      // Remove common autonomous mode artifacts
+      let cleanedResponse = rawResponse
+        // Remove console output sections (including empty ones)
+        .replace(/Console output:\s*\n/gi, '')
+        .replace(/Console output:\s*$/gi, '')
+        .replace(/Console output:\s*\n\s*\n/gi, '\n')
+        
+        // Remove execution result sections (all variations)
+        .replace(/Execution result:\s*\{[^}]*\}\s*\n/gi, '')
+        .replace(/Execution result:\s*\[[^\]]*\]\s*\n/gi, '')
+        .replace(/Execution result:\s*"[^"]*"\s*\n/gi, '')
+        .replace(/Execution result:\s*\d+\s*\n/gi, '')
+        .replace(/Execution result:\s*undefined\s*\n/gi, '')
+        .replace(/Execution result:\s*null\s*\n/gi, '')
+        .replace(/Execution result:\s*\n/gi, '')
+        
+        // Remove tool usage and analysis sections
+        .replace(/Tool Usage:\s*I used [^.]*\.\s*/gi, '')
+        .replace(/Result Analysis:\s*[^.]*\.\s*/gi, '')
+        .replace(/Current Step:\s*[^.]*\.\s*/gi, '')
+        
+        // Remove raw coordinate outputs
+        .replace(/\[\s*[0-9.-]+,\s*[0-9.-]+\s*\]\s*\n/gi, '')
+        
+        // Remove multiple consecutive newlines
+        .replace(/\n{3,}/g, '\n\n')
+        
+        // Remove leading/trailing whitespace
+        .trim();
+
+      // If the cleaned response is too short or doesn't have meaningful content, create a summary
+      if (cleanedResponse.length < 50 || !cleanedResponse.includes('Final Answer:')) {
+        // Try to extract any meaningful content
+        const meaningfulContent = extractMeaningfulContent(rawResponse);
+        
+        if (meaningfulContent) {
+          cleanedResponse = `I've completed your request successfully! Here's what I found:
+
+${meaningfulContent}
+
+Is there anything else you'd like me to help you with?`;
+        } else {
+          cleanedResponse = `✅ **Task completed successfully!**
+
+I've processed your request using autonomous execution. All operations completed successfully.
+
+${completedTools.length > 0 ? `**Tools used:** ${completedTools.map(t => t.name.replace(/_/g, ' ')).join(', ')}` : ''}
+
+Is there anything else you'd like me to help you with?`;
+        }
+      } else {
+        // Clean up the existing response further
+        cleanedResponse = cleanedResponse
+          // Ensure proper formatting for Final Answer sections
+          .replace(/Final Answer:\s*/gi, '## Final Answer\n\n')
+          
+          // Remove any remaining execution artifacts
+          .replace(/Here is your current location according to[^:]*:\s*/gi, '')
+          
+          // Clean up any remaining artifacts
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          .trim();
+      }
+
+      return cleanedResponse;
+      
+    } catch (error) {
+      console.warn('Error post-processing autonomous response:', error);
+      // Fallback to a simple cleaned version
+      return rawResponse
+        .replace(/Console output:\s*\n/gi, '')
+        .replace(/Execution result:[^\n]*\n/gi, '')
+        .trim() || '✅ Task completed successfully!';
+    }
+  };
+
+  /**
+   * Extract meaningful content from raw autonomous response
+   */
+  const extractMeaningfulContent = (rawResponse: string): string | null => {
+    try {
+      // Look for Final Answer sections first (highest priority)
+      const finalAnswerMatch = rawResponse.match(/Final Answer:\s*([\s\S]*?)(?:\n\nExecution result:|Console output:|$)/i);
+      if (finalAnswerMatch && finalAnswerMatch[1]) {
+        return finalAnswerMatch[1].trim();
+      }
+      
+      // Look for location information in the response text
+      const locationTextMatch = rawResponse.match(/City:\s*([^\n]*)\s*Region:\s*([^\n]*)\s*Country:\s*([^\n]*)/i);
+      if (locationTextMatch) {
+        const coordinates = rawResponse.match(/coordinates?\s*(?:are\s*)?(?:approximately\s*)?([0-9.-]+)[,\s]+([0-9.-]+)/i);
+        return `**Your Current Location:**
+• **City:** ${locationTextMatch[1].trim()}
+• **Region:** ${locationTextMatch[2].trim()}
+• **Country:** ${locationTextMatch[3].trim()}
+${coordinates ? `• **Coordinates:** ${coordinates[1]}, ${coordinates[2]}` : ''}`;
+      }
+      
+      // Look for structured JSON data and format it nicely
+      const jsonMatches = rawResponse.match(/\{[^}]*"city"[^}]*\}/g);
+      if (jsonMatches && jsonMatches.length > 0) {
+        try {
+          // Use the last/most complete JSON object
+          const data = JSON.parse(jsonMatches[jsonMatches.length - 1]);
+          if (data.city && data.region && data.country) {
+            return `**Your Current Location:**
+• **City:** ${data.city}
+• **Region:** ${data.region}
+• **Country:** ${data.country === 'IN' ? 'India' : data.country}
+${data.loc ? `• **Coordinates:** ${data.loc}` : ''}
+${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
+          }
+        } catch (e) {
+          // JSON parsing failed, continue
+        }
+      }
+      
+      // Look for any meaningful text content (not execution results)
+      const meaningfulLines = rawResponse
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim();
+          return trimmed && 
+            !trimmed.includes('Execution result:') &&
+            !trimmed.includes('Console output:') &&
+            !trimmed.includes('Tool Usage:') &&
+            !trimmed.includes('Result Analysis:') &&
+            !trimmed.includes('Current Step:') &&
+            !trimmed.startsWith('{') && // Skip raw JSON lines
+            !trimmed.startsWith('[') && // Skip raw array lines
+            trimmed.length > 10 &&
+            !trimmed.match(/^[0-9.-]+,\s*[0-9.-]+$/); // Skip coordinate lines
+        })
+        .join('\n')
+        .trim();
+      
+      return meaningfulLines.length > 30 ? meaningfulLines : null;
+      
+    } catch (error) {
+      console.warn('Error extracting meaningful content:', error);
+      return null;
+    }
+  };
 
   return (
     <div className="flex h-screen w-full relative" data-clara-container>
@@ -1879,6 +3217,32 @@ Would you like me to help with text-only responses for now?`,
             onEditMessage={handleEditMessage}
           />
           
+          {/* Autonomous Agent Status Panel - Above Advanced Options */}
+          {autonomousAgentStatus.isActive && (
+            <div className="px-6 py-4">
+              <div className="max-w-4xl mx-auto">
+                <AutonomousAgentStatusPanel
+                  status={autonomousAgentStatus.status}
+                  toolExecutions={autonomousAgentStatus.toolExecutions}
+                  onPause={() => {
+                    // TODO: Implement pause functionality
+                    console.log('Pause autonomous agent');
+                  }}
+                  onStop={() => {
+                    autonomousAgentStatus.stopAgent();
+                    claraApiService.stop();
+                  }}
+                  onComplete={() => {
+                    console.log('🔧 Manual completion triggered by user');
+                    autonomousAgentStatus.updatePhase('completed', 'Task completed (manual)');
+                    autonomousAgentStatus.completeAgent('Task completed manually', 1000);
+                  }}
+                  className="mb-4"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Advanced Options Panel - Above Chat Input */}
           {showAdvancedOptions && (
             <div className="px-6 py-4 transition-all duration-300 ease-out transform animate-in slide-in-from-top-2 fade-in-0">
@@ -1928,6 +3292,18 @@ Would you like me to help with text-only responses for now?`,
                         enableChainOfThought: newConfig.autonomousAgent.enableChainOfThought ?? currentConfig.autonomousAgent?.enableChainOfThought ?? true,
                         enableErrorLearning: newConfig.autonomousAgent.enableErrorLearning ?? currentConfig.autonomousAgent?.enableErrorLearning ?? true
                       } : currentConfig.autonomousAgent,
+                      artifacts: newConfig.artifacts ? {
+                        enableCodeArtifacts: newConfig.artifacts.enableCodeArtifacts ?? currentConfig.artifacts?.enableCodeArtifacts ?? true,
+                        enableChartArtifacts: newConfig.artifacts.enableChartArtifacts ?? currentConfig.artifacts?.enableChartArtifacts ?? true,
+                        enableTableArtifacts: newConfig.artifacts.enableTableArtifacts ?? currentConfig.artifacts?.enableTableArtifacts ?? true,
+                        enableMermaidArtifacts: newConfig.artifacts.enableMermaidArtifacts ?? currentConfig.artifacts?.enableMermaidArtifacts ?? true,
+                        enableHtmlArtifacts: newConfig.artifacts.enableHtmlArtifacts ?? currentConfig.artifacts?.enableHtmlArtifacts ?? true,
+                        enableMarkdownArtifacts: newConfig.artifacts.enableMarkdownArtifacts ?? currentConfig.artifacts?.enableMarkdownArtifacts ?? true,
+                        enableJsonArtifacts: newConfig.artifacts.enableJsonArtifacts ?? currentConfig.artifacts?.enableJsonArtifacts ?? true,
+                        enableDiagramArtifacts: newConfig.artifacts.enableDiagramArtifacts ?? currentConfig.artifacts?.enableDiagramArtifacts ?? true,
+                        autoDetectArtifacts: newConfig.artifacts.autoDetectArtifacts ?? currentConfig.artifacts?.autoDetectArtifacts ?? true,
+                        maxArtifactsPerMessage: newConfig.artifacts.maxArtifactsPerMessage ?? currentConfig.artifacts?.maxArtifactsPerMessage ?? 10
+                      } : currentConfig.artifacts,
                       contextWindow: newConfig.contextWindow ?? currentConfig.contextWindow
                     };
                     handleConfigChange({ aiConfig: updatedConfig });

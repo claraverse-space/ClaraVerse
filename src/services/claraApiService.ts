@@ -1264,9 +1264,9 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
     // Track processed tool call IDs to prevent duplicates
     const processedToolCallIds = new Set<string>();
 
-    // Progress tracking
+    // Progress tracking - use professional status instead of emoji messages
     if (onContentChunk && this.agentConfig.enableProgressTracking) {
-      onContentChunk('🤖 **Autonomous Agent Activated**\n\n');
+      onContentChunk('**AGENT_STATUS:ACTIVATED**\n');
     }
 
     console.log(`🔍 Starting autonomous agent loop with maxSteps: ${context.maxSteps}`);
@@ -1301,7 +1301,7 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
         });
         
         if (onContentChunk) {
-          onContentChunk(`📋 **Execution Plan:**\n${planResult.plan}\n\n`);
+          onContentChunk(`**AGENT_STATUS:PLAN_CREATED**\n**EXECUTION_PLAN:**\n${planResult.plan}\n\n`);
         }
         
       } catch (planError) {
@@ -1343,7 +1343,7 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
       
       try {
         if (onContentChunk && this.agentConfig.enableProgressTracking && step > 0) {
-          onContentChunk(`\n🔄 **Step ${step + 1}**: Continuing analysis...\n\n`);
+          onContentChunk(`\n**AGENT_STATUS:STEP_${step + 1}**\n`);
         }
 
         let stepResponse;

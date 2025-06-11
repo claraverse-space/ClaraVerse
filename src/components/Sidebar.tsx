@@ -1,26 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { Home, Bot, Settings, HelpCircle, ChevronRight, ImageIcon, Network, Server, BrainCircuit, Download, X, Zap, Code2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Home, Bot, Settings, HelpCircle, ImageIcon, Network, BrainCircuit, Download, X, Zap, Code2 } from 'lucide-react';
 import logo from '../assets/logo.png';
 
-interface HuggingFaceModel {
-  id: string;
-  name: string;
-  downloads: number;
-  likes: number;
-  tags: string[];
-  description: string;
-  author: string;
-  files: Array<{ rfilename: string; size?: number }>;
-}
+// interface HuggingFaceModel {
+//   id: string;
+//   name: string;
+//   downloads: number;
+//   likes: number;
+//   tags: string[];
+//   description: string;
+//   author: string;
+//   files: Array<{ rfilename: string; size?: number }>;
+// }
 
-interface LocalModel {
-  name: string;
-  file: string;
-  path: string;
-  size: number;
-  source: string;
-  lastModified: Date;
-}
+// interface LocalModel {
+//   name: string;
+//   file: string;
+//   path: string;
+//   size: number;
+//   source: string;
+//   lastModified: Date;
+// }
 
 interface SidebarProps {
   activePage: string;
