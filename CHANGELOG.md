@@ -5,7 +5,50 @@ All notable changes to Clara will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 0.1.2
+## [Unreleased] - 0.1.4
+
+### 🚧 In Development
+- Multi-user support with authentication
+- Cloud deployment templates for AWS/GCP/Azure
+- Plugin system for custom AI tools
+- Enhanced N8N workflow integration
+
+---
+
+## [0.1.3] - 2024-12-22
+
+### 🎉 Major Milestone: Complete Docker Transformation
+ClaraVerse has undergone a **revolutionary transformation** from an Electron desktop application to a **Docker-powered web application** similar to OpenWebUI, while maintaining complete privacy and local execution.
+
+### 🚀 Major Features Added
+- **🐳 Docker-First Architecture**: Complete Docker Compose setup with 7 integrated services
+- **🔧 LumaUI: Complete Web Development Environment**: WebContainer integration with Monaco Editor
+- **🧠 Enhanced AI Capabilities**: Dynamic token allocation (16k-128k) with autonomous execution
+- **🎨 Advanced Preview System**: Dual preview modes with console integration
+
+### ✨ New Features
+- **Docker Services Stack**: Clara Web UI, Backend API, LlamaSwap, N8N, ComfyUI, Redis, PostgreSQL
+- **LumaUI Development**: Project templates, AI code generation, terminal integration, file management
+- **Smart AI Integration**: Precision editing modes, tool call limits, error recovery
+
+### 🛠️ Technical Improvements
+- **Performance & Reliability**: Fixed race conditions, optimized token usage, enhanced error handling
+- **Developer Experience**: TypeScript integration, hot reload, debugging tools
+- **Architecture Enhancements**: Service isolation, health monitoring, scalability
+
+### 🐛 Critical Bug Fixes
+- **Docker Conversion**: Removed Electron dependencies, fixed console errors
+- **LumaUI Stability**: Fixed WebContainer remounting, auto mode loops, file sync issues
+- **AI Integration**: Fixed tool schema validation, token limits, conversation history
+
+### 🔧 Breaking Changes
+- **Migration from Electron to Docker**: Desktop app discontinued, now web application
+- **New Installation**: Use Docker Compose instead of app installers
+- **LumaUI Interface**: WebContainer-based projects, enhanced AI chat, auto-save behavior
+
+---
+
+## [0.1.2] - 2024-05-30
 
 ### 🚀 Major Features Added
 - **Custom Model Path Management**: Added support for custom download paths for model downloads

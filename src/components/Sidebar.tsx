@@ -195,7 +195,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
-    { icon: Code2, label: 'LumaUI-lite', id: 'lumaui-lite' },
+    { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
     { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
     // Only show n8n if Docker services are available
     ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 

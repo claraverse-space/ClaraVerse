@@ -35,9 +35,7 @@ const LumaUILiteEditor: React.FC<LumaUILiteEditorProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isAutoSave, setIsAutoSave] = useState(true);
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
-  const [previewWidth, setPreviewWidth] = useState(50); // Percentage
-  const [isDragging, setIsDragging] = useState(false);
-  const chatWidth = 25; // Fixed 25% width for chat panel
+  const chatWidth = 25; // Fixed 25% width for chat panel - CANNOT BE CHANGED
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root']));
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file?: LiteProjectFile } | null>(null);
   const [isRenaming, setIsRenaming] = useState<string | null>(null);
@@ -48,13 +46,14 @@ const LumaUILiteEditor: React.FC<LumaUILiteEditorProps> = ({
   const [containerState, setContainerState] = useState<ContainerState>({ status: 'idle' });
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [isFileExplorerOpen, setIsFileExplorerOpen] = useState(false); // Default collapsed
+  const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false); // Default collapsed
   
   const previewRef = useRef<HTMLIFrameElement>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof monaco | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dragRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   
   // Add WebContainer sync debouncing to prevent excessive remounting during auto mode
@@ -102,6 +101,36 @@ const LumaUILiteEditor: React.FC<LumaUILiteEditorProps> = ({
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [projectFiles]);
+
+  // Handle keyboard shortcuts for panel toggles
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle shortcuts when not typing in input fields
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey) {
+        switch (event.key) {
+          case 'e':
+            event.preventDefault();
+            setIsCodeEditorOpen(prev => !prev);
+            break;
+          case 'f':
+            event.preventDefault();
+            setIsFileExplorerOpen(prev => !prev);
+            break;
+          case 'b':
+            event.preventDefault();
+            setIsChatOpen(prev => !prev);
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Helper function to add terminal output
   const addTerminalOutput = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -477,6 +506,16 @@ export default defineConfig({
     };
   }, [projectFiles, isAutoSave, pendingWebContainerSync, previewMode]);
 
+  // Update Monaco editor content when selected file content changes (from AI updates)
+  useEffect(() => {
+    if (selectedFile && editorRef.current) {
+      const currentEditorContent = editorRef.current.getValue();
+      if (currentEditorContent !== selectedFile.content) {
+        editorRef.current.setValue(selectedFile.content);
+      }
+    }
+  }, [selectedFile?.content]);
+
   const handleFileContentChange = (content: string) => {
     if (!selectedFile) return;
     
@@ -801,59 +840,12 @@ export default defineConfig({
     return mimeTypes[extension] || 'text/plain';
   };
 
-  // Resize functionality
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    e.preventDefault();
+  // Calculate preview width based on open panels
+  const getPreviewWidth = () => {
+    const chatSpace = isChatOpen ? chatWidth : 0;
+    const rightPanelSpace = (isCodeEditorOpen || isFileExplorerOpen) ? 50 : 0; // 50% for right panel when open
+    return 100 - chatSpace - rightPanelSpace;
   };
-
-
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        const container = dragRef.current?.parentElement;
-        if (!container) return;
-        
-        const rect = container.getBoundingClientRect();
-        const chatOffset = isChatOpen ? chatWidth : 0;
-        const availableWidth = 100 - chatOffset;
-        const relativeX = e.clientX - rect.left;
-        const chatPixelWidth = (chatWidth / 100) * rect.width;
-        const adjustedX = relativeX - chatPixelWidth;
-        const newWidth = (adjustedX / rect.width) * 100;
-        
-        // Constrain between 20% and 80% of available space
-        const constrainedWidth = Math.max(10, Math.min(availableWidth - 10, newWidth));
-        setPreviewWidth(constrainedWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, chatWidth, previewWidth, isChatOpen]);
-
-  // Adjust panel sizes when chat is toggled
-  useEffect(() => {
-    if (isChatOpen && previewWidth > 60) {
-      // If chat is opened and preview is too wide, reduce it
-      setPreviewWidth(50);
-    } else if (!isChatOpen && previewWidth < 40) {
-      // If chat is closed and preview is too narrow, expand it
-      setPreviewWidth(50);
-    }
-  }, [isChatOpen]);
 
   // Setup Monaco editor
   const setupLanguageService = useCallback(async (monacoInstance: typeof monaco) => {
@@ -1079,9 +1071,60 @@ interface HTMLElement {
     }
   };
 
+  const handleCreateFileFromChat = (newFile: Omit<LiteProjectFile, 'id' | 'lastModified'>) => {
+    // Use the path instead of name to ensure proper file paths
+    const filePath = newFile.path || newFile.name;
+    const extension = filePath.split('.').pop()?.toLowerCase() || '';
+    
+    const newFileWithId: LiteProjectFile = {
+      id: `file-${Date.now()}`,
+      name: newFile.name,
+      path: filePath,
+      content: newFile.content || '',
+      type: 'file',
+      mimeType: getMimeType(extension),
+      extension,
+      lastModified: new Date()
+    };
+    
+    setProjectFiles(prev => [...prev, newFileWithId]);
+    setSelectedFile(newFileWithId);
+  };
+
+  const handleFileSelectFromChat = (path: string) => {
+    const file = projectFiles.find(f => f.path === path);
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUpdateFileFromChat = (fileId: string, content: string) => {
+    setProjectFiles(prev => prev.map(file => 
+      file.id === fileId 
+        ? { ...file, content, lastModified: new Date() }
+        : file
+    ));
+
+    // If this is the currently selected file, update the editor content
+    if (selectedFile?.id === fileId) {
+      // The Monaco editor will be updated through the useEffect that watches selectedFile
+    }
+
+    // Only sync individual file changes to WebContainer when in WebContainer mode
+    if (previewMode === 'webcontainer' && webContainer && containerState.status !== 'idle') {
+      const file = projectFiles.find(f => f.id === fileId);
+      if (file) {
+        webContainer.fs.writeFile(file.path, content).catch(error => {
+          console.error('Failed to sync file to WebContainer:', error);
+          addTerminalOutput(`Failed to sync ${file.path}: ${error}`, 'error');
+        });
+      }
+    }
+  };
+
   return (
-    <div className="h-full bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden">
-      <div className="h-full flex flex-col">
+    <div className="h-full bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden w-full max-w-full" style={{ maxWidth: '100vw' }}>
+      <div className="h-full flex flex-col w-full max-w-full" style={{ maxWidth: '100vw' }}>
         {/* Header */}
         <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 p-4">
           <div className="flex items-center justify-between">
@@ -1112,6 +1155,14 @@ interface HTMLElement {
                       Syncing...
                     </span>
                   )}
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                    <Code className="w-3 h-3 mr-1" />
+                    Editor {isCodeEditorOpen ? 'ON' : 'OFF'}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                    <FolderOpen className="w-3 h-3 mr-1" />
+                    Explorer {isFileExplorerOpen ? 'ON' : 'OFF'}
+                  </span>
                 </p>
               </div>
             </div>
@@ -1124,9 +1175,33 @@ interface HTMLElement {
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
-                title="Toggle chat"
+                title="Toggle chat (Ctrl/Cmd + B)"
               >
                 <MessageSquare className="w-4 h-4" />
+              </button>
+              
+              <button
+                onClick={() => setIsCodeEditorOpen(!isCodeEditorOpen)}
+                className={`p-2 rounded-lg transition-colors ${
+                  isCodeEditorOpen 
+                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="Toggle code editor (Ctrl/Cmd + E)"
+              >
+                <Code className="w-4 h-4" />
+              </button>
+              
+              <button
+                onClick={() => setIsFileExplorerOpen(!isFileExplorerOpen)}
+                className={`p-2 rounded-lg transition-colors ${
+                  isFileExplorerOpen 
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' 
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="Toggle file explorer (Ctrl/Cmd + F)"
+              >
+                <FolderOpen className="w-4 h-4" />
               </button>
               
               <button
@@ -1169,81 +1244,39 @@ interface HTMLElement {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Panel - Chat (Collapsible and Resizable) */}
-          {isChatOpen && (
-            <>
-              <div 
-                className="glassmorphic border-r border-white/20 dark:border-gray-700/50 flex flex-col max-w-[25vw] overflow-hidden"
-                style={{ width: `${chatWidth}%` }}
-              >
-                <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-gray-700/50">
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                    AI Assistant
-                  </h3>
-                  <button
-                    onClick={() => setIsChatOpen(false)}
-                    className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                <div className="flex-1 overflow-hidden">
-                  <LumaUILiteChatWindow
-                    projectFiles={projectFiles}
-                    onUpdateFile={(fileId: string, content: string) => {
-                      setProjectFiles(prev => prev.map(file => 
-                        file.id === fileId 
-                          ? { ...file, content, lastModified: new Date() }
-                          : file
-                      ));
-                      // Trigger auto-save after file update
-                      if (isAutoSave) {
-                        setTimeout(handleSave, 500);
-                      }
-                    }}
-                    onCreateFile={(newFile: Omit<LiteProjectFile, 'id' | 'lastModified'>) => {
-                      const fileWithId: LiteProjectFile = {
-                        ...newFile,
-                        id: `file-${Date.now()}`,
-                        lastModified: new Date()
-                      };
-                      setProjectFiles(prev => [...prev, fileWithId]);
-                      setSelectedFile(fileWithId);
-                      // Trigger auto-save after file creation
-                      if (isAutoSave) {
-                        setTimeout(handleSave, 500);
-                      }
-                    }}
-                    onDeleteFile={(fileId: string) => {
-                      setProjectFiles(prev => prev.filter(f => f.id !== fileId));
-                      if (selectedFile?.id === fileId) {
-                        setSelectedFile(projectFiles.find(f => f.id !== fileId) || null);
-                      }
-                    }}
-                    selectedFile={selectedFile?.path || null}
-                    onFileSelect={(path: string, content: string) => {
-                      const file = projectFiles.find(f => f.path === path);
-                      if (file) {
-                        setSelectedFile(file);
-                      }
-                    }}
-                    projectId={project.id}
-                    projectName={project.name}
-                  />
-                </div>
-              </div>
-
-
-            </>
-          )}
-
-          {/* Center Panel - Preview (Resizable) */}
+        <div className="flex-1 flex overflow-hidden w-full max-w-full" style={{ width: '100%', maxWidth: '100vw' }}>
+          {/* Left Panel - Chat (Fixed 25% Width) */}
           <div 
-            className="glassmorphic flex flex-col min-w-0 relative"
+            className="chat-panel-container transition-all duration-300 ease-in-out flex-shrink-0"
             style={{ 
-              width: isChatOpen ? `${previewWidth}%` : `${previewWidth}%`
+              width: isChatOpen ? `${chatWidth}%` : '0px', 
+              minWidth: isChatOpen ? `${chatWidth}%` : '0px',
+              maxWidth: isChatOpen ? `${chatWidth}%` : '0px',
+              opacity: isChatOpen ? 1 : 0 
+            }}
+          >
+            {isChatOpen && (
+              <LumaUILiteChatWindow
+                projectFiles={projectFiles}
+                onUpdateFile={handleUpdateFileFromChat}
+                onCreateFile={handleCreateFileFromChat}
+                onDeleteFile={handleDeleteFile}
+                onFileSelect={handleFileSelectFromChat}
+                onProjectUpdate={setProjectFiles}
+                projectId={project.id}
+                projectName={project.name}
+              />
+            )}
+          </div>
+
+          {/* Center Panel - Preview */}
+          <div 
+            className="glassmorphic flex flex-col min-w-0 relative overflow-hidden"
+            style={{ 
+              width: `${getPreviewWidth()}%`,
+              maxWidth: `${getPreviewWidth()}%`,
+              minWidth: '0px',
+              flexShrink: 0
             }}
           >
             <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-gray-700/50">
@@ -1350,7 +1383,7 @@ interface HTMLElement {
                       className="w-full h-full border-0 bg-white"
                       srcDoc={generatePreviewContent(currentPage)}
                       title="Simple Preview"
-                      sandbox="allow-scripts allow-same-origin"
+                      sandbox="allow-scripts allow-same-origin allow-forms"
                       style={{
                         colorScheme: 'light',
                         backgroundColor: '#ffffff'
@@ -1495,27 +1528,42 @@ interface HTMLElement {
             </div>
           </div>
 
-          {/* Preview/Editor Resize Handle */}
-          <div
-            ref={dragRef}
-            className={`w-1 bg-gray-300 dark:bg-gray-600 hover:bg-blue-500 dark:hover:bg-blue-400 cursor-col-resize transition-colors ${
-              isDragging ? 'bg-blue-500 dark:bg-blue-400' : ''
-            }`}
-            onMouseDown={handleMouseDown}
-            title="Resize preview panel"
-          />
-
           {/* Right Panel - Editor & File Tree */}
-          <div 
-            className="glassmorphic border-l border-white/20 dark:border-gray-700/50 flex flex-col"
-            style={{ 
-              width: isChatOpen 
-                ? `${100 - chatWidth - previewWidth}%` 
-                : `${100 - previewWidth}%`
-            }}
-          >
+          {(isCodeEditorOpen || isFileExplorerOpen) && (
+            <div 
+              className="glassmorphic border-l border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden"
+              style={{ 
+                width: '50%',
+                maxWidth: '50%',
+                minWidth: '0px',
+                flexShrink: 0
+              }}
+            >
             {/* Monaco Editor */}
-            <div className="flex-1 flex flex-col min-h-0">
+            {isCodeEditorOpen && (
+              <div className={`flex flex-col min-h-0 ${isFileExplorerOpen ? 'flex-1' : 'flex-1'}`}>
+                {/* Code Editor Header */}
+                <div className="flex items-center justify-between p-2 border-b border-white/20 dark:border-gray-700/50 bg-purple-50 dark:bg-purple-900/20">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      Code Editor
+                    </span>
+                    {selectedFile && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                        {selectedFile.name}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setIsCodeEditorOpen(false)}
+                    className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                    title="Collapse editor"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                
               {selectedFile && !selectedFile.isImage ? (
                 <>
                   <div className="flex items-center justify-between p-2 border-b border-white/20 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/50">
@@ -1654,116 +1702,208 @@ interface HTMLElement {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            )}
+
+            {/* Empty State when both panels are collapsed */}
+            {!isCodeEditorOpen && !isFileExplorerOpen && (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div className="text-center max-w-md">
+                  <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded-2xl flex items-center justify-center shadow-lg">
+                    <Menu className="w-10 h-10 text-gray-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">
+                    Panels Collapsed
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+                    Use the toggle buttons in the header to open the Code Editor or File Explorer panels.
+                  </p>
+                  <div className="flex gap-2 justify-center">
+                    <button
+                      onClick={() => setIsCodeEditorOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm"
+                    >
+                      <Code className="w-4 h-4" />
+                      Open Editor
+                    </button>
+                    <button
+                      onClick={() => setIsFileExplorerOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      Open Explorer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* File Tree */}
-            <div className="h-64 border-t border-white/20 dark:border-gray-700/50 flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-white/20 dark:border-gray-700/50">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                  Files ({projectFiles.length})
-                </h3>
+            {isFileExplorerOpen && (
+              <div className={`border-t border-white/20 dark:border-gray-700/50 flex flex-col ${isCodeEditorOpen ? 'h-64' : 'flex-1'}`}>
+              {/* File Explorer Header */}
+              <div className="flex items-center justify-between p-3 border-b border-white/20 dark:border-gray-700/50 bg-green-50 dark:bg-green-900/20">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    File Explorer
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                    {projectFiles.length} files
+                  </span>
+                </div>
+                
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIsFileExplorerOpen(false)}
+                    className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors mr-2"
+                    title="Collapse explorer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => {
                       const fileName = prompt('Enter file name:');
                       if (fileName) handleCreateFile(fileName);
                     }}
-                    className="p-1.5 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                    title="New file"
+                    className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+                    title="Create New File"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-4 h-4" />
                   </button>
+                  
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 text-gray-500 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
-                    title="Upload files"
+                    className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-md transition-colors"
+                    title="Upload Files"
                   >
-                    <Upload className="w-3.5 h-3.5" />
+                    <Upload className="w-4 h-4" />
                   </button>
-                  {hasErrors && (
-                    <div className="flex items-center gap-1 text-red-500" title={`${diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Error).length} errors`}>
-                      <AlertTriangle className="w-3 h-3" />
-                      <span className="text-xs">{diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Error).length}</span>
-                    </div>
-                  )}
-                  {hasWarnings && (
-                    <div className="flex items-center gap-1 text-yellow-500" title={`${diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Warning).length} warnings`}>
-                      <AlertTriangle className="w-3 h-3" />
-                      <span className="text-xs">{diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Warning).length}</span>
-                    </div>
-                  )}
-                  {!hasErrors && !hasWarnings && selectedFile && (
-                    <div className="flex items-center gap-1 text-green-500" title="No issues">
-                      <CheckCircle className="w-3 h-3" />
-                    </div>
-                  )}
                 </div>
               </div>
-              
-              <div 
-                className="flex-1 overflow-auto p-2"
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-              >
-                <div className="space-y-1">
-                  {projectFiles.map((file) => (
-                    <div
-                      key={file.id}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
-                        selectedFile?.id === file.id
-                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/30'
-                      }`}
-                      onClick={() => !file.isImage && setSelectedFile(file)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setContextMenu({ x: e.clientX, y: e.clientY, file });
+
+              {/* Simple File List */}
+              <div className="flex-1 overflow-auto p-2">
+                {projectFiles.length === 0 ? (
+                  <div className="text-center py-8">
+                    <File className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">No files in this project</p>
+                    <button
+                      onClick={() => {
+                        const fileName = prompt('Enter file name:');
+                        if (fileName) handleCreateFile(fileName);
                       }}
+                      className="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
                     >
-                      {getFileIcon(file)}
-                      {isRenaming === file.id ? (
-                        <input
-                          type="text"
-                          value={newFileName}
-                          onChange={(e) => setNewFileName(e.target.value)}
-                          onBlur={() => {
-                            if (newFileName.trim()) {
-                              handleRenameFile(file.id, newFileName.trim());
-                            } else {
-                              setIsRenaming(null);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              if (newFileName.trim()) {
-                                handleRenameFile(file.id, newFileName.trim());
+                      Create First File
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {projectFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className={`group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
+                          selectedFile?.id === file.id
+                            ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 border border-transparent'
+                        }`}
+                        onClick={() => !file.isImage && setSelectedFile(file)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({ x: e.clientX, y: e.clientY, file });
+                        }}
+                      >
+                        {/* Simple File Icon */}
+                        <div className={`w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold ${
+                          file.type === 'directory' 
+                            ? 'bg-blue-500' 
+                            : file.isImage
+                              ? 'bg-green-500'
+                              : file.extension === 'html'
+                                ? 'bg-orange-500'
+                                : file.extension === 'css'
+                                  ? 'bg-blue-500'
+                                  : file.extension === 'js' || file.extension === 'ts'
+                                    ? 'bg-yellow-500'
+                                    : 'bg-gray-500'
+                        }`}>
+                          {file.extension ? file.extension.charAt(0).toUpperCase() : 'F'}
+                        </div>
+                        
+                        {/* File Name */}
+                        <div className="flex-1 min-w-0">
+                          {isRenaming === file.id ? (
+                            <input
+                              type="text"
+                              value={newFileName}
+                              onChange={(e) => setNewFileName(e.target.value)}
+                              onBlur={() => {
+                                if (newFileName.trim() && newFileName !== file.name) {
+                                  handleRenameFile(file.id, newFileName.trim());
+                                }
+                                setIsRenaming(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  if (newFileName.trim() && newFileName !== file.name) {
+                                    handleRenameFile(file.id, newFileName.trim());
+                                  }
+                                  setIsRenaming(null);
+                                } else if (e.key === 'Escape') {
+                                  setIsRenaming(null);
+                                }
+                              }}
+                              className="w-full px-1 py-0.5 text-sm bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                            />
+                          ) : (
+                            <div className={`text-sm truncate ${
+                              selectedFile?.id === file.id
+                                ? 'text-blue-700 dark:text-blue-300 font-medium'
+                                : 'text-gray-800 dark:text-gray-200'
+                            }`}>
+                              {file.name}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Simple File Actions */}
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsRenaming(file.id);
+                              setNewFileName(file.name);
+                            }}
+                            className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors"
+                            title="Rename"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`Delete ${file.name}?`)) {
+                                handleDeleteFile(file.id);
                               }
-                            } else if (e.key === 'Escape') {
-                              setIsRenaming(null);
-                            }
-                          }}
-                          className="flex-1 px-1 py-0.5 text-xs bg-white dark:bg-gray-800 border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          autoFocus
-                        />
-                      ) : (
-                        <span className="flex-1 text-xs font-medium truncate">
-                          {file.name}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                  
-                  {projectFiles.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                      <File className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-xs">No files yet</p>
-                      <p className="text-xs">Drop files here or click + to add</p>
-                    </div>
-                  )}
-                </div>
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+              </div>
+            )}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -1781,32 +1921,58 @@ interface HTMLElement {
         }}
       />
 
-      {/* Context Menu */}
+      {/* Simple Context Menu */}
       {contextMenu && (
         <div
           className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg py-1 min-w-32"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onBlur={() => setContextMenu(null)}
         >
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-600">
+            <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+              {contextMenu.file?.name}
+            </div>
+          </div>
+          
           <button
             onClick={() => {
               setIsRenaming(contextMenu.file!.id);
               setNewFileName(contextMenu.file!.name);
               setContextMenu(null);
             }}
-            className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
           >
-            <Edit2 className="w-3 h-3" />
+            <Edit2 className="w-4 h-4" />
             Rename
           </button>
+          
           <button
             onClick={() => {
-              handleDeleteFile(contextMenu.file!.id);
+              // Duplicate file logic here
+              const extension = contextMenu.file!.extension;
+              const baseName = contextMenu.file!.name.replace(`.${extension}`, '');
+              const newName = extension ? `${baseName}_copy.${extension}` : `${baseName}_copy`;
+              handleCreateFile(newName, contextMenu.file!.content);
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Duplicate
+          </button>
+          
+          <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
+          
+          <button
+            onClick={() => {
+              if (confirm(`Delete ${contextMenu.file!.name}?`)) {
+                handleDeleteFile(contextMenu.file!.id);
+              }
               setContextMenu(null);
             }}
             className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 className="w-4 h-4" />
             Delete
           </button>
         </div>
@@ -1823,4 +1989,4 @@ interface HTMLElement {
   );
 };
 
-export default LumaUILiteEditor; 
+export default LumaUILiteEditor;

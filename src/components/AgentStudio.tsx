@@ -180,8 +180,15 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
   }, []);
 
   const handleSave = async () => {
+    console.log('Save button clicked - starting save process...');
+    console.log('Current flow:', currentFlow);
+    console.log('Has unsaved changes:', hasUnsavedChanges);
+    console.log('Nodes count:', nodes.length);
+    
     try {
+      console.log('Calling saveFlow()...');
       await saveFlow();
+      console.log('Save completed successfully');
     } catch (error) {
       console.error('Failed to save workflow:', error);
       // You could show a toast notification here
@@ -503,6 +510,15 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             color: 'bg-blue-500',
                             features: ['Text extraction', 'Multi-page support']
                           },
+
+                          { 
+                            name: 'File Upload', 
+                            type: 'file-upload', 
+                            icon: '📁', 
+                            description: 'Upload any file with configurable output formats', 
+                            color: 'bg-indigo-500',
+                            features: ['Universal support', 'Multiple formats', 'Size validation']
+                          },
                         ].map((node) => (
                                                       <div
                               key={node.name}
@@ -543,6 +559,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                       </h3>
                       <div className="space-y-2">
                         {[
+                          { 
+                            name: 'Combine Text', 
+                            type: 'combine-text', 
+                            icon: '🔗', 
+                            description: 'Combine two text inputs with configurable separation for prompt building', 
+                            color: 'bg-indigo-500',
+                            features: ['Multiple modes', 'Custom separators', 'Prompt building', 'Space control']
+                          },
                           { 
                             name: 'JSON Parser', 
                             type: 'json-parse', 
@@ -662,6 +686,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             description: 'Generate structured JSON with any OpenAI-compatible API', 
                             color: 'bg-gradient-to-r from-purple-500 to-indigo-500',
                             features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
+                          },
+                          { 
+                            name: 'Whisper Transcription', 
+                            type: 'whisper-transcription', 
+                            icon: '🎙️', 
+                            description: 'Transcribe binary audio data using OpenAI Whisper', 
+                            color: 'bg-gradient-to-r from-teal-500 to-cyan-500',
+                            features: ['Binary input', 'Multi-format', 'High accuracy', 'Language detection']
                           },
                         ].map((node) => (
                           <div

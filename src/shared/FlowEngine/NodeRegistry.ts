@@ -696,6 +696,188 @@ export class NodeRegistry {
       // If we've exhausted retries, throw the last error
       throw new Error(`API request failed after ${maxRetries} retries: ${lastError?.message || 'Unknown error'}`);
     });
+
+
+
+    // File Upload Node
+    this.nodeExecutors.set('file-upload', async (node: FlowNode) => {
+      // File upload node doesn't need execution logic as it processes files on upload
+      // The outputs are already set by the node component when a file is uploaded
+      const outputs = node.data.outputs || {};
+      
+      return {
+        content: outputs.content || null,
+        metadata: outputs.metadata || null
+      };
+    });
+
+    // Combine Text Node
+    this.nodeExecutors.set('combine-text', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      const { combineMode = 'concat', separator = '', addSpaces = true } = node.data;
+      
+      const text1 = inputs.text1 || '';
+      const text2 = inputs.text2 || '';
+      
+      if (!text1 && !text2) {
+        return {
+          combined: '',
+          metadata: {
+            error: 'No text inputs provided',
+            mode: combineMode,
+            separator: separator,
+            addSpaces: addSpaces
+          }
+        };
+      }
+      
+      let combined = '';
+      
+      try {
+        switch (combineMode) {
+          case 'concat':
+            combined = addSpaces ? `${text1} ${text2}` : `${text1}${text2}`;
+            break;
+            
+          case 'separator':
+            const sep = separator || '';
+            if (addSpaces) {
+              combined = `${text1} ${sep} ${text2}`;
+            } else {
+              combined = `${text1}${sep}${text2}`;
+            }
+            break;
+            
+          case 'prefix':
+            combined = addSpaces ? `${text2} ${text1}` : `${text2}${text1}`;
+            break;
+            
+          case 'suffix':
+            combined = addSpaces ? `${text1} ${text2}` : `${text1}${text2}`;
+            break;
+            
+          default:
+            combined = addSpaces ? `${text1} ${text2}` : `${text1}${text2}`;
+        }
+        
+        return {
+          combined: combined,
+          metadata: {
+            mode: combineMode,
+            separator: separator,
+            addSpaces: addSpaces,
+            text1Length: text1.length,
+            text2Length: text2.length,
+            combinedLength: combined.length,
+            processingTime: Date.now()
+          }
+        };
+        
+      } catch (error) {
+        return {
+          combined: '',
+          metadata: {
+            error: `Text combination failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            mode: combineMode,
+            separator: separator,
+            addSpaces: addSpaces
+          }
+        };
+      }
+    });
+
+    // Whisper Transcription Node
+    this.nodeExecutors.set('whisper-transcription', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      const { apiKey, model = 'gpt-4o-transcribe', language = 'auto', temperature = 0, prompt = 'You are a transcription assistant. Transcribe the audio accurately.' } = node.data;
+      
+      if (!apiKey) {
+        throw new Error('OpenAI API key is required for Whisper transcription');
+      }
+
+      // Get binary audio data from inputs
+      const binaryData = inputs.audioData || inputs.content;
+      if (!binaryData) {
+        throw new Error('No binary audio data provided');
+      }
+
+      try {
+        let audioBlob: Blob;
+
+        // Handle different input formats
+        if (Array.isArray(binaryData)) {
+          // Binary array from File Upload node
+          audioBlob = new Blob([new Uint8Array(binaryData)], { type: 'audio/mpeg' });
+        } else if (typeof binaryData === 'string') {
+          // Base64 string
+          const binaryString = atob(binaryData);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+        } else if (binaryData instanceof Blob) {
+          // Already a blob
+          audioBlob = binaryData;
+        } else {
+          throw new Error('Unsupported binary data format');
+        }
+
+        // Create FormData for the API request
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.mp3');
+        formData.append('model', model);
+        
+        if (language !== 'auto') {
+          formData.append('language', language);
+        }
+        
+        if (temperature > 0) {
+          formData.append('temperature', temperature.toString());
+        }
+
+        // Add prompt for gpt-4o-transcribe model
+        if (prompt && prompt.trim()) {
+          formData.append('prompt', prompt);
+        }
+
+        // Make request to OpenAI Whisper API
+        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            // Note: Content-Type is automatically set by FormData
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.error?.message || 
+            `OpenAI API error: ${response.status} ${response.statusText}`
+          );
+        }
+
+        const result = await response.json();
+        
+        return {
+          text: result.text || '',
+          metadata: {
+            language: result.language || language,
+            duration: result.duration,
+            model: model,
+            temperature: temperature,
+            prompt: prompt,
+            inputFormat: Array.isArray(binaryData) ? 'binary' : typeof binaryData,
+            processingTime: Date.now()
+          }
+        };
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error(`Whisper transcription failed: ${error.message}`);
+        }
+        throw new Error('Whisper transcription failed: Unknown error');
+      }
+    });
   }
 
   registerCustomNode(customNode: any): void {

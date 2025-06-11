@@ -581,6 +581,345 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
     }
   },
 
+
+
+  // FILE UPLOAD NODE
+  {
+    id: 'file-upload-node',
+    name: 'File Upload',
+    type: 'file-upload',
+    category: 'input',
+    description: 'Upload any file and output in various formats (base64, binary, text, etc.)',
+    icon: 'upload',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [],
+    outputs: [
+      {
+        id: 'content',
+        name: 'File Content',
+        type: 'output',
+        dataType: 'any',
+        required: true,
+        description: 'File content in the specified format'
+      },
+      {
+        id: 'metadata',
+        name: 'File Metadata',
+        type: 'output',
+        dataType: 'object',
+        required: false,
+        description: 'File metadata (name, size, type, format, etc.)'
+      }
+    ],
+    properties: [
+      {
+        id: 'outputFormat',
+        name: 'Output Format',
+        type: 'select',
+        defaultValue: 'base64',
+        options: [
+          { label: 'Base64 String', value: 'base64' },
+          { label: 'Data URL', value: 'dataurl' },
+          { label: 'Text Content', value: 'text' },
+          { label: 'Binary Array', value: 'binary' },
+          { label: 'File Object', value: 'file' }
+        ],
+        description: 'Format to output the file content'
+      },
+      {
+        id: 'acceptedTypes',
+        name: 'Accepted File Types',
+        type: 'string',
+        defaultValue: '*/*',
+        description: 'MIME types or extensions (e.g., image/*, .pdf, .txt, or */* for all)'
+      },
+      {
+        id: 'maxSize',
+        name: 'Max File Size (MB)',
+        type: 'number',
+        defaultValue: 10,
+        description: 'Maximum file size in megabytes',
+        validation: {
+          min: 1,
+          max: 100
+        }
+      }
+    ],
+    executionHandler: 'file-upload-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Image Upload as Base64',
+          description: 'Upload image files and output as base64 for AI processing',
+          config: {
+            outputFormat: 'base64',
+            acceptedTypes: 'image/*',
+            maxSize: 5
+          }
+        },
+        {
+          name: 'Document Upload as Text',
+          description: 'Upload text documents and output content as plain text',
+          config: {
+            outputFormat: 'text',
+            acceptedTypes: '.txt,.md,.csv',
+            maxSize: 2
+          }
+        },
+        {
+          name: 'Any File Upload',
+          description: 'Upload any file type and get file object with metadata',
+          config: {
+            outputFormat: 'file',
+            acceptedTypes: '*/*',
+            maxSize: 10
+          }
+        }
+      ],
+      tags: ['file', 'upload', 'input', 'base64', 'binary', 'text', 'universal']
+    }
+  },
+
+  // COMBINE TEXT NODE
+  {
+    id: 'combine-text-node',
+    name: 'Combine Text',
+    type: 'combine-text',
+    category: 'data',
+    description: 'Combine two text inputs with configurable separation options for prompt building',
+    icon: 'type',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'text1',
+        name: 'Text 1',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'First text input'
+      },
+      {
+        id: 'text2',
+        name: 'Text 2',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Second text input'
+      }
+    ],
+    outputs: [
+      {
+        id: 'combined',
+        name: 'Combined Text',
+        type: 'output',
+        dataType: 'string',
+        required: true,
+        description: 'Combined text result'
+      },
+      {
+        id: 'metadata',
+        name: 'Metadata',
+        type: 'output',
+        dataType: 'object',
+        required: false,
+        description: 'Combination metadata (mode, separator, lengths, etc.)'
+      }
+    ],
+    properties: [
+      {
+        id: 'combineMode',
+        name: 'Combine Mode',
+        type: 'select',
+        defaultValue: 'concat',
+        options: [
+          { label: 'Concatenate', value: 'concat' },
+          { label: 'Text1 + Separator + Text2', value: 'separator' },
+          { label: 'Text2 as Prefix', value: 'prefix' },
+          { label: 'Text2 as Suffix', value: 'suffix' }
+        ],
+        description: 'How to combine the two text inputs'
+      },
+      {
+        id: 'separator',
+        name: 'Separator',
+        type: 'string',
+        defaultValue: '',
+        description: 'Separator to use between texts (only for separator mode)'
+      },
+      {
+        id: 'addSpaces',
+        name: 'Add Spaces',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Automatically add spaces between texts for readability'
+      }
+    ],
+    executionHandler: 'combine-text-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Simple Prompt Building',
+          description: 'Combine system prompt with user input',
+          config: {
+            combineMode: 'concat',
+            addSpaces: true
+          }
+        },
+        {
+          name: 'Prompt with Separator',
+          description: 'Add context with clear separation',
+          config: {
+            combineMode: 'separator',
+            separator: '\\n\\n---\\n\\n',
+            addSpaces: false
+          }
+        },
+        {
+          name: 'Prefix Instructions',
+          description: 'Add instructions before main content',
+          config: {
+            combineMode: 'prefix',
+            addSpaces: true
+          }
+        }
+      ],
+      tags: ['text', 'combine', 'prompt', 'concatenate', 'string', 'merge']
+    }
+  },
+
+  // WHISPER TRANSCRIPTION NODE
+  {
+    id: 'whisper-transcription-node',
+    name: 'Whisper Transcription',
+    type: 'whisper-transcription',
+    category: 'ai',
+    description: 'Transcribe binary audio data using OpenAI Whisper API',
+    icon: 'mic',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'audioData',
+        name: 'Audio Data',
+        type: 'input',
+        dataType: 'any',
+        required: true,
+        description: 'Binary audio data (array, base64, or blob)'
+      }
+    ],
+    outputs: [
+      {
+        id: 'text',
+        name: 'Transcribed Text',
+        type: 'output',
+        dataType: 'string',
+        required: true,
+        description: 'Text content transcribed from the audio'
+      },
+      {
+        id: 'metadata',
+        name: 'Transcription Metadata',
+        type: 'output',
+        dataType: 'object',
+        required: false,
+        description: 'Transcription metadata (language, duration, model, etc.)'
+      }
+    ],
+    properties: [
+      {
+        id: 'apiKey',
+        name: 'OpenAI API Key',
+        type: 'string',
+        defaultValue: '',
+        description: 'OpenAI API key for Whisper API access (sk-...)',
+        validation: {
+          pattern: '^sk-[a-zA-Z0-9]+$'
+        }
+      },
+      {
+        id: 'model',
+        name: 'Whisper Model',
+        type: 'select',
+        defaultValue: 'gpt-4o-transcribe',
+        options: [
+          { label: 'GPT-4o Transcribe (Recommended)', value: 'gpt-4o-transcribe' },
+          { label: 'Whisper-1 (Legacy)', value: 'whisper-1' }
+        ],
+        description: 'OpenAI Whisper model to use for transcription'
+      },
+      {
+        id: 'language',
+        name: 'Language',
+        type: 'select',
+        defaultValue: 'auto',
+        options: [
+          { label: 'Auto-detect', value: 'auto' },
+          { label: 'English', value: 'en' },
+          { label: 'Spanish', value: 'es' },
+          { label: 'French', value: 'fr' },
+          { label: 'German', value: 'de' },
+          { label: 'Italian', value: 'it' },
+          { label: 'Portuguese', value: 'pt' },
+          { label: 'Russian', value: 'ru' },
+          { label: 'Japanese', value: 'ja' },
+          { label: 'Korean', value: 'ko' },
+          { label: 'Chinese', value: 'zh' },
+          { label: 'Arabic', value: 'ar' },
+          { label: 'Hindi', value: 'hi' },
+          { label: 'Dutch', value: 'nl' },
+          { label: 'Polish', value: 'pl' }
+        ],
+        description: 'Language of the audio (auto-detect or specific language)'
+      },
+      {
+        id: 'temperature',
+        name: 'Temperature',
+        type: 'number',
+        defaultValue: 0,
+        description: 'Sampling temperature (0 = deterministic, 1 = creative)',
+        validation: {
+          min: 0,
+          max: 1
+        }
+      },
+      {
+        id: 'prompt',
+        name: 'Transcription Prompt',
+        type: 'string',
+        defaultValue: 'You are a transcription assistant. Transcribe the audio accurately.',
+        description: 'Instructions for the transcription model (works best with gpt-4o-transcribe)'
+      }
+    ],
+    executionHandler: 'whisper-transcription-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'GPT-4o Audio Transcription',
+          description: 'Transcribe binary audio data using GPT-4o with custom prompt',
+          config: {
+            model: 'gpt-4o-transcribe',
+            language: 'auto',
+            temperature: 0,
+            prompt: 'You are a transcription assistant. Transcribe the audio in English.'
+          }
+        },
+        {
+          name: 'Multi-language Transcription',
+          description: 'Transcribe audio with specific language setting',
+          config: {
+            model: 'gpt-4o-transcribe',
+            language: 'es',
+            temperature: 0.2,
+            prompt: 'You are a transcription assistant. Transcribe the audio accurately in Spanish.'
+          }
+        }
+      ],
+      tags: ['ai', 'audio', 'transcription', 'whisper', 'binary', 'speech-to-text']
+    }
+  },
+
   // API REQUEST NODE
   {
     id: 'api-request-node',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles } from 'lucide-react';
+import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles, RotateCcw, History, Clock, AlertTriangle, User } from 'lucide-react';
 import { LiteProjectFile } from '../LumaUILite';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -9,9 +9,11 @@ import LumaUILiteTools, { createLumaUILiteTools } from './services/LumaUILiteToo
 import AISettingsModal from './AISettingsModal';
 import { useProviders } from '../../contexts/ProvidersContext';
 import { Provider } from '../../db';
+import { useLumaUILiteCheckpoints } from './useLumaUILiteCheckpoints';
+import ChatPersistence, { LumaUILiteCheckpoint } from './LumaUILiteChatPersistence';
 
 // Message types for our chat interface
-interface Message {
+export interface Message {
   id: string;
   type: 'user' | 'assistant' | 'tool';
   content: string;
@@ -59,6 +61,7 @@ interface LumaUILiteChatWindowProps {
   onUpdateFile: (fileId: string, content: string) => void;
   onCreateFile: (file: Omit<LiteProjectFile, 'id' | 'lastModified'>) => void;
   onDeleteFile: (fileId: string) => void;
+  onProjectUpdate: (projectFiles: LiteProjectFile[]) => void;
   selectedFile?: string | null;
   onFileSelect: (path: string, content: string) => void;
   projectId: string;
@@ -288,8 +291,16 @@ const loadChatSettings = (): ChatSettings | null => {
   }
 };
 
+const saveSystemPrompt = (prompt: string) => {
+  localStorage.setItem('lumaui-lite-system-prompt', prompt);
+};
+
+const loadSystemPrompt = (): string => {
+  return localStorage.getItem('lumaui-lite-system-prompt') || '';
+};
+
 // System prompt for LumaUI-lite
-const SYSTEM_PROMPT = `You are an expert web developer working with LumaUI-lite, a simple single-page application builder.
+const SYSTEM_PROMPT = `You are an expert UI/UX designer and frontend developer specializing in creating stunning, modern web applications with LumaUI-lite.
 
 **PROJECT CONTEXT:**
 - Project: {{PROJECT_NAME}}
@@ -304,27 +315,78 @@ You have access to file operation tools to help users build their applications:
 - list_files: Get overview of project structure
 - delete_file: Remove files that are no longer needed
 
-**YOUR ROLE:**
-1. Help users build and modify their single-page applications
-2. Read existing files before making changes to understand the current structure
-3. Create clean, modern, responsive code using HTML, CSS, and JavaScript
-4. Follow best practices for web development
-5. Always explain what you're doing and why
+**YOUR DESIGN PHILOSOPHY:**
+You are a UI/UX expert who creates visually stunning, user-friendly applications. Always prioritize:
+1. **Visual Excellence**: Beautiful, modern designs with attention to typography, spacing, and color
+2. **User Experience**: Intuitive navigation, smooth interactions, and delightful micro-animations
+3. **Modern Aesthetics**: Contemporary design trends, glassmorphism, gradients, and sophisticated layouts
+4. **Popular Libraries**: Always leverage the best modern libraries and frameworks
+5. **Responsive Design**: Mobile-first approach with perfect cross-device compatibility
 
-**CODE QUALITY:**
-- Write semantic HTML with proper structure
-- Use modern CSS with flexbox/grid for layouts
-- Include responsive design considerations
-- Write clean, commented JavaScript
-- Ensure accessibility best practices
+**ESSENTIAL LIBRARIES TO USE:**
+Always include these popular libraries in your HTML projects:
+
+**CSS Frameworks & Styling:**
+- Tailwind CSS (via CDN): https://cdn.tailwindcss.com
+- Font Awesome 6.4.0+: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css
+- Google Fonts: https://fonts.googleapis.com (Inter, Poppins, Roboto, Montserrat)
+- Animate.css: https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css
+
+**JavaScript Libraries:**
+- Alpine.js: https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js (for reactive components)
+- AOS (Animate On Scroll): https://unpkg.com/aos@2.3.1/dist/aos.js
+- Swiper.js: https://cdn.jsdelivr.net/npm/swiper@10/swiper-bundle.min.js (for carousels)
+- Chart.js: https://cdn.jsdelivr.net/npm/chart.js (for data visualization)
+- Particles.js: https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js (for backgrounds)
+
+**UI Components & Interactions:**
+- Lottie Web: https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js (animations)
+- Typed.js: https://cdn.jsdelivr.net/npm/typed.js@2.0.12 (typing animations)
+- Vanilla Tilt: https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.0/dist/vanilla-tilt.min.js (3D effects)
+- GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js (advanced animations)
+
+**DESIGN PATTERNS TO IMPLEMENT:**
+1. **Hero Sections**: Compelling headlines with gradient text, animated backgrounds
+2. **Glassmorphism**: backdrop-blur effects with semi-transparent backgrounds
+3. **Neumorphism**: Soft, subtle shadows for modern card designs
+4. **Micro-interactions**: Hover effects, button animations, smooth transitions
+5. **Dark Mode**: Always include dark mode toggle functionality
+6. **Loading States**: Beautiful loading animations and skeleton screens
+7. **Scroll Animations**: Elements that animate as they enter the viewport
+8. **Interactive Elements**: Buttons with ripple effects, animated icons
+
+**CODE QUALITY STANDARDS:**
+- **Semantic HTML5**: Use proper semantic elements (header, nav, main, section, article, aside, footer)
+- **Modern CSS**: Flexbox, Grid, CSS Variables, clamp() for responsive typography
+- **Accessibility**: ARIA labels, keyboard navigation, screen reader support
+- **Performance**: Optimized images, lazy loading, efficient animations
+- **Clean JavaScript**: ES6+, async/await, modular code structure
+
+**UI/UX BEST PRACTICES:**
+1. **Typography Hierarchy**: Clear heading structure with proper font weights and sizes
+2. **Color Psychology**: Meaningful color choices that enhance user experience
+3. **Whitespace**: Generous spacing for better readability and visual breathing room
+4. **Visual Feedback**: Clear states for interactive elements (hover, active, disabled)
+5. **Progressive Enhancement**: Core functionality works without JavaScript
+6. **Mobile-First**: Design for mobile, then enhance for larger screens
 
 **WORKFLOW:**
-1. Always read files before editing to understand current structure
-2. Make one change at a time and explain what you're doing
-3. Test your understanding by reading files when needed
-4. Ask clarifying questions if requirements are unclear
+1. Always read existing files to understand current design patterns
+2. Suggest and implement popular libraries that enhance the user experience
+3. Create cohesive design systems with consistent spacing, colors, and typography
+4. Add delightful animations and micro-interactions
+5. Ensure responsive design across all device sizes
+6. Test accessibility and provide alternative text for images
 
-Be helpful, professional, and focus on creating high-quality web applications!`;
+**EXAMPLE IMPLEMENTATIONS:**
+- Navigation: Sticky headers with smooth scroll, mobile hamburger menus with animations
+- Cards: Glassmorphic cards with hover effects and subtle shadows
+- Forms: Floating labels, validation states, smooth focus transitions
+- Buttons: Gradient backgrounds, hover animations, loading states
+- Galleries: Masonry layouts, lightbox modals, lazy loading
+- Testimonials: Carousel sliders with smooth transitions
+
+Always create visually stunning, user-friendly applications that feel modern and professional. Prioritize user experience and visual appeal in every design decision!`;
 
 interface AIReflection {
   id: string;
@@ -349,10 +411,11 @@ interface PlanningExecution {
 }
 
 const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
-  projectFiles,
+  projectFiles: initialProjectFiles,
   onUpdateFile,
   onCreateFile,
   onDeleteFile,
+  onProjectUpdate,
   selectedFile,
   onFileSelect,
   projectId,
@@ -365,18 +428,42 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
     {
       id: '1',
       type: 'assistant',
-      content: '🚀 **Welcome to LumaUI-lite AI Assistant!**\n\nI can help you build and modify your single-page application. Here\'s what I can do:\n\n✨ **Create new files** (HTML, CSS, JS)\n🔧 **Edit existing files** with improvements\n📖 **Read and analyze** your current code\n🗂️ **Manage project structure**\n\n**Example requests:**\n- "Create a navigation menu in my HTML"\n- "Add responsive CSS for mobile devices"\n- "Build a contact form with validation"\n- "Improve the styling of my homepage"\n\nJust tell me what you want to build or improve!',
+      content: '🎨 **Welcome to LumaUI-lite Design Studio!**\n\nI\'m your expert UI/UX designer and frontend developer. I specialize in creating stunning, modern web applications with the latest design trends and popular libraries!\n\n✨ **What I can create:**\n🎯 **Beautiful UI Components** with glassmorphism & animations\n🌈 **Modern Design Systems** with Tailwind CSS & custom styling\n📱 **Responsive Layouts** that work perfectly on all devices\n🚀 **Interactive Elements** with smooth animations & micro-interactions\n💫 **Popular Libraries** like Alpine.js, AOS, Swiper, Chart.js, GSAP\n\n**Design Examples:**\n- "Create a stunning hero section with animated background"\n- "Build a glassmorphic navigation with smooth scroll"\n- "Design a modern contact form with floating labels"\n- "Add a testimonial carousel with Swiper.js"\n- "Create an animated pricing section with hover effects"\n- "Build a dark mode toggle with smooth transitions"\n\n**I always use popular libraries like:**\n• Tailwind CSS for styling\n• Font Awesome for icons\n• Alpine.js for interactivity\n• AOS for scroll animations\n• Google Fonts for typography\n\nTell me what amazing UI you want to create! 🚀',
       timestamp: new Date()
     }
   ];
 
-  // State management
-  const [messages, setMessages] = useState<Message[]>(defaultMessages);
+  // State management using the new checkpoint hook
+  const {
+    messages,
+    setMessages,
+    checkpoints,
+    createCheckpoint,
+    revertToCheckpoint,
+    clearHistory,
+    getCheckpointForMessage,
+    isLatestCheckpoint
+  } = useLumaUILiteCheckpoints(projectId, defaultMessages, initialProjectFiles);
+
+  // Manage project files directly in this component
+  const [projectFiles, setProjectFiles] = useState<LiteProjectFile[]>(initialProjectFiles);
+
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentTask, setCurrentTask] = useState('');
   const [currentToolExecution, setCurrentToolExecution] = useState<ToolExecution | null>(null);
+
+  // Enhanced input state
+  const [inputValue, setInputValue] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Auto mode status tracking
+  const [autoModeStatus, setAutoModeStatus] = useState({
+    toolCalls: 0,
+    maxToolCalls: 10,
+    currentTask: ''
+  });
 
   // Provider and model state
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
@@ -384,14 +471,16 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   const [parameters, setParameters] = useState<AIParameters>(defaultParameters);
   const [apiClient, setApiClient] = useState<LumaUILiteAPIClient | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [customSystemPrompt, setCustomSystemPrompt] = useState<string>('');
 
   // Auto mode state
-  const [isAutoMode, setIsAutoMode] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(true);
   const [showPlanning, setShowPlanning] = useState(false);
   const [currentPlanning, setCurrentPlanning] = useState<PlanningExecution | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   // Initialize tools with all required callbacks
   const liteTools = useMemo(() => createLumaUILiteTools({
@@ -426,6 +515,10 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
         setSelectedModel(savedSettings.model);
         setParameters(savedSettings.parameters);
       }
+      
+      // Load custom system prompt
+      const savedSystemPrompt = loadSystemPrompt();
+      setCustomSystemPrompt(savedSystemPrompt);
     }
   }, [providers, selectedProviderId]);
 
@@ -476,6 +569,11 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Sync project files when they change from parent
+  useEffect(() => {
+    setProjectFiles(initialProjectFiles);
+  }, [initialProjectFiles]);
+
   // Get current provider
   const currentProvider = providers.find(p => p.id === selectedProviderId);
 
@@ -500,6 +598,11 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   const handleParametersChange = (newParams: AIParameters) => {
     setParameters(newParams);
     saveSettings();
+  };
+
+  const handleSystemPromptChange = (prompt: string) => {
+    setCustomSystemPrompt(prompt);
+    saveSystemPrompt(prompt);
   };
 
   const saveSettings = () => {
@@ -995,151 +1098,101 @@ Now executing plan systematically...`,
 
   // Enhanced message handler with auto mode support
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading || !isReadyToChat) return;
+    if (!inputValue.trim() || isLoading || !apiClient || !selectedModel) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: inputMessage,
+      content: inputValue.trim(),
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const currentInput = inputMessage;
-    setInputMessage('');
+    setInputValue(''); // Clear input using inputValue
     setIsLoading(true);
-    setCurrentTask('Analyzing request...');
 
     try {
-      if (!isAutoMode) {
-        // Regular single response mode with OpenAI function calling
-        setCurrentTask('Getting AI response...');
-        
-        // Create file tree for context
-        const filesList = projectFiles.map(f => `${f.path} (${f.type})`).join('\n  ');
-        const projectTree = createFileTree(projectFiles);
+      if (isAutoMode) {
+        await handleAutoModeExecution(inputValue.trim());
+      } else {
+        // Regular chat mode
+        const baseSystemPrompt = customSystemPrompt || SYSTEM_PROMPT;
+        const systemPrompt = baseSystemPrompt
+          .replace('{{PROJECT_NAME}}', projectName || 'Untitled Project')
+          .replace('{{FILE_LIST}}', filesList)
+          .replace('{{SELECTED_FILE}}', selectedFileContext);
 
-        const systemPrompt = `You are Clara, an expert AI coding assistant specialized in web development and project management. You help users build applications by managing files, writing code, and providing development guidance.
+        const conversationHistory = buildConversationHistory(
+          [...messages, userMessage],
+          '',
+          systemPrompt,
+          10,
+          true // Include previous conversation context for continuity
+        );
 
-**CURRENT PROJECT CONTEXT:**
-- Project: ${projectName}
-- Files: ${projectFiles.length} total files
-- Selected File: ${selectedFile || 'No file selected'}
-
-**PROJECT STRUCTURE:**
-${projectTree}
-
-**FILE LIST:**
-${filesList}
-
-**YOUR CAPABILITIES:**
-You have access to a comprehensive set of tools for file and project management. Always use the appropriate tools to help users with their requests. You can:
-
-🔧 **File Operations**: Create, read, edit, and delete files
-📁 **Directory Management**: Create directories and explore project structure  
-🔍 **Code Analysis**: Search files and analyze project structure
-💾 **Project Info**: Get detailed project information and file structure
-🛠️ **Development**: Simulate package installation and commands
-
-**DEVELOPMENT APPROACH:**
-1. **Read First**: Always read existing files before making changes
-2. **Understand Context**: Analyze the current project structure and patterns
-3. **Plan Changes**: Think through the implications of modifications
-4. **Implement Systematically**: Make changes in logical order
-5. **Verify Results**: Check that changes work as expected
-
-**CODING STANDARDS:**
-- Write clean, readable, and well-documented code
-- Follow existing code patterns and conventions
-- Use appropriate modern web development practices
-- Ensure responsive design and accessibility
-- Include proper error handling
-
-**COMMUNICATION:**
-- Explain what you're doing and why
-- Provide context for your decisions
-- Ask for clarification when needed
-- Show the results of tool operations
-
-Ready to help build amazing web applications!`;
-
-        const response = await apiClient!.sendChat(
-          selectedModel!,
-          [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: currentInput }
-          ],
+        const response = await apiClient.sendChat(
+          selectedModel,
+          conversationHistory,
           {
             temperature: parameters.temperature,
             max_tokens: parameters.maxTokens,
             top_p: parameters.topP,
             frequency_penalty: parameters.frequencyPenalty,
             presence_penalty: parameters.presencePenalty,
-            tools: OPENAI_TOOLS
+            tools: convertToOpenAITools(LITE_TOOLS)
           }
         );
 
-        if (!response.message?.content && !response.message?.tool_calls) {
-          throw new Error('No response from AI');
-        }
-
-        // Add assistant message with tool calls if present
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          type: 'assistant',
-          content: response.message.content || (response.message.tool_calls ? `Using ${response.message.tool_calls.length} tool${response.message.tool_calls.length > 1 ? 's' : ''}...` : ''),
-          timestamp: new Date(),
-          tool_calls: response.message.tool_calls
-        };
-
-        setMessages(prev => [...prev, assistantMessage]);
-
-        // Execute tools if present
-        if (response.message.tool_calls && response.message.tool_calls.length > 0) {
-          setCurrentTask(`Executing ${response.message.tool_calls.length} operation${response.message.tool_calls.length > 1 ? 's' : ''}...`);
-          const toolResults = await executeTools(response.message.tool_calls);
-          
-          // Show tool results in UI
-          const toolMessage: Message = {
-            id: (Date.now() + 2).toString(),
-            type: 'tool',
-            content: toolResults.map(r => r.result).join('\n'),
+        if (response.message?.content) {
+          const assistantMessage: Message = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: response.message.content,
             timestamp: new Date(),
-            files: response.message.tool_calls
-              .filter((tc: any) => tc.function.name === 'create_file' || tc.function.name === 'edit_file')
-              .map((tc: any) => {
-                const params = typeof tc.function.arguments === 'string' 
-                  ? JSON.parse(tc.function.arguments) 
-                  : tc.function.arguments;
-                return params.path;
-              })
-              .filter(Boolean)
+            tool_calls: response.message.tool_calls
           };
-          
-          setMessages(prev => [...prev, toolMessage]);
+
+          setMessages(prev => [...prev, assistantMessage]);
+
+          // Execute tools if present
+          if (response.message.tool_calls && response.message.tool_calls.length > 0) {
+            const toolResults = await executeTools(response.message.tool_calls);
+            
+            // Add tool results to conversation
+            for (const result of toolResults) {
+              const toolMessage: Message = {
+                id: Date.now().toString(),
+                type: 'tool',
+                content: result.result || result.error || 'Tool execution completed',
+                timestamp: new Date(),
+                tool_call_id: result.id
+              };
+              setMessages(prev => [...prev, toolMessage]);
+            }
+
+            // Create checkpoint after successful tool execution
+            if (toolResults.some(r => r.success)) {
+              console.log('📸 Creating checkpoint after successful tool execution...');
+              createCheckpoint(
+                `Tool execution: ${response.message?.tool_calls?.map((tc: any) => tc.function.name).join(', ')}`,
+                [...messages, assistantMessage],
+                projectFiles
+              );
+            }
+          }
         }
-
-      } else {
-        // Auto mode - strategic planning and execution
-        await handleAutoModeExecution(currentInput);
       }
-
     } catch (error) {
-      console.error('Failed to send message:', error);
-      
+      console.error('Error sending message:', error);
       const errorMessage: Message = {
-        id: (Date.now() + 1000).toString(),
+        id: Date.now().toString(),
         type: 'assistant',
-        content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
         timestamp: new Date()
       };
-
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      setCurrentTask('');
-      setShowPlanning(false);
-      setCurrentPlanning(null);
     }
   };
 
@@ -1180,7 +1233,8 @@ Ready to help build amazing web applications!`;
       });
 
       // Build system prompt for auto mode with function calling
-      const systemPrompt = `You are Clara, an expert AI coding assistant with comprehensive tool access. Execute the user's request systematically using your available functions.
+      const baseAutoPrompt = customSystemPrompt || `You are Clara, an expert AI coding assistant with comprehensive tool access. Execute the user's request systematically using your available functions.`;
+      const systemPrompt = baseAutoPrompt + `
 
 **CURRENT PROJECT CONTEXT:**
 - Project: ${projectName}
@@ -1227,10 +1281,9 @@ Follow this plan systematically, but adapt as needed based on actual results.
 
 Ready to systematically execute your request autonomously!`;
 
-      let conversationHistory: ChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userQuery }
-      ];
+      // Build initial conversation history with context from previous messages
+      // Include previous conversation context for better continuity
+      let conversationHistory = buildConversationHistory(messages, userQuery, systemPrompt, 10, true);
 
       // Add initial planning context to system prompt if available
       if (initialPlan) {
@@ -1399,6 +1452,7 @@ Follow this plan systematically, but adapt as needed based on actual results.`;
             type: 'tool',
             content: toolResults.map((r: any) => r.result).join('\n'),
             timestamp: new Date(),
+            tool_call_id: toolResults[0]?.id, // Store the first tool call ID for conversation history
             files: response.message.tool_calls
               .filter((tc: any) => tc.function.name === 'create_file' || tc.function.name === 'edit_file')
               .map((tc: any) => {
@@ -1409,7 +1463,21 @@ Follow this plan systematically, but adapt as needed based on actual results.`;
               })
               .filter(Boolean)
           };
-          setMessages(prev => [...prev, toolMessage]);
+          setMessages(prev => {
+            const updatedMessages = [...prev, toolMessage];
+            
+            // Create checkpoint after successful tool execution
+            if (toolResults.some(r => r.success)) {
+              console.log('📸 Creating checkpoint after successful tool execution...');
+              createCheckpoint(
+                `Tool execution: ${response.message?.tool_calls?.map((tc: any) => tc.function.name).join(', ')}`,
+                [...messages, assistantMessage],
+                projectFiles
+              );
+            }
+            
+            return updatedMessages;
+          });
 
           // Perform AI reflection and planning after tool execution
           console.log('🧠 Starting AI reflection process...');
@@ -1512,6 +1580,19 @@ The AI worked autonomously to complete your request, executing tools and making 
       };
       setMessages(prev => [...prev, completionSummary]);
 
+      // create a checkpoint at the end of a successful auto mode session
+      if(totalToolCalls > 0) {
+        const finalMessages: Message[] = conversationHistory.map((msg, index) => ({
+          id: `auto-msg-${Date.now()}-${index}`,
+          type: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content || '',
+          timestamp: new Date(),
+          tool_calls: msg.tool_calls,
+          tool_call_id: msg.tool_call_id
+        }));
+        createCheckpoint(userQuery, finalMessages, projectFiles);
+      }
+
     } catch (error) {
       console.error('Auto mode execution failed:', error);
       const errorMessage: Message = {
@@ -1525,6 +1606,154 @@ The AI worked autonomously to complete your request, executing tools and making 
   };
 
   // Create file tree visualization
+  // Build conversation history with context window
+  const buildConversationHistory = (
+    messages: Message[], 
+    currentInput: string, 
+    systemPrompt: string, 
+    windowSize: number = 10,
+    includePreviousContext: boolean = false
+  ): ChatMessage[] => {
+    const history: ChatMessage[] = [
+      { role: 'system', content: systemPrompt }
+    ];
+
+    // If we want previous context and this is a new conversation (few current messages),
+    // try to load context from previous conversations
+    if (includePreviousContext && messages.length <= 2) {
+      try {
+        // For now, use synchronous localStorage access for previous context
+        // to avoid making buildConversationHistory async
+        const saved = localStorage.getItem(`lumaui-lite-chat-history-${projectId}`);
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (data && data.messages && data.messages.length > 0) {
+            // Get the last 5 messages from previous conversations for context
+            const previousMessages = data.messages.slice(-5);
+            
+            // Add previous context to system prompt
+            const contextSummary = previousMessages
+              .filter((msg: any) => msg.type === 'user' || msg.type === 'assistant')
+              .map((msg: any) => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`)
+              .join('\n');
+            
+            if (contextSummary) {
+              history[0].content += `
+
+**PREVIOUS CONVERSATION CONTEXT:**
+Here are the last few messages from our previous conversation about this project:
+
+${contextSummary}
+
+Use this context to maintain continuity and understand the project's evolution. Reference previous work when relevant.
+
+---
+
+`;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading previous conversation context:', error);
+      }
+    }
+
+    // Get the last windowSize messages (excluding the current input)
+    const recentMessages = messages.slice(-windowSize);
+
+    // Track tool calls that need responses to ensure proper pairing
+    const pendingToolCalls = new Set<string>();
+    const processedMessages: ChatMessage[] = [];
+
+    // Convert messages to ChatMessage format and ensure tool call/response pairing
+    for (let i = 0; i < recentMessages.length; i++) {
+      const msg = recentMessages[i];
+      
+      if (msg.type === 'user') {
+        processedMessages.push({
+          role: 'user',
+          content: msg.content
+        });
+      } else if (msg.type === 'assistant') {
+        const chatMsg: ChatMessage = {
+          role: 'assistant',
+          content: msg.content
+        };
+        
+        // Include tool calls if present
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          chatMsg.tool_calls = msg.tool_calls;
+          
+          // Track tool calls that need responses
+          msg.tool_calls.forEach((tc: any) => {
+            if (tc.id) {
+              pendingToolCalls.add(tc.id);
+            }
+          });
+        }
+        
+        processedMessages.push(chatMsg);
+      } else if (msg.type === 'tool') {
+        // For tool messages, check if they respond to pending tool calls
+        if (msg.tool_call_id && pendingToolCalls.has(msg.tool_call_id)) {
+          processedMessages.push({
+            role: 'tool',
+            content: msg.content,
+            tool_call_id: msg.tool_call_id
+          });
+          
+          // Remove from pending since we found the response
+          pendingToolCalls.delete(msg.tool_call_id);
+        }
+      }
+    }
+
+    // If there are still pending tool calls without responses, we need to filter them out
+    // to avoid the OpenAI API error. We'll remove assistant messages with unmatched tool calls.
+    const validMessages: ChatMessage[] = [];
+    const validToolCalls = new Set<string>();
+
+    // First pass: identify which tool calls have valid responses
+    for (const msg of processedMessages) {
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        validToolCalls.add(msg.tool_call_id);
+      }
+    }
+
+    // Second pass: only include assistant messages with tool calls if all their tool calls have responses
+    for (const msg of processedMessages) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        // Check if all tool calls in this message have responses
+        const allToolCallsHaveResponses = msg.tool_calls.every((tc: any) => 
+          validToolCalls.has(tc.id)
+        );
+        
+        if (allToolCallsHaveResponses) {
+          validMessages.push(msg);
+        } else {
+          // Include the assistant message but without tool calls to avoid API error
+          validMessages.push({
+            role: 'assistant',
+            content: msg.content || 'Used tools to complete the request.'
+          });
+        }
+      } else {
+        validMessages.push(msg);
+      }
+    }
+
+    // Add valid messages to history
+    history.push(...validMessages);
+
+    // Add the current user input
+    history.push({
+      role: 'user',
+      content: currentInput
+    });
+
+    return history;
+  };
+
   const createFileTree = (files: LiteProjectFile[]): string => {
     const tree: any = {};
     
@@ -1571,13 +1800,33 @@ The AI worked autonomously to complete your request, executing tools and making 
   };
 
   // Clear chat
-  const clearChat = () => {
-    setMessages(defaultMessages);
+  const clearChat = async () => {
+    const checkpointCount = checkpoints.length;
+    const warningMessage = checkpointCount > 0 
+      ? `Are you sure you want to clear the chat? This will also delete ${checkpointCount} saved checkpoint${checkpointCount > 1 ? 's' : ''} for this project.`
+      : 'Are you sure you want to clear the chat?';
+      
+    if (confirm(warningMessage)) {
+      try {
+        await clearHistory();
+      } catch (error) {
+        console.error('Error clearing chat:', error);
+      }
+    }
   };
 
-  // Format time
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Format time with safety check
+  const formatTime = (date: Date | string) => {
+    try {
+      const dateObj = date instanceof Date ? date : new Date(date);
+      if (isNaN(dateObj.getTime())) {
+        return 'Invalid Date';
+      }
+      return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      console.error('Error formatting time:', error, date);
+      return 'Invalid Date';
+    }
   };
 
   // Copy to clipboard
@@ -1613,40 +1862,81 @@ The AI worked autonomously to complete your request, executing tools and making 
     return 'leading-snug'; // 1.375 - tighter for very long text
   };
 
+  const handleRevert = (checkpointId: string) => {
+    if (confirm('Are you sure you want to revert to this checkpoint? Current changes will be lost.')) {
+      const checkpoint = revertToCheckpoint(checkpointId);
+      if (checkpoint) {
+        // Update local project files state and sync to parent
+        setProjectFiles(checkpoint.projectFiles);
+        onProjectUpdate(checkpoint.projectFiles);
+        console.log('⏪ Reverted to checkpoint:', checkpointId);
+      }
+    }
+  };
+
+  // Enhanced input handlers
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleToggleAutoMode = () => {
+    setIsAutoMode(!isAutoMode);
+    if (!isAutoMode) {
+      setAutoModeStatus(prev => ({ ...prev, currentTask: '' }));
+    }
+  };
+
+  const handleStopAutoMode = () => {
+    setIsAutoMode(false);
+    setAutoModeStatus(prev => ({ ...prev, currentTask: '' }));
+  };
+
   return (
-    <div className="h-full flex flex-col glassmorphic border-l border-white/20 dark:border-gray-700/50 max-w-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-white/20 dark:border-gray-700/50 shrink-0">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-sakura-500" />
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            AI Assistant
-          </span>
+    <div className="h-full flex flex-col glassmorphic border-l border-white/20 dark:border-gray-700/50 w-full overflow-hidden bg-white/80 dark:bg-gray-900/80" style={{ minWidth: '100%', maxWidth: '100%', width: '100%' }}>
+      {/* Simple Header */}
+      <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-gray-700/50 shrink-0 bg-white/90 dark:bg-gray-800/90">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sakura-500 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+              AI Assistant
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {projectName || 'LumaUI-lite Project'}
+            </p>
+          </div>
+          
+          {/* Auto Mode Badge */}
           {isAutoMode && (
-            <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full text-xs font-medium">
+            <div className="flex items-center gap-2 px-3 py-1 bg-purple-500 text-white rounded-full text-xs font-medium">
               <Zap className="w-3 h-3" />
               Auto Mode
             </div>
           )}
         </div>
         
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {/* Auto Mode Toggle */}
           <button
             onClick={() => setIsAutoMode(!isAutoMode)}
-            className={`p-1.5 rounded-lg transition-all ${
+            className={`p-2 rounded-lg transition-colors ${
               isAutoMode
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg'
-                : 'text-gray-500 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
+                ? 'bg-purple-500 text-white'
+                : 'text-gray-600 dark:text-gray-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
             }`}
-            title={isAutoMode ? 'Disable Auto Mode' : 'Enable Auto Mode - AI will automatically execute multiple steps'}
+            title={isAutoMode ? 'Disable Auto Mode' : 'Enable Auto Mode'}
           >
             {isAutoMode ? <Sparkles className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
           </button>
           
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="p-1.5 text-gray-500 hover:text-sakura-500 hover:bg-sakura-50 dark:hover:bg-sakura-900/20 rounded-lg transition-colors"
+            className="p-2 text-gray-600 dark:text-gray-300 hover:text-sakura-500 hover:bg-sakura-50 dark:hover:bg-sakura-900/20 rounded-lg transition-colors"
             title="AI Settings"
           >
             <Settings className="w-4 h-4" />
@@ -1654,124 +1944,250 @@ The AI worked autonomously to complete your request, executing tools and making 
           
           <button
             onClick={clearChat}
-            className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+            className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
             title="Clear Chat"
           >
             <Trash2 className="w-4 h-4" />
           </button>
+          
+          {/* Checkpoint History Button */}
+          {checkpoints && checkpoints.length > 0 && (
+            <div className="relative group">
+              <button 
+                className="p-2 text-gray-600 dark:text-gray-300 hover:text-sakura-500 hover:bg-sakura-50 dark:hover:bg-sakura-900/20 rounded-lg transition-colors relative" 
+                title={`${checkpoints.length} checkpoint${checkpoints.length > 1 ? 's' : ''} available`}
+              >
+                <History className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                  {checkpoints.length}
+                </span>
+              </button>
+              
+              {/* Checkpoint Dropdown */}
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div className="p-3">
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    Checkpoint History
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {checkpoints.slice().reverse().map((checkpoint) => (
+                      <div
+                        key={checkpoint.id}
+                        className="flex items-center justify-between p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                            {checkpoint.metadata.userQuery.substring(0, 30)}...
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatTime(checkpoint.timestamp)} • {checkpoint.metadata.messageCount} messages
+                          </div>
+                        </div>
+                        {!isLatestCheckpoint(checkpoint.id) && (
+                          <button
+                            onClick={() => handleRevert(checkpoint.id)}
+                            className="ml-2 p-1 text-amber-500 hover:text-amber-600 rounded"
+                            title="Revert to this checkpoint"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                        {isLatestCheckpoint(checkpoint.id) && (
+                          <div className="ml-2 p-1 text-green-500" title="Current checkpoint">
+                            <CheckCircle className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Auto Mode Status */}
       {isAutoMode && (currentTask || showPlanning) && (
-        <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border-b border-purple-200/30 dark:border-purple-700/30">
+        <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-700">
           <div className="flex items-center gap-2">
-            {currentPlanning?.status === 'planning' && <Brain className="w-4 h-4 text-purple-600 animate-pulse" />}
-            {currentPlanning?.status === 'executing' && <Target className="w-4 h-4 text-blue-600 animate-pulse" />}
-            {currentPlanning?.status === 'reflecting' && <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />}
-            <span className="text-sm text-purple-700 dark:text-purple-300 font-medium">
-              {currentTask || 'Processing...'}
-            </span>
+            <div className="w-6 h-6 rounded bg-purple-500 flex items-center justify-center">
+              {currentPlanning?.status === 'planning' && <Brain className="w-3 h-3 text-white" />}
+              {currentPlanning?.status === 'executing' && <Target className="w-3 h-3 text-white" />}
+              {currentPlanning?.status === 'reflecting' && <Sparkles className="w-3 h-3 text-white" />}
+            </div>
+            <div className="flex-1">
+              <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                {currentTask || 'Processing...'}
+              </span>
+              {currentPlanning && currentPlanning.reflections.length > 0 && (
+                <div className="text-xs text-purple-700 dark:text-purple-300">
+                  {currentPlanning.reflections[currentPlanning.reflections.length - 1].currentSituation}
+                </div>
+              )}
+            </div>
             {currentPlanning && (
-              <div className="ml-auto text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full">
+              <div className="text-xs px-2 py-1 bg-white dark:bg-gray-800 text-purple-800 dark:text-purple-200 rounded font-medium">
                 Step {currentPlanning.currentStep}/{currentPlanning.totalSteps}
               </div>
             )}
           </div>
-          {currentPlanning && currentPlanning.reflections.length > 0 && (
-            <div className="mt-1 text-xs text-purple-600 dark:text-purple-400">
-              Latest: {currentPlanning.reflections[currentPlanning.reflections.length - 1].currentSituation}
-            </div>
-          )}
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-auto p-3 space-y-4 min-h-0">
-        {messages.map((message) => (
-          <div key={message.id} className="group">
-            {message.type === 'user' ? (
-              <div className="flex justify-end">
-                <div className="max-w-[90%] min-w-0 px-4 py-3 bg-gradient-to-r from-sakura-500 to-pink-500 text-white rounded-2xl rounded-br-md shadow-lg">
-                  <p className={`${getDynamicFontSize(message.content)} ${getDynamicLineHeight(message.content)} whitespace-pre-wrap break-words overflow-wrap-anywhere`}>{message.content}</p>
-                  <div className="text-xs opacity-70 mt-2">
-                    {formatTime(message.timestamp)}
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 min-h-0 bg-gray-50/50 dark:bg-gray-900/50" style={{ maxWidth: '100%', width: '100%' }}>
+        {messages.map((message) => {
+          const checkpoint = getCheckpointForMessage(message.id);
+
+          return (
+            <div key={message.id} className="group w-full" style={{ maxWidth: '100%', width: '100%' }}>
+              <div className={`flex items-start gap-3 w-full ${message.type === 'user' ? 'flex-row-reverse' : ''}`} style={{ maxWidth: '100%', width: '100%' }}>
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${message.type === 'user' ? 'bg-gray-600' : 'bg-sakura-500'}`}>
+                  {message.type === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
+                </div>
+
+                {/* Message Bubble */}
+                <div className={`relative max-w-[75%] min-w-0 px-4 py-3 rounded-2xl break-words overflow-wrap-anywhere overflow-hidden ${
+                  message.type === 'user' 
+                    ? 'bg-sakura-500 text-white rounded-br-md' 
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-md'
+                }`} style={{ maxWidth: '75%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                  {/* Checkpoint Badge */}
+                  {checkpoint && (
+                    <div className={`absolute -top-2 ${message.type === 'user' ? '-left-2' : '-right-2'}`}>
+                       <div className="text-xs px-2 py-1 rounded-full font-medium bg-amber-500 text-white shadow-sm">
+                         Checkpoint
+                       </div>
+                     </div>
+                   )}
+                  
+                  <div className={`prose prose-sm max-w-none break-words overflow-wrap-anywhere ${
+                    message.type === 'user' 
+                      ? 'prose-invert text-white' 
+                      : 'text-gray-900 dark:text-gray-100'
+                  }`}>
+                    <ReactMarkdown
+                      components={{
+                        p: ({...props}: any) => (
+                          <p className={`mb-2 last:mb-0 break-words overflow-wrap-anywhere ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        h1: ({...props}: any) => (
+                          <h1 className={`text-lg font-bold mb-2 ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        h2: ({...props}: any) => (
+                          <h2 className={`text-base font-semibold mb-2 ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        h3: ({...props}: any) => (
+                          <h3 className={`text-sm font-semibold mb-1 ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        ul: ({...props}: any) => (
+                          <ul className={`list-disc list-inside mb-2 ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        ol: ({...props}: any) => (
+                          <ol className={`list-decimal list-inside mb-2 ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        li: ({...props}: any) => (
+                          <li className={`mb-1 break-words overflow-wrap-anywhere ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        strong: ({...props}: any) => (
+                          <strong className={`font-semibold ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        em: ({...props}: any) => (
+                          <em className={`italic ${
+                            message.type === 'user' 
+                              ? 'text-white' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`} {...props} />
+                        ),
+                        code: ({inline, className, children, ...props}: any) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          return !inline && match ? (
+                            <div className="overflow-x-auto my-2 rounded-lg max-w-full">
+                              <SyntaxHighlighter
+                                style={vscDarkPlus as any}
+                                language={match[1]}
+                                PreTag="div"
+                                className="rounded-lg text-sm max-w-full"
+                                wrapLongLines={true}
+                                {...props}
+                              >
+                                {String(children).replace(/\n$/, '')}
+                              </SyntaxHighlighter>
+                            </div>
+                          ) : (
+                            <code className={`px-1 py-0.5 rounded text-sm font-mono break-all ${
+                              message.type === 'user' 
+                                ? 'bg-white/20 text-white' 
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                            }`} {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="flex justify-start">
-                <div className="max-w-[90%] min-w-0 px-4 py-3 glassmorphic-card border border-white/30 dark:border-gray-700/50 rounded-2xl rounded-bl-md shadow-lg">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-sakura-400 to-pink-400 flex items-center justify-center flex-shrink-0 mt-1">
-                      <Bot className="w-3 h-3 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`prose prose-sm max-w-none text-gray-800 dark:text-gray-200 break-words overflow-wrap-anywhere ${getDynamicFontSize(message.content)}`}>
-                        <ReactMarkdown
-                          components={{
-                            p: ({...props}: any) => <p className={`text-gray-800 dark:text-gray-200 mb-2 last:mb-0 break-words overflow-wrap-anywhere ${getDynamicLineHeight(message.content)}`} {...props} />,
-                            h1: ({...props}: any) => <h1 className={`text-gray-800 dark:text-gray-100 font-bold mb-2 break-words overflow-wrap-anywhere ${message.content.length > 600 ? 'text-base' : 'text-lg'}`} {...props} />,
-                            h2: ({...props}: any) => <h2 className={`text-gray-800 dark:text-gray-100 font-semibold mb-2 break-words overflow-wrap-anywhere ${message.content.length > 600 ? 'text-sm' : 'text-base'}`} {...props} />,
-                            h3: ({...props}: any) => <h3 className={`text-gray-800 dark:text-gray-100 font-semibold mb-1 break-words overflow-wrap-anywhere ${message.content.length > 600 ? 'text-xs' : 'text-sm'}`} {...props} />,
-                            li: ({...props}: any) => <li className={`text-gray-800 dark:text-gray-200 break-words overflow-wrap-anywhere ${getDynamicLineHeight(message.content)}`} {...props} />,
-                            strong: ({...props}: any) => <strong className="text-gray-900 dark:text-gray-100 font-semibold break-words overflow-wrap-anywhere" {...props} />,
-                            em: ({...props}: any) => <em className="text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere" {...props} />,
-                            code: ({inline, className, children, ...props}: any) => {
-                              const match = /language-(\w+)/.exec(className || '');
-                              return !inline && match ? (
-                                <div className="overflow-x-auto">
-                                  <SyntaxHighlighter
-                                    style={vscDarkPlus as any}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    className={`rounded-lg my-2 max-w-full ${message.content.length > 600 ? 'text-xs' : 'text-sm'}`}
-                                    wrapLongLines={true}
-                                    {...props}
-                                  >
-                                    {String(children).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                </div>
-                              ) : (
-                                <code className={`bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1 py-0.5 rounded font-mono break-all ${message.content.length > 600 ? 'text-xs' : 'text-xs'}`} {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
-                        >
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
-                      <div className="flex items-center justify-between mt-3">
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {formatTime(message.timestamp)}
-                        </div>
-                        <button
-                          onClick={() => copyToClipboard(message.content)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-all"
-                          title="Copy message"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
         
+        {/* Loading State */}
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] px-4 py-3 glassmorphic-card border border-white/30 dark:border-gray-700/50 rounded-2xl rounded-bl-md">
-              <div className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-sakura-400 to-pink-400 flex items-center justify-center">
-                  <Loader2 className="w-3 h-3 text-white animate-spin" />
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {currentTask || 'AI is thinking...'}
+          <div className="group w-full" style={{ maxWidth: '100%', width: '100%' }}>
+            <div className="flex items-start gap-3 w-full" style={{ maxWidth: '100%', width: '100%' }}>
+              {/* Avatar */}
+              <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-sakura-500">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+
+              {/* Message Bubble */}
+              <div className="relative max-w-[75%] min-w-0 px-4 py-3 rounded-2xl break-words overflow-wrap-anywhere overflow-hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-md" style={{ maxWidth: '75%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded bg-sakura-500 flex items-center justify-center">
+                    <Loader2 className="w-3 h-3 text-white animate-spin" />
+                  </div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {currentTask || 'AI is thinking...'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1781,71 +2197,74 @@ The AI worked autonomously to complete your request, executing tools and making 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Auto Mode Help */}
-      {isAutoMode && messages.length <= 1 && (
-        <div className="px-3 pb-2">
-          <div className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl border border-purple-200/30 dark:border-purple-700/30">
-            <div className="flex items-start gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="text-sm font-semibold text-purple-700 dark:text-purple-300 mb-1">
-                  Auto Mode Enabled
-                </h4>
-                <p className="text-xs text-purple-600 dark:text-purple-400 leading-relaxed">
-                  AI will automatically execute multiple steps to complete complex tasks. It will plan, execute tools, and reflect on progress until your request is fulfilled.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Input Area */}
-      <div className="p-3 border-t border-white/20 dark:border-gray-700/50 shrink-0">
-        <div className="flex gap-2">
-          <textarea
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={handleKeyPress}
-            placeholder={isReadyToChat ? (isAutoMode ? "Describe what you want to build and I'll handle everything automatically..." : "Ask me to help build your application...") : "Configure AI settings first..."}
-            disabled={!isReadyToChat || isLoading}
-            className="flex-1 text-sm rounded-xl border border-white/30 dark:border-gray-700/50 px-4 py-3 glassmorphic-card focus:ring-2 focus:ring-sakura-500 focus:border-transparent resize-none min-h-[44px] max-h-32 disabled:opacity-50 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
-            rows={1}
-            style={{ height: 'auto' }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              target.style.height = Math.min(target.scrollHeight, 128) + 'px';
-            }}
-          />
-          
-          <button
-            onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isLoading || !isReadyToChat}
-            className={`p-3 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
-              isAutoMode 
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 shadow-purple-500/25'
-                : 'bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 shadow-sakura-500/25'
-            }`}
-          >
-            {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : isAutoMode ? (
-              <Sparkles className="w-5 h-5" />
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
-          </button>
+      <div className="p-4 border-t border-white/20 dark:border-gray-700/50 shrink-0 bg-white/90 dark:bg-gray-800/90">
+        <div className="flex items-end gap-3">
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isAutoMode ? "Auto mode is active - you can still send messages..." : "Describe what you want to build or improve..."}
+              disabled={isLoading}
+              className={`w-full px-4 py-3 pr-12 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl resize-none transition-all focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-sakura-500 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 ${
+                isLoading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              rows={3}
+              style={{ 
+                minHeight: '60px',
+                maxHeight: '120px'
+              }}
+            />
+            
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || isLoading}
+              className={`absolute bottom-2 right-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                !inputValue.trim() || isLoading
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                  : 'bg-sakura-500 hover:bg-sakura-600 text-white shadow-sm hover:shadow-md'
+              }`}
+              title="Send message"
+            >
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
         
-        {!isReadyToChat && (
-          <div className="mt-2 p-2 glassmorphic-card border border-amber-200/30 dark:border-amber-700/30 rounded-lg">
-            <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
-              <Settings className="w-3 h-3" />
-              Please configure a provider and model in settings to start chatting
-            </p>
-          </div>
-        )}
+        {/* Quick Actions */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Quick:</span>
+          {[
+            { label: "Fix bugs", icon: "🐛" },
+            { label: "Add styling", icon: "🎨" },
+            { label: "Improve UX", icon: "✨" },
+            { label: "Add features", icon: "🚀" }
+          ].map((action) => (
+            <button
+              key={action.label}
+              onClick={() => {
+                if (!isLoading) {
+                  setInputValue(action.label);
+                }
+              }}
+              disabled={isLoading}
+              className={`px-3 py-1.5 text-xs transition-all border rounded-lg font-medium ${
+                isLoading
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600 hover:border-sakura-300 dark:hover:border-sakura-500 hover:text-sakura-600 dark:hover:text-sakura-400'
+              }`}
+            >
+              <span className="mr-1">{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Settings Modal */}
@@ -1856,10 +2275,12 @@ The AI worked autonomously to complete your request, executing tools and making 
         selectedProviderId={selectedProviderId}
         selectedModel={selectedModel}
         parameters={parameters}
+        systemPrompt={customSystemPrompt || SYSTEM_PROMPT}
         availableModels={availableModels}
         onProviderSelect={handleProviderChange}
         onModelSelect={handleModelChange}
         onParametersChange={handleParametersChange}
+        onSystemPromptChange={handleSystemPromptChange}
       />
     </div>
   );

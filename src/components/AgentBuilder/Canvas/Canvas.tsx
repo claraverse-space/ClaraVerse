@@ -34,6 +34,10 @@ import ImageInputNode from '../Nodes/ImageInputNode';
 import TextNode from '../Nodes/TextNode';
 import MathNode from '../Nodes/MathNode';
 import PDFInputNode from '../Nodes/PDFInputNode';
+
+import FileUploadNode from '../Nodes/FileUploadNode';
+import WhisperTranscriptionNode from '../Nodes/WhisperTranscriptionNode';
+import CombineTextNode from '../Nodes/CombineTextNode';
 import APIRequestNode from '../Nodes/APIRequestNode';
 
 // Debug: Log successful imports
@@ -48,6 +52,10 @@ console.log('Node imports loaded:', {
   TextNode: !!TextNode,
   MathNode: !!MathNode,
   PDFInputNode: !!PDFInputNode,
+
+  FileUploadNode: !!FileUploadNode,
+  WhisperTranscriptionNode: !!WhisperTranscriptionNode,
+  CombineTextNode: !!CombineTextNode,
   APIRequestNode: !!APIRequestNode,
 });
 
@@ -61,6 +69,10 @@ const baseNodeTypes: NodeTypes = {
   'structured-llm': StructuredLLMNode,
   'image-input': ImageInputNode,
   'pdf-input': PDFInputNode,
+
+  'file-upload': FileUploadNode,
+  'whisper-transcription': WhisperTranscriptionNode,
+  'combine-text': CombineTextNode,
   'api-request': APIRequestNode,
   'text': TextNode,
   'math': MathNode,

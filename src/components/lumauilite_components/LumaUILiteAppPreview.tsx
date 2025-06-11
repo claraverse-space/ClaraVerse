@@ -258,7 +258,7 @@ const LumaUILiteAppPreview: React.FC<LumaUILiteAppPreviewProps> = ({
             className="w-full h-full border-0 bg-white"
             srcDoc={generatePreviewContent(currentPage)}
             title={`${project.name} - App Preview`}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-forms"
             style={{
               colorScheme: 'light',
               backgroundColor: '#ffffff'

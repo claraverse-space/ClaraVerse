@@ -134,6 +134,14 @@ export class FlowEngine {
       }
     }
 
+    // Also map inputs to any node that has a direct input provided (for source nodes like file-upload)
+    for (const [nodeId, inputValue] of Object.entries(inputs)) {
+      const node = nodes.find(n => n.id === nodeId || n.name === nodeId);
+      if (node && inputValue !== undefined) {
+        mapped[node.id] = inputValue;
+      }
+    }
+
     this.logger.debug('Flow inputs mapped', { mapped });
     return mapped;
   }
@@ -227,6 +235,14 @@ export class FlowEngine {
       // Get inputs for this node using current results (same as UI)
       const nodeInputs = this.getNodeInputs(node.id, nodes, connections, nodeResults);
       
+      // Debug: Log what we have for this node before merging
+      this.logger.debug(`Node ${node.name} - Before merging:`, {
+        nodeInputs,
+        hasStoredValue: nodeResults.has(node.id),
+        storedValue: nodeResults.get(node.id),
+        storedValueType: typeof nodeResults.get(node.id)
+      });
+      
       // For input nodes, check if we already have a result stored
       if (node.type === 'input' && nodeResults.has(node.id)) {
         // Use the stored input value
@@ -234,6 +250,47 @@ export class FlowEngine {
         this.logger.debug(`Using stored input value for ${node.name}:`, storedValue);
         nodeResults.set(node.id, storedValue);
         return;
+      }
+      
+      // For file-upload nodes, pre-process file data and store in node.data.outputs (like AgentStudio)
+      if (node.type === 'file-upload' && nodeResults.has(node.id)) {
+        const storedValue = nodeResults.get(node.id);
+        this.logger.debug(`Processing file-upload node ${node.name} with stored value:`, { 
+          storedValue, 
+          storedValueType: typeof storedValue 
+        });
+        
+        if (typeof storedValue === 'object' && storedValue !== null) {
+          // Pre-process file data and store in node.data.outputs
+          const fileData = storedValue.file || storedValue.data;
+          if (fileData) {
+            const outputFormat = node.data?.outputFormat || 'binary';
+            const processedOutput = await this.processFileData(fileData, outputFormat, storedValue);
+            
+            // Store processed data in node.data.outputs (like AgentStudio)
+            if (!node.data.outputs) {
+              node.data.outputs = {};
+            }
+            node.data.outputs.content = processedOutput.content;
+            node.data.outputs.metadata = processedOutput.metadata;
+            
+            this.logger.debug(`Pre-processed file data for ${node.name}:`, {
+              outputFormat,
+              contentType: typeof processedOutput.content,
+              metadata: processedOutput.metadata
+            });
+          }
+        }
+      }
+      
+      // For any other node with stored inputs, merge them with connected inputs
+      if (nodeResults.has(node.id) && node.type !== 'file-upload') {
+        const storedValue = nodeResults.get(node.id);
+        if (typeof storedValue === 'object' && storedValue !== null) {
+          // If stored value is an object, merge its properties as inputs
+          Object.assign(nodeInputs, storedValue);
+          this.logger.debug(`Merged stored inputs for ${node.name}:`, nodeInputs);
+        }
       }
       
       // Execute the node (same as UI)
@@ -283,6 +340,99 @@ export class FlowEngine {
     }
 
     return outputs;
+  }
+
+  /**
+   * Process file data for file-upload nodes (matches AgentStudio behavior)
+   * @param {*} fileData - Raw file data (ArrayBuffer, string, etc.)
+   * @param {string} outputFormat - Desired output format
+   * @param {Object} metadata - File metadata (name, type, size)
+   * @returns {Object} Processed file data with content and metadata
+   */
+  async processFileData(fileData, outputFormat, metadata = {}) {
+    let processedData;
+    let fileName = metadata.name || 'uploaded_file';
+    let mimeType = metadata.type || 'application/octet-stream';
+    let fileSize = metadata.size || 0;
+    
+    try {
+      if (typeof fileData === 'string') {
+        // Assume base64 string
+        const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+        const binaryData = atob(base64Data);
+        fileSize = fileSize || binaryData.length;
+        processedData = fileData;
+      } else if (fileData instanceof ArrayBuffer || fileData instanceof Uint8Array) {
+        // Binary data
+        const uint8Array = fileData instanceof ArrayBuffer ? new Uint8Array(fileData) : fileData;
+        fileSize = fileSize || uint8Array.length;
+        
+        // Convert to base64 for processing
+        const binaryString = Array.from(uint8Array, byte => String.fromCharCode(byte)).join('');
+        processedData = btoa(binaryString);
+      } else if (typeof fileData === 'object' && fileData.data) {
+        // Object with file metadata
+        fileName = fileData.name || fileName;
+        mimeType = fileData.type || mimeType;
+        fileSize = fileData.size || fileSize;
+        processedData = fileData.data;
+      } else {
+        throw new Error('Unsupported file data format');
+      }
+      
+      // Return data in requested format
+      const result = {
+        metadata: {
+          fileName,
+          mimeType,
+          size: fileSize,
+          timestamp: new Date().toISOString(),
+          format: outputFormat
+        }
+      };
+      
+      switch (outputFormat) {
+        case 'base64':
+          result.content = processedData.includes('data:') ? processedData : `data:${mimeType};base64,${processedData}`;
+          break;
+        case 'base64_raw':
+          result.content = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+          break;
+        case 'binary':
+          try {
+            const base64Data = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+            const binaryString = atob(base64Data);
+            const uint8Array = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              uint8Array[i] = binaryString.charCodeAt(i);
+            }
+            result.content = uint8Array;
+          } catch (error) {
+            throw new Error(`Failed to convert to binary: ${error.message}`);
+          }
+          break;
+        case 'text':
+          try {
+            const base64Data = processedData.includes(',') ? processedData.split(',')[1] : processedData;
+            result.content = atob(base64Data);
+          } catch (error) {
+            throw new Error(`Failed to convert to text: ${error.message}`);
+          }
+          break;
+        case 'metadata':
+          // Return only metadata without file content
+          result.content = null;
+          break;
+        default:
+          result.content = processedData;
+      }
+      
+      return result;
+      
+    } catch (error) {
+      this.logger.error('File processing failed:', error);
+      throw new Error(`File processing failed: ${error.message}`);
+    }
   }
 
   /**

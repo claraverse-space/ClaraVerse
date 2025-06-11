@@ -206,11 +206,51 @@
   }
 }
 
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-out forwards;
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-/* Animation delay utilities */
+@keyframes autoModeGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(147, 51, 234, 0.6);
+  }
+}
+
+@keyframes enhancedSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-message-slide-in {
+  animation: messageSlideIn 0.4s ease-out;
+}
+
+.animate-auto-mode-glow {
+  animation: autoModeGlow 2s ease-in-out infinite;
+}
+
+.animate-enhanced-spin {
+  animation: enhancedSpin 1s linear infinite;
+}
+
 .animation-delay-100 {
   animation-delay: 100ms;
 }
@@ -613,4 +653,194 @@ textarea {
 
 .animate-shine {
   animation: shine 1.5s ease-in-out infinite;
+}
+
+/* Enhanced Custom Scrollbar for LumaUI-lite */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(236, 72, 153, 0.3));
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.5), rgba(236, 72, 153, 0.5));
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(107, 114, 128, 0.4) transparent;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.4), rgba(75, 85, 99, 0.4));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.6), rgba(75, 85, 99, 0.6));
+}
+
+/* Enhanced Message Animations */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-message-slide-in {
+  animation: messageSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced Button Hover Effects */
+@keyframes buttonGlow {
+  0%, 100% {
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    box-shadow: 0 6px 25px rgba(239, 68, 68, 0.4);
+  }
+}
+
+.animate-button-glow {
+  animation: buttonGlow 2s ease-in-out infinite;
+}
+
+/* Enhanced Glassmorphism Effects */
+.glassmorphic-enhanced {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.dark .glassmorphic-enhanced {
+  background: rgba(17, 24, 39, 0.8);
+  border: 1px solid rgba(75, 85, 99, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced Focus States */
+.focus-enhanced:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: rgba(239, 68, 68, 0.5);
+  ring-offset: 2px;
+  ring-offset-color: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .focus-enhanced:focus {
+  ring-offset-color: rgba(17, 24, 39, 0.8);
+}
+
+/* Enhanced Checkpoint Badge Animation */
+@keyframes checkpointPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+.animate-checkpoint-pulse {
+  animation: checkpointPulse 2s infinite;
+}
+
+/* Enhanced Loading Spinner */
+@keyframes enhancedSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-enhanced-spin {
+  animation: enhancedSpin 1s linear infinite;
+}
+
+/* Enhanced Tooltip Styles */
+.tooltip-enhanced {
+  position: relative;
+}
+
+.tooltip-enhanced::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17, 24, 39, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tooltip-enhanced::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(1px);
+  border: 4px solid transparent;
+  border-top-color: rgba(17, 24, 39, 0.9);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tooltip-enhanced:hover::before,
+.tooltip-enhanced:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+/* Enhanced Auto Mode Status Animation */
+@keyframes autoModeGlow {
+  0%, 100% {
+    background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    box-shadow: 0 6px 25px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-auto-mode-glow {
+  animation: autoModeGlow 3s ease-in-out infinite;
 }

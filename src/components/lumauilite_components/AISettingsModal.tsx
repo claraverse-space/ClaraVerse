@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Key, Cpu, Sliders } from 'lucide-react';
+import { X, Settings, Key, Cpu, Sliders, MessageSquare } from 'lucide-react';
 
 // AI Parameters interface
 interface AIParameters {
@@ -22,9 +22,11 @@ interface AISettingsModalProps {
   selectedModel: string;
   availableModels: string[];
   parameters: AIParameters;
+  systemPrompt?: string;
   onProviderSelect: (providerId: string) => void;
   onModelSelect: (model: string) => void;
   onParametersChange: (parameters: AIParameters) => void;
+  onSystemPromptChange?: (prompt: string) => void;
 }
 
 const AISettingsModal: React.FC<AISettingsModalProps> = ({
@@ -35,16 +37,23 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({
   selectedModel,
   availableModels,
   parameters,
+  systemPrompt,
   onProviderSelect,
   onModelSelect,
-  onParametersChange
+  onParametersChange,
+  onSystemPromptChange
 }) => {
   const [localParameters, setLocalParameters] = useState<AIParameters>(parameters);
+  const [localSystemPrompt, setLocalSystemPrompt] = useState<string>(systemPrompt || '');
 
   // Update local state when props change
   useEffect(() => {
     setLocalParameters(parameters);
   }, [parameters]);
+
+  useEffect(() => {
+    setLocalSystemPrompt(systemPrompt || '');
+  }, [systemPrompt]);
 
   // Get current provider
   const currentProvider = providers.find(p => p.id === selectedProviderId);
@@ -53,6 +62,9 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({
   // Handle save
   const handleSave = () => {
     onParametersChange(localParameters);
+    if (onSystemPromptChange) {
+      onSystemPromptChange(localSystemPrompt);
+    }
     onClose();
   };
 
@@ -170,6 +182,43 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({
               </p>
             </div>
           )}
+
+          {/* System Prompt */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-purple-500" />
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  System Prompt
+                </label>
+              </div>
+              <button
+                onClick={() => setLocalSystemPrompt('')}
+                className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+              >
+                Use default prompt
+              </button>
+            </div>
+            <div className="space-y-2">
+              <textarea
+                value={localSystemPrompt}
+                onChange={(e) => setLocalSystemPrompt(e.target.value)}
+                placeholder="Currently showing the active system prompt. Edit to customize or clear to use default..."
+                className="w-full h-32 p-3 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                rows={6}
+              />
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="mb-1">
+                  <strong>System Prompt Configuration</strong> - The text above shows your current active system prompt.
+                </p>
+                <p>
+                  • <strong>Edit the text</strong> to customize the AI's behavior and instructions<br/>
+                  • <strong>Clear the field</strong> to use the default LumaUI-lite prompt with design guidelines<br/>
+                  • <strong>Click "Use default prompt"</strong> to quickly reset to the built-in prompt
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* AI Parameters */}
           <div className="space-y-4">

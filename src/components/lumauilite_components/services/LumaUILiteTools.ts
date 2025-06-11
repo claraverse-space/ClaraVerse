@@ -541,145 +541,195 @@ export default class LumaUILiteTools {
   }
 
   async createLandingPage(): Promise<ToolResult> {
+    const projectName = this.config.projectName || 'My Project';
     const landingPageHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beautiful Landing Page - Tailwind CSS Test</title>
+    <title>${projectName}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-gray-50">
+<body class="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800">
     <!-- Navigation -->
-    <nav class="bg-white shadow-lg">
-        <div class="container mx-auto px-6 py-4">
-            <div class="flex justify-between items-center">
-                <div class="text-xl font-bold text-gray-800">LumaUI-lite</div>
-                <div class="hidden md:flex space-x-6">
-                    <a href="#" class="text-gray-600 hover:text-blue-600 transition">Home</a>
-                    <a href="#" class="text-gray-600 hover:text-blue-600 transition">About</a>
-                    <a href="#" class="text-gray-600 hover:text-blue-600 transition">Services</a>
-                    <a href="#" class="text-gray-600 hover:text-blue-600 transition">Contact</a>
+    <nav class="bg-white/10 backdrop-blur-md border-b border-white/20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-rocket text-white text-2xl mr-3"></i>
+                    <span class="text-white font-bold text-xl">${projectName}</span>
                 </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#home" class="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-home mr-1"></i> Home
+                        </a>
+                        <a href="#features" class="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-star mr-1"></i> Features
+                        </a>
+                        <a href="#about" class="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-info-circle mr-1"></i> About
+                        </a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="text-white hover:text-blue-200">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="md:hidden hidden bg-white/10 backdrop-blur-md">
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                <a href="#home" class="text-white block px-3 py-2 rounded-md text-base font-medium">
+                    <i class="fas fa-home mr-2"></i> Home
+                </a>
+                <a href="#features" class="text-white block px-3 py-2 rounded-md text-base font-medium">
+                    <i class="fas fa-star mr-2"></i> Features
+                </a>
+                <a href="#about" class="text-white block px-3 py-2 rounded-md text-base font-medium">
+                    <i class="fas fa-info-circle mr-2"></i> About
+                </a>
             </div>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <section class="bg-white py-20">
-        <div class="container mx-auto px-6 text-center">
-            <h1 class="text-4xl md:text-6xl font-bold text-gray-800 mb-6">
-                Welcome to Our
-                <span class="text-blue-600">Amazing</span>
-                Platform
+    <section id="home" class="relative min-h-screen flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/20"></div>
+        <div class="relative z-10 text-center text-white max-w-4xl mx-auto">
+            <div class="mb-8">
+                <i class="fas fa-code text-6xl mb-6 text-blue-300"></i>
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-blue-300 to-purple-300 bg-clip-text text-transparent">
+                ${projectName}
             </h1>
-            <p class="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-                Create beautiful, responsive websites with our secure Tailwind CSS implementation. 
-                No more COEP blocking issues!
+            <p class="text-xl md:text-2xl mb-8 text-blue-100 leading-relaxed">
+                Create beautiful, responsive websites with modern web technologies. 
+                Built with Tailwind CSS and Font Awesome for the best user experience.
             </p>
-            <div class="space-x-4">
-                <button class="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold transition shadow-lg">
-                    Get Started
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button class="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-blue-50 transition-all transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-play mr-2"></i> Get Started
                 </button>
-                <button class="border border-gray-300 hover:bg-gray-100 text-gray-700 px-8 py-3 rounded-lg font-semibold transition">
-                    Learn More
+                <button class="border-2 border-white text-white px-8 py-4 rounded-full font-semibold text-lg hover:bg-white hover:text-blue-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-info-circle mr-2"></i> Learn More
                 </button>
             </div>
+        </div>
+        
+        <!-- Scroll indicator -->
+        <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white animate-bounce">
+            <i class="fas fa-chevron-down text-2xl"></i>
         </div>
     </section>
 
     <!-- Features Section -->
-    <section class="py-20 bg-gray-50">
-        <div class="container mx-auto px-6">
-            <h2 class="text-3xl font-bold text-center text-gray-800 mb-12">
-                Why Choose Our Platform?
-            </h2>
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl">🚀</span>
+    <section id="features" class="py-20 bg-white/10 backdrop-blur-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">
+                    <i class="fas fa-star text-yellow-300 mr-3"></i>
+                    Amazing Features
+                </h2>
+                <p class="text-xl text-blue-100 max-w-2xl mx-auto">
+                    Discover what makes this platform special
+                </p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105">
+                    <div class="text-center">
+                        <i class="fas fa-bolt text-4xl text-yellow-300 mb-4"></i>
+                        <h3 class="text-xl font-semibold text-white mb-3">Lightning Fast</h3>
+                        <p class="text-blue-100">Optimized performance with minimal footprint and local resources</p>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-800 mb-3">Fast & Secure</h3>
-                    <p class="text-gray-600">Built with security in mind. No external CDN dependencies that cause COEP issues.</p>
                 </div>
-                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl">📱</span>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105">
+                    <div class="text-center">
+                        <i class="fas fa-shield-alt text-4xl text-green-300 mb-4"></i>
+                        <h3 class="text-xl font-semibold text-white mb-3">Secure & Safe</h3>
+                        <p class="text-blue-100">Built with security in mind, no external dependencies that cause issues</p>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-800 mb-3">Responsive Design</h3>
-                    <p class="text-gray-600">Looks great on all devices. Mobile-first approach ensures perfect compatibility.</p>
                 </div>
-                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-                    <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span class="text-2xl">⚡</span>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105">
+                    <div class="text-center">
+                        <i class="fas fa-mobile-alt text-4xl text-blue-300 mb-4"></i>
+                        <h3 class="text-xl font-semibold text-white mb-3">Responsive Design</h3>
+                        <p class="text-blue-100">Looks great on all devices with mobile-first approach</p>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-800 mb-3">Lightning Fast</h3>
-                    <p class="text-gray-600">Optimized performance with minimal CSS footprint and local resources.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- CTA Section -->
-    <section class="bg-blue-600 py-20">
-        <div class="container mx-auto px-6 text-center">
-            <h2 class="text-3xl font-bold text-white mb-6">
-                Ready to Get Started?
-            </h2>
-            <p class="text-blue-100 text-lg mb-8 max-w-xl mx-auto">
-                Join thousands of developers who trust our secure, fast platform for their projects.
-            </p>
-            <button class="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition shadow-lg">
-                Start Building Today
-            </button>
+    <!-- About Section -->
+    <section id="about" class="py-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center">
+                <h2 class="text-4xl md:text-5xl font-bold text-white mb-8">
+                    <i class="fas fa-info-circle text-blue-300 mr-3"></i>
+                    About This Project
+                </h2>
+                <div class="max-w-3xl mx-auto">
+                    <p class="text-xl text-blue-100 mb-8 leading-relaxed">
+                        Welcome to your landing page! This project was created with LumaUI-lite, 
+                        giving you a solid foundation to build upon. Start customizing by editing the 
+                        HTML, CSS, and JavaScript files.
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+                        <div class="text-center">
+                            <i class="fas fa-code text-4xl text-green-300 mb-4"></i>
+                            <h3 class="text-xl font-semibold text-white mb-2">Modern Code</h3>
+                            <p class="text-blue-100">Built with latest web technologies</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-mobile-alt text-4xl text-purple-300 mb-4"></i>
+                            <h3 class="text-xl font-semibold text-white mb-2">Responsive</h3>
+                            <p class="text-blue-100">Works perfectly on all devices</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-rocket text-4xl text-pink-300 mb-4"></i>
+                            <h3 class="text-xl font-semibold text-white mb-2">Fast & Light</h3>
+                            <p class="text-blue-100">Optimized for performance</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="bg-gray-800 py-12">
-        <div class="container mx-auto px-6">
+    <footer class="bg-black/30 backdrop-blur-md border-t border-white/20 py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center">
-                <div class="text-2xl font-bold text-white mb-4">YourBrand</div>
-                <p class="text-gray-400 mb-6">Building the future, one secure website at a time.</p>
-                <div class="flex justify-center space-x-6">
-                    <a href="#" class="text-gray-400 hover:text-white transition">Privacy</a>
-                    <a href="#" class="text-gray-400 hover:text-white transition">Terms</a>
-                    <a href="#" class="text-gray-400 hover:text-white transition">Support</a>
+                <div class="flex justify-center items-center mb-4">
+                    <i class="fas fa-heart text-red-400 mx-2"></i>
+                    <span class="text-white">Built with LumaUI-lite</span>
+                    <i class="fas fa-heart text-red-400 mx-2"></i>
                 </div>
-                <div class="mt-6 pt-6 border-t border-gray-700">
-                    <p class="text-gray-400 text-sm">
-                        © 2024 YourBrand. All rights reserved. Built with LumaUI-lite.
-                    </p>
+                <p class="text-blue-200 text-sm">
+                    © ${new Date().getFullYear()} ${projectName}. Ready to be customized by you!
+                </p>
+                <div class="flex justify-center space-x-6 mt-6">
+                    <a href="#" class="text-blue-200 hover:text-white transition-colors">
+                        <i class="fab fa-github text-2xl"></i>
+                    </a>
+                    <a href="#" class="text-blue-200 hover:text-white transition-colors">
+                        <i class="fab fa-twitter text-2xl"></i>
+                    </a>
+                    <a href="#" class="text-blue-200 hover:text-white transition-colors">
+                        <i class="fab fa-linkedin text-2xl"></i>
+                    </a>
                 </div>
             </div>
         </div>
     </footer>
-
-    <script>
-        // Add some interactive functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('🎉 Landing page loaded successfully!');
-            console.log('✅ Tailwind CSS is working without COEP issues!');
-            
-            // Add click handlers for buttons
-            const buttons = document.querySelectorAll('button');
-            buttons.forEach(button => {
-                button.addEventListener('click', function() {
-                    console.log('Button clicked:', this.textContent);
-                    // Add ripple effect or other interactions here
-                });
-            });
-            
-            // Simple scroll animation
-            window.addEventListener('scroll', function() {
-                const nav = document.querySelector('nav');
-                if (window.scrollY > 50) {
-                    nav.classList.add('shadow-lg');
-                } else {
-                    nav.classList.remove('shadow-lg');
-                }
-            });
-        });
-    </script>
+    
+    <script src="script.js"></script>
 </body>
 </html>`;
 
@@ -699,22 +749,22 @@ export default class LumaUILiteTools {
     this.config.onCreateFile(landingPageFile);
     this.config.onFileSelect?.(landingPageFile.path, landingPageFile.content);
 
-    this.log(`\x1b[32m✅ Created beautiful landing page with secure Tailwind CSS!\x1b[0m\n`);
+    this.log(`\x1b[32m✅ Created beautiful landing page with modern design!\x1b[0m\n`);
     this.log(`\x1b[36m🎨 Features included:\x1b[0m\n`);
-    this.log(`\x1b[90m  • Responsive navigation\x1b[0m\n`);
-    this.log(`\x1b[90m  • Hero section with call-to-action\x1b[0m\n`);
-    this.log(`\x1b[90m  • Features grid layout\x1b[0m\n`);
-    this.log(`\x1b[90m  • Footer with links\x1b[0m\n`);
-    this.log(`\x1b[90m  • Interactive JavaScript\x1b[0m\n`);
-    this.log(`\x1b[90m  • No external CDN dependencies\x1b[0m\n`);
+    this.log(`\x1b[90m  • Glassmorphism navigation with mobile menu\x1b[0m\n`);
+    this.log(`\x1b[90m  • Full-screen hero with gradient text\x1b[0m\n`);
+    this.log(`\x1b[90m  • Font Awesome icons throughout\x1b[0m\n`);
+    this.log(`\x1b[90m  • Backdrop blur effects\x1b[0m\n`);
+    this.log(`\x1b[90m  • Smooth scrolling navigation\x1b[0m\n`);
+    this.log(`\x1b[90m  • Responsive design with Tailwind CSS\x1b[0m\n`);
 
     return {
       success: true,
-      message: 'Landing page created successfully with secure Tailwind CSS implementation',
+      message: 'Landing page created successfully with modern Tailwind CSS + Font Awesome design',
       data: { 
         fileName: landingPageFile.name, 
         path: landingPageFile.path,
-        features: ['Responsive design', 'Secure Tailwind CSS', 'Interactive elements', 'Modern layout']
+        features: ['Glassmorphism design', 'Font Awesome icons', 'Gradient backgrounds', 'Mobile responsive', 'Smooth animations']
       }
     };
   }

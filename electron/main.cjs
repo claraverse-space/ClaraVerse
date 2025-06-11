@@ -2072,9 +2072,8 @@ function createMainWindow() {
       }
       
       // Initialize auto-updater when window is ready
-      if (process.env.NODE_ENV !== 'development') {
-        setupAutoUpdater(mainWindow);
-      }
+      // Note: Auto-updates work in both development and production
+      setupAutoUpdater(mainWindow);
     }, 2000); // Wait for React to fully initialize
   });
 

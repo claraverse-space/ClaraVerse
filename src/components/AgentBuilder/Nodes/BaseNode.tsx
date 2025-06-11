@@ -32,6 +32,18 @@ const BaseNode = memo<BaseNodeProps>(({
   error: propError,
   success: propSuccess,
 }) => {
+  // Debug logging to understand what's being passed
+  if (!Array.isArray(inputs)) {
+    console.error('BaseNode: inputs is not an array:', { id, inputs, type: typeof inputs });
+  }
+  if (!Array.isArray(outputs)) {
+    console.error('BaseNode: outputs is not an array:', { id, outputs, type: typeof outputs });
+  }
+  
+  // Ensure inputs and outputs are always arrays
+  const safeInputs = Array.isArray(inputs) ? inputs : [];
+  const safeOutputs = Array.isArray(outputs) ? outputs : [];
+
   const { nodeExecutionStates } = useAgentBuilder();
   
   // Get execution state from context
@@ -92,14 +104,14 @@ const BaseNode = memo<BaseNodeProps>(({
       hover:shadow-xl
     `}>
       {/* Input Handles */}
-      {inputs.map((input, index) => (
+      {safeInputs.map((input, index) => (
         <Handle
           key={input.id}
           type="target"
           position={Position.Left}
           id={input.id}
           style={{
-            top: `${((index + 1) * 100) / (inputs.length + 1)}%`,
+            top: `${((index + 1) * 100) / (safeInputs.length + 1)}%`,
             background: '#10b981',
             borderColor: '#059669',
             width: '16px',
@@ -116,14 +128,14 @@ const BaseNode = memo<BaseNodeProps>(({
       ))}
 
       {/* Output Handles */}
-      {outputs.map((output, index) => (
+      {safeOutputs.map((output, index) => (
         <Handle
           key={output.id}
           type="source"
           position={Position.Right}
           id={output.id}
           style={{
-            top: `${((index + 1) * 100) / (outputs.length + 1)}%`,
+            top: `${((index + 1) * 100) / (safeOutputs.length + 1)}%`,
             background: '#6b7280',
             borderColor: '#374151',
             width: '16px',
@@ -174,9 +186,9 @@ const BaseNode = memo<BaseNodeProps>(({
       {/* Node Content */}
       <div className="px-4 py-3.5 bg-gray-50 dark:bg-gray-700 rounded-b-lg select-none border-t border-gray-200 dark:border-gray-600 relative z-10">
         {/* Input Labels */}
-        {inputs.length > 0 && (
+        {safeInputs.length > 0 && (
           <div className="mb-3.5">
-            {inputs.map((input, index) => (
+            {safeInputs.map((input, index) => (
               <div
                 key={input.id}
                 className="text-xs text-gray-600 dark:text-gray-400 mb-1.5 leading-relaxed"
@@ -225,9 +237,9 @@ const BaseNode = memo<BaseNodeProps>(({
         )}
 
         {/* Output Labels */}
-        {outputs.length > 0 && (
+        {safeOutputs.length > 0 && (
           <div className="mt-3.5">
-            {outputs.map((output, index) => (
+            {safeOutputs.map((output, index) => (
               <div
                 key={output.id}
                 className="text-xs text-gray-600 dark:text-gray-400 mb-1.5 text-right leading-relaxed"

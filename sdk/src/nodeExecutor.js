@@ -1226,18 +1226,52 @@ export class NodeExecutor {
 
   /**
    * Execute File Upload Node
-   * Universal file upload with configurable output formats
+   * File upload nodes process files during input setup, not during execution
+   * This matches AgentStudio's behavior where file data is pre-processed
    */
   async executeFileUploadNode(inputs, data) {
     const { 
-      outputFormat = 'base64',
+      outputFormat = 'binary',
       maxSize = 10485760, // 10MB default
       allowedTypes = []
     } = data;
     
+    // Debug logging
+    this.logger.debug('File Upload Node - Inputs received:', {
+      inputKeys: Object.keys(inputs),
+      inputTypes: Object.keys(inputs).reduce((acc, key) => {
+        acc[key] = typeof inputs[key];
+        return acc;
+      }, {}),
+      hasFile: !!inputs.file,
+      hasData: !!inputs.data,
+      fileType: typeof inputs.file,
+      dataType: typeof inputs.data,
+      inputsStructure: inputs,
+      nodeData: data
+    });
+    
+    // Check if file data is already processed and stored in node data (like AgentStudio)
+    if (data.outputs && (data.outputs.content !== undefined || data.outputs.content !== null)) {
+      this.logger.debug('File Upload Node - Using pre-processed outputs from node data');
+      return {
+        content: data.outputs.content,
+        metadata: data.outputs.metadata || null
+      };
+    }
+    
+    // Fallback: Process file data from inputs (for SDK usage)
     const fileData = inputs.file || inputs.data;
     
     if (!fileData) {
+      this.logger.error('File Upload Node - No file data found in inputs or node data:', {
+        inputs,
+        inputKeys: Object.keys(inputs),
+        fileData,
+        hasFile: !!inputs.file,
+        hasData: !!inputs.data,
+        nodeDataOutputs: data.outputs
+      });
       throw new Error('No file data provided to file upload node');
     }
     
