@@ -295,6 +295,9 @@ export interface ClaraChatSession {
   
   /** Session configuration */
   config?: ClaraSessionConfig;
+  
+  /** Message count (for light loading without full messages) */
+  messageCount?: number;
 }
 
 // ================================

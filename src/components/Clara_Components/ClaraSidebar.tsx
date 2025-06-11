@@ -61,7 +61,15 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   };
 
   const getMessageCount = (session: ClaraChatSession) => {
-    return session.messages?.length || 0;
+    // Use messageCount if available (from light loading), otherwise use messages.length
+    const count = session.messageCount ?? session.messages?.length ?? 0;
+    
+    // Debug logging to understand the issue
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Session ${session.id}: messageCount=${session.messageCount}, messages.length=${session.messages?.length}, final count=${count}`);
+    }
+    
+    return count;
   };
 
   const getLastMessagePreview = (session: ClaraChatSession) => {

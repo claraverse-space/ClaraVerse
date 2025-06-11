@@ -225,9 +225,18 @@ export class ClaraDatabaseService {
 
   /**
    * Get recent sessions WITHOUT messages (for lightning-fast loading)
+   * But includes message counts for sidebar display
    */
   async getRecentSessionsLight(limit: number = 20, offset: number = 0): Promise<ClaraChatSession[]> {
     const sessionRecords = await indexedDBService.getAll<ClaraChatSessionRecord>(this.SESSIONS_STORE);
+    const allMessages = await indexedDBService.getAll<ClaraMessageRecord>(this.MESSAGES_STORE);
+    
+    // Create a map of session ID to message count for efficient lookup
+    const messageCountMap = new Map<string, number>();
+    allMessages.forEach(message => {
+      const currentCount = messageCountMap.get(message.sessionId) || 0;
+      messageCountMap.set(message.sessionId, currentCount + 1);
+    });
     
     // Convert to sessions and sort by updatedAt, then apply pagination
     const sessions = sessionRecords
@@ -235,10 +244,11 @@ export class ClaraDatabaseService {
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       .slice(offset, offset + limit);
 
-    // Return sessions with empty messages array (no database queries for messages)
+    // Return sessions with empty messages array but include messageCount property
     return sessions.map(session => ({
       ...session,
-      messages: [] // Empty array for fast loading
+      messages: [], // Empty array for fast loading
+      messageCount: messageCountMap.get(session.id) || 0 // Add message count for sidebar
     }));
   }
 

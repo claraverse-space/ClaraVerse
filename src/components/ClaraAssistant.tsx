@@ -1641,6 +1641,17 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     // Save user message to database (with display content only)
     try {
       await claraDB.addClaraMessage(currentSession.id, userMessage);
+      
+      // Update message count in sessions list for real-time sidebar updates
+      setSessions(prev => prev.map(s => 
+        s.id === currentSession.id 
+          ? { 
+              ...s, 
+              messageCount: (s.messageCount || s.messages?.length || 0) + 1, // +1 for user message
+              updatedAt: new Date()
+            }
+          : s
+      ));
     } catch (error) {
       console.error('Failed to save user message:', error);
     }
@@ -1848,6 +1859,17 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       // Save AI message to database
       try {
         await claraDB.addClaraMessage(currentSession.id, finalMessage);
+        
+        // Update message count in sessions list for real-time sidebar updates
+        setSessions(prev => prev.map(s => 
+          s.id === currentSession.id 
+            ? { 
+                ...s, 
+                messageCount: (s.messageCount || s.messages?.length || 0) + 1, // +1 for AI response (user message already counted)
+                updatedAt: new Date()
+              }
+            : s
+        ));
         
         // Enhanced notification for background operation
         if (!isVisible) {
