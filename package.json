@@ -64,6 +64,8 @@
     "@mui/material": "^7.0.2",
     "@ricky0123/vad-web": "^0.0.24",
     "@saintno/comfyui-sdk": "^0.2.45",
+    "@stable-canvas/comfyui-client": "^1.4.3",
+    "@stable-canvas/comfyui-client-cli": "^1.6.0",
     "@supabase/supabase-js": "^2.49.4",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",

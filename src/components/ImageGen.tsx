@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Client, BasePipe, EfficientPipe } from '@stable-canvas/comfyui-client';
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
@@ -123,7 +124,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [mustSelectModel, setMustSelectModel] = useState(false);
   const [progress, setProgress] = useState<{ value: number; max: number } | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
-  const [currentPipeline, setCurrentPipeline] = useState<any | null>(null);
+  const [currentPipeline, setCurrentPipeline] = useState<BasePipe | EfficientPipe | null>(null);
 
   // localStorage key for storing selected model
   const LAST_USED_MODEL_KEY = 'clara-ollama-last-used-model';
@@ -146,11 +147,34 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     connection: 'connecting',
   });
 
-  // Data from comfyui-api
+  // Data from ComfyUI (models, LoRAs, VAEs, system stats)
   const [systemStats, setSystemStats] = useState<any>(null);
   const [sdModels, setSDModels] = useState<string[]>([]);
   const [loras, setLoras] = useState<string[]>([]);
   const [vaes, setVAEs] = useState<string[]>([]);
+
+  // Debug state: WebSocket connection status
+  const [wsStatus, setWsStatus] = useState<string>('Not Connected');
+
+  // Reference to the ComfyUI client instance
+  const clientRef = useRef<Client | null>(null);
+
+  // Disconnect any lingering client created in a different page on mount
+  useEffect(() => {
+    if (clientRef.current) {
+      try {
+        clientRef.current.close();
+        console.log("Disconnected previous client connection on mount");
+      } catch (error) {
+        console.error("Error disconnecting previous client connection on mount", error);
+      }
+      clientRef.current = null;
+    }
+  }, []);
+
+  // Remove reconnection interval dependency from generation;
+  // Instead, handle connection issues in the initial connection effect.
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Settings state variables
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -201,79 +225,463 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   });
   const [isLLMConnected, setIsLLMConnected] = useState(false);
 
-  // Wallpaper state
-  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const loadWallpaper = async () => {
-      try {
-        const wallpaper = await db.getWallpaper();
-        if (wallpaper) {
-          setWallpaperUrl(wallpaper);
-        }
-      } catch (error) {
-        console.error('Error loading wallpaper:', error);
+  // Wait for the client's WebSocket connection to open before proceeding - with timeout
+  const waitForClientConnection = async (client: Client): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("WebSocket connection timeout - failed to connect after 15 seconds"));
+        setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+      }, 15000);
+      
+      if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+        clearTimeout(timeout);
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+            clearInterval(checkInterval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        }, 100);
       }
-    };
-    loadWallpaper();
-  }, []);
-
-  // comfyui-api base url helper
-  const getComfyApiUrl = async () => {
-    const config = await db.getAPIConfig();
-    let url = config?.comfyui_base_url || '127.0.0.1:8188';
-    if (!url.startsWith('http')) url = 'http://' + url;
-    url = url.replace(/:(\d+)$/, ':8189');
-    return url;
+    });
   };
 
-  // Fetch models, loras, vaes, and system stats from comfyui-api
+  // (1) Connect to ComfyUI and set up client event listeners
+  // IMPORTANT: This effect now runs only once on mount to avoid reinitialization
   useEffect(() => {
-    const fetchAll = async () => {
+    const fetchAndConnectClient = async () => {
       try {
-        setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
-        const apiUrl = await getComfyApiUrl();
-        // System stats
-        setLoadingStatus(prev => ({ ...prev, systemStats: 'loading' }));
-        const sysResp = await fetch(`${apiUrl}/system_stats`);
-        if (!sysResp.ok) throw new Error('Failed to fetch system stats');
-        const sysStats = await sysResp.json();
-        setSystemStats(sysStats);
-        setLoadingStatus(prev => ({ ...prev, systemStats: 'success' }));
-        setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
-        // Models
-        setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
-        const modelsResp = await fetch(`${apiUrl}/object_info`);
-        if (!modelsResp.ok) throw new Error('Failed to fetch models info');
-        const modelsInfo = await modelsResp.json();
-        // Parse models, loras, vaes from object_info
-        const models = modelsInfo?.model_list || [];
-        setSDModels(models);
-        setLoadingStatus(prev => ({ ...prev, sdModels: 'success' }));
-        const loras = modelsInfo?.lora_list || [];
-        setLoras(loras);
-        setLoadingStatus(prev => ({ ...prev, loras: 'success' }));
-        const vaes = modelsInfo?.vae_list || [];
-        setVAEs(vaes);
-        setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
+        const config = await db.getAPIConfig();
+        console.log('API Config:', config);
+        let comfyuiBaseUrl = config?.comfyui_base_url;
+        if (!comfyuiBaseUrl) {
+          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
+          comfyuiBaseUrl = '127.0.0.1:8188';
+        }
+
+        // some times user provides with protocol and some times not make sure everytime url without protocol is passed
+        let url = comfyuiBaseUrl;
+        if (comfyuiBaseUrl.includes('http://') || comfyuiBaseUrl.includes('https://')) {
+          url = comfyuiBaseUrl.split('//')[1];
+        }
+        console.log('ComfyUI base URL:', url);
+        // based on the baseURL decide ssl true or false
+        const ssl_type =  comfyuiBaseUrl.includes('https') ? true : false;
+        console.log('SSL Type:', ssl_type);
+        const client = new Client({ api_host: url, ssl: ssl_type });
+        clientRef.current = client;
+        client.connect();
+        console.log('ComfyUI client connected');
+
+        if (client.socket) {
+          console.log('Debug: WebSocket instance:', client.socket);
+          client.socket.addEventListener('open', (e) => {
+            console.log('Debug: WebSocket open:', e);
+            setWsStatus('Connected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
+          });
+          client.socket.addEventListener('message', (e) => {
+            console.log('Debug: WebSocket message:', e);
+          });
+          client.socket.addEventListener('close', (e) => {
+            console.log('Debug: WebSocket close:', e);
+            setWsStatus('Disconnected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('WebSocket connection closed unexpectedly');
+          });
+          client.socket.addEventListener('error', (e) => {
+            console.log('Debug: WebSocket error:', e);
+            setWsStatus('Error');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('Error establishing WebSocket connection');
+          });
+        } else {
+          console.warn('Debug: No WebSocket instance on client.');
+          setConnectionError('Failed to initialize WebSocket connection');
+        }
+
+        // Try to wait for connection to establish with timeout
+        try {
+          await waitForClientConnection(client);
+        } catch (connErr) {
+          console.error("Connection timeout:", connErr);
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+          // Continue with the setup process even after timeout to handle remaining setup tasks
+        }
+
+        // Attach event listeners for progress and execution events
+        client.events.on('status', (data) => console.log('Debug: status event:', data));
+        client.events.on('progress', (data) => {
+          console.log('Debug: progress event:', data);
+          setProgress({ value: data.value, max: data.max });
+        });
+        client.events.on('execution_error', (data) => {
+          console.log('Debug: execution_error event:', data);
+          setGenerationError(`Execution error: ${data?.message || 'Unknown error'}`);
+        });
+        client.events.on('execution_success', (data) => {
+          console.log('Debug: execution_success event:', data);
+          setProgress(null);
+        });
+        client.events.on('reconnected', () => console.log('Debug: reconnected event'));
+        client.events.on('reconnecting', () => console.log('Debug: reconnecting event'));
+        client.events.on('image_data', (data) => console.log('Debug: image_data event:', data));
+        client.events.on('message', (data) => console.log('Debug: client message event:', data));
+        // client.events.on('close', (data) => console.log('Debug: client close event:', data));
+        client.events.on('connection_error', (data) => {
+          console.log('Debug: connection_error event:', data);
+          setConnectionError(`Connection error: ${data?.message || 'Unknown error'}`);
+        });
+        client.events.on('unhandled', (data) => console.log('Debug: unhandled event:', data));
+
+        // Fetch SD Models, LoRAs, VAEs, and system stats
+        try {
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
+          const sdModelsResp = await client.getSDModels();
+          setSDModels(sdModelsResp);
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'success' }));
+          console.log('SD Models:', sdModelsResp);
+          const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
+          if (lastUsedModel && sdModelsResp.includes(lastUsedModel)) {
+            console.log('Found previously used model:', lastUsedModel);
+            setSelectedModel(lastUsedModel);
+          }
+        } catch (err) {
+          console.error('Error fetching SD Models:', err);
+          setLoadingStatus(prev => ({ ...prev, sdModels: 'error' }));
+        }
+        try {
+          setLoadingStatus(prev => ({ ...prev, loras: 'loading' }));
+          const lorasResp = await client.getLoRAs();
+          setLoras(lorasResp);
+          setLoadingStatus(prev => ({ ...prev, loras: 'success' }));
+          console.log('LoRAs:', lorasResp);
+        } catch (err) {
+          console.error('Error fetching LoRAs:', err);
+          setLoadingStatus(prev => ({ ...prev, loras: 'error' }));
+        }
+        try {
+          setLoadingStatus(prev => ({ ...prev, vaes: 'loading' }));
+          const vaesResp = await client.getVAEs();
+          setVAEs(vaesResp);
+          setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
+          console.log('VAEs:', vaesResp);
+        } catch (err) {
+          console.error('Error fetching VAEs:', err);
+          setLoadingStatus(prev => ({ ...prev, vaes: 'error' }));
+        }
+        try {
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'loading' }));
+          const sysStats = await client.getSystemStats();
+          setSystemStats(sysStats);
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'success' }));
+          console.log('System Stats:', sysStats);
+        } catch (err) {
+          console.error('Error fetching system stats:', err);
+          setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
+        }
+
+        // Load Control Net Models
+        try {
+          const controlNetResp = await client.getCNetModels();
+          setControlNetModels(controlNetResp);
+          console.log('Control Net Models:', controlNetResp);
+        } catch (err) {
+          console.error('Error fetching Control Net Models:', err);
+        }
+
+        // Load Upscale Models
+        try {
+          const upscaleResp = await client.getUpscaleModels();
+          setUpscaleModels(upscaleResp);
+          console.log('Upscale Models:', upscaleResp);
+        } catch (err) {
+          console.error('Error fetching Upscale Models:', err);
+        }
+
+        // Mark initial setup as complete, even if some parts failed
         setIsInitialSetupComplete(true);
-      } catch (err) {
-        setConnectionError('Cannot connect to ComfyUI API. Please check your ComfyUI server is running and configure the correct URL in Settings.');
-        setLoadingStatus(prev => ({ ...prev, connection: 'error', systemStats: 'error', sdModels: 'error', loras: 'error', vaes: 'error' }));
+      } catch (error) {
+        console.error('Error connecting to ComfyUI client:', error);
+        if ((error as Error)?.message?.includes('timeout')) {
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+        } else {
+          setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+        }
         setIsInitialSetupComplete(true);
       }
     };
-    fetchAll();
+
+    // Run only once on mount
+    fetchAndConnectClient();
+
+    // Cleanup: close client on unmount
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.close();
+        clientRef.current = null;
+      }
+    };
+  }, []); // Empty dependency array to avoid reinitializing the client
+
+  // Save the selected model to localStorage when it changes
+  useEffect(() => {
+    if (selectedModel) {
+      localStorage.setItem(LAST_USED_MODEL_KEY, selectedModel);
+      console.log('Saved model to localStorage:', selectedModel);
+    }
+  }, [selectedModel]);
+
+  // Timeout to detect stalled generations (e.g. generation taking too long)
+  useEffect(() => {
+    if (!isGenerating) return;
+    const timeout = setTimeout(() => {
+      if (isGenerating && !generationError) {
+        console.warn('Generation taking too long - may have stalled');
+      }
+    }, 60000);
+    return () => clearTimeout(timeout);
+  }, [isGenerating, generationError]);
+
+  // (2) Auto show/hide the settings drawer based on mouse position
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const windowWidth = window.innerWidth;
+      const edgeThreshold = 20;
+      if (e.clientX >= windowWidth - edgeThreshold) {
+        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+        setShowSettings(true);
+      } else if (e.clientX < windowWidth - 320) {
+        const sidebarBounds = edgeRef.current?.getBoundingClientRect();
+        if (sidebarBounds) {
+          const insideSidebar =
+            e.clientX >= sidebarBounds.left &&
+            e.clientX <= sidebarBounds.right &&
+            e.clientY >= sidebarBounds.top &&
+            e.clientY <= sidebarBounds.bottom;
+          if (!insideSidebar) {
+            hoverTimeoutRef.current = setTimeout(() => setShowSettings(false), 300);
+          }
+        }
+      }
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
   }, []);
 
-  // Generation logic: Build and execute the workflow via comfyui-api
+  const handleSettingsClick = () => {
+    setShowSettings(!showSettings);
+  };
+
+  // Function to cancel the current generation with cleanup
+  const handleCancelGeneration = useCallback(() => {
+    console.log("Cancelling generation...");
+    if (currentPipeline && clientRef.current) {
+      try {
+        // Attempt to interrupt the pipeline (if supported)
+        clientRef.current.interrupt();
+      } catch (e) {
+        console.error('Failed to interrupt pipeline:', e);
+      }
+    }
+    setIsGenerating(false);
+    setProgress(null);
+    setGenerationError(null);
+    setCurrentPipeline(null);
+    if (generationTimeoutRef.current) {
+      clearTimeout(generationTimeoutRef.current);
+      generationTimeoutRef.current = null;
+    }
+  }, [currentPipeline]);
+
+  // Function to retry generation
+  const handleRetryGeneration = useCallback(() => {
+    console.log("Retrying generation...");
+    setGenerationError(null);
+    setProgress(null);
+    if (clientRef.current?.socket?.readyState !== WebSocket.OPEN) {
+      console.log("WebSocket not open, attempting to reconnect...");
+      if (clientRef.current) {
+        try {
+          clientRef.current.close();
+        } catch (e) {
+          console.error("Error closing existing client:", e);
+        }
+        clientRef.current = null;
+      }
+    }
+    setTimeout(() => {
+      handleGenerate();
+    }, 300);
+  }, []);
+
+  // Add a function to retry the connection
+  const handleRetryConnection = useCallback(() => {
+    console.log("Retrying connection...");
+    setConnectionError(null);
+    setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
+    
+    if (clientRef.current) {
+      try {
+        clientRef.current.close();
+      } catch (e) {
+        console.error("Error closing existing client:", e);
+      }
+      clientRef.current = null;
+    }
+    
+    // Re-initialize the connection
+    const fetchAndConnectClient = async () => {
+      try {
+        const config = await db.getAPIConfig();
+        let comfyuiBaseUrl = config?.comfyui_base_url;
+        if (!comfyuiBaseUrl) {
+          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
+          comfyuiBaseUrl = '127.0.0.1:8188';
+        }
+
+        const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        clientRef.current = client;
+        client.connect();
+        console.log('ComfyUI client connected');
+
+        if (client.socket) {
+          client.socket.addEventListener('open', (e) => {
+            console.log('Debug: WebSocket open:', e);
+            setWsStatus('Connected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
+          });
+          client.socket.addEventListener('message', (e) => {
+            console.log('Debug: WebSocket message:', e);
+          });
+          client.socket.addEventListener('close', (e) => {
+            console.log('Debug: WebSocket close:', e);
+            setWsStatus('Disconnected');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('WebSocket connection closed unexpectedly');
+          });
+          client.socket.addEventListener('error', (e) => {
+            console.log('Debug: WebSocket error:', e);
+            setWsStatus('Error');
+            setLoadingStatus(prev => ({ ...prev, connection: 'error' }));
+            setConnectionError('Error establishing WebSocket connection');
+          });
+        }
+
+        // Try to wait for connection to establish with timeout
+        try {
+          await waitForClientConnection(client);
+          // Continue with model loading if connection successful
+          loadModelsAndData(client);
+        } catch (connErr) {
+          console.error("Connection retry failed:", connErr);
+          setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+          setConnectionError(`Connection timeout: ComfyUI is not responding after 15 seconds`);
+        }
+      } catch (error) {
+        console.error('Error connecting to ComfyUI client:', error);
+        setConnectionError(`Failed to connect to ComfyUI: ${(error as Error)?.message || 'Unknown error'}`);
+      }
+    };
+    
+    fetchAndConnectClient();
+  }, []);
+  
+  // Helper function to load models and data
+  const loadModelsAndData = async (client: Client) => {
+    // Try to load SD Models
+    try {
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
+      const sdModelsResp = await client.getSDModels();
+      setSDModels(sdModelsResp);
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'success' }));
+      
+      const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
+      if (lastUsedModel && sdModelsResp.includes(lastUsedModel)) {
+        setSelectedModel(lastUsedModel);
+      }
+    } catch (err) {
+      console.error('Error fetching SD Models:', err);
+      setLoadingStatus(prev => ({ ...prev, sdModels: 'error' }));
+    }
+    
+    // Try to load LoRAs, VAEs, and system stats
+    try {
+      setLoadingStatus(prev => ({ ...prev, loras: 'loading' }));
+      const lorasResp = await client.getLoRAs();
+      setLoras(lorasResp);
+      setLoadingStatus(prev => ({ ...prev, loras: 'success' }));
+    } catch (err) {
+      console.error('Error fetching LoRAs:', err);
+      setLoadingStatus(prev => ({ ...prev, loras: 'error' }));
+    }
+    try {
+      setLoadingStatus(prev => ({ ...prev, vaes: 'loading' }));
+      const vaesResp = await client.getVAEs();
+      setVAEs(vaesResp);
+      setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
+    } catch (err) {
+      console.error('Error fetching VAEs:', err);
+      setLoadingStatus(prev => ({ ...prev, vaes: 'error' }));
+    }
+    try {
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'loading' }));
+      const sysStats = await client.getSystemStats();
+      setSystemStats(sysStats);
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'success' }));
+    } catch (err) {
+      console.error('Error fetching system stats:', err);
+      setLoadingStatus(prev => ({ ...prev, systemStats: 'error' }));
+    }
+
+    // Load Control Net Models
+    try {
+      const controlNetResp = await client.getCNetModels();
+      setControlNetModels(controlNetResp);
+      console.log('Control Net Models:', controlNetResp);
+    } catch (err) {
+      console.error('Error fetching Control Net Models:', err);
+    }
+
+    // Load Upscale Models
+    try {
+      const upscaleResp = await client.getUpscaleModels();
+      setUpscaleModels(upscaleResp);
+      console.log('Upscale Models:', upscaleResp);
+    } catch (err) {
+      console.error('Error fetching Upscale Models:', err);
+    }
+
+    setIsInitialSetupComplete(true);
+  };
+
+  // Handling home navigation
+  const handleNavigateHome = useCallback(() => {
+    console.log("Navigating back to home/dashboard");
+    if (onPageChange) {
+      onPageChange('dashboard');
+    }
+  }, [onPageChange]);
+
+  // (3) Generation logic: Build and execute the pipeline with improved error handling
   const handleGenerate = async () => {
     setGenerationError(null);
     try {
       if (!selectedModel) {
+        // If no model is selected, attempt to use a stored or first available model
         const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
         if (lastUsedModel && sdModels.includes(lastUsedModel)) {
+          console.log('Using last used model:', lastUsedModel);
           setSelectedModel(lastUsedModel);
         } else if (sdModels.length > 0) {
+          console.log('Using first available model:', sdModels[0]);
           setSelectedModel(sdModels[0]);
         } else {
           setMustSelectModel(true);
@@ -281,69 +689,134 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           return;
         }
       }
-      
-      // Check if we have a connection error before attempting generation
-      if (connectionError) {
-        setGenerationError('Cannot generate images: ComfyUI is not connected. Please check your ComfyUI server is running and configure the correct URL in Settings.');
-        return;
-      }
-      
       setMustSelectModel(false);
       setIsGenerating(true);
-      // Build workflow JSON for comfyui-api
+      
+      // Use existing client; do not reinitialize if already connected
+      let client = clientRef.current;
+      console.log('handleGenerate - client before check:', client);
+      
+      if (!client || client.socket?.readyState !== WebSocket.OPEN) {
+        console.log('Client not available or not connected, creating new client...');
+        if (client) {
+          try {
+            client.close();
+          } catch (e) {
+            console.error("Error closing existing client:", e);
+          }
+        }
+        const config = await db.getAPIConfig();
+        const url = config?.comfyui_base_url || '127.0.0.1:8188';
+        client = new Client({ api_host: url, ssl: true });
+        client.connect();
+        clientRef.current = client;
+        console.log('handleGenerate - new client created:', client);
+      }
+      
+      try {
+        await waitForClientConnection(client);
+        console.log('Client connection is now open.');
+      } catch (connErr) {
+        console.error("Connection error:", connErr);
+        if ((connErr as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding after 15 seconds. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to establish WebSocket connection: ${(connErr as Error)?.message}`);
+        }
+        setIsGenerating(false);
+        return;
+      }
+
       let width = selectedResolution.width;
       let height = selectedResolution.height;
       if (selectedResolution.label === 'Custom') {
         width = customWidth;
         height = customHeight;
       }
-      // Build a simple workflow JSON (you may need to adapt this to your workflow structure)
-      const workflow_id = 'default';
-      const workflowPrompt = {
-        model: selectedModel,
-        prompt,
-        negative: negativeTags.join(', '),
-        width,
-        height,
-        steps,
-        cfg: guidanceScale,
-        denoise,
-        sampler,
-        scheduler,
-        lora: selectedLora,
-        loraStrength,
-        vae: selectedVae,
-        // Add more fields as needed
-      };
-      const apiUrl = await getComfyApiUrl();
-      const resp = await fetch(`${apiUrl}/v1/workflows/${workflow_id}/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow_id, prompt: workflowPrompt }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      const runId = data.id || data.run_id;
-      // Poll for result
-      let result = null;
-      for (let i = 0; i < 150; i++) { // up to 5 minutes
-        await new Promise(res => setTimeout(res, 2000));
-        const pollResp = await fetch(`${apiUrl}/v1/workflows/${workflow_id}/runs/${runId}`);
-        if (!pollResp.ok) throw new Error(await pollResp.text());
-        const pollData = await pollResp.json();
-        if (pollData.status === 'COMPLETED') {
-          result = pollData;
-          break;
-        } else if (pollData.status === 'ERROR') {
-          throw new Error('Generation failed: ' + (pollData.error || 'Unknown error'));
+
+      // Determine which pipeline to use and set it up
+      let pipeline: BasePipe | EfficientPipe;
+      
+      // Use EfficientPipe if we have ControlNet, LoRA, or uploaded image
+      // since these features are only supported in EfficientPipe
+      const shouldUseEfficientPipe = imageBuffer || selectedLora || selectedControlNet;
+
+      if (shouldUseEfficientPipe) {
+        const pipe = new EfficientPipe();
+        pipeline = pipe
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
+
+        
+
+        // Add ControlNet if both image and controlnet model are selected
+        if (selectedControlNet && imageBuffer) {
+          console.log('Adding ControlNet to pipeline:', selectedControlNet, imageBuffer);
+          
+          const imageData = Buffer.from(arrayBufferToUint8Array(imageBuffer));
+          pipeline = pipe.cnet(selectedControlNet, imageData);
         }
+
+        // Add input image if provided
+        if (imageBuffer) {
+          const imageData = arrayBufferToUint8Array(imageBuffer);
+          pipeline = pipe.image(Buffer.from(imageData));
+        }
+
+        // Add LoRA if selected
+        if (selectedLora) {
+          pipeline = pipe.lora(selectedLora, { strength: loraStrength });
+        }
+      } else {
+        // Use BasePipe for simple text-to-image generation
+        pipeline = new BasePipe()
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
       }
-      if (!result) throw new Error('Generation timed out');
-      // Assume result.images is an array of base64 strings or URLs
-      const base64Images = result.images || [];
-      setGeneratedImages((prev) => [...prev, ...base64Images]);
-      // Save to DB if needed
-      base64Images.forEach((dataUrl: string) => {
+
+      setCurrentPipeline(pipeline);
+      console.log('Pipeline built:', pipeline);
+
+      // Execute pipeline with a 5-minute timeout
+      const pipelinePromise = pipeline.save().wait();
+      const result = await Promise.race([
+        pipelinePromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Generation timed out")), 5 * 60 * 1000)
+        )
+      ]) as { images: any[] };
+
+      console.log('Generated images:', result.images[0].data);
+      client.free(
+        {
+          free_memory: true,
+          unload_models: true
+        }
+      );
+      const base64Images = result.images.map((img) => {
+        const base64 = arrayBufferToBase64(img.data);
+        return `data:${img.mime};base64,${base64}`;
+      });
+      
+      base64Images.forEach((dataUrl) => {
         try {
           db.addStorageItem({
             title: 'Generated Image',
@@ -357,17 +830,35 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           console.error('Error saving image to DB:', err);
         }
       });
+
+      setGeneratedImages((prev) => [...prev, ...base64Images]);
+      
+      const currentConfig: ModelConfig = {
+        denoise,
+        steps,
+        guidanceScale,
+        sampler,
+        scheduler,
+        negativeTags,
+      };
+      saveModelConfig(selectedModel, currentConfig);
     } catch (err) {
-      const errorMessage = (err as Error)?.message || 'Unknown error';
-      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('connect')) {
-        setGenerationError(`Connection failed: Cannot reach ComfyUI server. Please check if ComfyUI is running and configure the correct URL in Settings.`);
-      } else {
-        setGenerationError(`Failed to generate image: ${errorMessage}`);
+      console.error('Error generating image:', err);
+      if (!generationError) {
+        if ((err as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+        }
       }
     } finally {
       setProgress(null);
       setIsGenerating(false);
       setCurrentPipeline(null);
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
     }
   };
 
@@ -471,12 +962,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Add enhance prompt handler
   const handleEnhancePrompt = async (currentPrompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }) => {
-    if (!isLLMConnected) {
-      setNotificationMessage('LLM is not connected. Please configure your Ollama or OpenAI settings to use prompt enhancement.');
-      setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 5000);
-      return;
-    }
+    if (!isLLMConnected) return;
     
     setIsEnhancing(true);
     try {
@@ -548,13 +1034,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     } catch (error) {
       console.error('Error enhancing prompt:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('connect')) {
-        setNotificationMessage('Cannot connect to LLM service. Please check your Ollama server is running or configure your OpenAI API key in Settings.');
-      } else {
-        setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
-      }
+      setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
       setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 5000);
+      setTimeout(() => setShowNotification(false), 3000);
       throw error;
     } finally {
       setIsEnhancing(false);
@@ -612,43 +1094,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setTimeout(() => setClearImageFlag(false), 100);
   };
 
-  // --- Add missing handler stubs to fix ReferenceError ---
-  const handleNavigateHome = () => {
-    // TODO: Implement navigation to home if needed
-  };
-
-  const handleRetryConnection = () => {
-    // TODO: Implement retry logic if needed
-  };
-
-  const handleCancelGeneration = () => {
-    // TODO: Implement cancel logic if needed
-  };
-
-  const handleRetryGeneration = () => {
-    // TODO: Implement retry logic if needed
-  };
-
-  const handleSettingsClick = () => {
-    setShowSettings((prev) => !prev);
-  };
-
   return (
-    <div className="relative flex h-screen">
-      {/* Wallpaper */}
-      {wallpaperUrl && (
-        <div 
-          className="absolute top-0 left-0 right-0 bottom-0 z-0"
-          style={{
-            backgroundImage: `url(${wallpaperUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.1,
-            filter: 'blur(1px)',
-            pointerEvents: 'none'
-          }}
-        />
-      )}
+    <div className="flex h-screen">
       {!isInitialSetupComplete && (
         <InitialLoadingOverlay 
           loadingStatus={loadingStatus} 
@@ -660,6 +1107,10 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       <Sidebar
         activePage="image-gen"
         onPageChange={onPageChange || (() => {})}
+        sdModels={sdModels}
+        loras={loras}
+        vaes={vaes}
+        systemStats={systemStats}
       />
       <div className="flex-1 flex flex-col">
         <ImageGenHeader userName="User" onPageChange={onPageChange} systemStats={systemStats} />
@@ -676,40 +1127,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         <div className="flex-1 overflow-hidden flex">
           <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
             <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
-              {/* Connection Status Warning */}
-              {(connectionError || !isLLMConnected) && (
-                <div className="bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Service Connection Issues</h3>
-                  </div>
-                  <div className="text-sm text-yellow-700 dark:text-yellow-400 space-y-2">
-                    {connectionError && (
-                      <p>• ComfyUI is not connected - Image generation is unavailable</p>
-                    )}
-                    {!isLLMConnected && (
-                      <p>• LLM service is not connected - Prompt enhancement is unavailable</p>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => onPageChange?.('settings')}
-                      className="text-sm bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded-md transition-colors"
-                    >
-                      Configure Settings
-                    </button>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-sm text-yellow-600 hover:text-yellow-700 dark:text-yellow-400 dark:hover:text-yellow-300 underline"
-                    >
-                      Retry Connection
-                    </button>
-                  </div>
-                </div>
-              )}
-              
               <PromptArea
                 prompt={prompt}
                 setPrompt={setPrompt}

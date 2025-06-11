@@ -4,7 +4,6 @@ import { X } from 'lucide-react';
 interface ImageViewModalProps {
   imageUrl: string | null;
   onClose: () => void;
-  syncGroup?: string;
 }
 
 const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose }) => {
@@ -15,14 +14,14 @@ const ImageViewModal: React.FC<ImageViewModalProps> = ({ imageUrl, onClose }) =>
       <div className="relative max-w-7xl w-full h-full p-4 flex items-center justify-center">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors z-10"
+          className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
         >
           <X className="w-6 h-6" />
         </button>
         <img
           src={imageUrl}
-          alt="Generated Image"
-          className="max-w-full max-h-full object-contain rounded-lg"
+          alt="Generated"
+          className="max-w-full max-h-full object-contain"
         />
       </div>
     </div>
