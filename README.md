@@ -10,10 +10,10 @@
   </p>
 
   <br/>
-  <a href="https://claraverse.netlify.app/"><img src="https://img.shields.io/badge/Clara-1.2.61-FFD700.svg" alt="Clara Version Badge"></a>
+  <a href="https://claraverse.netlify.app/"><img src="https://img.shields.io/badge/Clara-V0.1.1-FFD700.svg" alt="Clara Version Badge"></a>
   <br/><br/>
   <a href="https://clara.badboysm890.in/" target="_blank"><strong>🌐 Try Clara Online</strong></a> • 
-  <a href="https://github.com/badboysm890/ClaraVerse/releases" target="_blank"><strong>⬇️ Download Desktop App</strong></a>
+  <a href="https://claraverse.space/" target="_blank"><strong>⬇️ Download Desktop App</strong></a>
   <br/><br/>
   <a href="https://www.producthunt.com/posts/clara-433c5291-7639-4271-b246-8df30cbc449f" target="_blank">
     <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=942765&theme=light" alt="Clara on Product Hunt" width="250" height="54" />
