@@ -87,3 +87,7 @@ sdk_examples/*
 electron/llamacpp-binaries/config.yaml
 battery-report.html
 electron/llamacpp-binaries/config.yaml
+landing/*
+issues.md
+# Local Netlify folder
+.netlify
