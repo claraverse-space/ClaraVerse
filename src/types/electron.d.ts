@@ -66,12 +66,30 @@ export interface ElectronAPI {
 
 declare global {
   interface Window {
-    electron: ElectronAPI;
+    electron: {
+      getWorkflowsPath: () => Promise<string>;
+      getPythonPort: () => Promise<number>;
+      checkPythonBackend: () => Promise<{
+        port: number;
+        status: string;
+        available: boolean;
+      }>;
+      receive: (channel: string, func: (data: any) => void) => void;
+      removeListener: (channel: string, func: (data: any) => void) => void;
+      send: (channel: string, data: any) => void;
+    };
     electronAPI: {
-      getContainers: () => Promise<any[]>;
-      containerAction: (containerId: string, action: string) => Promise<{ success: boolean; error?: string }>;
-      createContainer: (containerConfig: any) => Promise<{ success: boolean; id?: string; error?: string }>;
-      getContainerStats: (containerId: string) => Promise<any>;
+      getContainers: () => Promise<Array<{
+        id: string;
+        name: string;
+        image: string;
+        status: string;
+        state: string;
+        ports: string[];
+        created: string;
+      }>>;
+      containerAction: (containerId: string, action: 'start' | 'stop' | 'restart' | 'remove') => Promise<{ success: boolean; error?: string }>;
+      createContainer: (config: any) => Promise<{ success: boolean; id?: string; error?: string }>;
       getContainerLogs: (containerId: string) => Promise<string>;
     };
     llamaSwap: {

@@ -23,6 +23,7 @@ function getAppVersion() {
 const validChannels = [
   'app-ready',
   'react-app-ready',
+  'app-close',
   'setup-status',
   'backend-status',
   'python-status',
@@ -197,6 +198,14 @@ contextBridge.exposeInMainWorld('mcpService', {
   importClaudeConfig: (configPath) => ipcRenderer.invoke('mcp-import-claude-config', configPath),
   executeToolCall: (toolCall) => ipcRenderer.invoke('mcp-execute-tool', toolCall),
   diagnoseNode: () => ipcRenderer.invoke('mcp-diagnose-node')
+});
+
+// Add window management API
+contextBridge.exposeInMainWorld('windowManager', {
+  getFullscreenStartupPreference: () => ipcRenderer.invoke('get-fullscreen-startup-preference'),
+  setFullscreenStartupPreference: (enabled) => ipcRenderer.invoke('set-fullscreen-startup-preference', enabled),
+  toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  getFullscreenStatus: () => ipcRenderer.invoke('get-fullscreen-status')
 });
 
 // Notify main process when preload script has loaded

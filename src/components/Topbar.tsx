@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor, Clock } from 'lucide-react';
+import { Sun, Moon, Monitor, Clock, LogOut } from 'lucide-react';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 import NotificationPanel from './common/NotificationPanel';
@@ -52,6 +52,49 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
     handleThemeChange(newTheme);
   };
 
+  // Handle app cleanup
+  const handleCleanup = async () => {
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI) {
+        console.error('electronAPI not available');
+        return;
+      }
+
+      // Get all containers
+      const containers = await electronAPI.getContainers();
+      
+      // Stop and remove all Clara containers
+      for (const container of containers) {
+        if (container.name.startsWith('clara_')) {
+          try {
+            // Stop the container first
+            await electronAPI.containerAction(container.id, 'stop');
+            // Then remove it
+            await electronAPI.containerAction(container.id, 'remove');
+          } catch (error) {
+            console.error(`Error cleaning up container ${container.name}:`, error);
+          }
+        }
+      }
+
+      // Close the app
+      if (window.electron) {
+        window.electron.send('app-close', {});
+      } else {
+        window.close();
+      }
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      // Still try to close the app even if cleanup fails
+      if (window.electron) {
+        window.electron.send('app-close', {});
+      } else {
+        window.close();
+      }
+    }
+  };
+
   return (
     <div className="glassmorphic h-16 px-6 flex items-center justify-between relative z-[10000]">
       <div className="flex-1" />
@@ -83,6 +126,14 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
           userName={userName || 'Profile'}
           onPageChange={onPageChange || (() => {})}
         />
+        <button 
+          onClick={handleCleanup}
+          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors group"
+          aria-label="Exit application"
+          title="Exit Clara"
+        >
+          <LogOut className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />
+        </button>
       </div>
     </div>
   );

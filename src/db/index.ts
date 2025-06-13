@@ -58,6 +58,7 @@ export interface PersonalInfo {
   avatar_url?: string;
   timezone: string;
   theme_preference: 'light' | 'dark' | 'system';
+  fullscreen_startup?: boolean;
 }
 
 export interface Provider {

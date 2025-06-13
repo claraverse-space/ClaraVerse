@@ -1840,6 +1840,67 @@ function registerHandlers() {
       loadingScreen.notifyMainWindowReady();
     }
   });
+
+  // Handle app close request
+  ipcMain.on('app-close', () => {
+    log.info('App close requested from renderer');
+    app.quit();
+  });
+
+  // Window management handlers
+  ipcMain.handle('get-fullscreen-startup-preference', async () => {
+    try {
+      const userDataPath = app.getPath('userData');
+      const settingsPath = path.join(userDataPath, 'settings.json');
+      
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        return settings.fullscreen_startup !== false; // Default to true if not set
+      }
+      return true; // Default to fullscreen
+    } catch (error) {
+      log.error('Error reading fullscreen startup preference:', error);
+      return true; // Default to fullscreen on error
+    }
+  });
+
+  ipcMain.handle('set-fullscreen-startup-preference', async (event, enabled) => {
+    try {
+      const userDataPath = app.getPath('userData');
+      const settingsPath = path.join(userDataPath, 'settings.json');
+      
+      let settings = {};
+      if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      }
+      
+      settings.fullscreen_startup = enabled;
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      
+      log.info(`Fullscreen startup preference set to: ${enabled}`);
+      return true;
+    } catch (error) {
+      log.error('Error saving fullscreen startup preference:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('toggle-fullscreen', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const isFullscreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullscreen);
+      log.info(`Window fullscreen toggled to: ${!isFullscreen}`);
+      return !isFullscreen;
+    }
+    return false;
+  });
+
+  ipcMain.handle('get-fullscreen-status', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      return mainWindow.isFullScreen();
+    }
+    return false;
+  });
 }
 
 async function initializeApp() {
@@ -1993,7 +2054,7 @@ async function initializeApp() {
     // Setup complete, create the main window
     log.info('Services initialized. Creating main window...');
     loadingScreen.setStatus('Starting main application...', 'success');
-    createMainWindow();
+    await createMainWindow();
     
   } catch (error) {
     log.error(`Initialization error: ${error.message}`, error);
@@ -2005,8 +2066,8 @@ async function initializeApp() {
       loadingScreen?.setStatus('Docker not available. Some features may be limited.', 'warning');
       
       // Continue with app initialization
-      setTimeout(() => {
-        createMainWindow();
+      setTimeout(async () => {
+        await createMainWindow();
       }, 2000);
     } else {
       dialog.showErrorBox('Setup Error', error.message);
@@ -2019,11 +2080,30 @@ async function initializeApp() {
   }
 }
 
-function createMainWindow() {
+async function createMainWindow() {
   if (mainWindow) return;
   
+  // Check fullscreen startup preference
+  let shouldStartFullscreen = true;
+  try {
+    const userDataPath = app.getPath('userData');
+    const settingsPath = path.join(userDataPath, 'settings.json');
+    
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      shouldStartFullscreen = settings.fullscreen_startup !== false; // Default to true if not set
+    }
+  } catch (error) {
+    log.error('Error reading fullscreen startup preference:', error);
+    shouldStartFullscreen = true; // Default to fullscreen on error
+  }
+  
+  log.info(`Creating main window with fullscreen: ${shouldStartFullscreen}`);
+  
   mainWindow = new BrowserWindow({
-    fullscreen: true,
+    fullscreen: shouldStartFullscreen,
+    width: shouldStartFullscreen ? undefined : 1200,
+    height: shouldStartFullscreen ? undefined : 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -2210,8 +2290,8 @@ app.on('window-all-closed', async () => {
   }
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createMainWindow();
+    await createMainWindow();
   }
 });
