@@ -92,20 +92,35 @@ issues.md
 # Local Netlify folder
 .netlify
 
-# CUDA DLL files and other large binaries (too large for GitHub)
-electron/llamacpp-binaries/**/ggml-cuda.dll
-**/ggml-cuda.dll
-electron/llamacpp-binaries/cuda11-q4_0-server
-electron/llamacpp-binaries/*-server
-electron/llamacpp-binaries/**/*-server
+# LLAMACPP BINARIES - Exclude ALL binary files (too large for GitHub)
+# Comprehensive exclusion of all llamacpp binary files and directories
+electron/llamacpp-binaries/
+electron/llamacpp-binaries/**
+electron/llamacpp-binaries/**/*
+!electron/llamacpp-binaries/.gitkeep
+!electron/llamacpp-binaries/README.md
 
-# Exclude all binary files in llamacpp-binaries (DLLs, executables, etc.)
-electron/llamacpp-binaries/**/*.dll
-electron/llamacpp-binaries/**/*.exe
-electron/llamacpp-binaries/**/ggml-*
-electron/llamacpp-binaries/**/llama.*
-electron/llamacpp-binaries/**/lib*
-electron/llamacpp-binaries/**/mtmd.dll
+# Specific binary file patterns (backup exclusions)
+**/*-server
+**/*-server.exe
+**/ggml-*.dll
+**/ggml-*.so
+**/ggml-*.dylib
+**/llama-*
+**/llama.*
+**/lib*.dll
+**/lib*.so
+**/lib*.dylib
+**/mtmd.dll
+**/cuda*.dll
+**/cublas*.dll
+**/cublasLt*.dll
+**/cudart*.dll
+
+# Platform-specific binary directories
 electron/llamacpp-binaries/win32-x64/
-electron/llamacpp-binaries/win32-x64-backup*/
-./electron/llamacpp-binaries/*
+electron/llamacpp-binaries/win32-arm64/
+electron/llamacpp-binaries/darwin-x64/
+electron/llamacpp-binaries/darwin-arm64/
+electron/llamacpp-binaries/linux-x64/
+electron/llamacpp-binaries/linux-arm64/
