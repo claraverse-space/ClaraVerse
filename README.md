@@ -212,18 +212,6 @@ timeline
 
 ## 🚀 **Quick Start**
 
-### 🐳 **Docker Setup** (Recommended)
-```bash
-# Clone the repository
-git clone https://github.com/badboysm890/ClaraVerse.git
-cd ClaraVerse
-
-# Start Clara with one command
-./start-clara.sh
-
-# Open your browser to http://localhost:3000
-```
-
 ### 💻 **Desktop App**
 
 <table>
