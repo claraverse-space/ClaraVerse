@@ -108,4 +108,4 @@ electron/llamacpp-binaries/**/lib*
 electron/llamacpp-binaries/**/mtmd.dll
 electron/llamacpp-binaries/win32-x64/
 electron/llamacpp-binaries/win32-x64-backup*/
- 
+./electron/llamacpp-binaries/*

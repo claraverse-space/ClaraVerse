@@ -47,7 +47,7 @@ import {
   ClaraFileAttachment,
   ClaraArtifact
 } from '../../types/clara_assistant_types';
-import ClaraArtifactRenderer from './clara_assistant_artifact_renderer';
+
 import MessageContentRenderer from './MessageContentRenderer';
 import { ElectronAPI } from '../../types/electron';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -772,7 +772,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   onEdit
 }) => {
   const [showFullMetadata, setShowFullMetadata] = useState(false);
-  const [expandedArtifacts, setExpandedArtifacts] = useState<Record<string, boolean>>({});
+
   const [selectedAttachment, setSelectedAttachment] = useState<{
     attachment: any;
     content: string;
@@ -964,12 +964,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     }
   }, [message.metadata?.isStreaming, message.content.length, message.role, scrollToElementDebounced, scrollToElementImmediate]);
 
-  const handleArtifactToggle = (artifactId: string) => {
-    setExpandedArtifacts(prev => ({
-      ...prev,
-      [artifactId]: !prev[artifactId]
-    }));
-  };
+
 
   const handleFilePreview = (attachment: ClaraFileAttachment) => {
     // Implementation for file preview modal
@@ -1118,23 +1113,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
           {/* Streaming indicator */}
           {message.metadata?.isStreaming && <StreamingIndicator />}
 
-          {/* Artifacts */}
-          {message.artifacts && message.artifacts.length > 0 && (
-            <div className="mt-4 space-y-3">
-              <div className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Generated Content ({message.artifacts.length})
-              </div>
-              {message.artifacts.map((artifact) => (
-                <ClaraArtifactRenderer
-                  key={artifact.id}
-                  artifact={artifact}
-                  isExpanded={expandedArtifacts[artifact.id] || false}
-                  onToggleExpanded={handleArtifactToggle}
-                  onCopy={onCopy}
-                />
-              ))}
-            </div>
-          )}
+          {/* Artifacts are now handled inline within MessageContentRenderer - no separate artifact cards needed */}
         </div>
 
         {/* Message Metadata */}

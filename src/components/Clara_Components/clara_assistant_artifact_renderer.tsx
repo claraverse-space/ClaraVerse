@@ -463,6 +463,8 @@ const CodeHighlighter: React.FC<{
         theme: isDark ? 'dark' : 'default',
         securityLevel: 'loose',
         fontFamily: 'inherit',
+        logLevel: 'fatal', // Suppress error messages in UI
+        suppressErrorRendering: true, // Prevent error messages from being rendered to DOM
         flowchart: {
           useMaxWidth: true,
           htmlLabels: true,
@@ -1182,7 +1184,8 @@ const MermaidRenderer: React.FC<{ content: string }> = ({ content }) => {
           theme: 'default' as const,
           securityLevel: 'loose' as const,
           fontFamily: 'inherit',
-          logLevel: 'debug' as const, // Enable debug logging
+          logLevel: 'fatal' as const, // Suppress error messages in UI
+          suppressErrorRendering: true, // Prevent error messages from being rendered to DOM
           flowchart: {
             useMaxWidth: true,
             htmlLabels: true,
@@ -1932,6 +1935,8 @@ const FullScreenMermaidRenderer: React.FC<{ content: string }> = ({ content }) =
         securityLevel: 'loose',
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
         fontSize: 18, // Increased for better readability at zoom
+        logLevel: 'fatal', // Suppress error messages in UI
+        suppressErrorRendering: true, // Prevent error messages from being rendered to DOM
         // Full-screen optimized settings with vertical preference
         flowchart: {
           useMaxWidth: false, // Allow scaling for better zoom

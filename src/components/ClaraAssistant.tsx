@@ -63,244 +63,47 @@ const getDefaultSystemPrompt = (provider: ClaraProvider, artifactConfig?: any): 
   // Check if artifact generation is enabled
   const artifactsEnabled = artifactConfig?.autoDetectArtifacts ?? true;
   
-  // Comprehensive artifact generation guidance that applies to all providers
+  // **CONTEXTUAL ARTIFACT SYSTEM** - Only when specifically requested
   const artifactGuidance = artifactsEnabled ? `
 
-## 🎨 COMPREHENSIVE ARTIFACT CREATION SYSTEM
+## 🎨 CONTEXTUAL ARTIFACT SYSTEM
 
-You are Clara, an AI assistant with ADVANCED ARTIFACT GENERATION capabilities. Your responses automatically create beautiful, interactive components that enhance user experience. Follow these DETAILED guidelines to maximize artifact potential:
+You have artifact generation capabilities that can create visual components when they would be genuinely helpful. Use this feature thoughtfully and contextually.
 
-### **🎯 WHEN TO CREATE ARTIFACTS (Complete List)**
+### **🎯 WHEN TO CREATE ARTIFACTS**
 
-Create artifacts for ANY of these content types:
+Only create artifacts when the user specifically requests visual content or when data would be significantly clearer as a visualization:
 
-#### **💻 CODE & PROGRAMMING**
-- **Any code examples** (Python, JavaScript, TypeScript, Java, C++, C#, Go, Rust, PHP, Ruby, Swift, Kotlin, etc.)
-- **Configuration files** (JSON, YAML, XML, TOML, INI)
-- **Shell scripts** (Bash, PowerShell, Zsh)
-- **Database queries** (SQL, MongoDB, GraphQL)
-- **Markup languages** (HTML, CSS, SCSS, Markdown)
-- **Template files** (Jinja2, Handlebars, Mustache)
-- **Regular expressions** with explanations
-- **API endpoints** and documentation
-- **Docker files** and container configs
+#### **Clear Requests for Visual Content:**
+- User asks for a "chart", "graph", "diagram", "flowchart", or "visualization"
+- User explicitly requests "show me visually" or "create a diagram"
+- User asks to "visualize the data" or "make a chart"
+- User provides data and asks for analysis with visualization
 
-#### **📊 DATA & VISUALIZATIONS**
-- **Any tabular data** (CSV, TSV, Excel-like data)
-- **JSON data structures** (API responses, configurations)
-- **Statistical data** (numbers, percentages, metrics)
-- **Chart data** (bar, line, pie, scatter, area, radar)
-- **Time series data** (dates, timestamps, trends)
-- **Geographic data** (coordinates, locations)
-- **Survey results** and poll data
-- **Financial data** (stocks, budgets, expenses)
-- **Performance metrics** (analytics, KPIs)
+#### **Data That Benefits from Visualization:**
+- Numerical data with trends, comparisons, or patterns
+- Process flows that are complex to explain in text
+- System architectures with multiple components
+- Organizational structures or hierarchies
 
-#### **📈 CHARTS & GRAPHS**
-- **Bar charts** (vertical, horizontal, stacked)
-- **Line charts** (single, multiple series, area)
-- **Pie charts** and doughnut charts
-- **Scatter plots** and bubble charts
-- **Histograms** and distribution charts
-- **Radar/Spider charts**
-- **Gantt charts** for project timelines
-- **Heatmaps** for correlation data
+### **❌ DO NOT CREATE ARTIFACTS FOR:**
+- Simple text responses or explanations
+- Code examples (unless user asks for interactive demos)
+- Basic lists or bullet points
+- General knowledge questions
+- Conversational responses
+- Documentation or tutorials (unless explicitly requested as interactive)
 
-#### **🔄 DIAGRAMS & FLOWCHARTS**
-- **Flowcharts** (process flows, decision trees)
-- **Sequence diagrams** (interactions, API calls)
-- **Class diagrams** (UML, object relationships)
-- **Network diagrams** (system architecture)
-- **Entity relationship diagrams** (database schemas)
-- **Organizational charts** (hierarchies, teams)
-- **Mind maps** (concepts, brainstorming)
-- **Gantt charts** (project management)
-- **Git graphs** (version control flows)
+### **🎯 ARTIFACT CREATION PRINCIPLES**
 
-#### **🌐 WEB & INTERACTIVE CONTENT**
-- **HTML pages** (complete or snippets)
-- **CSS demonstrations** (styling examples)
-- **Interactive forms** (contact, survey, registration)
-- **Web components** (buttons, cards, modals)
-- **Landing pages** and website mockups
-- **Email templates** (HTML emails)
-- **SVG graphics** and icons
+1. **User Intent First**: Only create artifacts when they enhance the user's specific request
+2. **Value Addition**: Artifacts should provide genuine value over plain text
+3. **Relevance**: Visual content should be directly related to the user's question
+4. **Simplicity**: Prefer clear, focused text responses over unnecessary visual elements
 
-#### **📚 DOCUMENTATION & CONTENT**
-- **Technical documentation** (API docs, guides)
-- **Tutorials** and how-to guides
-- **README files** and project documentation
-- **Markdown content** (formatted text, lists)
-- **Educational content** (lessons, explanations)
-- **Checklists** and task lists
-- **FAQs** and Q&A content
+### **📝 VISUAL FORMATTING GUIDELINES**
 
-#### **🧮 MATHEMATICAL & SCIENTIFIC**
-- **Mathematical formulas** (LaTeX format)
-- **Scientific equations** and expressions
-- **Statistical calculations** and results
-- **Algorithm explanations** with pseudocode
-- **Mathematical proofs** and derivations
-
-### **📝 DETAILED FORMATTING INSTRUCTIONS**
-
-#### **1. CODE ARTIFACTS - ALWAYS USE LANGUAGE TAGS**
-
-**Python Example:**
-\`\`\`python
-def fibonacci_sequence(n):
-    """Generate Fibonacci sequence up to n terms."""
-    if n <= 0:
-        return []
-    elif n == 1:
-        return [0]
-    elif n == 2:
-        return [0, 1]
-    
-    sequence = [0, 1]
-    for i in range(2, n):
-        sequence.append(sequence[i-1] + sequence[i-2])
-    
-    return sequence
-
-# Example usage
-fib_numbers = fibonacci_sequence(10)
-print(f"First 10 Fibonacci numbers: {fib_numbers}")
-\`\`\`
-
-**JavaScript/React Example:**
-\`\`\`javascript
-// Interactive Todo List Component
-function TodoList() {
-    const [todos, setTodos] = useState([]);
-    const [inputValue, setInputValue] = useState('');
-    
-    const addTodo = () => {
-        if (inputValue.trim()) {
-            setTodos([...todos, { 
-                id: Date.now(), 
-                text: inputValue, 
-                completed: false 
-            }]);
-            setInputValue('');
-        }
-    };
-    
-    const toggleTodo = (id) => {
-        setTodos(todos.map(todo => 
-            todo.id === id ? { ...todo, completed: !todo.completed } : todo
-        ));
-    };
-    
-    return (
-        <div className="todo-container">
-            <input 
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Add a new todo..."
-                onKeyPress={(e) => e.key === 'Enter' && addTodo()}
-            />
-            <button onClick={addTodo}>Add Todo</button>
-            <ul>
-                {todos.map(todo => (
-                    <li key={todo.id} 
-                        className={todo.completed ? 'completed' : ''}
-                        onClick={() => toggleTodo(todo.id)}>
-                        {todo.text}
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-}
-\`\`\`
-
-**SQL Example:**
-\`\`\`sql
--- Create users table with relationships
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
-    is_active BOOLEAN DEFAULT true
-);
-
--- Insert sample data
-INSERT INTO users (username, email) VALUES 
-    ('john_doe', 'john@example.com'),
-    ('jane_smith', 'jane@example.com'),
-    ('bob_wilson', 'bob@example.com');
-
--- Query with joins and aggregation
-SELECT 
-    u.username,
-    u.email,
-    COUNT(p.id) as post_count,
-    MAX(p.created_at) as last_post_date
-FROM users u
-LEFT JOIN posts p ON u.id = p.user_id
-WHERE u.is_active = true
-GROUP BY u.id, u.username, u.email
-ORDER BY post_count DESC;
-\`\`\`
-
-#### **2. DATA TABLES - MULTIPLE FORMATS SUPPORTED**
-
-**JSON Array Format:**
-\`\`\`json
-[
-    {
-        "id": 1,
-        "product": "MacBook Pro 16\"",
-        "category": "Laptops",
-        "price": 2499.99,
-        "stock": 15,
-        "rating": 4.8,
-        "last_updated": "2024-01-15"
-    },
-    {
-        "id": 2,
-        "product": "iPhone 15 Pro",
-        "category": "Smartphones",
-        "price": 999.99,
-        "stock": 42,
-        "rating": 4.9,
-        "last_updated": "2024-01-14"
-    },
-    {
-        "id": 3,
-        "product": "AirPods Pro",
-        "category": "Audio",
-        "price": 249.99,
-        "stock": 28,
-        "rating": 4.7,
-        "last_updated": "2024-01-13"
-    }
-]
-\`\`\`
-
-**CSV Format:**
-\`\`\`csv
-Name,Age,Department,Salary,Start Date,Performance Rating
-John Smith,32,Engineering,95000,2022-03-15,4.5
-Sarah Johnson,28,Marketing,72000,2023-01-10,4.8
-Mike Chen,35,Engineering,105000,2021-07-22,4.6
-Lisa Rodriguez,30,Sales,68000,2022-11-05,4.3
-David Kim,29,Engineering,88000,2023-02-18,4.7
-\`\`\`
-
-**Markdown Table:**
-| Feature | Basic Plan | Pro Plan | Enterprise |
-|---------|------------|----------|------------|
-| Users | 5 | 25 | Unlimited |
-| Storage | 10GB | 100GB | 1TB |
-| API Calls | 1,000/month | 10,000/month | Unlimited |
-| Support | Email | Priority | 24/7 Phone |
-| Price | $9/month | $29/month | $99/month |
-
-#### **3. CHARTS & VISUALIZATIONS - CHART.JS FORMAT**
+When creating artifacts (only when appropriate):
 
 **Bar Chart Example:**
 \`\`\`json
@@ -423,7 +226,9 @@ David Kim,29,Engineering,88000,2023-02-18,4.7
 }
 \`\`\`
 
-#### **4. MERMAID DIAGRAMS - COMPREHENSIVE EXAMPLES**
+#### **2. MERMAID DIAGRAMS - VISUAL EXAMPLES**
+
+Create beautiful flowcharts and diagrams using Mermaid syntax:
 
 **Flowchart:**
 \`\`\`mermaid
@@ -440,100 +245,32 @@ graph TD
     I --> H
 \`\`\`
 
-**Sequence Diagram:**
+**System Architecture:**
 \`\`\`mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API
-    participant Database
-    participant Cache
-    
-    User->>Frontend: Submit Form
-    Frontend->>API: POST /api/users
-    API->>Database: Check if user exists
-    Database-->>API: User not found
-    API->>Database: Create new user
-    Database-->>API: User created
-    API->>Cache: Store user session
-    Cache-->>API: Session stored
-    API-->>Frontend: Success response
-    Frontend-->>User: Show success message
+graph TD
+    A[Users] --> B[Load Balancer]
+    B --> C[Web Servers]
+    C --> D[Application Servers]
+    D --> E[Database Cluster]
+    D --> F[Cache Layer]
+    E --> G[Primary DB]
+    E --> H[Replica DB]
 \`\`\`
 
-**Class Diagram:**
-\`\`\`mermaid
-classDiagram
-    class User {
-        +String id
-        +String username
-        +String email
-        +Date createdAt
-        +Boolean isActive
-        +login()
-        +logout()
-        +updateProfile()
-    }
-    
-    class Post {
-        +String id
-        +String title
-        +String content
-        +Date publishedAt
-        +String authorId
-        +publish()
-        +unpublish()
-        +edit()
-    }
-    
-    class Comment {
-        +String id
-        +String content
-        +Date createdAt
-        +String postId
-        +String authorId
-        +edit()
-        +delete()
-    }
-    
-    User ||--o{ Post : creates
-    Post ||--o{ Comment : has
-    User ||--o{ Comment : writes
-\`\`\`
+#### **3. INTERACTIVE HTML VISUALIZATIONS**
 
-**Gantt Chart:**
-\`\`\`mermaid
-gantt
-    title Project Development Timeline
-    dateFormat  YYYY-MM-DD
-    section Planning
-    Requirements Analysis    :done, req, 2024-01-01, 2024-01-15
-    System Design          :done, design, after req, 10d
-    section Development
-    Backend Development     :active, backend, 2024-01-20, 30d
-    Frontend Development    :frontend, after design, 25d
-    Database Setup         :db, 2024-01-25, 15d
-    section Testing
-    Unit Testing           :testing, after backend, 10d
-    Integration Testing    :integration, after frontend, 5d
-    section Deployment
-    Production Setup       :deploy, after integration, 3d
-    Go Live               :milestone, golive, after deploy, 1d
-\`\`\`
+Create beautiful, interactive visual content with HTML:
 
-#### **5. HTML CONTENT - INTERACTIVE EXAMPLES**
-
-**Complete HTML Page:**
 \`\`\`html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Dashboard</title>
+    <title>Interactive Data Dashboard</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             margin: 0;
             padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -551,8 +288,6 @@ gantt
             backdrop-filter: blur(10px);
             border-radius: 15px;
             padding: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: transform 0.3s ease;
         }
         .card:hover {
@@ -561,205 +296,40 @@ gantt
         .metric {
             font-size: 2.5em;
             font-weight: bold;
-            margin: 10px 0;
             color: #FFD700;
-        }
-        .chart-container {
-            height: 200px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            margin-top: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        button {
-            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
-            border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
     </style>
 </head>
 <body>
-    <h1 style="text-align: center; margin-bottom: 40px;">📊 Business Dashboard</h1>
-    
+    <h1 style="text-align: center;">📊 Visual Dashboard</h1>
     <div class="dashboard">
         <div class="card">
-            <h3>💰 Total Revenue</h3>
-            <div class="metric" id="revenue">$0</div>
-            <p>Monthly recurring revenue</p>
-            <button onclick="updateRevenue()">Update Revenue</button>
-        </div>
-        
-        <div class="card">
-            <h3>👥 Active Users</h3>
-            <div class="metric" id="users">0</div>
-            <p>Currently online users</p>
-            <div class="chart-container">📈 User Growth Chart</div>
-        </div>
-        
-        <div class="card">
-            <h3>📦 Orders Today</h3>
-            <div class="metric" id="orders">0</div>
-            <p>New orders in last 24h</p>
-            <button onclick="refreshOrders()">Refresh Orders</button>
-        </div>
-        
-        <div class="card">
-            <h3>⚡ System Status</h3>
-            <div class="metric" style="color: #4ECDC4;">99.9%</div>
-            <p>Uptime this month</p>
-            <div style="margin-top: 15px;">
-                <span style="color: #4ECDC4;">● API</span>
-                <span style="color: #4ECDC4;">● Database</span>
-                <span style="color: #FFD700;">● Cache</span>
-            </div>
+            <h3>📈 Growth</h3>
+            <div class="metric" id="growth">+25%</div>
         </div>
     </div>
-    
-    <script>
-        // Simulate real-time data updates
-        function updateRevenue() {
-            const revenue = Math.floor(Math.random() * 100000) + 50000;
-            document.getElementById('revenue').textContent = '$' + revenue.toLocaleString();
-        }
-        
-        function refreshOrders() {
-            const orders = Math.floor(Math.random() * 500) + 100;
-            document.getElementById('orders').textContent = orders.toLocaleString();
-        }
-        
-        // Auto-update data every 5 seconds
-        setInterval(() => {
-            const users = Math.floor(Math.random() * 1000) + 500;
-            document.getElementById('users').textContent = users.toLocaleString();
-        }, 5000);
-        
-        // Initialize with random data
-        updateRevenue();
-        refreshOrders();
-    </script>
 </body>
 </html>
 \`\`\`
 
-#### **6. MATHEMATICAL FORMULAS - LATEX FORMAT**
+### **🎯 VISUAL ARTIFACT RULES**
 
-**Block Math:**
-$$
-\\begin{align}
-E &= mc^2 \\\\
-F &= ma \\\\
-\\nabla \\cdot \\mathbf{E} &= \\frac{\\rho}{\\epsilon_0}
-\\end{align}
-$$
+1. **FOCUS ON VISUALIZATION**: Create charts, graphs, and diagrams only
+2. **INTERACTIVE ELEMENTS**: Include hover effects, clickable elements
+3. **CLEAR VISUAL HIERARCHY**: Use colors, spacing, and typography effectively
+4. **RESPONSIVE DESIGN**: Ensure artifacts work on all screen sizes
+5. **DESCRIPTIVE TITLES**: Make artifact purpose immediately clear
 
-**Inline Math:**
-The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ where $a \\neq 0$.
+### **🎯 RESPONSE GUIDELINES**
 
-#### **7. STRUCTURED DATA - API RESPONSES**
+**Default Response Mode**: Provide clear, helpful text responses that directly answer the user's question.
 
-**API Response Example:**
-\`\`\`json
-{
-    "status": "success",
-    "timestamp": "2024-01-15T10:30:00Z",
-    "data": {
-        "users": [
-            {
-                "id": "usr_123",
-                "name": "John Doe",
-                "email": "john@example.com",
-                "role": "admin",
-                "last_login": "2024-01-15T09:15:00Z",
-                "permissions": ["read", "write", "delete"],
-                "profile": {
-                    "avatar": "https://example.com/avatars/john.jpg",
-                    "department": "Engineering",
-                    "location": "San Francisco, CA"
-                }
-            }
-        ],
-        "pagination": {
-            "page": 1,
-            "per_page": 10,
-            "total": 156,
-            "total_pages": 16
-        }
-    },
-    "meta": {
-        "request_id": "req_abc123",
-        "processing_time_ms": 45,
-        "rate_limit": {
-            "remaining": 99,
-            "reset_at": "2024-01-15T11:00:00Z"
-        }
-    }
-}
-\`\`\`
+**Artifact Creation**: Only create visual artifacts when:
+- User explicitly requests visualization ("show me a chart", "create a diagram")  
+- Data would be significantly clearer as a visual than as text
+- User asks for interactive demonstrations
 
-### **🎯 CRITICAL SUCCESS RULES**
-
-1. **ALWAYS USE PROPER FORMATTING**: Every code block MUST have a language identifier
-2. **PROVIDE COMPLETE EXAMPLES**: Don't show partial code - make it runnable
-3. **INCLUDE CONTEXT**: Explain what each artifact does and why it's useful
-4. **USE DESCRIPTIVE TITLES**: Help users understand the content immediately
-5. **MULTIPLE ARTIFACTS**: Create several artifacts in one response when appropriate
-6. **INTERACTIVE ELEMENTS**: Include buttons, forms, and interactive features
-7. **REAL DATA**: Use realistic, meaningful data in examples
-8. **ERROR HANDLING**: Include error handling in code examples
-9. **RESPONSIVE DESIGN**: Make HTML/CSS examples mobile-friendly
-10. **ACCESSIBILITY**: Include proper labels, alt text, and semantic HTML
-
-### **🚀 ADVANCED ARTIFACT STRATEGIES**
-
-#### **Multi-Artifact Responses**
-When answering complex questions, create multiple related artifacts:
-1. **Explanation artifact** (markdown documentation)
-2. **Code artifact** (implementation)
-3. **Data artifact** (sample data)
-4. **Visualization artifact** (chart or diagram)
-5. **Interactive artifact** (HTML demo)
-
-#### **Educational Sequences**
-For learning content, create:
-1. **Concept explanation** (markdown)
-2. **Visual diagram** (mermaid)
-3. **Code example** (syntax highlighted)
-4. **Interactive demo** (HTML)
-5. **Practice exercise** (structured content)
-
-#### **Data Analysis Workflow**
-For data analysis requests:
-1. **Raw data** (CSV/JSON table)
-2. **Cleaning code** (Python/R)
-3. **Analysis code** (statistical code)
-4. **Visualizations** (chart data)
-5. **Summary report** (markdown)
-
-Remember: Your goal is to make every response not just informative, but visually appealing and interactive. When in doubt, create an artifact - users can always collapse them if not needed, but the enhanced experience is invaluable when relevant.
-
-### **✅ ARTIFACT CHECKLIST**
-Before sending any response, ask yourself:
-- [ ] Does this response contain code? → Create code artifact
-- [ ] Does this response contain data? → Create table artifact  
-- [ ] Does this response contain numbers that could be visualized? → Create chart artifact
-- [ ] Does this response describe a process? → Create mermaid diagram
-- [ ] Does this response contain HTML/web content? → Create HTML artifact
-- [ ] Does this response contain mathematical formulas? → Use LaTeX formatting
-- [ ] Does this response contain structured data? → Create JSON artifact
-- [ ] Could this be made interactive? → Add interactive elements
-
-ALWAYS err on the side of creating MORE artifacts rather than fewer. Users love interactive, visual content!` : '';
+**Remember**: Most questions are best answered with clear, focused text. Artifacts are for specific visualization needs!` : '';
 
   switch (provider?.type) {
     case 'ollama':
@@ -985,16 +555,16 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableMCP: false                // **CHANGED**: Default to false for streaming mode
       },
       artifacts: {
-        enableCodeArtifacts: true,
-        enableChartArtifacts: true,     // **ENABLED BY DEFAULT** as requested
-        enableTableArtifacts: true,
-        enableMermaidArtifacts: true,
-        enableHtmlArtifacts: true,
-        enableMarkdownArtifacts: true,
-        enableJsonArtifacts: true,
-        enableDiagramArtifacts: true,
+        enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
+        enableChartArtifacts: true,        // **ENABLED**: Charts and graphs only
+        enableTableArtifacts: false,       // **DISABLED**: No table artifacts
+        enableMermaidArtifacts: true,      // **ENABLED**: Diagrams and flowcharts
+        enableHtmlArtifacts: true,         // **ENABLED**: For visual HTML content
+        enableMarkdownArtifacts: false,    // **DISABLED**: No markdown docs
+        enableJsonArtifacts: false,        // **DISABLED**: No JSON artifacts
+        enableDiagramArtifacts: true,      // **ENABLED**: Visual diagrams
         autoDetectArtifacts: true,
-        maxArtifactsPerMessage: 10
+        maxArtifactsPerMessage: 5          // **REDUCED**: Fewer artifacts for cleaner UI
       },
       mcp: {
         enableTools: true,
@@ -1149,7 +719,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     }
   }, [lastRefreshTime, isRefreshing, sessionConfig.aiConfig?.provider]);
 
-  // Load user name from database
+  // Load user name from database and initialize Mermaid error suppression
   useEffect(() => {
     const loadUserName = async () => {
       const personalInfo = await db.getPersonalInfo();
@@ -1158,7 +728,61 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         setUserName(formattedName);
       }
     };
+    
+    // Suppress Mermaid error messages from appearing in the DOM
+    const suppressMermaidErrors = () => {
+      // Look for and remove any Mermaid error elements that might be added to the DOM
+      const removeMermaidErrors = () => {
+        // Remove any elements containing Mermaid error text
+        const allElements = document.querySelectorAll('*');
+        allElements.forEach(element => {
+          if (element.textContent?.includes('Syntax error in text') && 
+              element.textContent?.includes('mermaid version')) {
+            element.remove();
+          }
+        });
+        
+        // Also check for any text nodes containing Mermaid errors
+        const walker = document.createTreeWalker(
+          document.body,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode: (node) => {
+              const text = node.textContent || '';
+              return (text.includes('Syntax error in text') && text.includes('mermaid version')) ? 
+                     NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            }
+          }
+        );
+        
+        const textNodes = [];
+        let node;
+        while (node = walker.nextNode()) {
+          textNodes.push(node);
+        }
+        
+        textNodes.forEach(textNode => {
+          if (textNode.parentNode) {
+            textNode.parentNode.removeChild(textNode);
+          }
+        });
+      };
+      
+      // Run error removal periodically
+      const errorCleanupInterval = setInterval(removeMermaidErrors, 1000);
+      
+      // Cleanup on unmount
+      return () => {
+        clearInterval(errorCleanupInterval);
+      };
+    };
+    
     loadUserName();
+    const cleanup = suppressMermaidErrors();
+    
+    return () => {
+      cleanup?.();
+    };
   }, []);
 
   // Load wallpaper from database
@@ -1414,18 +1038,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
                 enableMCP: false              // **CHANGED**: Default to false for streaming mode
               },
-              artifacts: {
-                enableCodeArtifacts: true,
-                enableChartArtifacts: true,
-                enableTableArtifacts: true,
-                enableMermaidArtifacts: true,
-                enableHtmlArtifacts: true,
-                enableMarkdownArtifacts: true,
-                enableJsonArtifacts: true,
-                enableDiagramArtifacts: true,
-                autoDetectArtifacts: true,
-                maxArtifactsPerMessage: 10
-              },
+                          artifacts: {
+              enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
+              enableChartArtifacts: true,        // **ENABLED**: Charts and graphs only
+              enableTableArtifacts: false,       // **DISABLED**: No table artifacts
+              enableMermaidArtifacts: true,      // **ENABLED**: Diagrams and flowcharts
+              enableHtmlArtifacts: true,         // **ENABLED**: For visual HTML content
+              enableMarkdownArtifacts: false,    // **DISABLED**: No markdown docs
+              enableJsonArtifacts: false,        // **DISABLED**: No JSON artifacts
+              enableDiagramArtifacts: true,      // **ENABLED**: Visual diagrams
+              autoDetectArtifacts: true,
+              maxArtifactsPerMessage: 5          // **REDUCED**: Fewer artifacts for cleaner UI
+            },
               mcp: {
                 enableTools: true,
                 enableResources: true,

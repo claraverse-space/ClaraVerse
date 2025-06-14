@@ -811,16 +811,17 @@ graph TD
 7. **REAL DATA**: Use realistic, meaningful data in examples
 8. **RESPONSIVE DESIGN**: Make HTML/CSS examples mobile-friendly
 
-### **✅ ARTIFACT CHECKLIST**
-Before sending any response, ask yourself:
-- [ ] Does this response contain code? → Create code artifact
-- [ ] Does this response contain data? → Create table artifact  
-- [ ] Does this response contain numbers that could be visualized? → Create chart artifact
-- [ ] Does this response describe a process? → Create mermaid diagram
-- [ ] Does this response contain HTML/web content? → Create HTML artifact
-- [ ] Could this be made interactive? → Add interactive elements
+### **🎯 RESPONSE GUIDELINES**
 
-ALWAYS err on the side of creating MORE artifacts rather than fewer. Users love interactive, visual content!` : '';
+**Default Response Mode**: Provide clear, helpful text responses that directly answer the user's question.
+
+**Artifact Creation**: Only create visual artifacts when the user specifically requests them:
+- User asks for charts, graphs, or visualizations
+- User requests interactive demonstrations  
+- User explicitly asks to "show me visually"
+- Data would be significantly clearer as a visual than text
+
+**Remember**: Most conversations benefit from clear, focused text responses. Save artifacts for when they genuinely add value!` : '';
 
     switch (provider?.type) {
       case 'ollama':

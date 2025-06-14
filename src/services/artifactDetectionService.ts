@@ -30,6 +30,7 @@ export interface DetectionResult {
     totalArtifacts: number;
     artifactTypes: string[];
     detectionConfidence: number;
+    skippedInlineVisuals: boolean;
   };
 }
 
@@ -372,116 +373,167 @@ export class ArtifactDetectionService {
   static detectArtifacts(context: DetectionContext): DetectionResult {
     const { messageContent, userMessage = '', conversationHistory = [], artifactConfig } = context;
     const artifacts: ClaraArtifact[] = [];
+    const placeholders: { [key: string]: string } = {};
     let cleanedContent = messageContent;
     let detectionConfidence = 0;
 
-    // Get artifact configuration with defaults
-    const config = {
-      enableCodeArtifacts: artifactConfig?.enableCodeArtifacts ?? true,
-      enableChartArtifacts: artifactConfig?.enableChartArtifacts ?? true,
-      enableTableArtifacts: artifactConfig?.enableTableArtifacts ?? true,
-      enableMermaidArtifacts: artifactConfig?.enableMermaidArtifacts ?? true,
-      enableHtmlArtifacts: artifactConfig?.enableHtmlArtifacts ?? true,
-      enableMarkdownArtifacts: artifactConfig?.enableMarkdownArtifacts ?? true,
-      enableJsonArtifacts: artifactConfig?.enableJsonArtifacts ?? true,
-      enableDiagramArtifacts: artifactConfig?.enableDiagramArtifacts ?? true,
-      maxArtifactsPerMessage: artifactConfig?.maxArtifactsPerMessage ?? 10
-    };
+    console.log('🎯 Starting artifact detection with inline visual filtering...');
+    console.log('📋 Content length:', messageContent.length);
 
-    // 1. Extract code blocks (highest priority) - if enabled
-    if (config.enableCodeArtifacts) {
-      const codeArtifacts = this.extractCodeBlocks(messageContent);
-      artifacts.push(...codeArtifacts.artifacts);
-      cleanedContent = codeArtifacts.cleanedContent;
-      detectionConfidence += codeArtifacts.confidence;
+    // **NEW: Skip artifact creation for visual content that will be rendered inline**
+    // This prevents duplicate rendering - charts/diagrams will show inline instead of as artifacts
+    const skipVisualArtifacts = artifactConfig?.enableInlineVisuals !== false; // Default to true
+
+    if (skipVisualArtifacts) {
+      console.log('✅ Inline visual rendering enabled - skipping chart/diagram artifacts to prevent duplicates');
     }
 
-    // 2. Extract tables - if enabled
-    if (config.enableTableArtifacts) {
-      const tableArtifacts = this.extractTables(cleanedContent);
-      artifacts.push(...tableArtifacts.artifacts);
-      cleanedContent = tableArtifacts.cleanedContent;
-      detectionConfidence += tableArtifacts.confidence;
-    }
+    try {
+      // Get artifact configuration with defaults
+      const config = {
+        enableCodeArtifacts: artifactConfig?.enableCodeArtifacts ?? true,
+        enableChartArtifacts: artifactConfig?.enableChartArtifacts ?? true,
+        enableTableArtifacts: artifactConfig?.enableTableArtifacts ?? true,
+        enableMermaidArtifacts: artifactConfig?.enableMermaidArtifacts ?? true,
+        enableHtmlArtifacts: artifactConfig?.enableHtmlArtifacts ?? true,
+        enableMarkdownArtifacts: artifactConfig?.enableMarkdownArtifacts ?? true,
+        enableJsonArtifacts: artifactConfig?.enableJsonArtifacts ?? true,
+        enableDiagramArtifacts: artifactConfig?.enableDiagramArtifacts ?? true,
+        maxArtifactsPerMessage: artifactConfig?.maxArtifactsPerMessage ?? 10
+      };
 
-    // 3. Extract Mermaid diagrams - if enabled
-    if (config.enableMermaidArtifacts || config.enableDiagramArtifacts) {
-      const diagramArtifacts = this.extractMermaidDiagrams(cleanedContent);
-      artifacts.push(...diagramArtifacts.artifacts);
-      cleanedContent = diagramArtifacts.cleanedContent;
-      detectionConfidence += diagramArtifacts.confidence;
-    }
+      // 1. Extract code blocks (highest priority) - if enabled
+      if (config.enableCodeArtifacts) {
+        const codeResult = this.extractCodeBlocks(messageContent);
+        console.log(`📦 Found ${codeResult.artifacts.length} code blocks`);
 
-    // 4. Extract JSON/CSV data - if enabled
-    if (config.enableJsonArtifacts) {
-      const dataArtifacts = this.extractStructuredData(cleanedContent);
-      artifacts.push(...dataArtifacts.artifacts);
-      cleanedContent = dataArtifacts.cleanedContent;
-      detectionConfidence += dataArtifacts.confidence;
-    }
+        for (const artifact of codeResult.artifacts) {
+          console.log(`🔍 Processing code block: ${artifact.language || 'unknown'} (${artifact.content.length} chars)`);
 
-    // 5. Extract math formulas - if markdown is enabled
-    if (config.enableMarkdownArtifacts) {
-      const mathArtifacts = this.extractMathFormulas(cleanedContent);
-      artifacts.push(...mathArtifacts.artifacts);
-      cleanedContent = mathArtifacts.cleanedContent;
-      detectionConfidence += mathArtifacts.confidence;
-    }
+          // **MODIFIED: Skip visual artifacts if inline rendering is enabled**
+          if (skipVisualArtifacts) {
+            // Check if this is a visual element that will be rendered inline
+            const isInlineVisual = this.isInlineVisualContentFromArtifact(artifact);
+            if (isInlineVisual) {
+              console.log(`⏭️ Skipping ${artifact.language} artifact - will be rendered inline in chat`);
+              continue; // Skip creating artifact, let inline renderer handle it
+            }
+          }
 
-    // 6. Context-aware detection based on user request - if any types are enabled
-    if (Object.values(config).some(enabled => enabled === true)) {
-      const contextArtifacts = this.detectFromContext(cleanedContent, userMessage, conversationHistory);
-      // Filter context artifacts based on configuration
-      const filteredContextArtifacts = contextArtifacts.artifacts.filter(artifact => {
-        switch (artifact.type) {
-          case 'code': return config.enableCodeArtifacts;
-          case 'chart': return config.enableChartArtifacts;
-          case 'table': return config.enableTableArtifacts;
-          case 'mermaid': return config.enableMermaidArtifacts;
-          case 'html': return config.enableHtmlArtifacts;
-          case 'markdown': return config.enableMarkdownArtifacts;
-          case 'json': return config.enableJsonArtifacts;
-          case 'diagram': return config.enableDiagramArtifacts;
-          default: return true; // Allow unknown types by default
+          // Add non-visual artifacts
+          artifacts.push(artifact);
+          console.log(`✅ Added ${artifact.type} artifact: ${artifact.title}`);
         }
-      });
-      
-      artifacts.push(...filteredContextArtifacts);
-      cleanedContent = contextArtifacts.cleanedContent;
-      detectionConfidence += contextArtifacts.confidence;
-    }
-
-    // Apply max artifacts limit
-    const limitedArtifacts = artifacts.slice(0, config.maxArtifactsPerMessage);
-    
-    // Log configuration usage
-    if (artifacts.length > limitedArtifacts.length) {
-      console.log(`🎨 Artifact limit applied: ${artifacts.length} detected, ${limitedArtifacts.length} kept (max: ${config.maxArtifactsPerMessage})`);
-    }
-    
-    if (limitedArtifacts.length > 0) {
-      console.log(`🎨 Artifact detection config used:`, {
-        enabledTypes: Object.entries(config)
-          .filter(([key, value]) => key.startsWith('enable') && value === true)
-          .map(([key]) => key.replace('enable', '').replace('Artifacts', '')),
-        maxLimit: config.maxArtifactsPerMessage,
-        detected: limitedArtifacts.length
-      });
-    }
-
-    // Normalize confidence score
-    const maxPossibleConfidence = 6; // Number of detection methods
-    const normalizedConfidence = Math.min(detectionConfidence / maxPossibleConfidence, 1);
-
-    return {
-      artifacts: limitedArtifacts,
-      cleanedContent: cleanedContent.trim(),
-      detectionSummary: {
-        totalArtifacts: limitedArtifacts.length,
-        artifactTypes: [...new Set(limitedArtifacts.map(a => a.type))],
-        detectionConfidence: normalizedConfidence
+        
+        cleanedContent = codeResult.cleanedContent;
+        detectionConfidence += codeResult.confidence;
       }
-    };
+
+      // 2. Extract tables - if enabled
+      if (config.enableTableArtifacts) {
+        const tableArtifacts = this.extractTables(cleanedContent);
+        artifacts.push(...tableArtifacts.artifacts);
+        cleanedContent = tableArtifacts.cleanedContent;
+        detectionConfidence += tableArtifacts.confidence;
+      }
+
+      // 3. Extract Mermaid diagrams - if enabled AND not skipping visual artifacts
+      if ((config.enableMermaidArtifacts || config.enableDiagramArtifacts) && !skipVisualArtifacts) {
+        const diagramArtifacts = this.extractMermaidDiagrams(cleanedContent);
+        artifacts.push(...diagramArtifacts.artifacts);
+        cleanedContent = diagramArtifacts.cleanedContent;
+        detectionConfidence += diagramArtifacts.confidence;
+      } else if (skipVisualArtifacts) {
+        console.log('⏭️ Skipping Mermaid diagram artifacts - will be rendered inline in chat');
+      }
+
+      // 4. Extract JSON/CSV data - if enabled
+      if (config.enableJsonArtifacts) {
+        const dataArtifacts = this.extractStructuredData(cleanedContent);
+        artifacts.push(...dataArtifacts.artifacts);
+        cleanedContent = dataArtifacts.cleanedContent;
+        detectionConfidence += dataArtifacts.confidence;
+      }
+
+      // 5. Extract math formulas - if markdown is enabled
+      if (config.enableMarkdownArtifacts) {
+        const mathArtifacts = this.extractMathFormulas(cleanedContent);
+        artifacts.push(...mathArtifacts.artifacts);
+        cleanedContent = mathArtifacts.cleanedContent;
+        detectionConfidence += mathArtifacts.confidence;
+      }
+
+      // 6. Context-aware detection based on user request - if any types are enabled
+      if (Object.values(config).some(enabled => enabled === true)) {
+        const contextArtifacts = this.detectFromContext(cleanedContent, userMessage, conversationHistory);
+        // Filter context artifacts based on configuration
+        const filteredContextArtifacts = contextArtifacts.artifacts.filter(artifact => {
+          switch (artifact.type) {
+            case 'code': return config.enableCodeArtifacts;
+            case 'chart': return config.enableChartArtifacts;
+            case 'table': return config.enableTableArtifacts;
+            case 'mermaid': return config.enableMermaidArtifacts;
+            case 'html': return config.enableHtmlArtifacts;
+            case 'markdown': return config.enableMarkdownArtifacts;
+            case 'json': return config.enableJsonArtifacts;
+            case 'diagram': return config.enableDiagramArtifacts;
+            default: return true; // Allow unknown types by default
+          }
+        });
+        
+        artifacts.push(...filteredContextArtifacts);
+        cleanedContent = contextArtifacts.cleanedContent;
+        detectionConfidence += contextArtifacts.confidence;
+      }
+
+      // Apply max artifacts limit
+      const limitedArtifacts = artifacts.slice(0, config.maxArtifactsPerMessage);
+      
+      // Log configuration usage
+      if (artifacts.length > limitedArtifacts.length) {
+        console.log(`🎨 Artifact limit applied: ${artifacts.length} detected, ${limitedArtifacts.length} kept (max: ${config.maxArtifactsPerMessage})`);
+      }
+      
+      if (limitedArtifacts.length > 0) {
+        console.log(`🎨 Artifact detection config used:`, {
+          enabledTypes: Object.entries(config)
+            .filter(([key, value]) => key.startsWith('enable') && value === true)
+            .map(([key]) => key.replace('enable', '').replace('Artifacts', '')),
+          maxLimit: config.maxArtifactsPerMessage,
+          detected: limitedArtifacts.length
+        });
+      }
+
+      // Normalize confidence score
+      const maxPossibleConfidence = 6; // Number of detection methods
+      const normalizedConfidence = Math.min(detectionConfidence / maxPossibleConfidence, 1);
+
+      // Return the final detection result
+      return {
+        artifacts: limitedArtifacts,
+        cleanedContent: cleanedContent,
+        detectionSummary: {
+          totalArtifacts: limitedArtifacts.length,
+          artifactTypes: [...new Set(limitedArtifacts.map(a => a.type))],
+          detectionConfidence: normalizedConfidence,
+          skippedInlineVisuals: skipVisualArtifacts
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error during artifact detection:', error);
+      
+      return {
+        artifacts: [],
+        cleanedContent: messageContent,
+        detectionSummary: {
+          totalArtifacts: 0,
+          artifactTypes: [],
+          detectionConfidence: 0,
+          skippedInlineVisuals: skipVisualArtifacts
+        }
+      };
+    }
   }
 
   /**
@@ -1133,6 +1185,27 @@ export class ArtifactDetectionService {
    */
   private static generateId(): string {
     return `artifact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * **NEW: Check if artifact should be rendered inline instead of as a separate artifact**
+   */
+  private static isInlineVisualContentFromArtifact(artifact: ClaraArtifact): boolean {
+    const { language, content, type } = artifact;
+    
+    // Check for Mermaid diagrams
+    if (type === 'mermaid' || language === 'mermaid' || 
+        content.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitgraph|mindmap|timeline|requirement|c4context)/i)) {
+      return true;
+    }
+    
+    // Check for Chart.js JSON
+    if ((language === 'json' || type === 'chart') && content.includes('"type":') && content.includes('"data":') && 
+        (content.includes('"bar"') || content.includes('"line"') || content.includes('"pie"') || content.includes('"doughnut"'))) {
+      return true;
+    }
+    
+    return false;
   }
 }
 

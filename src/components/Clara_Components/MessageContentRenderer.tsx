@@ -3,6 +3,7 @@
  * 
  * Enhanced content renderer for Clara messages that supports:
  * - Markdown rendering with syntax highlighting
+ * - Inline chart and diagram rendering (replacing code blocks)
  * - HTML code detection and preview
  * - Code block syntax highlighting
  * - Interactive elements
@@ -14,8 +15,36 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Eye, EyeOff, ExternalLink, Code2 } from 'lucide-react';
+import { Copy, Eye, EyeOff, ExternalLink, Code2, Loader2, BarChart3, GitBranch, Maximize2 } from 'lucide-react';
 import { copyToClipboard } from '../../utils/clipboard';
+
+// Import Chart.js components
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+} from 'chart.js';
+import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+);
 
 interface MessageContentRendererProps {
   content: string;
@@ -24,249 +53,652 @@ interface MessageContentRendererProps {
   isStreaming?: boolean;
 }
 
-interface CodeBlockProps {
+/**
+ * Inline Mermaid Diagram Renderer
+ */
+const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = ({ content, isDark = false }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [renderedSvg, setRenderedSvg] = useState<string>('');
+  const diagramRef = useRef<HTMLDivElement>(null);
+  const diagramId = useRef(`inline-mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+
+  useEffect(() => {
+    const renderMermaid = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Dynamic import of mermaid
+        const mermaid = await import('mermaid');
+        
+        // Initialize mermaid with configuration
+        mermaid.default.initialize({
+          startOnLoad: false,
+          theme: isDark ? 'dark' : 'default',
+          securityLevel: 'loose',
+          fontFamily: 'inherit',
+          logLevel: 'fatal', // Suppress error messages in UI
+          suppressErrorRendering: true, // Prevent error messages from being rendered to DOM
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: 'basis'
+          },
+          sequence: {
+            useMaxWidth: true,
+            wrap: true
+          },
+          gantt: {
+            useMaxWidth: true
+          }
+        });
+
+        // Generate unique ID for this diagram
+        const uniqueId = diagramId.current;
+        
+        // Render the diagram
+        const result = await mermaid.default.render(uniqueId, content.trim());
+        setRenderedSvg(result.svg);
+        
+      } catch (err) {
+        console.error('Inline Mermaid rendering error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown rendering error';
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (content.trim()) {
+      renderMermaid();
+    } else {
+      setIsLoading(false);
+      setError('Empty diagram content');
+    }
+  }, [content, isDark]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+        <Loader2 className="w-5 h-5 animate-spin text-purple-600 dark:text-purple-400" />
+        <span className="ml-2 text-purple-700 dark:text-purple-300 text-sm">Rendering diagram...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="flex items-center gap-2 text-red-700 dark:text-red-400 mb-2">
+          <GitBranch className="w-4 h-4" />
+          <span className="font-medium">Diagram Error</span>
+        </div>
+        <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
+        <details className="text-xs">
+          <summary className="text-red-500 dark:text-red-400 cursor-pointer">Show diagram source</summary>
+          <pre className="mt-2 p-2 bg-red-100 dark:bg-red-900/40 rounded text-red-700 dark:text-red-300 overflow-x-auto">
+            {content}
+          </pre>
+        </details>
+      </div>
+    );
+  }
+
+  if (!renderedSvg) {
+    return (
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">No diagram to display</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/30 dark:to-blue-900/30 border-b border-purple-200 dark:border-purple-700">
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Mermaid Diagram</span>
+        </div>
+        <button
+          onClick={() => {
+            // Create a modal for full-screen view
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm';
+            modal.innerHTML = `
+              <div class="relative bg-white dark:bg-gray-900 w-full h-full p-8 overflow-auto">
+                <button onclick="this.parentElement.parentElement.remove()" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">&times;</button>
+                <div class="w-full h-full flex items-center justify-center">
+                  ${renderedSvg}
+                </div>
+              </div>
+            `;
+            document.body.appendChild(modal);
+          }}
+          className="p-1 text-purple-500 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-200 transition-colors"
+          title="View fullscreen"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+      
+      {/* Diagram Content */}
+      <div className="p-4 overflow-auto" style={{ maxHeight: '600px' }}>
+        <div 
+          ref={diagramRef}
+          className="w-full flex justify-center"
+          dangerouslySetInnerHTML={{ __html: renderedSvg }}
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Inline HTML Renderer
+ */
+const InlineHTMLRenderer: React.FC<{ content: string; isDark?: boolean }> = ({ content, isDark = false }) => {
+  const [showCode, setShowCode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  
+  // Clean and validate HTML content
+  const cleanHTML = useMemo(() => {
+    try {
+      // Basic HTML validation and enhancement
+      let html = content.trim();
+      
+      // If it's a fragment, wrap it in a full HTML document
+      if (!html.includes('<!DOCTYPE') && !html.includes('<html')) {
+        html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 20px; 
+            line-height: 1.6;
+            background: ${isDark ? '#1f2937' : '#ffffff'};
+            color: ${isDark ? '#f9fafb' : '#111827'};
+        }
+        * { box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    ${html}
+</body>
+</html>`;
+      }
+      
+      return html;
+    } catch (err) {
+      setError('Invalid HTML content');
+      return '';
+    }
+  }, [content, isDark]);
+
+  useEffect(() => {
+    if (iframeRef.current && cleanHTML && !error) {
+      try {
+        const iframe = iframeRef.current;
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(cleanHTML);
+          doc.close();
+        }
+      } catch (err) {
+        console.error('HTML rendering error:', err);
+        setError('Failed to render HTML content');
+      }
+    }
+  }, [cleanHTML, error]);
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="flex items-center gap-2 text-red-700 dark:text-red-400 mb-2">
+          <Code2 className="w-4 h-4" />
+          <span className="font-medium">HTML Error</span>
+        </div>
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/30 dark:to-red-900/30 border-b border-orange-200 dark:border-orange-700">
+        <div className="flex items-center gap-2">
+          <Code2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+          <span className="text-sm font-medium text-orange-700 dark:text-orange-300">HTML Preview</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCode(!showCode)}
+            className="px-2 py-1 text-xs bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300 rounded hover:bg-orange-200 dark:hover:bg-orange-900/70 transition-colors"
+          >
+            {showCode ? 'Hide Code' : 'Show Code'}
+          </button>
+          <button
+            onClick={() => {
+              const newWindow = window.open('', '_blank');
+              if (newWindow) {
+                newWindow.document.write(cleanHTML);
+                newWindow.document.close();
+              }
+            }}
+            className="p-1 text-orange-500 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-200 transition-colors"
+            title="Open in new window"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      
+      {/* HTML Preview */}
+      <div className="relative">
+        <iframe
+          ref={iframeRef}
+          className="w-full border-0 bg-white dark:bg-gray-900"
+          style={{ height: '400px', minHeight: '200px' }}
+          sandbox="allow-scripts allow-same-origin allow-forms"
+          title="HTML Preview"
+        />
+      </div>
+      
+      {/* Code Display */}
+      {showCode && (
+        <div className="border-t border-gray-200 dark:border-gray-700">
+          <SyntaxHighlighter
+            style={isDark ? oneDark : oneLight}
+            language="html"
+            PreTag="div"
+            className="text-sm"
+            showLineNumbers={true}
+          >
+            {content}
+          </SyntaxHighlighter>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Inline Chart Renderer for Chart.js JSON
+ */
+const InlineChartRenderer: React.FC<{ content: string; isDark?: boolean }> = ({ content, isDark = false }) => {
+  const [error, setError] = useState<string | null>(null);
+  const [chartData, setChartData] = useState<any>(null);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(content);
+      setChartData(parsed);
+      setError(null);
+    } catch (err) {
+      setError('Invalid chart JSON format');
+    }
+  }, [content]);
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="flex items-center gap-2 text-red-700 dark:text-red-400 mb-2">
+          <BarChart3 className="w-4 h-4" />
+          <span className="font-medium">Chart Error</span>
+        </div>
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  if (!chartData) {
+    return (
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Loading chart...</p>
+      </div>
+    );
+  }
+
+  const renderChart = () => {
+    const chartType = chartData.type?.toLowerCase();
+    const commonProps = {
+      data: chartData.data,
+      options: {
+        ...chartData.options,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          ...chartData.options?.plugins,
+          legend: {
+            ...chartData.options?.plugins?.legend,
+            labels: {
+              ...chartData.options?.plugins?.legend?.labels,
+              color: isDark ? '#e5e7eb' : '#374151'
+            }
+          }
+        },
+        scales: chartData.options?.scales ? {
+          ...chartData.options.scales,
+          x: {
+            ...chartData.options.scales.x,
+            ticks: {
+              ...chartData.options.scales.x?.ticks,
+              color: isDark ? '#e5e7eb' : '#374151'
+            },
+            grid: {
+              ...chartData.options.scales.x?.grid,
+              color: isDark ? '#374151' : '#e5e7eb'
+            }
+          },
+          y: {
+            ...chartData.options.scales.y,
+            ticks: {
+              ...chartData.options.scales.y?.ticks,
+              color: isDark ? '#e5e7eb' : '#374151'
+            },
+            grid: {
+              ...chartData.options.scales.y?.grid,
+              color: isDark ? '#374151' : '#e5e7eb'
+            }
+          }
+        } : undefined
+      }
+    };
+
+    switch (chartType) {
+      case 'line':
+        return <Line {...commonProps} />;
+      case 'bar':
+        return <Bar {...commonProps} />;
+      case 'pie':
+        return <Pie {...commonProps} />;
+      case 'doughnut':
+        return <Doughnut {...commonProps} />;
+      default:
+        return <Bar {...commonProps} />;
+    }
+  };
+
+  return (
+    <div className="my-4 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-b border-blue-200 dark:border-blue-700">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {chartData.type?.charAt(0).toUpperCase() + chartData.type?.slice(1) || 'Chart'}
+          </span>
+          {chartData.options?.plugins?.title?.text && (
+            <>
+              <span className="text-blue-400 dark:text-blue-500">•</span>
+              <span className="text-sm text-blue-600 dark:text-blue-400">
+                {chartData.options.plugins.title.text}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {/* Chart Content */}
+      <div className="p-6" style={{ height: '400px' }}>
+        {renderChart()}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Enhanced Code Block Component with Inline Visual Rendering
+ */
+const CodeBlock: React.FC<{
   children: string;
-  className?: string;
   language?: string;
+  className?: string;
   isInline?: boolean;
   isDark?: boolean;
   isStreaming?: boolean;
-}
-
-const CodeBlock: React.FC<CodeBlockProps> = React.memo(({ children, className, language, isInline = false, isDark = false, isStreaming = false }) => {
+  [key: string]: any;
+}> = ({ children, language, className, isInline, isDark, isStreaming, ...props }) => {
   const [copied, setCopied] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
+  const [showCode, setShowCode] = useState(false);
   
-  // Extract language from className (format: "language-javascript")
-  const lang = useMemo(() => language || className?.replace('language-', '') || 'text', [language, className]);
+  const code = String(children).replace(/\n$/, '');
   
-  // Check if this is HTML content that could be previewed (memoized to prevent re-renders)
-  const isHtmlContent = useMemo(() => {
-    return lang === 'html' || lang === 'xml' || 
-      (children.trim().startsWith('<') && children.trim().endsWith('>'));
-  }, [lang, children]);
+  // Check if this should be rendered as a visual element instead of code
+  const shouldRenderAsVisual = !isInline && code.length > 20;
   
-  // Initialize preview state only once when component mounts
-  useEffect(() => {
-    setShowPreview(isHtmlContent && !isStreaming);
-  }, [isHtmlContent]); // Only depend on isHtmlContent, not isStreaming
+  // Detect Mermaid diagrams
+  const isMermaidDiagram = shouldRenderAsVisual && (
+    language === 'mermaid' ||
+    code.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitgraph|mindmap|timeline|requirement|c4context)/i)
+  );
   
-  // Force code view during streaming to prevent iframe reloading
-  const shouldShowPreview = showPreview && !isStreaming && isHtmlContent;
+  // Detect Chart.js JSON
+  const isChartJSON = shouldRenderAsVisual && (
+    language === 'json' && (
+      code.includes('"type":') && 
+      code.includes('"data":') && 
+      (code.includes('"bar"') || code.includes('"line"') || code.includes('"pie"') || code.includes('"doughnut"'))
+    )
+  );
   
-  // Create a stable key for the iframe that only changes when content actually changes
-  const iframeKey = useMemo(() => {
-    return `iframe-${lang}-${btoa(children.substring(0, 100))}`;
-  }, [lang, children]);
-  
+  // Detect HTML content
+  const isHTML = shouldRenderAsVisual && (
+    language === 'html' ||
+    (code.includes('<') && code.includes('>') && (
+      code.includes('<html') || 
+      code.includes('<div') || 
+      code.includes('<p') || 
+      code.includes('<h1') || 
+      code.includes('<h2') || 
+      code.includes('<h3') || 
+      code.includes('<section') || 
+      code.includes('<article') || 
+      code.includes('<header') || 
+      code.includes('<footer') ||
+      code.includes('<main') ||
+      code.includes('<nav') ||
+      code.includes('<aside') ||
+      code.includes('<form') ||
+      code.includes('<button') ||
+      code.includes('<input') ||
+      code.includes('<table') ||
+      code.includes('<ul') ||
+      code.includes('<ol') ||
+      code.includes('<li') ||
+      code.includes('<span') ||
+      code.includes('<a ')
+    ))
+  );
+
   const handleCopy = async () => {
-    const success = await copyToClipboard(children);
+    const success = await copyToClipboard(code);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
-  
-  const handleTogglePreview = () => {
-    setShowPreview(!showPreview);
-  };
-  
-  const previewHtml = useMemo(() => {
-    if (!isHtmlContent) return '';
-    
-    // Basic sanitization and enhancement for preview
-    let html = children.trim();
-    
-    // Add basic styling if not present
-    if (!html.includes('<style') && !html.includes('style=')) {
-      html = `
-        <style>
-          body { 
-            font-family: system-ui, -apple-system, sans-serif; 
-            margin: 20px; 
-            line-height: 1.6; 
-          }
-          * { box-sizing: border-box; }
-        </style>
-        ${html}
-      `;
-    }
-    
-    return html;
-  }, [isHtmlContent, children]);
 
-  // For inline code, render simply
+  // If inline code, render normally
   if (isInline) {
     return (
-      <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-sm font-mono">
+      <code 
+        className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-sm font-mono"
+        {...props}
+      >
         {children}
       </code>
     );
   }
 
-  return (
-    <div className="relative group my-4" ref={previewRef}>
-      {/* Code block header */}
-      <div className="flex items-center justify-between bg-gray-50/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-t-lg text-sm backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <Code2 className="w-4 h-4" />
-          <span className="font-medium capitalize">{lang}</span>
-          {isHtmlContent && (
-            <span className={`text-xs px-2 py-1 rounded border ${
-              isStreaming 
-                ? 'bg-yellow-500/20 dark:bg-yellow-400/20 text-yellow-700 dark:text-yellow-300 border-yellow-300/30 dark:border-yellow-500/30'
-                : showPreview 
-                  ? 'bg-green-500/20 dark:bg-green-400/20 text-green-700 dark:text-green-300 border-green-300/30 dark:border-green-500/30'
-                  : 'bg-blue-500/20 dark:bg-blue-400/20 text-blue-700 dark:text-blue-300 border-blue-300/30 dark:border-blue-500/30'
-            }`}>
-              {isStreaming ? 'Streaming...' : shouldShowPreview ? 'Live Preview' : 'Source Code'}
-            </span>
-          )}
-        </div>
+  // If this is a Mermaid diagram, render it visually (but only after streaming is complete)
+  if (isMermaidDiagram && !isStreaming) {
+    return (
+      <div className="my-4">
+        <InlineMermaidRenderer content={code} isDark={isDark} />
         
-        <div className="flex items-center gap-2">
-          {isHtmlContent && (
-            <button
-              onClick={handleTogglePreview}
-              disabled={isStreaming}
-              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
-                isStreaming 
-                  ? 'opacity-50 cursor-not-allowed' 
-                  : 'hover:bg-gray-200/70 dark:hover:bg-gray-600/50'
-              }`}
-              title={
-                isStreaming 
-                  ? 'Preview disabled during streaming'
-                  : shouldShowPreview 
-                    ? 'Show source code' 
-                    : 'Show live preview'
-              }
-            >
-              {shouldShowPreview ? <Code2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              <span className="text-xs">{shouldShowPreview ? 'Source' : 'Preview'}</span>
-            </button>
-          )}
-          
+        {/* Show code option */}
+        <div className="mt-2 flex justify-end">
           <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 hover:bg-gray-200/70 dark:hover:bg-gray-600/50 rounded transition-colors"
-            title="Copy code"
+            onClick={() => setShowCode(!showCode)}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
           >
-            <Copy className="w-4 h-4" />
-            <span className="text-xs">{copied ? 'Copied!' : 'Copy'}</span>
+            <Code2 className="w-3 h-3" />
+            {showCode ? 'Hide source' : 'Show source'}
           </button>
         </div>
-      </div>
-
-      {/* Content area - either code or preview */}
-      <div className="relative">
-        {shouldShowPreview ? (
-          /* HTML Preview */
-          <div className="bg-white dark:bg-gray-900 rounded-b-lg overflow-hidden border border-gray-300 dark:border-gray-600 border-t-0">
-            <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
-              <ExternalLink className="w-4 h-4" />
-              Live Preview
+        
+        {showCode && (
+          <div className="mt-2 relative">
+            <div className="absolute top-2 right-2 z-10">
+              <button
+                onClick={handleCopy}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors"
+                title="Copy code"
+              >
+                {copied ? <Eye className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </button>
             </div>
-            <iframe
-              key={iframeKey}
-              srcDoc={previewHtml}
-              className="w-full h-96 border-0"
-              title="HTML Preview"
-              sandbox="allow-scripts"
-              style={{ minHeight: '300px' }}
-            />
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language={language || 'text'}
+              PreTag="div"
+              className="text-sm rounded-lg"
+              showLineNumbers={false}
+              {...props}
+            >
+              {code}
+            </SyntaxHighlighter>
           </div>
-        ) : (
-          /* Code block */
-          <SyntaxHighlighter
-            style={isDark ? oneDark : oneLight}
-            language={lang}
-            customStyle={{
-              margin: 0,
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-              borderBottomLeftRadius: '0.5rem',
-              borderBottomRightRadius: '0.5rem',
-              backgroundColor: isDark ? 'rgba(31, 41, 55, 0.9)' : 'rgba(249, 250, 251, 0.9)',
-            }}
-            codeTagProps={{
-              style: {
-                fontSize: '14px',
-                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-              }
-            }}
-          >
-            {children}
-          </SyntaxHighlighter>
         )}
       </div>
+    );
+  }
+
+  // If this is a Chart.js JSON, render it visually (but only after streaming is complete)
+  if (isChartJSON && !isStreaming) {
+    return (
+      <div className="my-4">
+        <InlineChartRenderer content={code} isDark={isDark} />
+        
+        {/* Show code option */}
+        <div className="mt-2 flex justify-end">
+          <button
+            onClick={() => setShowCode(!showCode)}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+          >
+            <Code2 className="w-3 h-3" />
+            {showCode ? 'Hide source' : 'Show source'}
+          </button>
+        </div>
+        
+        {showCode && (
+          <div className="mt-2 relative">
+            <div className="absolute top-2 right-2 z-10">
+              <button
+                onClick={handleCopy}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors"
+                title="Copy code"
+              >
+                {copied ? <Eye className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language="json"
+              PreTag="div"
+              className="text-sm rounded-lg"
+              showLineNumbers={false}
+              {...props}
+            >
+              {code}
+            </SyntaxHighlighter>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // If this is HTML content, render it visually (but only after streaming is complete)
+  if (isHTML && !isStreaming) {
+    return (
+      <div className="my-4">
+        <InlineHTMLRenderer content={code} isDark={isDark} />
+      </div>
+    );
+  }
+
+  // Regular code block rendering
+  return (
+    <div className="relative my-4 group">
+      {/* Copy button */}
+      <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={handleCopy}
+          className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors"
+          title="Copy code"
+        >
+          {copied ? <Eye className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+
+      <SyntaxHighlighter
+        style={isDark ? oneDark : oneLight}
+        language={language || 'text'}
+        PreTag="div"
+        className="text-sm rounded-lg"
+        showLineNumbers={code.split('\n').length > 5}
+        {...props}
+      >
+        {code}
+      </SyntaxHighlighter>
     </div>
   );
-});
+};
 
-const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo(({ 
+const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo(({
   content, 
   className = '',
   isDark = false,
   isStreaming = false
 }) => {
+  // Auto-detect dark mode if not explicitly provided
   const [darkMode, setDarkMode] = useState(isDark);
 
-  // Update dark mode detection
   useEffect(() => {
-    const updateDarkMode = () => {
-      setDarkMode(document.documentElement.classList.contains('dark'));
-    };
-    
-    updateDarkMode();
-    
-    // Listen for theme changes
-    const observer = new MutationObserver(updateDarkMode);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-    
-    return () => observer.disconnect();
-  }, []);
+    if (!isDark) {
+      const checkTheme = () => {
+        const isDarkMode = document.documentElement.classList.contains('dark') ||
+                          window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setDarkMode(isDarkMode);
+      };
 
-  // Check if content looks like it might be Markdown
-  const hasMarkdownFeatures = useMemo(() => {
-    const markdownPatterns = [
-      /^#{1,6}\s/m,     // Headers
-      /\*\*.*?\*\*/,    // Bold
-      /\*.*?\*/,        // Italic
-      /`.*?`/,          // Inline code
-      /```[\s\S]*?```/, // Code blocks
-      /^\s*[-*+]\s/m,   // Lists
-      /^\s*\d+\.\s/m,   // Numbered lists
-      /\[.*?\]\(.*?\)/, // Links
-      /!\[.*?\]\(.*?\)/ // Images
-    ];
-    
-    return markdownPatterns.some(pattern => pattern.test(content));
-  }, [content]);
+      checkTheme();
+      const observer = new MutationObserver(checkTheme);
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+      
+      return () => observer.disconnect();
+    } else {
+      setDarkMode(isDark);
+    }
+  }, [isDark]);
 
-  // If content doesn't appear to be Markdown, render as plain text
-  if (!hasMarkdownFeatures) {
-    return (
-      <div className={`prose prose-base dark:prose-invert max-w-none ${className}`}>
-        <div className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 leading-relaxed text-[15px]">
-          {content}
-        </div>
-      </div>
-    );
-  }
-
-  // Render as Markdown
+  // Render as Markdown with inline visual rendering
   return (
     <div className={`prose prose-base dark:prose-invert max-w-none ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
         components={{
-          // Custom code block renderer
+          // Custom code block renderer with inline visual rendering
           code: ({ node, inline, className, children, ...props }: any) => {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
