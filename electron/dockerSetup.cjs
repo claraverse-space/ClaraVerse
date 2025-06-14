@@ -117,8 +117,31 @@ class DockerSetup extends EventEmitter {
    * Get architecture-specific image name
    */
   getArchSpecificImage(baseImage, tag) {
-    // For multi-arch images, Docker will automatically pull the correct architecture
-    // But we can specify platform if needed
+    // Special handling for clara-backend images which have architecture-specific tags
+    if (baseImage === 'clara17verse/clara-backend') {
+      const arch = os.arch();
+      const platform = os.platform();
+      
+      console.log(`Getting clara-backend image for platform: ${platform}, arch: ${arch}`);
+      
+      // For Mac (ARM64), use the default tag without suffix
+      if (platform === 'darwin' && arch === 'arm64') {
+        console.log(`Using ARM64 image: ${baseImage}:${tag}`);
+        return `${baseImage}:${tag}`;
+      }
+      
+      // For non-Mac systems (typically AMD64), use the -amd64 suffix
+      if (arch === 'x64' || (platform !== 'darwin')) {
+        console.log(`Using AMD64 image: ${baseImage}:${tag}-amd64`);
+        return `${baseImage}:${tag}-amd64`;
+      }
+      
+      // Fallback to original tag
+      console.log(`Using fallback image: ${baseImage}:${tag}`);
+      return `${baseImage}:${tag}`;
+    }
+    
+    // For other images, use the original approach (multi-arch images)
     return `${baseImage}:${tag}`;
   }
 
@@ -210,6 +233,98 @@ class DockerSetup extends EventEmitter {
         reason: 'Error checking for updates', 
         error: error.message 
       };
+    }
+  }
+
+  /**
+   * Automatically update containers without user prompts
+   */
+  async autoUpdateContainers(statusCallback) {
+    try {
+      // Check if we've already checked for updates recently (within the last hour)
+      const lastUpdateCheckFile = path.join(this.appDataPath, 'last_update_check.json');
+      const now = Date.now();
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      
+      let shouldCheckForUpdates = true;
+      try {
+        if (fs.existsSync(lastUpdateCheckFile)) {
+          const lastCheck = JSON.parse(fs.readFileSync(lastUpdateCheckFile, 'utf8'));
+          if (now - lastCheck.timestamp < oneHour) {
+            statusCallback('Skipping update check (checked recently)');
+            shouldCheckForUpdates = false;
+          }
+        }
+      } catch (error) {
+        console.log('Error reading last update check file:', error.message);
+        // Continue with update check if we can't read the file
+      }
+      
+      if (!shouldCheckForUpdates) {
+        return true;
+      }
+      
+      statusCallback(`Checking for container updates (${this.systemArch})...`);
+      
+      // Check for updates for all containers in parallel
+      const updateChecks = [];
+      for (const [name, config] of Object.entries(this.containers)) {
+        updateChecks.push(
+          this.checkForImageUpdates(config.image, statusCallback)
+            .then(result => ({ ...result, containerName: name }))
+            .catch(error => ({
+              hasUpdate: false,
+              error: error.message,
+              containerName: name,
+              imageName: config.image
+            }))
+        );
+      }
+
+      const updateResults = await Promise.all(updateChecks);
+      const updatesAvailable = updateResults.filter(result => result.hasUpdate);
+
+      // Save the timestamp of this update check
+      try {
+        fs.writeFileSync(lastUpdateCheckFile, JSON.stringify({ timestamp: now }));
+      } catch (error) {
+        console.log('Error saving last update check timestamp:', error.message);
+      }
+
+      if (updatesAvailable.length > 0) {
+        statusCallback(`Found ${updatesAvailable.length} container update(s) available - updating automatically...`);
+        
+        // Update containers in parallel for faster startup
+        const updatePromises = updatesAvailable.map(async (update) => {
+          try {
+            await this.pullImageWithProgress(update.imageName, statusCallback);
+            return { success: true, imageName: update.imageName };
+          } catch (error) {
+            statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
+            console.error('Update error:', error);
+            return { success: false, imageName: update.imageName, error: error.message };
+          }
+        });
+
+        const updateResults = await Promise.all(updatePromises);
+        const successCount = updateResults.filter(r => r.success).length;
+        const failCount = updateResults.filter(r => !r.success).length;
+        
+        if (successCount > 0) {
+          statusCallback(`✓ Updated ${successCount} container(s) successfully`);
+        }
+        if (failCount > 0) {
+          statusCallback(`⚠️ ${failCount} container(s) failed to update`, 'warning');
+        }
+      } else {
+        statusCallback('All containers are up to date');
+      }
+
+      return true;
+    } catch (error) {
+      statusCallback(`Update check failed: ${error.message}`, 'warning');
+      console.error('Auto update error:', error);
+      return false;
     }
   }
 
@@ -784,61 +899,8 @@ class DockerSetup extends EventEmitter {
         statusCallback('⚠️ Ollama not detected. Please install Ollama manually if you want local AI models. Visit: https://ollama.com', 'warning');
       }
 
-      // Check for container updates
-      statusCallback(`Checking for container updates (${this.systemArch})...`);
-      const updateChecks = [];
-      
-      for (const [name, config] of Object.entries(this.containers)) {
-        updateChecks.push(
-          this.checkForImageUpdates(config.image, statusCallback)
-            .then(result => ({ ...result, containerName: name }))
-        );
-      }
-
-      const updateResults = await Promise.all(updateChecks);
-      const updatesAvailable = updateResults.filter(result => result.hasUpdate);
-
-      if (updatesAvailable.length > 0) {
-        statusCallback(`Found ${updatesAvailable.length} container update(s) available`);
-        
-        // Temporarily disable alwaysOnTop for loading screen to allow dialog to appear on top
-        if (loadingScreen) {
-          loadingScreen.setAlwaysOnTop(false);
-        }
-        
-                try {
-          // Show update dialog with loading screen window as parent
-          const updateChoice = await this.showUpdateDialog(updateResults, loadingScreen ? loadingScreen.window : null);
-          
-          if (updateChoice.cancel) {
-            statusCallback('Setup cancelled by user', 'warning');
-            return false;
-          }
-        
-          if (updateChoice.updateAll) {
-            statusCallback('Updating containers...');
-            
-            // Pull updated images
-            for (const update of updateChoice.updates) {
-              try {
-                await this.pullImageWithProgress(update.imageName, statusCallback);
-              } catch (error) {
-                statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
-                console.error('Update error:', error);
-              }
-            }
-          } else if (updateChoice.skip) {
-            statusCallback('Skipping container updates');
-          }
-        } finally {
-          // Re-enable alwaysOnTop for loading screen
-          if (loadingScreen) {
-            loadingScreen.setAlwaysOnTop(true);
-          }
-        }
-      } else {
-        statusCallback('All containers are up to date');
-      }
+      // Automatically check for and install container updates
+      await this.autoUpdateContainers(statusCallback);
 
       // Ensure all images are available locally
       for (const [name, config] of Object.entries(this.containers)) {

@@ -109,12 +109,20 @@ const useAutonomousAgentStatus = (): UseAutonomousAgentStatusReturn => {
     }));
 
     // Auto-hide the status panel after completion animation
-    setTimeout(() => {
+    if (autoHideDelay === 0) {
+      // Hide immediately if delay is 0
       setStatus(prev => ({
         ...prev,
         isActive: false
       }));
-    }, autoHideDelay);
+    } else {
+      setTimeout(() => {
+        setStatus(prev => ({
+          ...prev,
+          isActive: false
+        }));
+      }, autoHideDelay);
+    }
   }, []);
 
   const errorAgent = useCallback((message: string) => {

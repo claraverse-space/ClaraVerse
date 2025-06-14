@@ -2005,7 +2005,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   autoTTSTrigger = null,
   onPreloadModel,
   showAdvancedOptionsPanel = false,
-  onAdvancedOptionsToggle
+  onAdvancedOptionsToggle,
+  autonomousAgentStatus
 }) => {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -3226,6 +3227,12 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                       // Trigger aggressive preload on focus for fastest TTFT - SILENT
                       console.log('⚡ Input focused - triggering silent immediate preload');
                       onPreloadModel?.();
+                      
+                      // Close autonomous agent status panel when user focuses input
+                      if (autonomousAgentStatus?.isActive) {
+                        console.log('🏁 Input focused - closing autonomous agent status panel');
+                        autonomousAgentStatus.completeAgent('Input focused - closing status panel', 0);
+                      }
                     }}
                     onInput={() => {
                       // Trigger preload on very first keystroke - SILENT

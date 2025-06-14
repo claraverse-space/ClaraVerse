@@ -618,6 +618,12 @@ export interface ClaraInputProps {
   
   /** Callback when advanced options visibility changes */
   onAdvancedOptionsToggle?: (show: boolean) => void;
+  
+  /** Autonomous agent status for closing on input focus */
+  autonomousAgentStatus?: {
+    isActive: boolean;
+    completeAgent: (message?: string, autoHideDelay?: number) => void;
+  };
 }
 
 // ================================

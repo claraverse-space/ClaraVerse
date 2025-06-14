@@ -475,6 +475,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     try {
       // Parse new professional status messages
       if (chunk.includes('**AGENT_STATUS:ACTIVATED**')) {
+        console.log('🤖 ACTIVATION DETECTED: Starting autonomous agent');
         autonomousAgentStatus.startAgent();
         autonomousAgentStatus.updatePhase('initializing', 'Autonomous agent activated');
       } else if (chunk.includes('**AGENT_STATUS:PLAN_CREATED**')) {
@@ -506,6 +507,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           autonomousAgentStatus.setToolsLoaded(toolCount);
         }
       } else if (chunk.includes('**Task completed**') || chunk.includes('**Auto Mode Session Summary**')) {
+        console.log('✅ COMPLETION DETECTED in stream: Task completed message found');
         autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
         // Auto-hide status panel after 2 seconds to show clean results
         autonomousAgentStatus.completeAgent('Task completed successfully', 2000);
@@ -1369,6 +1371,14 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         conversationHistory, // Pass conversation context
         enhancedStreamingCallback // Use enhanced callback
       );
+
+      // **IMMEDIATE COMPLETION**: Close autonomous agent status panel as soon as streaming completes
+      // SIMPLE FIX: Just close it if it's active, no matter what
+      if (autonomousAgentStatus.isActive) {
+        console.log('🏁 STREAM COMPLETED - CLOSING STATUS PANEL IMMEDIATELY');
+        autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
+        autonomousAgentStatus.completeAgent('Stream completed', 0); // Close immediately, no delay
+      }
       
       // Post-process autonomous agent responses for better UX
       if (enforcedConfig.autonomousAgent?.enabled && aiMessage.content) {
@@ -1473,19 +1483,40 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
           metadata: enhancedMetadata
         };
 
-        // **CRITICAL FIX**: Always complete the autonomous agent when AI message is finalized
-        // This ensures the status panel completes even if completion markers weren't detected in stream
-        if (autonomousAgentStatus.status.phase !== 'completed') {
-          console.log('🔧 Auto-completing autonomous agent status (completion markers not detected in stream)');
+                      // **FINAL SAFETY CHECK**: Last resort completion if all other methods failed
+        if (autonomousAgentStatus.status.phase !== 'completed' && autonomousAgentStatus.status.phase !== 'error') {
+          console.log('⚠️ Final safety completion - All other completion methods failed');
+          console.log('📊 Final safety - Current phase:', autonomousAgentStatus.status.phase);
+          console.log('📊 Final safety - Current step:', autonomousAgentStatus.status.currentStep, 'of', autonomousAgentStatus.status.totalSteps);
+          
+          // Update progress to final step
+          const finalStep = autonomousAgentStatus.status.totalSteps || Math.max(autonomousAgentStatus.status.currentStep, 1);
+          autonomousAgentStatus.updateProgress(finalStep, 'Task completed (final safety)');
+          
           autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
-          // Auto-hide status panel after 2 seconds to show clean results
-          autonomousAgentStatus.completeAgent('Task completed successfully', 2000);
+          autonomousAgentStatus.completeAgent('Task completed successfully', 0); // Close immediately
         }
       }
 
       setMessages(prev => prev.map(msg => 
         msg.id === streamingMessageId ? finalMessage : msg
       ));
+
+              // **BACKUP COMPLETION CHECK**: Only run if immediate completion didn't trigger
+        if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive && 
+            autonomousAgentStatus.status.phase !== 'completed' && autonomousAgentStatus.status.phase !== 'error') {
+          
+          console.log('🔄 Backup completion check - Stream completion may have been missed');
+          console.log('📊 Backup completion - Current phase:', autonomousAgentStatus.status.phase);
+          console.log('📊 Backup completion - Response length:', finalMessage.content.length);
+          
+          // Update progress to show completion
+          const finalStep = autonomousAgentStatus.status.totalSteps || Math.max(autonomousAgentStatus.status.currentStep, 1);
+          autonomousAgentStatus.updateProgress(finalStep, 'Task completed');
+          
+          autonomousAgentStatus.updatePhase('completed', 'Task completed successfully');
+          autonomousAgentStatus.completeAgent('Task completed successfully', 0); // Close immediately
+        }
 
       // Update latest AI response for auto TTS
       setLatestAIResponse(finalMessage.content);
@@ -1687,6 +1718,8 @@ Would you like me to help with text-only responses for now?`,
           // **CRITICAL FIX**: Complete autonomous agent on error to prevent stuck status
           if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
             console.log('🔧 Auto-completing autonomous agent status due to error');
+            console.log('📊 Error completion - Current phase:', autonomousAgentStatus.status.phase);
+            console.log('📊 Error completion - Current step:', autonomousAgentStatus.status.currentStep, 'of', autonomousAgentStatus.status.totalSteps);
             autonomousAgentStatus.updatePhase('error', 'An error occurred during execution');
             autonomousAgentStatus.errorAgent('Execution failed');
           }
@@ -1717,14 +1750,22 @@ Would you like me to help with text-only responses for now?`,
 
       // **SAFETY NET**: Ensure autonomous agent status completes within reasonable time
       if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
-        // Set a timeout to auto-complete if still active after 30 seconds
+        // Set a timeout to auto-complete if still active after 10 seconds
         setTimeout(() => {
-          if (autonomousAgentStatus.isActive && autonomousAgentStatus.status.phase !== 'completed') {
+          if (autonomousAgentStatus.isActive && autonomousAgentStatus.status.phase !== 'completed' && autonomousAgentStatus.status.phase !== 'error') {
             console.log('⏰ Safety timeout: Auto-completing stuck autonomous agent status');
+            console.log('📊 Safety timeout - Current phase:', autonomousAgentStatus.status.phase);
+            console.log('📊 Safety timeout - Current step:', autonomousAgentStatus.status.currentStep, 'of', autonomousAgentStatus.status.totalSteps);
+            
+            // Update progress to show completion
+            autonomousAgentStatus.updateProgress(
+              autonomousAgentStatus.status.totalSteps || autonomousAgentStatus.status.currentStep + 1, 
+              'Task completed (safety timeout)'
+            );
             autonomousAgentStatus.updatePhase('completed', 'Task completed (timeout safety)');
             autonomousAgentStatus.completeAgent('Task completed', 1000);
           }
-        }, 30000); // 30 second safety timeout
+        }, 10000); // 10 second safety timeout (reduced from 30)
       }
     }
   }, [currentSession, messages, sessionConfig, isVisible, models]);
@@ -2657,6 +2698,60 @@ Console output:`;
       }, 1000);
     };
 
+    // Debug current autonomous agent status
+    (window as any).debugAutonomousStatus = () => {
+      console.log('🔍 === Autonomous Agent Debug Info ===');
+      console.log('📊 Is Active:', autonomousAgentStatus.isActive);
+      console.log('📊 Current Status:', autonomousAgentStatus.status);
+      console.log('📊 Tool Executions:', autonomousAgentStatus.toolExecutions);
+      console.log('📊 Current Config - Tools Enabled:', sessionConfig.aiConfig?.features?.enableTools);
+      console.log('📊 Current Config - Autonomous Enabled:', sessionConfig.aiConfig?.autonomousAgent?.enabled);
+      console.log('📊 Current Config - Streaming:', sessionConfig.aiConfig?.features?.enableStreaming);
+      console.log('📊 Current Config - MCP:', sessionConfig.aiConfig?.features?.enableMCP);
+      console.log('📊 Provider:', sessionConfig.aiConfig?.provider);
+    };
+
+    // Test autonomous agent completion manually
+    (window as any).testManualCompletion = () => {
+      console.log('🧪 Testing manual autonomous agent completion...');
+      if (autonomousAgentStatus.isActive) {
+        console.log('🏁 Forcing completion of active autonomous agent');
+        autonomousAgentStatus.updatePhase('completed', 'Manual completion test');
+        autonomousAgentStatus.completeAgent('Manual test completed', 1500);
+      } else {
+        console.log('⚠️ No active autonomous agent to complete');
+        console.log('📊 Starting test agent first...');
+        autonomousAgentStatus.startAgent(3);
+        setTimeout(() => {
+          console.log('🏁 Now completing test agent');
+          autonomousAgentStatus.updatePhase('completed', 'Test completion');
+          autonomousAgentStatus.completeAgent('Test completed', 1500);
+        }, 2000);
+      }
+    };
+
+    // Test autonomous agent with auto-completion after stream
+    (window as any).testStreamCompletion = () => {
+      console.log('🧪 Testing stream completion detection...');
+      
+      // Start autonomous agent
+      autonomousAgentStatus.startAgent(3);
+      autonomousAgentStatus.updatePhase('executing', 'Simulating tool execution...');
+      autonomousAgentStatus.updateProgress(1, 'Step 1 in progress...');
+      
+      // Simulate a stream completing after 3 seconds
+      setTimeout(() => {
+        console.log('🏁 Simulating stream completion...');
+        
+        // This simulates what happens when the stream completes
+        if (autonomousAgentStatus.isActive && autonomousAgentStatus.status.phase !== 'completed') {
+          console.log('🔄 Auto-completing due to stream end');
+          autonomousAgentStatus.updatePhase('completed', 'Stream completed successfully');
+          autonomousAgentStatus.completeAgent('Stream completed successfully', 1500);
+        }
+      }, 3000);
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -3006,6 +3101,10 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
             onPreloadModel={handlePreloadModel}
             showAdvancedOptionsPanel={showAdvancedOptions}
             onAdvancedOptionsToggle={setShowAdvancedOptions}
+            autonomousAgentStatus={{
+              isActive: autonomousAgentStatus.isActive,
+              completeAgent: autonomousAgentStatus.completeAgent
+            }}
           />
         </div>
 
