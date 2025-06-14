@@ -14,7 +14,6 @@ import AgentStudio from './components/AgentStudio';
 import Lumaui from './components/Lumaui';
 import LumaUILite from './components/LumaUILite';
 import { db } from './db';
-import { InterpreterProvider } from './contexts/InterpreterContext';
 import { ProvidersProvider } from './contexts/ProvidersContext';
 import ClaraAssistant from './components/ClaraAssistant';
 import { StartupService } from './services/startupService';
@@ -128,23 +127,21 @@ function App() {
 
   return (
     <ProvidersProvider>
-      <InterpreterProvider onPageChange={setActivePage}>
-        <div className="min-h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100">
-          {showOnboarding ? (
-            <Onboarding onComplete={handleOnboardingComplete} />
-          ) : (
-            <>
-              {/* Always render Clara in background - visible when activePage is 'clara' */}
-              <div className={activePage === 'clara' ? 'block' : 'hidden'} data-clara-container>
-                <ClaraAssistant onPageChange={setActivePage} />
-              </div>
-              
-              {/* Render other content when not on Clara page */}
-              {activePage !== 'clara' && renderContent()}
-            </>
-          )}
-        </div>
-      </InterpreterProvider>
+      <div className="min-h-screen bg-gradient-to-br from-white to-sakura-100 dark:from-gray-900 dark:to-sakura-100">
+        {showOnboarding ? (
+          <Onboarding onComplete={handleOnboardingComplete} />
+        ) : (
+          <>
+            {/* Always render Clara in background - visible when activePage is 'clara' */}
+            <div className={activePage === 'clara' ? 'block' : 'hidden'} data-clara-container>
+              <ClaraAssistant onPageChange={setActivePage} />
+            </div>
+            
+            {/* Render other content when not on Clara page */}
+            {activePage !== 'clara' && renderContent()}
+          </>
+        )}
+      </div>
     </ProvidersProvider>
   );
 }
