@@ -84,6 +84,13 @@ class LoadingScreen {
     }
   }
 
+  // Set always on top property
+  setAlwaysOnTop(alwaysOnTop) {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.setAlwaysOnTop(alwaysOnTop);
+    }
+  }
+
   // Close the loading screen
   close() {
     if (this.window) {

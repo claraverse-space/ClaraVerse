@@ -16,6 +16,35 @@ const WatchdogService = require('./watchdogService.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
+/**
+ * Helper function to show dialogs properly during startup when loading screen is active
+ * Temporarily disables alwaysOnTop to allow dialogs to appear above loading screen
+ */
+async function showStartupDialog(loadingScreen, dialogType, title, message, buttons = ['OK']) {
+  // Temporarily disable alwaysOnTop for loading screen
+  if (loadingScreen) {
+    loadingScreen.setAlwaysOnTop(false);
+  }
+  
+  try {
+    // Show dialog with proper window options
+    const result = await dialog.showMessageBox(loadingScreen ? loadingScreen.window : null, {
+      type: dialogType,
+      title: title,
+      message: message,
+      buttons: buttons,
+      alwaysOnTop: true,
+      modal: true
+    });
+    return result;
+  } finally {
+    // Re-enable alwaysOnTop for loading screen
+    if (loadingScreen) {
+      loadingScreen.setAlwaysOnTop(true);
+    }
+  }
+}
+
 // Configure the main process logger
 log.transports.file.level = 'info';
 log.info('Application starting...');
@@ -1979,81 +2008,118 @@ async function initializeApp() {
       }
     });
     
+    // Initialize essential services (non-blocking)
     mcpService = new MCPService();
     updateService = platformUpdateService;
-    
-    // Initialize Docker setup
     dockerSetup = new DockerSetup();
     
-    // Setup Docker environment (skip during build/CI if specified)
+    // Create the main window immediately for fast startup
+    log.info('Creating main window...');
+    loadingScreen.setStatus('Starting main application...', 'success');
+    await createMainWindow();
+    
+    // Initialize services in background after main window is ready
+    initializeServicesInBackground();
+    
+  } catch (error) {
+    log.error(`Initialization error: ${error.message}`, error);
+    loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
+    
+    // For critical startup errors, create main window anyway and show error
+    await createMainWindow();
+    await showStartupDialog(loadingScreen, 'error', 'Startup Error', `Critical error during startup: ${error.message}\n\nSome features may not work properly.`);
+  }
+}
+
+/**
+ * Initialize all services in background after main window is ready
+ * This provides fast startup while services initialize progressively
+ */
+async function initializeServicesInBackground() {
+  try {
+    log.info('Starting background service initialization...');
+    
+    // Send initialization status to renderer if main window is ready
+    const sendStatus = (service, status, type = 'info') => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('background-service-status', { service, status, type });
+      }
+      log.info(`[Background] ${service}: ${status}`);
+    };
+
+    // Initialize Docker setup in background
+    sendStatus('Docker', 'Initializing Docker environment...', 'info');
+    
     if (process.env.SKIP_DOCKER_SETUP === 'true') {
       log.info('Skipping Docker setup due to SKIP_DOCKER_SETUP environment variable');
-      loadingScreen.setStatus('Docker setup skipped. Some features may be limited.', 'info');
+      sendStatus('Docker', 'Docker setup skipped. Some features may be limited.', 'warning');
     } else {
-      loadingScreen.setStatus('Setting up Docker environment...', 'info');
-      const success = await dockerSetup.setup((status, type = 'info') => {
-        loadingScreen.setStatus(status, type);
-        
-        // Only show error dialogs for critical errors, not Docker unavailability during startup
-        if (type === 'error' && !status.includes('Docker is not running')) {
-          dialog.showErrorBox('Setup Error', status);
-        }
-      });
+      try {
+        const dockerSuccess = await dockerSetup.setup(async (status, type = 'info') => {
+          sendStatus('Docker', status, type);
+          
+          // Only show error dialogs for critical errors that need user attention
+          if (type === 'error' && !status.includes('Docker is not running') && !status.includes('not available')) {
+            // Don't block startup, just log and notify user through main window
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('background-service-error', { service: 'Docker', error: status });
+            }
+          }
+        }, false);
 
-      if (!success) {
-        loadingScreen.setStatus('Docker not available. Some features may be limited.', 'warning');
-        log.warn('Docker setup incomplete. Continuing without Docker services.');
-        // Continue with app initialization even without Docker
+        if (dockerSuccess) {
+          sendStatus('Docker', 'Docker services ready', 'success');
+        } else {
+          sendStatus('Docker', 'Docker not available. Some features may be limited.', 'warning');
+        }
+      } catch (dockerError) {
+        log.error('Docker initialization error:', dockerError);
+        sendStatus('Docker', 'Docker initialization failed', 'error');
       }
     }
 
-    // Initialize llama-swap service
-    loadingScreen.setStatus('Initializing LLM service...', 'info');
+    // Initialize LlamaSwap service in background
+    sendStatus('LLM', 'Initializing LLM service...', 'info');
     try {
-      // Start llama-swap service
       const llamaSwapSuccess = await llamaSwapService.start();
       if (llamaSwapSuccess) {
-        loadingScreen.setStatus('LLM service started successfully', 'success');
-        log.info('Llama-swap service started successfully');
+        sendStatus('LLM', 'LLM service started successfully', 'success');
       } else {
-        loadingScreen.setStatus('LLM service failed to start (will be available for manual start)', 'warning');
-        log.warn('Llama-swap service failed to start during initialization');
+        sendStatus('LLM', 'LLM service failed to start (available for manual start)', 'warning');
       }
     } catch (llamaSwapError) {
-      loadingScreen.setStatus('LLM service initialization failed (will be available for manual start)', 'warning');
       log.error('Error initializing llama-swap service:', llamaSwapError);
+      sendStatus('LLM', 'LLM service initialization failed (available for manual start)', 'warning');
     }
 
-    // Initialize MCP service
-    loadingScreen.setStatus('Initializing MCP service...', 'info');
+    // Initialize MCP service in background
+    sendStatus('MCP', 'Initializing MCP service...', 'info');
     try {
-      log.info('MCP service initialized successfully');
-      loadingScreen.setStatus('MCP service initialized', 'success');
+      sendStatus('MCP', 'MCP service initialized', 'success');
       
       // Auto-start previously running servers
-      loadingScreen.setStatus('Restoring MCP servers...', 'info');
+      sendStatus('MCP', 'Restoring MCP servers...', 'info');
       try {
         const restoreResults = await mcpService.startPreviouslyRunningServers();
         const successCount = restoreResults.filter(r => r.success).length;
         const totalCount = restoreResults.length;
         
         if (totalCount > 0) {
-          log.info(`Restored ${successCount}/${totalCount} previously running MCP servers`);
-          loadingScreen.setStatus(`Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+          sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
         } else {
-          loadingScreen.setStatus('No MCP servers to restore', 'info');
+          sendStatus('MCP', 'No MCP servers to restore', 'info');
         }
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
-        loadingScreen.setStatus('Failed to restore some MCP servers', 'warning');
+        sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
       }
     } catch (mcpError) {
-      loadingScreen.setStatus('MCP service initialization failed', 'warning');
       log.error('Error initializing MCP service:', mcpError);
+      sendStatus('MCP', 'MCP service initialization failed', 'warning');
     }
 
-    // Initialize Watchdog service
-    loadingScreen.setStatus('Initializing Watchdog service...', 'info');
+    // Initialize Watchdog service in background
+    sendStatus('Watchdog', 'Initializing Watchdog service...', 'info');
     try {
       watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
       
@@ -2082,38 +2148,25 @@ async function initializeApp() {
       // Start the watchdog monitoring
       watchdogService.start();
       
-      log.info('Watchdog service initialized and started successfully');
-      loadingScreen.setStatus('Watchdog service started', 'success');
+      sendStatus('Watchdog', 'Watchdog service started successfully', 'success');
     } catch (watchdogError) {
-      loadingScreen.setStatus('Watchdog service initialization failed', 'warning');
       log.error('Error initializing Watchdog service:', watchdogError);
+      sendStatus('Watchdog', 'Watchdog service initialization failed', 'warning');
     }
 
-    // Setup complete, create the main window
-    log.info('Services initialized. Creating main window...');
-    loadingScreen.setStatus('Starting main application...', 'success');
-    await createMainWindow();
-    
+    // All background services initialized
+    log.info('Background service initialization completed');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('background-services-ready');
+    }
+
   } catch (error) {
-    log.error(`Initialization error: ${error.message}`, error);
-    loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
-    
-    // Don't show dialogs for Docker-related issues during startup - let the app continue
-    if (error.message.includes('Docker is not running') || error.message.includes('Docker')) {
-      log.warn('Docker-related error during startup, continuing without Docker services');
-      loadingScreen?.setStatus('Docker not available. Some features may be limited.', 'warning');
-      
-      // Continue with app initialization
-      setTimeout(async () => {
-        await createMainWindow();
-      }, 2000);
-    } else {
-      dialog.showErrorBox('Setup Error', error.message);
-      // Keep loading screen open on error for a bit before quitting
-      setTimeout(() => {
-        loadingScreen?.close();
-        app.quit();
-      }, 4000);
+    log.error('Error during background service initialization:', error);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('background-service-error', { 
+        service: 'Background Services', 
+        error: `Background initialization failed: ${error.message}` 
+      });
     }
   }
 }

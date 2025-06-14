@@ -216,7 +216,7 @@ class DockerSetup extends EventEmitter {
   /**
    * Show update dialog and handle user choice
    */
-  async showUpdateDialog(updateInfo) {
+  async showUpdateDialog(updateInfo, parentWindow = null) {
     const updatesAvailable = updateInfo.filter(info => info.hasUpdate);
     
     if (updatesAvailable.length === 0) {
@@ -227,14 +227,21 @@ class DockerSetup extends EventEmitter {
       `• ${info.imageName}: ${info.reason}`
     ).join('\n');
 
-    const response = await dialog.showMessageBox({
+    const dialogOptions = {
       type: 'question',
       buttons: ['Update Now', 'Skip Updates', 'Cancel'],
       defaultId: 0,
       title: 'Container Updates Available',
       message: `Updates are available for the following containers:\n\n${updateList}\n\nWould you like to update them now?`,
-      detail: `Architecture: ${this.systemArch}\n\nUpdating will ensure you have the latest features and security fixes.`
-    });
+      detail: `Architecture: ${this.systemArch}\n\nUpdating will ensure you have the latest features and security fixes.`,
+      alwaysOnTop: true,
+      modal: true
+    };
+
+    // If a parent window is provided, show dialog relative to it, otherwise show as standalone dialog
+    const response = parentWindow 
+      ? await dialog.showMessageBox(parentWindow, dialogOptions)
+      : await dialog.showMessageBox(dialogOptions);
 
     return {
       updateAll: response.response === 0,
@@ -739,7 +746,7 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  async setup(statusCallback, forceUpdateCheck = false) {
+  async setup(statusCallback, forceUpdateCheck = false, loadingScreen = null) {
     try {
       if (!await this.isDockerRunning()) {
         let dockerDownloadLink;
@@ -794,28 +801,40 @@ class DockerSetup extends EventEmitter {
       if (updatesAvailable.length > 0) {
         statusCallback(`Found ${updatesAvailable.length} container update(s) available`);
         
-        // Show update dialog
-        const updateChoice = await this.showUpdateDialog(updateResults);
-        
-        if (updateChoice.cancel) {
-          statusCallback('Setup cancelled by user', 'warning');
-          return false;
+        // Temporarily disable alwaysOnTop for loading screen to allow dialog to appear on top
+        if (loadingScreen) {
+          loadingScreen.setAlwaysOnTop(false);
         }
         
-        if (updateChoice.updateAll) {
-          statusCallback('Updating containers...');
+                try {
+          // Show update dialog with loading screen window as parent
+          const updateChoice = await this.showUpdateDialog(updateResults, loadingScreen ? loadingScreen.window : null);
           
-          // Pull updated images
-          for (const update of updateChoice.updates) {
-            try {
-              await this.pullImageWithProgress(update.imageName, statusCallback);
-            } catch (error) {
-              statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
-              console.error('Update error:', error);
-            }
+          if (updateChoice.cancel) {
+            statusCallback('Setup cancelled by user', 'warning');
+            return false;
           }
-        } else if (updateChoice.skip) {
-          statusCallback('Skipping container updates');
+        
+          if (updateChoice.updateAll) {
+            statusCallback('Updating containers...');
+            
+            // Pull updated images
+            for (const update of updateChoice.updates) {
+              try {
+                await this.pullImageWithProgress(update.imageName, statusCallback);
+              } catch (error) {
+                statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
+                console.error('Update error:', error);
+              }
+            }
+          } else if (updateChoice.skip) {
+            statusCallback('Skipping container updates');
+          }
+        } finally {
+          // Re-enable alwaysOnTop for loading screen
+          if (loadingScreen) {
+            loadingScreen.setAlwaysOnTop(true);
+          }
         }
       } else {
         statusCallback('All containers are up to date');

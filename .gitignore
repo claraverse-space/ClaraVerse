@@ -92,6 +92,19 @@ issues.md
 # Local Netlify folder
 .netlify
 
-# CUDA DLL files (too large for GitHub)
+# CUDA DLL files and other large binaries (too large for GitHub)
 electron/llamacpp-binaries/**/ggml-cuda.dll
 **/ggml-cuda.dll
+electron/llamacpp-binaries/cuda11-q4_0-server
+electron/llamacpp-binaries/*-server
+electron/llamacpp-binaries/**/*-server
+
+# Exclude all binary files in llamacpp-binaries (DLLs, executables, etc.)
+electron/llamacpp-binaries/**/*.dll
+electron/llamacpp-binaries/**/*.exe
+electron/llamacpp-binaries/**/ggml-*
+electron/llamacpp-binaries/**/llama.*
+electron/llamacpp-binaries/**/lib*
+electron/llamacpp-binaries/**/mtmd.dll
+electron/llamacpp-binaries/win32-x64/
+electron/llamacpp-binaries/win32-x64-backup*/

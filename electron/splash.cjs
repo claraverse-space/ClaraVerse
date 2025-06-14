@@ -69,6 +69,12 @@ class SplashScreen {
     this.window.webContents.send('status', data);
   }
 
+  setAlwaysOnTop(alwaysOnTop) {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.setAlwaysOnTop(alwaysOnTop);
+    }
+  }
+
   close() {
     if (this.window) {
       this.window.close();
