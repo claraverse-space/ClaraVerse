@@ -211,8 +211,6 @@ timeline
 ---
 
 ## 🚀 **Quick Start**
- browser to http://localhost:3000
-```
 
 ### 💻 **Desktop App**
 
