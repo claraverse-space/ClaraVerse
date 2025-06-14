@@ -22,7 +22,7 @@ interface SettingsProps {
 }
 
 const Settings = ({ alphaFeaturesEnabled, setAlphaFeaturesEnabled }: SettingsProps) => {
-  const [activeTab, setActiveTab] = useState<TabId>('api');
+  const [activeTab, setActiveTab] = useState<TabId>('personal');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
     email: '',
@@ -279,6 +279,27 @@ const Settings = ({ alphaFeaturesEnabled, setAlphaFeaturesEnabled }: SettingsPro
             </h2>
 
             <TabItem
+              id="personal"
+              label="Profile"
+              icon={<User className="w-5 h-5" />}
+              isActive={activeTab === 'personal'}
+            />
+
+            <TabItem
+              id="preferences"
+              label="General"
+              icon={<SettingsIcon className="w-5 h-5" />}
+              isActive={activeTab === 'preferences'}
+            />
+
+            <TabItem
+              id="startup"
+              label="Startup"
+              icon={<Power className="w-5 h-5" />}
+              isActive={activeTab === 'startup'}
+            />
+
+            <TabItem
               id="api"
               label="AI Services"
               icon={<Bot className="w-5 h-5" />}
@@ -314,31 +335,10 @@ const Settings = ({ alphaFeaturesEnabled, setAlphaFeaturesEnabled }: SettingsPro
             />
 
             <TabItem
-              id="preferences"
-              label="General"
-              icon={<SettingsIcon className="w-5 h-5" />}
-              isActive={activeTab === 'preferences'}
-            />
-
-            <TabItem
-              id="personal"
-              label="Profile"
-              icon={<User className="w-5 h-5" />}
-              isActive={activeTab === 'personal'}
-            />
-
-            <TabItem
               id="updates"
               label="Updates"
               icon={<RefreshCw className="w-5 h-5" />}
               isActive={activeTab === 'updates'}
-            />
-
-            <TabItem
-              id="startup"
-              label="Startup"
-              icon={<Power className="w-5 h-5" />}
-              isActive={activeTab === 'startup'}
             />
 
             {/* Save Status - Only visible when saving/saved/error */}
