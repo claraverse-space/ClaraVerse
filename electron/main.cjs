@@ -1839,6 +1839,60 @@ function registerHandlers() {
     }
   });
 
+  // Enhanced Docker detection
+  ipcMain.handle('docker-detect-installations', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      const installations = await dockerSetup.detectDockerInstallations();
+      return installations.map(install => ({
+        type: install.type,
+        method: install.method,
+        priority: install.priority,
+        path: install.path,
+        host: install.host,
+        port: install.port,
+        contextName: install.contextName,
+        machineName: install.machineName,
+        isPodman: install.isPodman || false,
+        isNamedPipe: install.isNamedPipe || false
+      }));
+    } catch (error) {
+      log.error('Error detecting Docker installations:', error);
+      throw error;
+    }
+  });
+
+  // Get Docker detection report
+  ipcMain.handle('docker-get-detection-report', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      return await dockerSetup.getDockerDetectionReport();
+    } catch (error) {
+      log.error('Error getting Docker detection report:', error);
+      throw error;
+    }
+  });
+
+  // Test all Docker installations
+  ipcMain.handle('docker-test-all-installations', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      return await dockerSetup.testAllDockerInstallations();
+    } catch (error) {
+      log.error('Error testing Docker installations:', error);
+      throw error;
+    }
+  });
+
   // Event handlers
   ipcMain.on('backend-status', (event, status) => {
     if (mainWindow) {
