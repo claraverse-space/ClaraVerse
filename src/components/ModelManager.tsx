@@ -1,6 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Download, Settings, Star, Eye, Heart, Filter, RefreshCw, Key, X, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react';
 
+// Simple HTML sanitizer to prevent XSS while allowing basic formatting
+const sanitizeHTML = (html: string): string => {
+  // Basic sanitization - remove script tags and dangerous attributes
+  let sanitized = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/on\w+="[^"]*"/gi, '')
+    .replace(/javascript:/gi, '');
+  
+  // Ensure external links open in new tab and have proper rel attributes
+  sanitized = sanitized.replace(/<a\s+([^>]*href="[^"]*"[^>]*)>/gi, (match, attrs) => {
+    if (!attrs.includes('target=')) {
+      attrs += ' target="_blank"';
+    }
+    if (!attrs.includes('rel=')) {
+      attrs += ' rel="noopener noreferrer"';
+    }
+    return `<a ${attrs}>`;
+  });
+  
+  return sanitized;
+};
+
 interface ModelInfo {
   id: string;
   name: string;
@@ -87,9 +109,9 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     loadApiKeys();
     loadLocalModels();
     
-    // Set up download progress listeners
-    const unsubscribeProgress = window.modelManager?.onComfyUIDownloadProgress?.(handleDownloadProgress);
-    const unsubscribeComplete = window.modelManager?.onComfyUIDownloadComplete?.(handleDownloadComplete);
+    // Set up download progress listeners for new local system
+    const unsubscribeProgress = window.modelManager?.onComfyUILocalDownloadProgress?.(handleDownloadProgress);
+    const unsubscribeComplete = window.modelManager?.onComfyUILocalDownloadComplete?.(handleDownloadComplete);
     
     return () => {
       unsubscribeProgress?.();
@@ -117,8 +139,25 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const loadLocalModels = async () => {
     try {
-      const models = await window.modelManager?.comfyuiGetLocalModels?.();
-      setLocalModels(models || {});
+      // Load models from all categories using the new local system
+      const categories = ['checkpoints', 'loras', 'vae', 'controlnet', 'upscale_models', 'embeddings'];
+      const allModels: Record<string, any[]> = {};
+      
+      for (const category of categories) {
+        try {
+          const result = await window.modelManager?.comfyuiLocalListModels?.(category);
+          if (result?.success) {
+            allModels[category] = result.models || [];
+          } else {
+            allModels[category] = [];
+          }
+        } catch (error) {
+          console.error(`Failed to load ${category} models:`, error);
+          allModels[category] = [];
+        }
+      }
+      
+      setLocalModels(allModels);
     } catch (error) {
       console.error('Failed to load local models:', error);
     }
@@ -135,14 +174,16 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     });
   };
 
-  const handleDownloadComplete = (data: { filename: string; modelType: string; path: string; size: number }) => {
+  const handleDownloadComplete = (data: { filename: string; category: string; localPath: string; containerPath: string; size: number }) => {
     setDownloads(prev => 
       prev.map(d => 
         d.filename === data.filename 
-          ? { ...d, completed: true, progress: 100, modelType: data.modelType }
+          ? { ...d, completed: true, progress: 100, modelType: data.category }
           : d
       )
     );
+    
+    console.log(`✅ Model downloaded to persistent storage: ${data.filename} -> ${data.localPath}`);
     
     // Refresh local models after successful download
     setTimeout(() => {
@@ -255,13 +296,16 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         return;
       }
 
-      // Start the download using ComfyUI-specific handler
-      await window.modelManager?.comfyuiDownloadModel?.(
+      // Start the download using new local persistent storage system
+      await window.modelManager?.comfyuiLocalDownloadModel?.(
         file.url,
         file.name,
-        model.type,
-        model.source,
-        apiKey
+        model.type === 'lora' ? 'loras' : 
+        model.type === 'checkpoint' ? 'checkpoints' :
+        model.type === 'vae' ? 'vae' :
+        model.type === 'controlnet' ? 'controlnet' :
+        model.type === 'upscaler' ? 'upscale_models' :
+        model.type === 'embedding' ? 'embeddings' : 'checkpoints'
       );
       
       console.log(`Started download: ${file.name} (${model.type})`);
@@ -281,7 +325,7 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const handleDeleteModel = async (modelType: string, filename: string) => {
     try {
-      await window.modelManager?.comfyuiDeleteModel?.(modelType, filename);
+      await window.modelManager?.comfyuiLocalDeleteModel?.(filename, modelType);
       loadLocalModels();
     } catch (error) {
       console.error('Failed to delete model:', error);
@@ -314,8 +358,61 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col">
+    <>
+      <style>{`
+        .model-description {
+          line-height: 1.6;
+        }
+        .model-description p {
+          margin-bottom: 0.75rem;
+        }
+        .model-description p:last-child {
+          margin-bottom: 0;
+        }
+        .model-description strong, .model-description b {
+          font-weight: 600;
+          color: inherit;
+        }
+        .model-description a {
+          color: #3b82f6;
+          text-decoration: underline;
+          transition: color 0.2s;
+        }
+        .model-description a:hover {
+          color: #1d4ed8;
+        }
+        .dark .model-description a {
+          color: #60a5fa;
+        }
+        .dark .model-description a:hover {
+          color: #93c5fd;
+        }
+        .model-description ul, .model-description ol {
+          margin: 0.75rem 0;
+          padding-left: 1.5rem;
+        }
+        .model-description li {
+          margin-bottom: 0.25rem;
+        }
+        .model-description code {
+          background-color: #f3f4f6;
+          padding: 0.125rem 0.25rem;
+          border-radius: 0.25rem;
+          font-size: 0.875em;
+        }
+        .dark .model-description code {
+          background-color: #374151;
+        }
+        .model-description h1, .model-description h2, .model-description h3, .model-description h4, .model-description h5, .model-description h6 {
+          font-weight: 600;
+          margin: 1rem 0 0.5rem 0;
+        }
+        .model-description h1 { font-size: 1.25rem; }
+        .model-description h2 { font-size: 1.125rem; }
+        .model-description h3 { font-size: 1rem; }
+      `}</style>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-4">
@@ -560,7 +657,10 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <div>
                           <h2 className="text-xl font-bold text-gray-900 dark:text-white">{selectedModel.name}</h2>
                           <p className="text-gray-600 dark:text-gray-400">by {selectedModel.creator}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{selectedModel.description}</p>
+                                                      <div 
+                              className="text-sm text-gray-600 dark:text-gray-400 mt-2 prose prose-sm dark:prose-invert max-w-none model-description"
+                              dangerouslySetInnerHTML={{ __html: sanitizeHTML(selectedModel.description) }}
+                            />
                         </div>
 
                         {/* Images */}
@@ -737,7 +837,8 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

@@ -16,6 +16,7 @@ const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
 const WatchdogService = require('./watchdogService.cjs');
+const ComfyUIModelService = require('./comfyUIModelService.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
@@ -74,6 +75,7 @@ let llamaSwapService;
 let mcpService;
 let watchdogService;
 let updateService;
+let comfyUIModelService;
 
 // Track active downloads for stop functionality
 const activeDownloads = new Map();
@@ -2388,6 +2390,7 @@ async function initializeApp() {
     mcpService = new MCPService();
     updateService = platformUpdateService;
     dockerSetup = new DockerSetup();
+    comfyUIModelService = new ComfyUIModelService();
     
     // Create the main window immediately for fast startup
     log.info('Creating main window...');
@@ -3342,5 +3345,306 @@ ipcMain.handle('comfyui-model-manager:get-models-dir', async () => {
   } catch (error) {
     log.error('Error getting ComfyUI models directory:', error);
     return { path: '', exists: false };
+  }
+});
+
+// ==============================================
+// ComfyUI Internal Model Management Service
+// ==============================================
+
+// Get models stored inside ComfyUI container
+ipcMain.handle('comfyui-internal:list-models', async (event, category = 'checkpoints') => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const models = await comfyUIModelService.listInstalledModels(category);
+    return { success: true, models };
+  } catch (error) {
+    log.error(`Error listing ComfyUI ${category} models:`, error);
+    return { success: false, error: error.message, models: [] };
+  }
+});
+
+// Get ComfyUI container storage information
+ipcMain.handle('comfyui-internal:get-storage-info', async () => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const storageInfo = await comfyUIModelService.getStorageInfo();
+    return { success: true, storage: storageInfo };
+  } catch (error) {
+    log.error('Error getting ComfyUI storage info:', error);
+    return { success: false, error: error.message, storage: null };
+  }
+});
+
+// Download and install model to ComfyUI container
+ipcMain.handle('comfyui-internal:download-model', async (event, { url, filename, category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    log.info(`Starting ComfyUI model download: ${filename} (${category}) from ${url}`);
+    
+    // Set up progress forwarding
+    const progressHandler = (progressData) => {
+      event.sender.send('comfyui-internal-download-progress', progressData);
+    };
+    
+    // Set up event forwarding
+    const eventHandlers = {
+      'download:start': (data) => event.sender.send('comfyui-internal-download-start', data),
+      'download:complete': (data) => event.sender.send('comfyui-internal-download-complete', data),
+      'download:error': (data) => event.sender.send('comfyui-internal-download-error', data),
+      'install:start': (data) => event.sender.send('comfyui-internal-install-start', data),
+      'install:complete': (data) => event.sender.send('comfyui-internal-install-complete', data),
+      'install:error': (data) => event.sender.send('comfyui-internal-install-error', data)
+    };
+    
+    // Attach event listeners
+    Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+      comfyUIModelService.on(eventName, handler);
+    });
+    
+    try {
+      const result = await comfyUIModelService.downloadAndInstallModel(url, filename, category, progressHandler);
+      
+      // Clean up event listeners
+      Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+        comfyUIModelService.removeListener(eventName, handler);
+      });
+      
+      return result;
+    } catch (error) {
+      // Clean up event listeners on error
+      Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+        comfyUIModelService.removeListener(eventName, handler);
+      });
+      throw error;
+    }
+    
+  } catch (error) {
+    log.error('Error downloading ComfyUI model to container:', error);
+    return {
+      success: false,
+      filename,
+      category,
+      error: error.message
+    };
+  }
+});
+
+// Remove model from ComfyUI container
+ipcMain.handle('comfyui-internal:remove-model', async (event, { filename, category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const result = await comfyUIModelService.removeModel(filename, category);
+    log.info(`Removed ComfyUI model: ${filename} from ${category}`);
+    return result;
+  } catch (error) {
+    log.error('Error removing ComfyUI model from container:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get ComfyUI model management status
+ipcMain.handle('comfyui-internal:get-status', async () => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const status = await comfyUIModelService.getStatus();
+    return { success: true, status };
+  } catch (error) {
+    log.error('Error getting ComfyUI service status:', error);
+    return { success: false, error: error.message, status: null };
+  }
+});
+
+// Search for models from external repositories
+ipcMain.handle('comfyui-internal:search-models', async (event, { query, source = 'huggingface', category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const results = await comfyUIModelService.searchModels(query, source, category);
+    return { success: true, results };
+  } catch (error) {
+    log.error('Error searching ComfyUI models:', error);
+    return { success: false, error: error.message, results: null };
+  }
+});
+
+// Backup models from container to host
+ipcMain.handle('comfyui-internal:backup-models', async (event, { category = 'checkpoints', backupPath }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    // Use user data directory if no backup path specified
+    if (!backupPath) {
+      backupPath = path.join(app.getPath('userData'), 'comfyui_backups');
+      if (!fs.existsSync(backupPath)) {
+        fs.mkdirSync(backupPath, { recursive: true });
+      }
+    }
+    
+    const result = await comfyUIModelService.backupModels(category, backupPath);
+    log.info(`ComfyUI models backed up: ${category} to ${result.backupFile}`);
+    return result;
+  } catch (error) {
+    log.error('Error backing up ComfyUI models:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ==============================================
+// Enhanced Local Model Management
+// ==============================================
+
+// List locally stored persistent models
+ipcMain.handle('comfyui-local:list-models', async (event, category = 'checkpoints') => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const models = await comfyUIModelService.listLocalModels(category);
+    return { success: true, models };
+  } catch (error) {
+    log.error(`Error listing local ComfyUI ${category} models:`, error);
+    return { success: false, error: error.message, models: [] };
+  }
+});
+
+// Download model to local storage (persistent)
+ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    log.info(`Starting local ComfyUI model download: ${filename} (${category}) from ${url}`);
+    
+    // Set up progress forwarding - fix the parameter format
+    const progressHandler = (progress, downloadedSize, totalSize) => {
+      const progressData = {
+        filename,
+        progress: Math.round(progress),
+        downloadedSize,
+        totalSize,
+        speed: downloadedSize > 0 ? `${(downloadedSize / 1024 / 1024).toFixed(1)} MB/s` : '0 MB/s',
+        eta: totalSize > 0 && downloadedSize > 0 ? `${Math.round((totalSize - downloadedSize) / (downloadedSize / 1000))}s` : 'Unknown'
+      };
+      event.sender.send('comfyui-local-download-progress', progressData);
+    };
+    
+    // Set up event forwarding
+    const eventHandlers = {
+      'download:start': (data) => event.sender.send('comfyui-local-download-start', data),
+      'download:complete': (data) => event.sender.send('comfyui-local-download-complete', data),
+      'download:error': (data) => event.sender.send('comfyui-local-download-error', data),
+      'download:progress': (data) => {
+        // Also handle progress events from the service
+        const progressData = {
+          filename: data.filename || filename,
+          progress: Math.round(data.progress || 0),
+          downloadedSize: data.downloadedSize || 0,
+          totalSize: data.totalSize || 0,
+          speed: data.speed || '0 MB/s',
+          eta: data.eta || 'Unknown'
+        };
+        event.sender.send('comfyui-local-download-progress', progressData);
+      }
+    };
+    
+    // Attach event listeners
+    Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+      comfyUIModelService.on(eventName, handler);
+    });
+    
+    try {
+      const result = await comfyUIModelService.downloadModel(url, filename, category, progressHandler);
+      
+      // Clean up event listeners
+      Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+        comfyUIModelService.removeListener(eventName, handler);
+      });
+      
+      return { success: true, ...result };
+    } catch (error) {
+      // Clean up event listeners on error
+      Object.entries(eventHandlers).forEach(([eventName, handler]) => {
+        comfyUIModelService.removeListener(eventName, handler);
+      });
+      throw error;
+    }
+    
+  } catch (error) {
+    log.error('Error downloading ComfyUI model to local storage:', error);
+    return {
+      success: false,
+      filename,
+      category,
+      error: error.message
+    };
+  }
+});
+
+// Delete local persistent model
+ipcMain.handle('comfyui-local:delete-model', async (event, { filename, category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const result = await comfyUIModelService.deleteLocalModel(filename, category);
+    log.info(`Deleted local ComfyUI model: ${filename} from ${category}`);
+    return result;
+  } catch (error) {
+    log.error('Error deleting local ComfyUI model:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Import external model file to persistent storage
+ipcMain.handle('comfyui-local:import-model', async (event, { externalPath, filename, category = 'checkpoints' }) => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const result = await comfyUIModelService.importExternalModel(externalPath, filename, category);
+    log.info(`Imported external ComfyUI model: ${filename} to ${category}`);
+    return result;
+  } catch (error) {
+    log.error('Error importing external ComfyUI model:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get enhanced storage information (local + container)
+ipcMain.handle('comfyui-local:get-storage-info', async () => {
+  try {
+    if (!comfyUIModelService) {
+      throw new Error('ComfyUI Model Service not initialized');
+    }
+    
+    const storageInfo = await comfyUIModelService.getEnhancedStorageInfo();
+    return { success: true, storage: storageInfo };
+  } catch (error) {
+    log.error('Error getting enhanced ComfyUI storage info:', error);
+    return { success: false, error: error.message, storage: null };
   }
 });

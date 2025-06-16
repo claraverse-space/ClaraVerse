@@ -206,14 +206,27 @@ contextBridge.exposeInMainWorld('modelManager', {
   saveApiKeys: (keys) => ipcRenderer.invoke('model-manager:save-api-keys', keys),
   getApiKeys: () => ipcRenderer.invoke('model-manager:get-api-keys'),
   
-  // ComfyUI Model Manager APIs
+  // ComfyUI Model Manager APIs (Host-based)
   comfyuiDownloadModel: (url, filename, modelType, source, apiKey) => 
     ipcRenderer.invoke('comfyui-model-manager:download-model', { url, filename, modelType, source, apiKey }),
   comfyuiGetLocalModels: () => ipcRenderer.invoke('comfyui-model-manager:get-local-models'),
   comfyuiDeleteModel: (modelType, filename) => ipcRenderer.invoke('comfyui-model-manager:delete-model', { modelType, filename }),
   comfyuiGetModelsDir: () => ipcRenderer.invoke('comfyui-model-manager:get-models-dir'),
+
+  // ComfyUI Internal Model Manager APIs (Container-based)
+  comfyuiInternalListModels: (category) => ipcRenderer.invoke('comfyui-internal:list-models', category),
+  comfyuiInternalGetStorageInfo: () => ipcRenderer.invoke('comfyui-internal:get-storage-info'),
+  comfyuiInternalDownloadModel: (url, filename, category) => 
+    ipcRenderer.invoke('comfyui-internal:download-model', { url, filename, category }),
+  comfyuiInternalRemoveModel: (filename, category) => 
+    ipcRenderer.invoke('comfyui-internal:remove-model', { filename, category }),
+  comfyuiInternalGetStatus: () => ipcRenderer.invoke('comfyui-internal:get-status'),
+  comfyuiInternalSearchModels: (query, source, category) => 
+    ipcRenderer.invoke('comfyui-internal:search-models', { query, source, category }),
+  comfyuiInternalBackupModels: (category, backupPath) => 
+    ipcRenderer.invoke('comfyui-internal:backup-models', { category, backupPath }),
   
-  // ComfyUI Download Progress Events
+  // ComfyUI Download Progress Events (Host-based)
   onComfyUIDownloadProgress: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('comfyui-model-download-progress', subscription);
@@ -223,6 +236,74 @@ contextBridge.exposeInMainWorld('modelManager', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('comfyui-model-download-complete', subscription);
     return () => ipcRenderer.removeListener('comfyui-model-download-complete', subscription);
+  },
+
+  // ComfyUI Internal Download Progress Events (Container-based)
+  onComfyUIInternalDownloadProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-download-progress', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-download-progress', subscription);
+  },
+  onComfyUIInternalDownloadStart: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-download-start', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-download-start', subscription);
+  },
+  onComfyUIInternalDownloadComplete: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-download-complete', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-download-complete', subscription);
+  },
+  onComfyUIInternalDownloadError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-download-error', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-download-error', subscription);
+  },
+  onComfyUIInternalInstallStart: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-install-start', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-install-start', subscription);
+  },
+  onComfyUIInternalInstallComplete: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-install-complete', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-install-complete', subscription);
+  },
+  onComfyUIInternalInstallError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-internal-install-error', subscription);
+    return () => ipcRenderer.removeListener('comfyui-internal-install-error', subscription);
+  },
+
+  // ==============================================
+  // Enhanced Local Model Management APIs
+  // ==============================================
+  
+  // Local persistent model management
+  comfyuiLocalListModels: (category) => ipcRenderer.invoke('comfyui-local:list-models', category),
+  comfyuiLocalDownloadModel: (url, filename, category) => 
+    ipcRenderer.invoke('comfyui-local:download-model', { url, filename, category }),
+  comfyuiLocalDeleteModel: (filename, category) => 
+    ipcRenderer.invoke('comfyui-local:delete-model', { filename, category }),
+  comfyuiLocalImportModel: (externalPath, filename, category) => 
+    ipcRenderer.invoke('comfyui-local:import-model', { externalPath, filename, category }),
+  comfyuiLocalGetStorageInfo: () => ipcRenderer.invoke('comfyui-local:get-storage-info'),
+
+  // Local model management events
+  onComfyUILocalDownloadProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-local-download-progress', subscription);
+    return () => ipcRenderer.removeListener('comfyui-local-download-progress', subscription);
+  },
+  onComfyUILocalDownloadComplete: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-local-download-complete', subscription);
+    return () => ipcRenderer.removeListener('comfyui-local-download-complete', subscription);
+  },
+  onComfyUILocalDownloadError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-local-download-error', subscription);
+    return () => ipcRenderer.removeListener('comfyui-local-download-error', subscription);
   },
   onModelDownloadProgress: (callback) => {
     const subscription = (event, data) => callback(data);

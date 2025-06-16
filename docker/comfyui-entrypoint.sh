@@ -10,12 +10,22 @@ cd /app/ComfyUI
 
 # Check if we have GPU support and upgrade PyTorch if needed
 if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null 2>&1; then
-    echo "✅ NVIDIA GPU detected, upgrading to CUDA PyTorch..."
-    pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 --upgrade || echo "Failed to upgrade to CUDA PyTorch, continuing with CPU"
-    export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-    COMFYUI_ARGS=""
+    echo "✅ NVIDIA GPU detected, verifying CUDA PyTorch..."
+    
+    # Verify CUDA PyTorch is working (should already be installed from Dockerfile)
+    if python3 -c "import torch; print('CUDA available:', torch.cuda.is_available()); exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
+        echo "✅ CUDA PyTorch is working correctly"
+        CUDA_VERSION=$(python3 -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "unknown")
+        echo "   CUDA version: $CUDA_VERSION"
+        export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+        COMFYUI_ARGS=""
+    else
+        echo "⚠️  CUDA PyTorch not working, falling back to CPU mode"
+        export CUDA_VISIBLE_DEVICES=""
+        COMFYUI_ARGS="--cpu"
+    fi
 else
-    echo "⚠️  No NVIDIA GPU detected, using CPU PyTorch"
+    echo "⚠️  No NVIDIA GPU detected, using CPU mode"
     export CUDA_VISIBLE_DEVICES=""
     # Force CPU mode for ComfyUI
     COMFYUI_ARGS="--cpu"

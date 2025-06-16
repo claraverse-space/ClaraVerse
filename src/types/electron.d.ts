@@ -177,6 +177,18 @@ declare global {
       onComfyUIDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
       onComfyUIDownloadComplete: (callback: (data: { filename: string; modelType: string; path: string; size: number }) => void) => () => void;
       onModelDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
+      
+      // ComfyUI Local Model Management APIs
+      comfyuiLocalListModels: (category: string) => Promise<{ success: boolean; models: Array<{ name: string; size: number; modified: Date; path: string; type: string }>; error?: string }>;
+      comfyuiLocalDownloadModel: (url: string, filename: string, category: string) => Promise<{ success: boolean; filename?: string; category?: string; localPath?: string; containerPath?: string; size?: number; error?: string }>;
+      comfyuiLocalDeleteModel: (filename: string, category: string) => Promise<{ success: boolean; error?: string }>;
+      comfyuiLocalImportModel: (externalPath: string, filename: string, category: string) => Promise<{ success: boolean; error?: string }>;
+      comfyuiLocalGetStorageInfo: () => Promise<{ success: boolean; storage?: any; error?: string }>;
+      
+      // ComfyUI Local Download Progress Events
+      onComfyUILocalDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
+      onComfyUILocalDownloadComplete: (callback: (data: { filename: string; category: string; localPath: string; containerPath: string; size: number }) => void) => () => void;
+      onComfyUILocalDownloadError: (callback: (data: { filename: string; error: string }) => void) => () => void;
     };
     mcpService: {
       getServers: () => Promise<MCPServer[]>;

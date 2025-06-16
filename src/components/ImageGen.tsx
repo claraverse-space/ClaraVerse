@@ -359,6 +359,9 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Reference to the ComfyUI client instance
   const clientRef = useRef<Client | null>(null);
+  
+  // Track the last used model to optimize memory management
+  const lastUsedModelRef = useRef<string | null>(null);
 
   // Disconnect any lingering client created in a different page on mount
   useEffect(() => {
@@ -1258,12 +1261,18 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       ]) as { images: any[] };
 
       console.log('Generated images:', result.images[0].data);
-      client.free(
-        {
+      
+      // Smart memory management: only free when switching models
+      // RTX 4090 has 24GB VRAM - keep current model loaded for performance
+      if (lastUsedModelRef.current && lastUsedModelRef.current !== selectedModel) {
+        console.log(`Model changed from ${lastUsedModelRef.current} to ${selectedModel}, freeing memory`);
+        client.free({
           free_memory: true,
           unload_models: true
-        }
-      );
+        });
+      }
+      lastUsedModelRef.current = selectedModel;
+      
       const base64Images = result.images.map((img) => {
         const base64 = arrayBufferToBase64(img.data);
         return `data:${img.mime};base64,${base64}`;

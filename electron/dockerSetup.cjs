@@ -62,40 +62,23 @@ class DockerSetup extends EventEmitter {
         environment: [
           'NVIDIA_VISIBLE_DEVICES=all',
           'CUDA_VISIBLE_DEVICES=0',
-          // AGGRESSIVE Performance optimizations for 4090
-          'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:2048,garbage_collection_threshold:0.8,expandable_segments:True',
+          // RTX 4090 optimizations (24GB VRAM)
+          'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:2048,expandable_segments:True',
           'CUDA_LAUNCH_BLOCKING=0',
           'TORCH_CUDNN_V8_API_ENABLED=1',
-          'TORCH_CUDNN_BENCHMARK=1',
-          'TORCH_BACKENDS_CUDNN_BENCHMARK=1',
-          // Memory optimizations for 24GB VRAM
-          'PYTORCH_CUDA_MEMORY_FRACTION=0.95',
-          'CUDA_CACHE_DISABLE=0',
-          'CUDA_CACHE_MAXSIZE=2147483648', // 2GB cache
-          // ComfyUI aggressive optimizations
+          'CUDA_MODULE_LOADING=LAZY',
+          // Disable xFormers warnings temporarily
+          'XFORMERS_MORE_DETAILS=0',
+          // ComfyUI optimizations for RTX 4090
           'COMFYUI_FORCE_FP16=1',
           'COMFYUI_DISABLE_XFORMERS_WARNING=1',
-          'COMFYUI_ENABLE_PYTORCH_ATTENTION=1',
-          'COMFYUI_DISABLE_SMART_MEMORY=0',
-          'COMFYUI_VRAM_MANAGEMENT=gpu-only',
-          'COMFYUI_FORCE_UPCAST_ATTENTION=0',
-          'COMFYUI_DONT_UPCAST_ATTENTION=1',
-          // Disable unnecessary features for speed
-          'XFORMERS_MORE_DETAILS=0',
-          'TRANSFORMERS_VERBOSITY=error',
-          'TOKENIZERS_PARALLELISM=true',
-          // Python optimizations
-          'PYTHONUNBUFFERED=1',
-          'PYTHONDONTWRITEBYTECODE=1',
-          'OMP_NUM_THREADS=16', // Match your i9 cores
-          'MKL_NUM_THREADS=16'
+          'COMFYUI_HIGHVRAM=1',
+          'COMFYUI_DISABLE_MODEL_OFFLOAD=1',
+          // Keep models in VRAM (don't offload to CPU)
+          'COMFYUI_VRAM_USAGE=gpu-only'
         ],
         runtime: 'nvidia', // Enable GPU support if available
-        restartPolicy: 'unless-stopped',
-        // Add memory and CPU limits for optimal performance
-        memoryLimit: '32g', // Use plenty of RAM
-        cpuLimit: '16', // Use all CPU cores
-        shmSize: '8g' // Large shared memory for faster data transfer
+        restartPolicy: 'unless-stopped'
       }
     };
 
@@ -273,7 +256,7 @@ class DockerSetup extends EventEmitter {
   }
 
   /**
-   * Optimize ComfyUI container for maximum GPU performance on high-end hardware
+   * Optimize ComfyUI container for better GPU performance
    */
   async optimizeComfyUIContainer() {
     try {
@@ -283,7 +266,7 @@ class DockerSetup extends EventEmitter {
         return;
       }
 
-      console.log('🚀 Optimizing ComfyUI container for maximum GPU performance...');
+      console.log('🚀 Optimizing ComfyUI container for GPU performance...');
       
       const container = this.docker.getContainer('clara_comfyui');
       
@@ -294,25 +277,14 @@ class DockerSetup extends EventEmitter {
         return;
       }
 
-      // Aggressive optimization commands for high-end hardware
+      // Run optimization commands inside the container
       const optimizationCommands = [
-        // Update PyTorch to latest for best 4090 support
-        'pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121',
-        // Install latest xFormers for maximum speed
-        'pip install --force-reinstall xformers --index-url https://download.pytorch.org/whl/cu121',
+        // Fix xFormers compatibility
+        'pip install --force-reinstall xformers --index-url https://download.pytorch.org/whl/cu118',
         // Install optimized ONNX runtime for ControlNet
         'pip install onnxruntime-gpu --force-reinstall',
-        // Install TensorRT for maximum inference speed
-        'pip install nvidia-tensorrt',
-        // Install optimized attention mechanisms
-        'pip install flash-attn --no-build-isolation',
-        // Compile PyTorch for this specific GPU
-        'python -c "import torch; torch.backends.cudnn.benchmark = True; torch.backends.cuda.matmul.allow_tf32 = True; torch.backends.cudnn.allow_tf32 = True"',
-        // Pre-compile CUDA kernels
-        'python -c "import torch; torch.cuda.empty_cache(); torch.cuda.synchronize()"',
-        // Set optimal GPU clocks (if supported)
-        'nvidia-smi -pm 1 || true', // Enable persistence mode
-        'nvidia-smi -ac 9501,2100 || true' // Set memory and GPU clocks to max (adjust for your 4090)
+        // Clear PyTorch cache
+        'python -c "import torch; torch.cuda.empty_cache()"'
       ];
 
       for (const command of optimizationCommands) {
@@ -338,69 +310,15 @@ class DockerSetup extends EventEmitter {
             });
             stream.on('error', reject);
             
-            // Timeout after 10 minutes for compilation tasks
-            setTimeout(() => reject(new Error('Command timeout')), 600000);
+            // Timeout after 5 minutes
+            setTimeout(() => reject(new Error('Command timeout')), 300000);
           });
         } catch (error) {
           console.log(`⚠️  Optimization command failed: ${command} - ${error.message}`);
         }
       }
 
-      // Create a performance test script
-      const performanceTestScript = `
-import torch
-import time
-
-print("🚀 Testing GPU performance...")
-print(f"GPU: {torch.cuda.get_device_name()}")
-print(f"CUDA Version: {torch.version.cuda}")
-print(f"PyTorch Version: {torch.__version__}")
-print(f"VRAM Available: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-
-# Test tensor operations speed
-device = torch.device('cuda')
-x = torch.randn(4096, 4096, device=device, dtype=torch.float16)
-y = torch.randn(4096, 4096, device=device, dtype=torch.float16)
-
-start_time = time.time()
-for _ in range(100):
-    z = torch.matmul(x, y)
-    torch.cuda.synchronize()
-end_time = time.time()
-
-print(f"Matrix multiplication speed: {100 / (end_time - start_time):.1f} ops/sec")
-print("✅ GPU optimization test completed")
-`;
-
-      try {
-        console.log('Running GPU performance test...');
-        const exec = await container.exec({
-          Cmd: ['python', '-c', performanceTestScript],
-          AttachStdout: true,
-          AttachStderr: true
-        });
-        
-        const stream = await exec.start({ hijack: true, stdin: false });
-        
-        await new Promise((resolve, reject) => {
-          let output = '';
-          stream.on('data', (data) => {
-            const text = data.toString();
-            output += text;
-            console.log(text.trim());
-          });
-          stream.on('end', () => {
-            resolve(output);
-          });
-          stream.on('error', reject);
-          
-          setTimeout(() => reject(new Error('Performance test timeout')), 60000);
-        });
-      } catch (error) {
-        console.log(`⚠️  Performance test failed: ${error.message}`);
-      }
-
-      console.log('✅ ComfyUI aggressive optimization completed');
+      console.log('✅ ComfyUI optimization completed');
       await this.markComfyUIOptimized();
     } catch (error) {
       console.error('❌ Error optimizing ComfyUI container:', error.message);
@@ -408,97 +326,65 @@ print("✅ GPU optimization test completed")
   }
 
   /**
-   * Get ComfyUI volumes - optimized for high-performance systems
+   * Get ComfyUI volumes - hybrid approach with persistent storage and local model management
    */
   getComfyUIVolumes() {
     const os = require('os');
     
-    // For high-performance systems, prefer Docker volumes over bind mounts
-    // Docker volumes are faster than bind mounts, especially on Windows
-    if (os.platform() === 'win32') {
-      console.log('🚀 Using Docker volumes for maximum I/O performance on Windows');
-      
-      // Use Docker named volumes for best performance
-      return [
-        'clara_comfyui_models:/app/ComfyUI/models',
-        'clara_comfyui_output:/app/ComfyUI/output',
-        'clara_comfyui_input:/app/ComfyUI/input',
-        'clara_comfyui_custom_nodes:/app/ComfyUI/custom_nodes',
-        'clara_comfyui_temp:/app/ComfyUI/temp'
-      ];
+    // Create persistent data directory for ComfyUI
+    const comfyUIDataDir = path.join(os.homedir(), '.clara', 'comfyui-data');
+    
+    // Ensure directory exists
+    if (!fs.existsSync(comfyUIDataDir)) {
+      fs.mkdirSync(comfyUIDataDir, { recursive: true });
     }
     
-    // For Linux/macOS, try WSL2 paths first, then fall back to bind mounts
-    if (os.platform() === 'win32') {
-      try {
-        const { execSync } = require('child_process');
-        
-        // Try to detect WSL2 distributions and current user
-        const wslList = execSync('wsl -l -v', { encoding: 'utf8' });
-        const distributions = wslList.split('\n')
-          .filter(line => line.includes('Running'))
-          .map(line => line.trim().split(/\s+/)[0])
-          .filter(dist => dist && dist !== 'NAME');
-        
-        if (distributions.length > 0) {
-          // Use the first running distribution
-          const distro = distributions[0];
-          
-          // Try to get the current user in WSL2
-          let wslUser = 'root';
-          try {
-            wslUser = execSync(`wsl -d ${distro} whoami`, { encoding: 'utf8' }).trim();
-          } catch (error) {
-            console.warn('Could not detect WSL2 user, using root');
-          }
-          
-          console.log(`🚀 Using WSL2 paths for ComfyUI (${distro}, user: ${wslUser})`);
-          
-          // Return WSL2 paths for much faster I/O
-          return [
-            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_models:/app/ComfyUI/models`,
-            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_output:/app/ComfyUI/output`,
-            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_input:/app/ComfyUI/input`,
-            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_custom_nodes:/app/ComfyUI/custom_nodes`,
-            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_temp:/app/ComfyUI/temp`
-          ];
-        }
-      } catch (error) {
-        console.warn('WSL2 not available or not running, using Docker volumes:', error.message);
+    // Create subdirectories for different types of persistent data
+    const subdirs = ['models', 'outputs', 'temp', 'custom_nodes', 'user', 'config'];
+    subdirs.forEach(subdir => {
+      const subdirPath = path.join(comfyUIDataDir, subdir);
+      if (!fs.existsSync(subdirPath)) {
+        fs.mkdirSync(subdirPath, { recursive: true });
       }
-    }
+      
+      // Create model type subdirectories
+      if (subdir === 'models') {
+        const modelTypes = ['checkpoints', 'loras', 'vae', 'controlnet', 'upscale_models', 'embeddings', 'clip_vision'];
+        modelTypes.forEach(modelType => {
+          const modelTypePath = path.join(subdirPath, modelType);
+          if (!fs.existsSync(modelTypePath)) {
+            fs.mkdirSync(modelTypePath, { recursive: true });
+          }
+        });
+      }
+    });
     
-    // Fallback to bind mounts for Linux/macOS
-    console.log('📁 Using bind mounts for ComfyUI volumes');
+    console.log('🚀 ComfyUI persistent data directory:', comfyUIDataDir);
+    console.log('📁 Models will be stored persistently and managed locally');
+    
+    // Mount persistent volumes for data that should survive container restarts
     return [
-      `${path.join(this.appDataPath, 'comfyui_models')}:/app/ComfyUI/models`,
-      `${path.join(this.appDataPath, 'comfyui_output')}:/app/ComfyUI/output`,
-      `${path.join(this.appDataPath, 'comfyui_input')}:/app/ComfyUI/input`,
-      `${path.join(this.appDataPath, 'comfyui_custom_nodes')}:/app/ComfyUI/custom_nodes`,
-      `${path.join(this.appDataPath, 'comfyui_temp')}:/app/ComfyUI/temp`
+      // Persistent model storage - allows local downloads to be transferred
+      `${path.join(comfyUIDataDir, 'models')}:/app/ComfyUI/models:rw`,
+      
+      // Output directory for generated images
+      `${path.join(comfyUIDataDir, 'outputs')}:/app/ComfyUI/output:rw`,
+      
+      // Temp directory for processing
+      `${path.join(comfyUIDataDir, 'temp')}:/app/ComfyUI/temp:rw`,
+      
+      // Custom nodes for extensions
+      `${path.join(comfyUIDataDir, 'custom_nodes')}:/app/ComfyUI/custom_nodes:rw`,
+      
+      // User directory for personal settings
+      `${path.join(comfyUIDataDir, 'user')}:/app/ComfyUI/user:rw`,
+      
+      // Config directory for ComfyUI settings
+      `${path.join(comfyUIDataDir, 'config')}:/app/ComfyUI/config:rw`,
+      
+      // Legacy support for existing paths
+      `${path.join(this.appDataPath, 'comfyui_input')}:/app/ComfyUI/input:rw`
     ];
-  }
-
-  /**
-   * Parse memory limit string to bytes
-   */
-  parseMemoryLimit(memoryStr) {
-    if (!memoryStr) return undefined;
-    
-    const units = {
-      'b': 1,
-      'k': 1024,
-      'm': 1024 * 1024,
-      'g': 1024 * 1024 * 1024
-    };
-    
-    const match = memoryStr.toLowerCase().match(/^(\d+)([bkmg]?)$/);
-    if (!match) return undefined;
-    
-    const value = parseInt(match[1]);
-    const unit = match[2] || 'b';
-    
-    return value * (units[unit] || 1);
   }
 
   /**
@@ -1679,11 +1565,7 @@ print("✅ GPU optimization test completed")
               Count: -1, // All GPUs
               Capabilities: [['gpu']]
             }]
-          }),
-          // Add memory and CPU limits for optimal performance
-          Memory: config.memoryLimit ? this.parseMemoryLimit(config.memoryLimit) : undefined,
-          CpuCount: config.cpuLimit ? parseInt(config.cpuLimit) : undefined,
-          ShmSize: config.shmSize ? this.parseMemoryLimit(config.shmSize) : undefined
+          })
         },
         Env: [
           'PYTHONUNBUFFERED=1',
