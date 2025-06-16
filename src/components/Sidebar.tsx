@@ -40,12 +40,22 @@ interface DockerServicesStatus {
   dockerAvailable: boolean;
   n8nAvailable: boolean;
   pythonAvailable: boolean;
+  comfyuiAvailable: boolean;
   message?: string;
   ports?: {
     python: number;
     n8n: number;
     ollama: number;
+    comfyui: number;
   };
+}
+
+interface MenuItem {
+  icon: any;
+  label: string;
+  id: string;
+  disabled?: boolean;
+  status?: 'ready' | 'starting';
 }
 
 const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled = false }: SidebarProps) => {
@@ -55,7 +65,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   const [dockerServices, setDockerServices] = useState<DockerServicesStatus>({
     dockerAvailable: false,
     n8nAvailable: false,
-    pythonAvailable: false
+    pythonAvailable: false,
+    comfyuiAvailable: false
   });
 
   // Listen for Clara background activity changes
@@ -72,9 +83,27 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   useEffect(() => {
     const checkDockerServices = async () => {
       try {
+        // Check general Docker services
         if ((window.electron as any)?.checkDockerServices) {
           const status = await (window.electron as any).checkDockerServices();
-          setDockerServices(status);
+          
+          // Check ComfyUI status specifically
+          let comfyuiAvailable = false;
+          if (window.electronAPI?.getServicesStatus) {
+            try {
+              const servicesStatus = await window.electronAPI.getServicesStatus();
+              if (servicesStatus.services?.comfyui) {
+                comfyuiAvailable = servicesStatus.services.comfyui.status === 'healthy';
+              }
+            } catch (error) {
+              console.error('Failed to check ComfyUI status:', error);
+            }
+          }
+          
+          setDockerServices({
+            ...status,
+            comfyuiAvailable
+          });
         }
       } catch (error) {
         console.error('Failed to check Docker services:', error);
@@ -82,6 +111,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
           dockerAvailable: false,
           n8nAvailable: false,
           pythonAvailable: false,
+          comfyuiAvailable: false,
           message: 'Failed to check Docker services'
         });
       }
@@ -189,21 +219,27 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     );
   };
 
-  const mainMenuItems = [
+  const mainMenuItems: MenuItem[] = [
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     // { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
-    { icon: ImageIcon, label: 'Image Gen', id: 'image-gen' },
+    { 
+      icon: ImageIcon, 
+      label: 'Image Gen', 
+      id: 'image-gen',
+      disabled: !dockerServices.comfyuiAvailable,
+      status: dockerServices.comfyuiAvailable ? 'ready' : 'starting'
+    },
     // Only show n8n if Docker services are available
     ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 
       ? [{ icon: Network, label: 'Workflows', id: 'n8n' }] 
       : [])
   ];
 
-  const bottomMenuItems = [
+  const bottomMenuItems: MenuItem[] = [
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: HelpCircle, label: 'Help', id: 'help' },
   ];
@@ -240,12 +276,15 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
           {mainMenuItems.map((item) => (
             <li key={item.id}>
               <button 
-                onClick={() => onPageChange(item.id)}
+                onClick={() => !item.disabled && onPageChange(item.id)}
                 data-page={item.id}
+                disabled={item.disabled}
                 className={`w-full flex items-center rounded-lg transition-colors h-10 relative ${
                   isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                 } ${
-                  activePage === item.id
+                  item.disabled
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
+                    : activePage === item.id
                     ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
                 }`}
@@ -255,6 +294,13 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
                   {/* Background activity indicator for Clara */}
                   {item.id === 'clara' && claraBackgroundActivity && (
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  )}
+                  {/* ComfyUI status indicator */}
+                  {item.id === 'image-gen' && item.status === 'starting' && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                  )}
+                  {item.id === 'image-gen' && item.status === 'ready' && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
                   )}
                 </div>
                 <span 
@@ -266,6 +312,14 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
                   {/* Background activity text indicator when expanded */}
                   {item.id === 'clara' && claraBackgroundActivity && isExpanded && (
                     <span className="ml-2 text-xs text-green-500 font-medium">●</span>
+                  )}
+                  {/* ComfyUI status text when expanded */}
+                  {item.id === 'image-gen' && isExpanded && (
+                    <span className={`ml-2 text-xs font-medium ${
+                      item.status === 'ready' ? 'text-green-500' : 'text-yellow-500'
+                    }`}>
+                      {item.status === 'ready' ? '●' : '○'}
+                    </span>
                   )}
                 </span>
               </button>
@@ -330,12 +384,15 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
             {bottomMenuItems.map((item) => (
               <li key={item.id}>
                 <button 
-                  onClick={() => onPageChange(item.id)}
+                  onClick={() => !item.disabled && onPageChange(item.id)}
                   data-page={item.id}
+                  disabled={item.disabled}
                   className={`w-full flex items-center rounded-lg transition-colors h-10 ${
                     isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                   } ${
-                    activePage === item.id
+                    item.disabled
+                      ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
+                      : activePage === item.id
                       ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
                   }`}

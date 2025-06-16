@@ -1,0 +1,124 @@
+FROM ubuntu:22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    curl \
+    build-essential \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    software-properties-common \
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python3 as default python
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Create app directory
+WORKDIR /app
+
+# Clone ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git
+
+# Change to ComfyUI directory
+WORKDIR /app/ComfyUI
+
+# Install PyTorch CPU version first (will be upgraded to GPU if NVIDIA is available)
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Install ComfyUI requirements first
+RUN pip3 install --no-cache-dir -r requirements.txt || echo "Some requirements failed, continuing with manual install"
+
+# Install core Python dependencies (manual fallback)
+RUN pip3 install --no-cache-dir \
+    transformers \
+    diffusers \
+    accelerate \
+    opencv-python \
+    Pillow \
+    numpy \
+    scipy \
+    tqdm \
+    safetensors \
+    aiohttp \
+    einops \
+    pyyaml \
+    kornia \
+    spandrel \
+    torchsde \
+    alembic \
+    pydantic-settings \
+    av \
+    comfyui-frontend-package \
+    comfyui-workflow-templates \
+    comfyui-embedded-docs
+
+# Try to install xformers (may fail on some systems, that's OK)
+RUN pip3 install --no-cache-dir xformers || echo "xformers not available, continuing without it"
+
+# Create necessary directories
+RUN mkdir -p /app/ComfyUI/models/checkpoints \
+    /app/ComfyUI/models/vae \
+    /app/ComfyUI/models/loras \
+    /app/ComfyUI/models/controlnet \
+    /app/ComfyUI/models/clip \
+    /app/ComfyUI/models/unet \
+    /app/ComfyUI/models/upscale_models \
+    /app/ComfyUI/custom_nodes \
+    /app/ComfyUI/output \
+    /app/ComfyUI/input \
+    /app/ComfyUI/temp
+
+# Install ComfyUI Manager (for easy node management)
+RUN cd custom_nodes && \
+    git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+
+# Install additional useful custom nodes
+RUN cd custom_nodes && \
+    git clone https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
+    git clone https://github.com/cubiq/ComfyUI_essentials.git && \
+    git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+
+# Install dependencies for custom nodes (with error handling)
+RUN cd custom_nodes/comfyui_controlnet_aux && \
+    pip3 install -r requirements.txt --no-cache-dir || echo "Some controlnet_aux dependencies failed, continuing"
+
+RUN cd custom_nodes/ComfyUI_essentials && \
+    pip3 install -r requirements.txt --no-cache-dir || echo "Some essentials dependencies failed, continuing"
+
+# Create a backup of custom nodes for volume mount initialization
+RUN cp -r /app/ComfyUI/custom_nodes /app/ComfyUI_custom_nodes_backup
+
+# Set up startup script
+COPY comfyui-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Expose port
+EXPOSE 8188
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8188/ || exit 1
+
+# Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"] 

@@ -1,11 +1,13 @@
 import React from 'react';
-import { Bell, Sun, Moon, Image } from 'lucide-react';
+import { Bell, Sun, Moon, Image, Settings, Download } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 
 interface ImageGenHeaderProps {
   userName?: string;
   onPageChange?: (page: string) => void;
+  onComfyUIManager?: () => void;
+  onModelManager?: () => void;
   // Pass system stats from ComfyUI
   systemStats?: any;
 }
@@ -13,6 +15,8 @@ interface ImageGenHeaderProps {
 const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
   userName,
   onPageChange,
+  onComfyUIManager,
+  onModelManager,
   systemStats
 }) => {
   const { isDark, toggleTheme } = useTheme();
@@ -48,6 +52,24 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
         >
           <Image className="w-5 h-5 text-gray-600 dark:text-gray-300" />
           <span className="text-sm text-gray-700 dark:text-gray-300">Gallery</span>
+        </button>
+
+        <button
+          onClick={onModelManager}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
+          title="Model Manager"
+        >
+          <Download className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">Models</span>
+        </button>
+
+        <button
+          onClick={onComfyUIManager}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
+          title="ComfyUI Manager"
+        >
+          <Settings className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">ComfyUI</span>
         </button>
 
         <button 

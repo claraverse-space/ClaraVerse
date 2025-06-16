@@ -51,6 +51,51 @@ class DockerSetup extends EventEmitter {
         volumes: [
           `${path.join(this.appDataPath, 'n8n')}:/home/node/.n8n`
         ]
+      },
+      comfyui: {
+        name: 'clara_comfyui',
+        image: this.getArchSpecificImage('clara17verse/clara-comfyui', 'latest'),
+        port: 8188,
+        internalPort: 8188,
+        healthCheck: this.isComfyUIRunning.bind(this),
+        volumes: this.getComfyUIVolumes(),
+        environment: [
+          'NVIDIA_VISIBLE_DEVICES=all',
+          'CUDA_VISIBLE_DEVICES=0',
+          // AGGRESSIVE Performance optimizations for 4090
+          'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:2048,garbage_collection_threshold:0.8,expandable_segments:True',
+          'CUDA_LAUNCH_BLOCKING=0',
+          'TORCH_CUDNN_V8_API_ENABLED=1',
+          'TORCH_CUDNN_BENCHMARK=1',
+          'TORCH_BACKENDS_CUDNN_BENCHMARK=1',
+          // Memory optimizations for 24GB VRAM
+          'PYTORCH_CUDA_MEMORY_FRACTION=0.95',
+          'CUDA_CACHE_DISABLE=0',
+          'CUDA_CACHE_MAXSIZE=2147483648', // 2GB cache
+          // ComfyUI aggressive optimizations
+          'COMFYUI_FORCE_FP16=1',
+          'COMFYUI_DISABLE_XFORMERS_WARNING=1',
+          'COMFYUI_ENABLE_PYTORCH_ATTENTION=1',
+          'COMFYUI_DISABLE_SMART_MEMORY=0',
+          'COMFYUI_VRAM_MANAGEMENT=gpu-only',
+          'COMFYUI_FORCE_UPCAST_ATTENTION=0',
+          'COMFYUI_DONT_UPCAST_ATTENTION=1',
+          // Disable unnecessary features for speed
+          'XFORMERS_MORE_DETAILS=0',
+          'TRANSFORMERS_VERBOSITY=error',
+          'TOKENIZERS_PARALLELISM=true',
+          // Python optimizations
+          'PYTHONUNBUFFERED=1',
+          'PYTHONDONTWRITEBYTECODE=1',
+          'OMP_NUM_THREADS=16', // Match your i9 cores
+          'MKL_NUM_THREADS=16'
+        ],
+        runtime: 'nvidia', // Enable GPU support if available
+        restartPolicy: 'unless-stopped',
+        // Add memory and CPU limits for optimal performance
+        memoryLimit: '32g', // Use plenty of RAM
+        cpuLimit: '16', // Use all CPU cores
+        shmSize: '8g' // Large shared memory for faster data transfer
       }
     };
 
@@ -77,7 +122,8 @@ class DockerSetup extends EventEmitter {
     this.ports = {
       python: 5001,
       n8n: 5678,
-      ollama: 11434
+      ollama: 11434,
+      comfyui: 8188
     };
 
     // Maximum retry attempts for service health checks
@@ -85,7 +131,7 @@ class DockerSetup extends EventEmitter {
     this.retryDelay = 5000; // 5 seconds
 
     // Clara container names
-    this.containerNames = ['clara_python', 'clara_n8n'];
+    this.containerNames = ['clara_python', 'clara_n8n', 'clara_comfyui'];
 
     // Create subdirectories for each service
     Object.keys(this.containers).forEach(service => {
@@ -94,6 +140,365 @@ class DockerSetup extends EventEmitter {
         fs.mkdirSync(servicePath, { recursive: true });
       }
     });
+
+    // Create ComfyUI specific directories
+    const comfyuiDirs = [
+      'comfyui_models',
+      'comfyui_output', 
+      'comfyui_input',
+      'comfyui_custom_nodes',
+      'comfyui_temp'
+    ];
+    
+    comfyuiDirs.forEach(dir => {
+      const dirPath = path.join(this.appDataPath, dir);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+    });
+  }
+
+  /**
+   * Detect if NVIDIA GPU and Docker runtime are available
+   */
+  async detectNvidiaGPU() {
+    try {
+      // Check if nvidia-smi is available
+      const { stdout } = await execAsync('nvidia-smi --query-gpu=name --format=csv,noheader,nounits');
+      const gpus = stdout.trim().split('\n').filter(line => line.trim());
+      
+      if (gpus.length > 0) {
+        console.log(`🎮 Detected NVIDIA GPU(s): ${gpus.join(', ')}`);
+        
+        // Check if nvidia-container-runtime is available in Docker
+        try {
+          const { stdout: dockerInfo } = await execAsync('docker info');
+          if (dockerInfo.includes('nvidia') || dockerInfo.includes('Nvidia')) {
+            console.log('✅ NVIDIA Container Runtime detected in Docker');
+            return true;
+                     } else {
+             console.log('⚠️  NVIDIA GPU detected but nvidia-container-runtime not available in Docker');
+             this.getGPUSetupInstructions();
+             return false;
+           }
+        } catch (runtimeError) {
+          console.log('⚠️  Could not check Docker runtime support');
+          // Try to test GPU access directly
+          return await this.testNvidiaDockerAccess();
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.log('ℹ️  No NVIDIA GPU detected or nvidia-smi not available');
+      return false;
+    }
+  }
+
+  /**
+   * Test NVIDIA Docker access by running a simple GPU container
+   */
+  async testNvidiaDockerAccess() {
+    try {
+      console.log('🧪 Testing NVIDIA Docker access...');
+      const { stdout } = await execAsync('docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi', { timeout: 30000 });
+      if (stdout.includes('NVIDIA-SMI')) {
+        console.log('✅ NVIDIA Docker access confirmed');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.log('❌ NVIDIA Docker access test failed:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Provide GPU setup instructions for the user
+   */
+  getGPUSetupInstructions() {
+    const platform = process.platform;
+    
+    console.log('\n🔧 GPU Setup Instructions:');
+    console.log('==========================================');
+    
+    if (platform === 'linux') {
+      console.log('For Linux (Ubuntu/Debian):');
+      console.log('1. Install NVIDIA Container Toolkit:');
+      console.log('   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg');
+      console.log('   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed \'s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g\' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list');
+      console.log('   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit');
+      console.log('2. Configure Docker:');
+      console.log('   sudo nvidia-ctk runtime configure --runtime=docker');
+      console.log('   sudo systemctl restart docker');
+    } else if (platform === 'win32') {
+      console.log('For Windows with Docker Desktop:');
+      console.log('1. Ensure you have NVIDIA drivers installed');
+      console.log('2. Enable WSL2 integration in Docker Desktop');
+      console.log('3. Install nvidia-container-toolkit in WSL2:');
+      console.log('   Follow Linux instructions above in your WSL2 distribution');
+    } else if (platform === 'darwin') {
+      console.log('For macOS:');
+      console.log('NVIDIA GPU support is not available on macOS with Docker Desktop');
+      console.log('Consider using Metal Performance Shaders for GPU acceleration');
+    }
+    
+    console.log('\n📖 Full documentation:');
+    console.log('https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html');
+    console.log('==========================================\n');
+  }
+
+  /**
+   * Check if ComfyUI optimizations have already been run
+   */
+  async checkComfyUIOptimizationStatus() {
+    try {
+      const optimizationFlagPath = path.join(this.appDataPath, 'comfyui_optimized.flag');
+      return fs.existsSync(optimizationFlagPath);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Mark ComfyUI as optimized
+   */
+  async markComfyUIOptimized() {
+    try {
+      const optimizationFlagPath = path.join(this.appDataPath, 'comfyui_optimized.flag');
+      fs.writeFileSync(optimizationFlagPath, new Date().toISOString());
+    } catch (error) {
+      console.error('Error marking ComfyUI as optimized:', error);
+    }
+  }
+
+  /**
+   * Optimize ComfyUI container for maximum GPU performance on high-end hardware
+   */
+  async optimizeComfyUIContainer() {
+    try {
+      // Check if already optimized
+      if (await this.checkComfyUIOptimizationStatus()) {
+        console.log('✅ ComfyUI already optimized, skipping...');
+        return;
+      }
+
+      console.log('🚀 Optimizing ComfyUI container for maximum GPU performance...');
+      
+      const container = this.docker.getContainer('clara_comfyui');
+      
+      // Check if container is running
+      const containerInfo = await container.inspect();
+      if (containerInfo.State.Status !== 'running') {
+        console.log('⚠️  ComfyUI container is not running, skipping optimization');
+        return;
+      }
+
+      // Aggressive optimization commands for high-end hardware
+      const optimizationCommands = [
+        // Update PyTorch to latest for best 4090 support
+        'pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121',
+        // Install latest xFormers for maximum speed
+        'pip install --force-reinstall xformers --index-url https://download.pytorch.org/whl/cu121',
+        // Install optimized ONNX runtime for ControlNet
+        'pip install onnxruntime-gpu --force-reinstall',
+        // Install TensorRT for maximum inference speed
+        'pip install nvidia-tensorrt',
+        // Install optimized attention mechanisms
+        'pip install flash-attn --no-build-isolation',
+        // Compile PyTorch for this specific GPU
+        'python -c "import torch; torch.backends.cudnn.benchmark = True; torch.backends.cuda.matmul.allow_tf32 = True; torch.backends.cudnn.allow_tf32 = True"',
+        // Pre-compile CUDA kernels
+        'python -c "import torch; torch.cuda.empty_cache(); torch.cuda.synchronize()"',
+        // Set optimal GPU clocks (if supported)
+        'nvidia-smi -pm 1 || true', // Enable persistence mode
+        'nvidia-smi -ac 9501,2100 || true' // Set memory and GPU clocks to max (adjust for your 4090)
+      ];
+
+      for (const command of optimizationCommands) {
+        try {
+          console.log(`Running: ${command}`);
+          const exec = await container.exec({
+            Cmd: ['bash', '-c', command],
+            AttachStdout: true,
+            AttachStderr: true
+          });
+          
+          const stream = await exec.start({ hijack: true, stdin: false });
+          
+          // Wait for command to complete
+          await new Promise((resolve, reject) => {
+            let output = '';
+            stream.on('data', (data) => {
+              output += data.toString();
+            });
+            stream.on('end', () => {
+              console.log(`✅ Command completed: ${command.substring(0, 50)}...`);
+              resolve(output);
+            });
+            stream.on('error', reject);
+            
+            // Timeout after 10 minutes for compilation tasks
+            setTimeout(() => reject(new Error('Command timeout')), 600000);
+          });
+        } catch (error) {
+          console.log(`⚠️  Optimization command failed: ${command} - ${error.message}`);
+        }
+      }
+
+      // Create a performance test script
+      const performanceTestScript = `
+import torch
+import time
+
+print("🚀 Testing GPU performance...")
+print(f"GPU: {torch.cuda.get_device_name()}")
+print(f"CUDA Version: {torch.version.cuda}")
+print(f"PyTorch Version: {torch.__version__}")
+print(f"VRAM Available: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+
+# Test tensor operations speed
+device = torch.device('cuda')
+x = torch.randn(4096, 4096, device=device, dtype=torch.float16)
+y = torch.randn(4096, 4096, device=device, dtype=torch.float16)
+
+start_time = time.time()
+for _ in range(100):
+    z = torch.matmul(x, y)
+    torch.cuda.synchronize()
+end_time = time.time()
+
+print(f"Matrix multiplication speed: {100 / (end_time - start_time):.1f} ops/sec")
+print("✅ GPU optimization test completed")
+`;
+
+      try {
+        console.log('Running GPU performance test...');
+        const exec = await container.exec({
+          Cmd: ['python', '-c', performanceTestScript],
+          AttachStdout: true,
+          AttachStderr: true
+        });
+        
+        const stream = await exec.start({ hijack: true, stdin: false });
+        
+        await new Promise((resolve, reject) => {
+          let output = '';
+          stream.on('data', (data) => {
+            const text = data.toString();
+            output += text;
+            console.log(text.trim());
+          });
+          stream.on('end', () => {
+            resolve(output);
+          });
+          stream.on('error', reject);
+          
+          setTimeout(() => reject(new Error('Performance test timeout')), 60000);
+        });
+      } catch (error) {
+        console.log(`⚠️  Performance test failed: ${error.message}`);
+      }
+
+      console.log('✅ ComfyUI aggressive optimization completed');
+      await this.markComfyUIOptimized();
+    } catch (error) {
+      console.error('❌ Error optimizing ComfyUI container:', error.message);
+    }
+  }
+
+  /**
+   * Get ComfyUI volumes - optimized for high-performance systems
+   */
+  getComfyUIVolumes() {
+    const os = require('os');
+    
+    // For high-performance systems, prefer Docker volumes over bind mounts
+    // Docker volumes are faster than bind mounts, especially on Windows
+    if (os.platform() === 'win32') {
+      console.log('🚀 Using Docker volumes for maximum I/O performance on Windows');
+      
+      // Use Docker named volumes for best performance
+      return [
+        'clara_comfyui_models:/app/ComfyUI/models',
+        'clara_comfyui_output:/app/ComfyUI/output',
+        'clara_comfyui_input:/app/ComfyUI/input',
+        'clara_comfyui_custom_nodes:/app/ComfyUI/custom_nodes',
+        'clara_comfyui_temp:/app/ComfyUI/temp'
+      ];
+    }
+    
+    // For Linux/macOS, try WSL2 paths first, then fall back to bind mounts
+    if (os.platform() === 'win32') {
+      try {
+        const { execSync } = require('child_process');
+        
+        // Try to detect WSL2 distributions and current user
+        const wslList = execSync('wsl -l -v', { encoding: 'utf8' });
+        const distributions = wslList.split('\n')
+          .filter(line => line.includes('Running'))
+          .map(line => line.trim().split(/\s+/)[0])
+          .filter(dist => dist && dist !== 'NAME');
+        
+        if (distributions.length > 0) {
+          // Use the first running distribution
+          const distro = distributions[0];
+          
+          // Try to get the current user in WSL2
+          let wslUser = 'root';
+          try {
+            wslUser = execSync(`wsl -d ${distro} whoami`, { encoding: 'utf8' }).trim();
+          } catch (error) {
+            console.warn('Could not detect WSL2 user, using root');
+          }
+          
+          console.log(`🚀 Using WSL2 paths for ComfyUI (${distro}, user: ${wslUser})`);
+          
+          // Return WSL2 paths for much faster I/O
+          return [
+            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_models:/app/ComfyUI/models`,
+            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_output:/app/ComfyUI/output`,
+            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_input:/app/ComfyUI/input`,
+            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_custom_nodes:/app/ComfyUI/custom_nodes`,
+            `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_temp:/app/ComfyUI/temp`
+          ];
+        }
+      } catch (error) {
+        console.warn('WSL2 not available or not running, using Docker volumes:', error.message);
+      }
+    }
+    
+    // Fallback to bind mounts for Linux/macOS
+    console.log('📁 Using bind mounts for ComfyUI volumes');
+    return [
+      `${path.join(this.appDataPath, 'comfyui_models')}:/app/ComfyUI/models`,
+      `${path.join(this.appDataPath, 'comfyui_output')}:/app/ComfyUI/output`,
+      `${path.join(this.appDataPath, 'comfyui_input')}:/app/ComfyUI/input`,
+      `${path.join(this.appDataPath, 'comfyui_custom_nodes')}:/app/ComfyUI/custom_nodes`,
+      `${path.join(this.appDataPath, 'comfyui_temp')}:/app/ComfyUI/temp`
+    ];
+  }
+
+  /**
+   * Parse memory limit string to bytes
+   */
+  parseMemoryLimit(memoryStr) {
+    if (!memoryStr) return undefined;
+    
+    const units = {
+      'b': 1,
+      'k': 1024,
+      'm': 1024 * 1024,
+      'g': 1024 * 1024 * 1024
+    };
+    
+    const match = memoryStr.toLowerCase().match(/^(\d+)([bkmg]?)$/);
+    if (!match) return undefined;
+    
+    const value = parseInt(match[1]);
+    const unit = match[2] || 'b';
+    
+    return value * (units[unit] || 1);
   }
 
   /**
@@ -1239,6 +1644,17 @@ class DockerSetup extends EventEmitter {
 
       console.log(`Creating container ${config.name} with port mapping ${config.internalPort} -> ${config.port}`);
       
+      // Check for GPU availability if this container requests GPU runtime
+      let useGPURuntime = false;
+      if (config.runtime === 'nvidia') {
+        useGPURuntime = await this.detectNvidiaGPU();
+        if (useGPURuntime) {
+          console.log(`🚀 GPU support enabled for ${config.name}`);
+        } else {
+          console.log(`⚠️  GPU requested but not available for ${config.name}, falling back to CPU`);
+        }
+      }
+      
       // Create and start container
       const containerConfig = {
         Image: config.image,
@@ -1251,11 +1667,34 @@ class DockerSetup extends EventEmitter {
             [`${config.internalPort}/tcp`]: [{ HostPort: config.port.toString() }]
           },
           Binds: config.volumes,
-          NetworkMode: 'clara_network'
+          NetworkMode: 'clara_network',
+          // Add GPU runtime support if available
+          ...(useGPURuntime && { Runtime: 'nvidia' }),
+          // Add restart policy if specified
+          ...(config.restartPolicy && { RestartPolicy: { Name: config.restartPolicy } }),
+          // Add GPU device access for NVIDIA runtime
+          ...(useGPURuntime && {
+            DeviceRequests: [{
+              Driver: 'nvidia',
+              Count: -1, // All GPUs
+              Capabilities: [['gpu']]
+            }]
+          }),
+          // Add memory and CPU limits for optimal performance
+          Memory: config.memoryLimit ? this.parseMemoryLimit(config.memoryLimit) : undefined,
+          CpuCount: config.cpuLimit ? parseInt(config.cpuLimit) : undefined,
+          ShmSize: config.shmSize ? this.parseMemoryLimit(config.shmSize) : undefined
         },
         Env: [
           'PYTHONUNBUFFERED=1',
-          'OLLAMA_BASE_URL=http://clara_ollama:11434'
+          'OLLAMA_BASE_URL=http://clara_ollama:11434',
+          // Add any environment variables from the container config
+          ...(config.environment || []),
+          // Add GPU-specific environment variables if GPU is available
+          ...(useGPURuntime ? [
+            'NVIDIA_VISIBLE_DEVICES=all',
+            'NVIDIA_DRIVER_CAPABILITIES=compute,utility'
+          ] : [])
         ]
       };
 
@@ -1292,6 +1731,17 @@ class DockerSetup extends EventEmitter {
         });
         console.error(`Container logs for ${config.name}:`, logs.toString());
         throw new Error(`Container ${config.name} failed health check after 5 attempts`);
+      }
+
+      // Run optimization for ComfyUI container after it's healthy
+      if (config.name === 'clara_comfyui' && useGPURuntime) {
+        console.log('🚀 Running GPU optimizations for ComfyUI...');
+        // Run optimization in background to not block startup
+        setTimeout(() => {
+          this.optimizeComfyUIContainer().catch(error => {
+            console.error('Optimization failed:', error.message);
+          });
+        }, 10000); // Wait 10 seconds after health check
       }
     } catch (error) {
       console.error(`Error starting ${config.name}:`, error);
@@ -1708,6 +2158,46 @@ class DockerSetup extends EventEmitter {
     } catch (error) {
       console.error('Error updating containers:', error);
       throw error;
+    }
+  }
+
+  async isComfyUIRunning() {
+    try {
+      if (!this.ports.comfyui) {
+        console.log('ComfyUI port not set');
+        return false;
+      }
+
+      console.log(`Checking ComfyUI health at http://localhost:${this.ports.comfyui}/`);
+      
+      const response = await new Promise((resolve, reject) => {
+        const req = http.get(`http://localhost:${this.ports.comfyui}/`, (res) => {
+          console.log(`ComfyUI health check status code: ${res.statusCode}`);
+          
+          // ComfyUI returns 200 for the main page when running
+          if (res.statusCode === 200) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        });
+
+        req.on('error', (error) => {
+          console.error('ComfyUI health check request error:', error);
+          resolve(false);
+        });
+
+        req.setTimeout(5000, () => {
+          console.error('ComfyUI health check timeout');
+          req.destroy();
+          resolve(false);
+        });
+      });
+
+      return response;
+    } catch (error) {
+      console.error('ComfyUI health check error:', error);
+      return false;
     }
   }
 }

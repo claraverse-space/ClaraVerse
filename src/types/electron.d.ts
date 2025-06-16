@@ -77,13 +77,62 @@ export interface ElectronAPI {
   }) => Promise<void>;
   getContainerLogs: (containerId: string) => Promise<string>;
   send: (channel: string, data?: any) => void;
+  
+  // ComfyUI specific methods
+  comfyuiStatus: () => Promise<{
+    running: boolean;
+    port?: number;
+    containerName?: string;
+    error?: string;
+  }>;
+  comfyuiStart: () => Promise<{ success: boolean; error?: string }>;
+  comfyuiStop: () => Promise<{ success: boolean; error?: string }>;
+  comfyuiRestart: () => Promise<{ success: boolean; error?: string }>;
+  comfyuiLogs: () => Promise<{ success: boolean; logs?: string; error?: string }>;
+  comfyuiOptimize: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  
+  // System information methods
+  getPlatform: () => string;
+  getSystemInfo: () => Promise<{ arch: string; platform: string; [key: string]: any }>;
+  saveComfyUIConsent: (hasConsented: boolean) => Promise<void>;
+  getComfyUIConsent: () => Promise<{ hasConsented: boolean; timestamp?: string; version?: string } | null>;
+  getGPUInfo: () => Promise<{ success: boolean; gpuInfo?: { hasNvidiaGPU: boolean; gpuName: string; isAMD: boolean; renderer?: string; [key: string]: any }; error?: string }>;
+}
+
+interface LlamaSwapAPI {
+  getGPUDiagnostics: () => Promise<{
+    success: boolean;
+    gpuInfo?: {
+      hasNvidiaGPU: boolean;
+      gpuName: string;
+      isAMD: boolean;
+      [key: string]: any;
+    };
+    error?: string;
+  }>;
+}
+  
+  // Services status
+  getServicesStatus: () => Promise<{
+    services?: {
+      [key: string]: {
+        name: string;
+        status: 'healthy' | 'unhealthy' | 'failed' | 'unknown';
+        lastCheck: Date | null;
+        failureCount: number;
+        isRetrying: boolean;
+      };
+    };
+    overallHealth?: 'healthy' | 'degraded' | 'critical';
+    error?: string;
+  }>;
 }
 
 declare global {
   interface Window {
     electron: Electron;
     electronAPI: ElectronAPI;
-    llamaSwap: {
+    llamaSwap: LlamaSwapAPI & {
       start: () => Promise<{ success: boolean; message?: string; error?: string; warning?: string; diagnostics?: any; status?: any }>;
       stop: () => Promise<{ success: boolean; error?: string }>;
       restart: () => Promise<{ success: boolean; message?: string; status?: any; error?: string }>;
@@ -108,6 +157,26 @@ declare global {
       deleteLocalModel: (filePath: string) => Promise<{ success: boolean; error?: string }>;
       onDownloadProgress: (callback: (data: any) => void) => () => void;
       stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
+      
+      // Model Manager APIs (CivitAI/HuggingFace search)
+      searchCivitAI: (query: string, types?: string[], sort?: string) => Promise<any>;
+      searchHuggingFace: (query: string, modelType?: string, author?: string) => Promise<any>;
+      downloadModelFile: (url: string, filename: string, modelType: string, source: string) => Promise<any>;
+      getLocalModelFiles: () => Promise<Record<string, any[]>>;
+      deleteLocalModelFile: (modelType: string, filename: string) => Promise<{ success: boolean; error?: string }>;
+      saveApiKeys: (keys: { civitai?: string; huggingface?: string }) => Promise<void>;
+      getApiKeys: () => Promise<{ civitai?: string; huggingface?: string }>;
+      
+      // ComfyUI Model Manager APIs
+      comfyuiDownloadModel: (url: string, filename: string, modelType: string, source: string, apiKey?: string) => Promise<{ success: boolean; path?: string; modelType?: string; size?: number; error?: string }>;
+      comfyuiGetLocalModels: () => Promise<Record<string, Array<{ name: string; size: number; modified: Date; path: string; type: string }>>>;
+      comfyuiDeleteModel: (modelType: string, filename: string) => Promise<{ success: boolean; error?: string }>;
+      comfyuiGetModelsDir: () => Promise<{ path: string; exists: boolean }>;
+      
+      // ComfyUI Download Progress Events
+      onComfyUIDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
+      onComfyUIDownloadComplete: (callback: (data: { filename: string; modelType: string; path: string; size: number }) => void) => () => void;
+      onModelDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
     };
     mcpService: {
       getServers: () => Promise<MCPServer[]>;

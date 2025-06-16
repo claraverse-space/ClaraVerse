@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const fsSync = require('fs');
 const log = require('electron-log');
+const https = require('https');
+const http = require('http');
+const { pipeline } = require('stream/promises');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const DockerSetup = require('./dockerSetup.cjs');
@@ -1801,6 +1804,325 @@ function registerHandlers() {
     }
   });
 
+  // ComfyUI specific handlers
+  ipcMain.handle('comfyui-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { running: false, error: 'Docker not initialized' };
+      }
+      
+      const isRunning = await dockerSetup.isComfyUIRunning();
+      return {
+        running: isRunning,
+        port: dockerSetup.ports.comfyui || 8188,
+        containerName: 'clara_comfyui'
+      };
+    } catch (error) {
+      log.error('Error checking ComfyUI status:', error);
+      return { running: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('comfyui-start', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      await dockerSetup.startContainer(dockerSetup.containers.comfyui);
+      return { success: true };
+    } catch (error) {
+      log.error('Error starting ComfyUI:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('comfyui-stop', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      const container = await dockerSetup.docker.getContainer('clara_comfyui');
+      await container.stop();
+      return { success: true };
+    } catch (error) {
+      log.error('Error stopping ComfyUI:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('comfyui-restart', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      const container = await dockerSetup.docker.getContainer('clara_comfyui');
+      await container.restart();
+      return { success: true };
+    } catch (error) {
+      log.error('Error restarting ComfyUI:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('comfyui-logs', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      const container = await dockerSetup.docker.getContainer('clara_comfyui');
+      const logs = await container.logs({
+        stdout: true,
+        stderr: true,
+        tail: 100
+      });
+      return { success: true, logs: logs.toString() };
+    } catch (error) {
+      log.error('Error getting ComfyUI logs:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('comfyui-optimize', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker not initialized');
+      }
+      
+      log.info('Manual ComfyUI optimization requested');
+      await dockerSetup.optimizeComfyUIContainer();
+      return { success: true, message: 'ComfyUI optimization completed' };
+    } catch (error) {
+      log.error('Error optimizing ComfyUI:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // System information handlers
+  ipcMain.handle('get-system-info', async () => {
+    try {
+      const os = require('os');
+      return {
+        platform: os.platform(),
+        arch: os.arch(),
+        cpus: os.cpus().length,
+        totalMemory: os.totalmem(),
+        freeMemory: os.freemem(),
+        hostname: os.hostname(),
+        release: os.release(),
+        type: os.type()
+      };
+    } catch (error) {
+      log.error('Error getting system info:', error);
+      return { error: error.message };
+    }
+  });
+
+  // ComfyUI consent management
+  ipcMain.handle('save-comfyui-consent', async (event, hasConsented) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
+      
+      const consentData = {
+        hasConsented,
+        timestamp: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      fs.writeFileSync(consentFile, JSON.stringify(consentData, null, 2));
+      log.info(`ComfyUI consent saved: ${hasConsented}`);
+      
+      // Update watchdog service if it's running
+      if (watchdogService) {
+        watchdogService.setComfyUIMonitoring(hasConsented);
+      }
+    } catch (error) {
+      log.error('Error saving ComfyUI consent:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-comfyui-consent', async () => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
+      
+      if (fs.existsSync(consentFile)) {
+        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
+        return consentData;
+      }
+      
+      return null;
+    } catch (error) {
+      log.error('Error reading ComfyUI consent:', error);
+      return null;
+    }
+  });
+
+  // Direct GPU information handler
+  ipcMain.handle('get-gpu-info', async () => {
+    try {
+      const { spawn, spawnSync } = require('child_process');
+      const os = require('os');
+      
+      let hasNvidiaGPU = false;
+      let gpuName = '';
+      let isAMD = false;
+      let gpuMemoryMB = 0;
+      
+      // Try nvidia-smi first (most reliable for NVIDIA GPUs)
+      try {
+        const nvidiaSmi = spawnSync('nvidia-smi', [
+          '--query-gpu=name,memory.total',
+          '--format=csv,noheader,nounits'
+        ], { encoding: 'utf8', timeout: 5000 });
+
+        if (nvidiaSmi.status === 0 && nvidiaSmi.stdout) {
+          const lines = nvidiaSmi.stdout.trim().split('\n');
+          if (lines.length > 0 && lines[0].trim()) {
+            const parts = lines[0].split(',');
+            if (parts.length >= 2) {
+              gpuName = parts[0].trim();
+              gpuMemoryMB = parseInt(parts[1].trim()) || 0;
+              hasNvidiaGPU = true;
+              
+              log.info(`NVIDIA GPU detected via nvidia-smi: ${gpuName} (${gpuMemoryMB}MB)`);
+            }
+          }
+        }
+      } catch (error) {
+        log.debug('nvidia-smi not available or failed:', error.message);
+      }
+
+      // If nvidia-smi failed, try WMIC on Windows
+      if (!hasNvidiaGPU && os.platform() === 'win32') {
+        try {
+          const wmic = spawnSync('wmic', [
+            'path', 'win32_VideoController', 
+            'get', 'name,AdapterRAM', 
+            '/format:csv'
+          ], { encoding: 'utf8', timeout: 10000 });
+
+          if (wmic.status === 0 && wmic.stdout) {
+            const lines = wmic.stdout.split('\n').filter(line => line.trim() && !line.startsWith('Node'));
+            
+            for (const line of lines) {
+              const parts = line.split(',');
+              if (parts.length >= 3) {
+                const ramStr = parts[1]?.trim();
+                const nameStr = parts[2]?.trim();
+
+                if (nameStr && ramStr && !isNaN(parseInt(ramStr))) {
+                  const ramBytes = parseInt(ramStr);
+                  const ramMB = Math.round(ramBytes / (1024 * 1024));
+                  
+                  // Check if this is a better GPU than what we found
+                  if (ramMB > gpuMemoryMB) {
+                    gpuName = nameStr;
+                    gpuMemoryMB = ramMB;
+                    
+                    const lowerName = nameStr.toLowerCase();
+                    hasNvidiaGPU = lowerName.includes('nvidia') || 
+                                  lowerName.includes('geforce') || 
+                                  lowerName.includes('rtx') || 
+                                  lowerName.includes('gtx');
+                    isAMD = lowerName.includes('amd') || lowerName.includes('radeon');
+                    
+                    log.info(`GPU detected via WMIC: ${gpuName} (${gpuMemoryMB}MB)`);
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          log.debug('WMIC GPU detection failed:', error.message);
+        }
+      }
+
+      // Try PowerShell as another fallback on Windows
+      if (!hasNvidiaGPU && !gpuName && os.platform() === 'win32') {
+        try {
+          const powershell = spawnSync('powershell', [
+            '-Command',
+            'Get-WmiObject -Class Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json'
+          ], { encoding: 'utf8', timeout: 10000 });
+
+          if (powershell.status === 0 && powershell.stdout) {
+            const gpuData = JSON.parse(powershell.stdout);
+            const gpus = Array.isArray(gpuData) ? gpuData : [gpuData];
+            
+            for (const gpu of gpus) {
+              if (gpu.Name && gpu.AdapterRAM) {
+                const ramMB = Math.round(gpu.AdapterRAM / (1024 * 1024));
+                
+                if (ramMB > gpuMemoryMB) {
+                  gpuName = gpu.Name;
+                  gpuMemoryMB = ramMB;
+                  
+                  const lowerName = gpu.Name.toLowerCase();
+                  hasNvidiaGPU = lowerName.includes('nvidia') || 
+                                lowerName.includes('geforce') || 
+                                lowerName.includes('rtx') || 
+                                lowerName.includes('gtx');
+                  isAMD = lowerName.includes('amd') || lowerName.includes('radeon');
+                  
+                  log.info(`GPU detected via PowerShell: ${gpuName} (${gpuMemoryMB}MB)`);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          log.debug('PowerShell GPU detection failed:', error.message);
+        }
+      }
+
+      return {
+        success: true,
+        gpuInfo: {
+          hasNvidiaGPU,
+          gpuName,
+          isAMD,
+          gpuMemoryMB,
+          gpuMemoryGB: Math.round(gpuMemoryMB / 1024 * 10) / 10,
+          platform: os.platform()
+        }
+      };
+    } catch (error) {
+      log.error('Error getting GPU info:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Get watchdog service status including ComfyUI
+  ipcMain.handle('get-services-status', async () => {
+    try {
+      if (!watchdogService) {
+        return { error: 'Watchdog service not initialized' };
+      }
+      
+      return {
+        services: watchdogService.getServicesStatus(),
+        overallHealth: watchdogService.getOverallHealth()
+      };
+    } catch (error) {
+      log.error('Error getting services status:', error);
+      return { error: error.message };
+    }
+  });
+
   // Update containers
   ipcMain.handle('docker-update-containers', async (event, containerNames) => {
     try {
@@ -2526,5 +2848,499 @@ ipcMain.handle('get-startup-settings', async () => {
   } catch (error) {
     log.error('Error reading startup settings:', error);
     return {};
+  }
+});
+
+// Model Manager IPC handlers
+ipcMain.handle('model-manager:search-civitai', async (event, { query, types, sort }) => {
+  try {
+    const url = new URL('https://civitai.com/api/v1/models');
+    url.searchParams.set('limit', '20');
+    url.searchParams.set('query', query);
+    url.searchParams.set('sort', sort || 'Highest Rated');
+    if (types && types.length > 0) {
+      url.searchParams.set('types', types.join(','));
+    }
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    log.error('Error searching CivitAI models:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('model-manager:search-huggingface', async (event, { query, modelType, author }) => {
+  try {
+    const url = new URL('https://huggingface.co/api/models');
+    url.searchParams.set('limit', '20');
+    url.searchParams.set('search', query);
+    if (modelType) {
+      url.searchParams.set('filter', `library:${modelType}`);
+    }
+    if (author) {
+      url.searchParams.set('author', author);
+    }
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    log.error('Error searching Hugging Face models:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('model-manager:download-model', async (event, { url, filename, modelType, source }) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const modelsDir = path.join(app.getPath('userData'), 'models', modelType);
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+
+      const filePath = path.join(modelsDir, filename);
+      const file = fs.createWriteStream(filePath);
+      const client = url.startsWith('https:') ? https : http;
+
+      // Add headers for different sources
+      const headers = {};
+      if (source === 'huggingface') {
+        // For Hugging Face, we might need auth headers
+        headers['User-Agent'] = 'Clara-AI-Assistant/1.0';
+      }
+
+      const request = client.get(url, { headers }, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download: ${response.statusCode}`));
+          return;
+        }
+
+        const totalSize = parseInt(response.headers['content-length']);
+        let downloadedSize = 0;
+
+        response.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+          const progress = (downloadedSize / totalSize) * 100;
+          event.sender.send('model-download-progress', {
+            filename,
+            progress: Math.round(progress),
+            downloadedSize,
+            totalSize
+          });
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close(() => {
+            log.info(`Model downloaded successfully: ${filename}`);
+            resolve({ success: true, path: filePath });
+          });
+        });
+      });
+
+      request.on('error', (error) => {
+        fs.unlink(filePath, () => {}); // Delete partial file
+        reject(error);
+      });
+    } catch (error) {
+      log.error('Error downloading model:', error);
+      reject(error);
+    }
+  });
+});
+
+ipcMain.handle('model-manager:get-local-models', async () => {
+  try {
+    const modelsDir = path.join(app.getPath('userData'), 'models');
+    if (!fs.existsSync(modelsDir)) {
+      return {};
+    }
+
+    const models = {};
+    const modelTypes = fs.readdirSync(modelsDir, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name);
+
+    for (const type of modelTypes) {
+      const typePath = path.join(modelsDir, type);
+      const files = fs.readdirSync(typePath).map(filename => {
+        const filePath = path.join(typePath, filename);
+        const stats = fs.statSync(filePath);
+        return {
+          name: filename,
+          size: stats.size,
+          modified: stats.mtime,
+          path: filePath
+        };
+      });
+      models[type] = files;
+    }
+
+    return models;
+  } catch (error) {
+    log.error('Error getting local models:', error);
+    return {};
+  }
+});
+
+ipcMain.handle('model-manager:delete-local-model', async (event, { modelType, filename }) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'models', modelType, filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      log.info(`Model deleted: ${filename}`);
+      return { success: true };
+    }
+    return { success: false, error: 'File not found' };
+  } catch (error) {
+    log.error('Error deleting model:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('model-manager:save-api-keys', async (event, keys) => {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'model-manager-settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify(keys, null, 2));
+    log.info('API keys saved successfully');
+    return { success: true };
+  } catch (error) {
+    log.error('Error saving API keys:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('model-manager:get-api-keys', async () => {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'model-manager-settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const keys = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return keys;
+    }
+    return {};
+  } catch (error) {
+    log.error('Error reading API keys:', error);
+    return {};
+  }
+});
+
+// ComfyUI Model Download Handler - downloads directly to ComfyUI model directories
+ipcMain.handle('comfyui-model-manager:download-model', async (event, { url, filename, modelType, source, apiKey }) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Map model types to ComfyUI directory structure
+      const modelTypeMapping = {
+        'checkpoint': 'checkpoints',
+        'lora': 'loras', 
+        'vae': 'vae',
+        'controlnet': 'controlnet',
+        'upscaler': 'upscale_models',
+        'embedding': 'embeddings',
+        'textualinversion': 'embeddings', // CivitAI uses this term
+        'hypernetwork': 'hypernetworks',
+        'style': 'style_models',
+        't2i_adapter': 't2i_adapter',
+        'clip': 'clip',
+        'unet': 'unet'
+      };
+
+      const comfyuiDir = modelTypeMapping[modelType] || 'checkpoints';
+      
+      // Get the ComfyUI models directory - prefer WSL2 path if available
+      let comfyuiModelsDir;
+      
+      try {
+        // Try to use WSL2 path for better performance
+        const os = require('os');
+        if (os.platform() === 'win32') {
+          const { execSync } = require('child_process');
+          const wslList = execSync('wsl -l -v', { encoding: 'utf8' });
+          const distributions = wslList.split('\n')
+            .filter(line => line.includes('Running'))
+            .map(line => line.trim().split(/\s+/)[0])
+            .filter(dist => dist && dist !== 'NAME');
+          
+          if (distributions.length > 0) {
+            const distro = distributions[0];
+            let wslUser = 'root';
+            try {
+              wslUser = execSync(`wsl -d ${distro} whoami`, { encoding: 'utf8' }).trim();
+            } catch (error) {
+              // Use root as fallback
+            }
+            
+            // Use WSL2 path
+            comfyuiModelsDir = `\\\\wsl.localhost\\${distro}\\home\\${wslUser}\\comfyui_models\\${comfyuiDir}`;
+            log.info(`Using WSL2 path for model download: ${comfyuiModelsDir}`);
+          } else {
+            throw new Error('No running WSL2 distributions found');
+          }
+        } else {
+          throw new Error('Not on Windows');
+        }
+      } catch (error) {
+        // Fallback to Windows path
+        comfyuiModelsDir = path.join(app.getPath('userData'), 'comfyui_models', comfyuiDir);
+        log.info(`Using Windows path for model download: ${comfyuiModelsDir}`);
+      }
+      
+      // Ensure directory exists
+      if (!fs.existsSync(comfyuiModelsDir)) {
+        fs.mkdirSync(comfyuiModelsDir, { recursive: true });
+        log.info(`Created ComfyUI model directory: ${comfyuiModelsDir}`);
+      }
+
+      const filePath = path.join(comfyuiModelsDir, filename);
+      
+      // Check if file already exists
+      if (fs.existsSync(filePath)) {
+        log.warn(`File already exists: ${filename}`);
+        resolve({ success: false, error: 'File already exists', path: filePath });
+        return;
+      }
+
+      const file = fs.createWriteStream(filePath);
+      const client = url.startsWith('https:') ? https : http;
+
+      // Add headers for different sources
+      const headers = {
+        'User-Agent': 'Clara-AI-Assistant/1.0',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+      };
+      
+      if (source === 'civitai') {
+        // CivitAI specific headers
+        headers['Referer'] = 'https://civitai.com/';
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+      } else if (source === 'huggingface' && apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      log.info(`Starting download: ${filename} to ${comfyuiDir} directory`);
+      log.info(`Download URL: ${url}`);
+      log.info(`File path: ${filePath}`);
+      log.info(`Source: ${source}, API Key provided: ${!!apiKey}`);
+
+      // Validate URL
+      try {
+        new URL(url);
+      } catch (urlError) {
+        reject(new Error(`Invalid download URL: ${url}`));
+        return;
+      }
+
+      const makeRequest = (requestUrl, redirectCount = 0) => {
+        if (redirectCount > 5) {
+          file.close();
+          fs.unlink(filePath, () => {});
+          reject(new Error('Too many redirects'));
+          return;
+        }
+
+        const requestClient = requestUrl.startsWith('https:') ? https : http;
+        const request = requestClient.get(requestUrl, { headers }, (response) => {
+          // Handle all redirect status codes
+          if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+            const redirectUrl = response.headers.location;
+            if (!redirectUrl) {
+              file.close();
+              fs.unlink(filePath, () => {});
+              reject(new Error(`Redirect response missing location header`));
+              return;
+            }
+            
+            log.info(`Following ${response.statusCode} redirect to: ${redirectUrl}`);
+            
+            // Handle relative URLs
+            let fullRedirectUrl = redirectUrl;
+            if (redirectUrl.startsWith('/')) {
+              const urlObj = new URL(requestUrl);
+              fullRedirectUrl = `${urlObj.protocol}//${urlObj.host}${redirectUrl}`;
+            } else if (!redirectUrl.startsWith('http')) {
+              const urlObj = new URL(requestUrl);
+              fullRedirectUrl = `${urlObj.protocol}//${urlObj.host}/${redirectUrl}`;
+            }
+            
+            // Make new request to redirect URL
+            makeRequest(fullRedirectUrl, redirectCount + 1);
+            return;
+          }
+
+          if (response.statusCode !== 200) {
+            file.close();
+            fs.unlink(filePath, () => {});
+            log.error(`Download failed with status ${response.statusCode}: ${response.statusMessage}`);
+            log.error(`Response headers:`, response.headers);
+            reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
+            return;
+          }
+
+          log.info(`Download started successfully for ${filename}`);
+          log.info(`Content-Length: ${response.headers['content-length'] || 'Unknown'}`);
+
+          handleDownloadResponse(response);
+        });
+
+        request.on('error', (error) => {
+          file.close();
+          fs.unlink(filePath, () => {});
+          reject(new Error(`Request failed: ${error.message}`));
+        });
+
+        request.setTimeout(30000, () => {
+          request.destroy();
+          file.close();
+          fs.unlink(filePath, () => {});
+          reject(new Error('Download timeout'));
+        });
+      };
+
+      makeRequest(url);
+
+      function handleDownloadResponse(response) {
+        const totalSize = parseInt(response.headers['content-length']) || 0;
+        let downloadedSize = 0;
+        const startTime = Date.now();
+
+        response.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+          const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+          const elapsed = (Date.now() - startTime) / 1000;
+          const speed = downloadedSize / elapsed;
+          const remaining = totalSize > 0 ? (totalSize - downloadedSize) / speed : 0;
+          
+          // Send progress update
+          event.sender.send('comfyui-model-download-progress', {
+            filename,
+            progress: Math.round(progress),
+            downloadedSize,
+            totalSize,
+            speed: formatBytes(speed) + '/s',
+            eta: remaining > 0 ? `${Math.round(remaining)}s` : 'Unknown'
+          });
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close(() => {
+            log.info(`ComfyUI model downloaded successfully: ${filename} to ${comfyuiDir}`);
+            
+            // Send completion event
+            event.sender.send('comfyui-model-download-complete', {
+              filename,
+              modelType: comfyuiDir,
+              path: filePath,
+              size: fs.statSync(filePath).size
+            });
+            
+            resolve({ 
+              success: true, 
+              path: filePath, 
+              modelType: comfyuiDir,
+              size: fs.statSync(filePath).size 
+            });
+          });
+        });
+
+        file.on('error', (error) => {
+          fs.unlink(filePath, () => {});
+          reject(new Error(`File write error: ${error.message}`));
+        });
+      }
+
+    } catch (error) {
+      log.error('Error downloading ComfyUI model:', error);
+      reject(error);
+    }
+  });
+});
+
+// Get ComfyUI models organized by type
+ipcMain.handle('comfyui-model-manager:get-local-models', async () => {
+  try {
+    const comfyuiModelsDir = path.join(app.getPath('userData'), 'comfyui_models');
+    if (!fs.existsSync(comfyuiModelsDir)) {
+      return {};
+    }
+
+    const models = {};
+    const modelDirs = [
+      'checkpoints', 'loras', 'vae', 'controlnet', 'upscale_models', 
+      'embeddings', 'hypernetworks', 'style_models', 't2i_adapter', 'clip', 'unet'
+    ];
+
+    for (const dir of modelDirs) {
+      const dirPath = path.join(comfyuiModelsDir, dir);
+      if (fs.existsSync(dirPath)) {
+        try {
+          const files = fs.readdirSync(dirPath)
+            .filter(file => {
+              // Filter for model files (safetensors, ckpt, pt, pth, bin)
+              const ext = path.extname(file).toLowerCase();
+              return ['.safetensors', '.ckpt', '.pt', '.pth', '.bin'].includes(ext);
+            })
+            .map(filename => {
+              const filePath = path.join(dirPath, filename);
+              const stats = fs.statSync(filePath);
+              return {
+                name: filename,
+                size: stats.size,
+                modified: stats.mtime,
+                path: filePath,
+                type: dir
+              };
+            });
+          models[dir] = files;
+        } catch (error) {
+          log.warn(`Error reading directory ${dir}:`, error);
+          models[dir] = [];
+        }
+      } else {
+        models[dir] = [];
+      }
+    }
+
+    return models;
+  } catch (error) {
+    log.error('Error getting ComfyUI local models:', error);
+    return {};
+  }
+});
+
+// Delete ComfyUI model
+ipcMain.handle('comfyui-model-manager:delete-model', async (event, { modelType, filename }) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'comfyui_models', modelType, filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      log.info(`ComfyUI model deleted: ${filename} from ${modelType}`);
+      return { success: true };
+    }
+    return { success: false, error: 'File not found' };
+  } catch (error) {
+    log.error('Error deleting ComfyUI model:', error);
+    throw error;
+  }
+});
+
+// Get ComfyUI models directory info
+ipcMain.handle('comfyui-model-manager:get-models-dir', async () => {
+  try {
+    const comfyuiModelsDir = path.join(app.getPath('userData'), 'comfyui_models');
+    return {
+      path: comfyuiModelsDir,
+      exists: fs.existsSync(comfyuiModelsDir)
+    };
+  } catch (error) {
+    log.error('Error getting ComfyUI models directory:', error);
+    return { path: '', exists: false };
   }
 });

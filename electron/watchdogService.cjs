@@ -46,6 +46,15 @@ class WatchdogService extends EventEmitter {
         isRetrying: false,
         healthCheck: () => this.checkPythonHealth(),
         restart: () => this.restartPythonService()
+      },
+      comfyui: {
+        name: 'ComfyUI Image Generation',
+        status: 'unknown',
+        lastCheck: null,
+        failureCount: 0,
+        isRetrying: false,
+        healthCheck: () => this.checkComfyUIHealth(),
+        restart: () => this.restartComfyUIService()
       }
     };
     
@@ -57,6 +66,18 @@ class WatchdogService extends EventEmitter {
     log.info('Watchdog Service initialized');
   }
 
+  // Enable or disable ComfyUI monitoring based on user consent
+  setComfyUIMonitoring(enabled) {
+    if (enabled) {
+      this.services.comfyui.enabled = true;
+      log.info('ComfyUI monitoring enabled by user consent');
+    } else {
+      this.services.comfyui.enabled = false;
+      this.services.comfyui.status = 'disabled';
+      log.info('ComfyUI monitoring disabled - user has not consented');
+    }
+  }
+
   // Start the watchdog monitoring
   start() {
     if (this.isRunning) {
@@ -66,6 +87,26 @@ class WatchdogService extends EventEmitter {
 
     this.isRunning = true;
     log.info('Starting Watchdog Service...');
+    
+    // Check ComfyUI consent status
+    const fs = require('fs');
+    const path = require('path');
+    const { app } = require('electron');
+    
+    try {
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
+      
+      if (fs.existsSync(consentFile)) {
+        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
+        this.setComfyUIMonitoring(consentData.hasConsented === true);
+      } else {
+        this.setComfyUIMonitoring(false);
+      }
+    } catch (error) {
+      log.warn('Could not read ComfyUI consent status, disabling monitoring:', error);
+      this.setComfyUIMonitoring(false);
+    }
     
     // Perform initial health checks
     this.performHealthChecks();
@@ -108,6 +149,12 @@ class WatchdogService extends EventEmitter {
     log.debug('Performing watchdog health checks...');
 
     for (const [serviceKey, service] of Object.entries(this.services)) {
+      // Skip disabled services (like ComfyUI when user hasn't consented)
+      if (service.enabled === false) {
+        service.lastCheck = timestamp;
+        continue;
+      }
+      
       try {
         service.lastCheck = timestamp;
         const isHealthy = await service.healthCheck();
@@ -286,6 +333,15 @@ class WatchdogService extends EventEmitter {
     }
   }
 
+  async checkComfyUIHealth() {
+    try {
+      return await this.dockerSetup.isComfyUIRunning();
+    } catch (error) {
+      log.error('ComfyUI health check error:', error);
+      return false;
+    }
+  }
+
   // Individual service restart methods
   async restartClarasCore() {
     log.info('Restarting Clara\'s Core service...');
@@ -321,6 +377,18 @@ class WatchdogService extends EventEmitter {
       }
     } catch (error) {
       log.error('Error restarting Python service:', error);
+      throw error;
+    }
+  }
+
+  async restartComfyUIService() {
+    log.info('Restarting ComfyUI service...');
+    try {
+      if (this.dockerSetup.containers.comfyui) {
+        await this.dockerSetup.startContainer(this.dockerSetup.containers.comfyui);
+      }
+    } catch (error) {
+      log.error('Error restarting ComfyUI service:', error);
       throw error;
     }
   }

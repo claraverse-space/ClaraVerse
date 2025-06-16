@@ -36,7 +36,10 @@ const validChannels = [
   'watchdog-service-failed',
   'watchdog-service-restarted',
   'docker-update-progress',
-  'set-startup-settings'
+  'set-startup-settings',
+  'comfyui-model-download-progress',
+  'comfyui-model-download-complete',
+  'model-download-progress'
 ];
 
 // Add explicit logging for debugging
@@ -130,6 +133,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDockerInfo: () => ipcRenderer.invoke('get-docker-info'),
   getDockerVersion: () => ipcRenderer.invoke('get-docker-version'),
   
+  // ComfyUI specific API
+  comfyuiStatus: () => ipcRenderer.invoke('comfyui-status'),
+  comfyuiStart: () => ipcRenderer.invoke('comfyui-start'),
+  comfyuiStop: () => ipcRenderer.invoke('comfyui-stop'),
+  comfyuiRestart: () => ipcRenderer.invoke('comfyui-restart'),
+  comfyuiLogs: () => ipcRenderer.invoke('comfyui-logs'),
+  comfyuiOptimize: () => ipcRenderer.invoke('comfyui-optimize'),
+  
+  // System information methods
+  getPlatform: () => process.platform,
+  getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+  saveComfyUIConsent: (hasConsented) => ipcRenderer.invoke('save-comfyui-consent', hasConsented),
+  getComfyUIConsent: () => ipcRenderer.invoke('get-comfyui-consent'),
+  getGPUInfo: () => ipcRenderer.invoke('get-gpu-info'),
+  
+  // Services status API
+  getServicesStatus: () => ipcRenderer.invoke('get-services-status'),
+  
   // Watchdog service API
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   on: (channel, callback) => {
@@ -174,6 +195,39 @@ contextBridge.exposeInMainWorld('modelManager', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('download-progress', subscription);
     return () => ipcRenderer.removeListener('download-progress', subscription);
+  },
+
+  // Model Manager APIs
+  searchCivitAI: (query, types, sort) => ipcRenderer.invoke('model-manager:search-civitai', { query, types, sort }),
+  searchHuggingFace: (query, modelType, author) => ipcRenderer.invoke('model-manager:search-huggingface', { query, modelType, author }),
+  downloadModelFile: (url, filename, modelType, source) => ipcRenderer.invoke('model-manager:download-model', { url, filename, modelType, source }),
+  getLocalModelFiles: () => ipcRenderer.invoke('model-manager:get-local-models'),
+  deleteLocalModelFile: (modelType, filename) => ipcRenderer.invoke('model-manager:delete-local-model', { modelType, filename }),
+  saveApiKeys: (keys) => ipcRenderer.invoke('model-manager:save-api-keys', keys),
+  getApiKeys: () => ipcRenderer.invoke('model-manager:get-api-keys'),
+  
+  // ComfyUI Model Manager APIs
+  comfyuiDownloadModel: (url, filename, modelType, source, apiKey) => 
+    ipcRenderer.invoke('comfyui-model-manager:download-model', { url, filename, modelType, source, apiKey }),
+  comfyuiGetLocalModels: () => ipcRenderer.invoke('comfyui-model-manager:get-local-models'),
+  comfyuiDeleteModel: (modelType, filename) => ipcRenderer.invoke('comfyui-model-manager:delete-model', { modelType, filename }),
+  comfyuiGetModelsDir: () => ipcRenderer.invoke('comfyui-model-manager:get-models-dir'),
+  
+  // ComfyUI Download Progress Events
+  onComfyUIDownloadProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-model-download-progress', subscription);
+    return () => ipcRenderer.removeListener('comfyui-model-download-progress', subscription);
+  },
+  onComfyUIDownloadComplete: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('comfyui-model-download-complete', subscription);
+    return () => ipcRenderer.removeListener('comfyui-model-download-complete', subscription);
+  },
+  onModelDownloadProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('model-download-progress', subscription);
+    return () => ipcRenderer.removeListener('model-download-progress', subscription);
   }
 });
 

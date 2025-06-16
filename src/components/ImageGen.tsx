@@ -3,6 +3,8 @@ import { Client, BasePipe, EfficientPipe } from '@stable-canvas/comfyui-client';
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
+import ComfyUIManager from './ComfyUIManager';
+import ModelManager from './ModelManager';
 
 import PromptArea from './imagegen_components/PromptArea';
 import GeneratedGallery from './imagegen_components/GeneratedGallery';
@@ -115,6 +117,199 @@ Your task is to expand and improve the given prompt while maintaining its core c
 Focus on adding descriptive details, artistic style, lighting, and atmosphere.
 Keep the enhanced prompt concise and effective.`;
 
+// Add system info interface
+interface SystemInfo {
+  platform: string;
+  arch: string;
+  hasNvidiaGPU: boolean;
+  gpuName?: string;
+  isMac: boolean;
+  isAMD: boolean;
+  isSupported: boolean;
+  warnings: string[];
+}
+
+// Add consent modal component
+const SystemCompatibilityModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onAccept: () => void;
+  systemInfo: SystemInfo;
+}> = ({ isOpen, onClose, onAccept, systemInfo }) => {
+  if (!isOpen) return null;
+
+  const getCompatibilityIcon = () => {
+    if (systemInfo.isSupported) {
+      return <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>;
+    } else {
+      return <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+      </div>;
+    }
+  };
+
+  const getCompatibilityMessage = () => {
+    if (systemInfo.isSupported) {
+      return {
+        title: "✅ Your System is Compatible!",
+        message: "Your NVIDIA GPU setup is fully supported for optimal image generation performance.",
+        color: "text-green-800"
+      };
+    } else {
+      return {
+        title: "⚠️ Limited Compatibility",
+        message: "Your system may experience reduced performance or compatibility issues.",
+        color: "text-yellow-800"
+      };
+    }
+  };
+
+  const compatibility = getCompatibilityMessage();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-900 rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          {/* Header */}
+          <div className="text-center">
+            {getCompatibilityIcon()}
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              ComfyUI System Compatibility
+            </h2>
+            <p className={`text-lg font-medium ${compatibility.color} dark:text-yellow-300 mb-6`}>
+              {compatibility.title}
+            </p>
+          </div>
+
+          {/* System Information */}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              Your System Information
+            </h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Platform:</span>
+                <span className="ml-2 font-medium text-gray-900 dark:text-white">
+                  {systemInfo.platform === 'darwin' ? 'macOS' : 
+                   systemInfo.platform === 'win32' ? 'Windows' : 
+                   systemInfo.platform === 'linux' ? 'Linux' : systemInfo.platform}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Architecture:</span>
+                <span className="ml-2 font-medium text-gray-900 dark:text-white">{systemInfo.arch}</span>
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">GPU Support:</span>
+                <span className={`ml-2 font-medium ${systemInfo.hasNvidiaGPU ? 'text-green-600' : 'text-red-600'}`}>
+                  {systemInfo.hasNvidiaGPU ? 'NVIDIA GPU Detected' : 'No NVIDIA GPU'}
+                </span>
+              </div>
+              {systemInfo.gpuName && (
+                <div>
+                  <span className="text-gray-600 dark:text-gray-400">GPU Model:</span>
+                  <span className="ml-2 font-medium text-gray-900 dark:text-white">{systemInfo.gpuName}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Compatibility Warnings */}
+          {systemInfo.warnings.length > 0 && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6">
+              <h4 className="text-lg font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+                ⚠️ Important Compatibility Notes
+              </h4>
+              <ul className="space-y-2">
+                {systemInfo.warnings.map((warning, index) => (
+                  <li key={index} className="text-sm text-yellow-700 dark:text-yellow-300 flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>{warning}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+            <h4 className="text-lg font-medium text-blue-800 dark:text-blue-200 mb-2">
+              💡 Recommendations
+            </h4>
+            <div className="text-sm text-blue-700 dark:text-blue-300 space-y-2">
+              {systemInfo.isSupported ? (
+                <>
+                  <p>• Your NVIDIA GPU will provide excellent performance</p>
+                  <p>• GPU acceleration will be automatically enabled</p>
+                  <p>• All ComfyUI features are fully supported</p>
+                </>
+              ) : (
+                <>
+                  {systemInfo.isMac && (
+                    <>
+                      <p>• macOS currently lacks Metal acceleration support in ComfyUI</p>
+                      <p>• Image generation will be significantly slower on CPU</p>
+                      <p>• Consider using cloud-based alternatives for better performance</p>
+                    </>
+                  )}
+                  {systemInfo.isAMD && (
+                    <>
+                      <p>• AMD GPU support in ComfyUI is experimental and limited</p>
+                      <p>• You may experience compatibility issues or crashes</p>
+                      <p>• CPU fallback will be used, resulting in slower generation</p>
+                    </>
+                  )}
+                  {!systemInfo.hasNvidiaGPU && !systemInfo.isMac && !systemInfo.isAMD && (
+                    <>
+                      <p>• CPU-only image generation will be very slow</p>
+                      <p>• Large models may not fit in system RAM</p>
+                      <p>• Consider upgrading to an NVIDIA GPU for optimal experience</p>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onAccept}
+              className={`px-6 py-2 rounded-lg font-medium ${
+                systemInfo.isSupported
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+              }`}
+            >
+              {systemInfo.isSupported ? 'Start ComfyUI' : 'Continue Anyway'}
+            </button>
+          </div>
+
+          {/* Disclaimer */}
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+              By continuing, you acknowledge the compatibility information above and understand that 
+              performance may vary based on your system configuration.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // UI state variables
   const [prompt, setPrompt] = useState('');
@@ -126,8 +321,14 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [currentPipeline, setCurrentPipeline] = useState<BasePipe | EfficientPipe | null>(null);
 
+  // Add new state for system compatibility
+  const [showCompatibilityModal, setShowCompatibilityModal] = useState(false);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [userHasConsented, setUserHasConsented] = useState(false);
+
   // localStorage key for storing selected model
   const LAST_USED_MODEL_KEY = 'clara-ollama-last-used-model';
+  const COMFYUI_CONSENT_KEY = 'clara-comfyui-user-consent';
 
   // Initial loading states
   const [isInitialSetupComplete, setIsInitialSetupComplete] = useState(false);
@@ -224,6 +425,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     systemPrompt: defaultSystemPrompt,
   });
   const [isLLMConnected, setIsLLMConnected] = useState(false);
+  const [showComfyUIManager, setShowComfyUIManager] = useState(false);
+  const [showModelManager, setShowModelManager] = useState(false);
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -248,27 +451,286 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     });
   };
 
-  // (1) Connect to ComfyUI and set up client event listeners
-  // IMPORTANT: This effect now runs only once on mount to avoid reinitialization
+  // Check system compatibility and user consent on mount
   useEffect(() => {
-    const fetchAndConnectClient = async () => {
+    const checkSystemCompatibility = async () => {
       try {
-        const config = await db.getAPIConfig();
-        console.log('API Config:', config);
-        let comfyuiBaseUrl = config?.comfyui_base_url;
-        if (!comfyuiBaseUrl) {
-          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
-          comfyuiBaseUrl = '127.0.0.1:8188';
+        // Check if user has already consented (check both localStorage and file)
+        let hasConsented = localStorage.getItem(COMFYUI_CONSENT_KEY) === 'true';
+        
+        // Also check the consent file to ensure consistency
+        try {
+          const consentData = await window.electronAPI?.getComfyUIConsent?.();
+          if (consentData?.hasConsented !== undefined) {
+            hasConsented = consentData.hasConsented;
+            // Sync localStorage with file
+            localStorage.setItem(COMFYUI_CONSENT_KEY, hasConsented.toString());
+          }
+        } catch (error) {
+          console.warn('Could not read ComfyUI consent file:', error);
+        }
+        
+        setUserHasConsented(hasConsented);
+
+        // Get system information
+        const systemInfo = await getSystemInfo();
+        setSystemInfo(systemInfo);
+
+        // If user hasn't consented, show modal
+        if (!hasConsented) {
+          setShowCompatibilityModal(true);
+          setIsInitialSetupComplete(true); // Don't start ComfyUI setup
+          return;
         }
 
-        // some times user provides with protocol and some times not make sure everytime url without protocol is passed
+        // If user has consented, proceed with ComfyUI setup
+        if (hasConsented) {
+          initializeComfyUI();
+        }
+      } catch (error) {
+        console.error('Error checking system compatibility:', error);
+        setIsInitialSetupComplete(true);
+      }
+    };
+
+    checkSystemCompatibility();
+  }, []);
+
+  // Cleanup: close client on unmount
+  useEffect(() => {
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.close();
+        clientRef.current = null;
+      }
+    };
+  }, []);
+
+  // Function to get system information
+  const getSystemInfo = async (): Promise<SystemInfo> => {
+    try {
+      // Get basic system info
+      const platform = window.electronAPI?.getPlatform() || 'unknown';
+      const systemInfoResult = await window.electronAPI?.getSystemInfo();
+      
+      const isMac = platform === 'darwin';
+      const isWindows = platform === 'win32';
+      const isLinux = platform === 'linux';
+
+      // Detect GPU information
+      let hasNvidiaGPU = false;
+      let gpuName = '';
+      let isAMD = false;
+
+      try {
+        // Try to get GPU diagnostics from llama-swap service
+        const gpuDiagnostics = await window.llamaSwap?.getGPUDiagnostics();
+        console.log('GPU Diagnostics result:', gpuDiagnostics);
+        
+        if (gpuDiagnostics?.gpuInfo) {
+          const gpuInfo = gpuDiagnostics.gpuInfo;
+          hasNvidiaGPU = gpuInfo.hasGPU && (gpuInfo.gpuType === 'nvidia' || gpuInfo.hasNvidiaGPU);
+          gpuName = gpuInfo.gpuName || gpuInfo.gpuType || '';
+          isAMD = gpuInfo.gpuType === 'amd' || gpuInfo.isAMD || gpuName.toLowerCase().includes('amd') || gpuName.toLowerCase().includes('radeon');
+          
+          console.log('Parsed GPU info:', { hasNvidiaGPU, gpuName, isAMD, gpuType: gpuInfo.gpuType });
+        }
+      } catch (error) {
+        console.warn('Could not get GPU diagnostics:', error);
+      }
+
+      // Fallback: Try direct GPU detection via electron API
+      if (!hasNvidiaGPU && !gpuName) {
+        try {
+          const directGPUInfo = await window.electronAPI?.getGPUInfo?.();
+          console.log('Direct GPU info result:', directGPUInfo);
+          
+          if (directGPUInfo?.success && directGPUInfo.gpuInfo) {
+            const info = directGPUInfo.gpuInfo;
+            hasNvidiaGPU = info.hasNvidiaGPU || false;
+            gpuName = info.gpuName || info.renderer || '';
+            isAMD = info.isAMD || gpuName.toLowerCase().includes('amd') || gpuName.toLowerCase().includes('radeon');
+            
+            console.log('Direct GPU detection result:', { hasNvidiaGPU, gpuName, isAMD });
+          }
+        } catch (error) {
+          console.warn('Direct GPU detection failed:', error);
+        }
+      }
+
+      // Additional fallback: Check WebGL renderer info
+      if (!hasNvidiaGPU && !gpuName) {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+              const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+              const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+              
+              console.log('WebGL GPU info:', { renderer, vendor });
+              
+              if (renderer) {
+                gpuName = renderer;
+                hasNvidiaGPU = renderer.toLowerCase().includes('nvidia') || 
+                              renderer.toLowerCase().includes('geforce') || 
+                              renderer.toLowerCase().includes('rtx') || 
+                              renderer.toLowerCase().includes('gtx');
+                isAMD = renderer.toLowerCase().includes('amd') || 
+                       renderer.toLowerCase().includes('radeon');
+                
+                console.log('WebGL detection result:', { hasNvidiaGPU, gpuName, isAMD });
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('WebGL GPU detection failed:', error);
+        }
+      }
+
+      // Final debug logging
+      console.log('Final GPU detection results:', {
+        hasNvidiaGPU,
+        gpuName,
+        isAMD,
+        platform,
+        isMac,
+        isWindows,
+        isLinux
+      });
+
+      // Determine system support
+      const isSupported = hasNvidiaGPU && !isMac;
+      
+      // Generate warnings
+      const warnings: string[] = [];
+      
+      if (isMac) {
+        warnings.push('macOS does not currently support Metal acceleration in ComfyUI Docker containers');
+        warnings.push('Image generation will be significantly slower using CPU-only processing');
+        warnings.push('Memory usage will be higher, potentially causing system slowdowns');
+      }
+      
+      if (isAMD && !isMac) {
+        warnings.push('AMD GPU support in ComfyUI is experimental and may not work reliably');
+        warnings.push('Many models and features may not be compatible with AMD GPUs');
+        warnings.push('You may experience crashes or generation failures');
+      }
+      
+      if (!hasNvidiaGPU && !isMac && !isAMD) {
+        warnings.push('CPU-only image generation is extremely slow and resource-intensive');
+        warnings.push('Large models (SDXL, Flux) may not fit in system memory');
+        warnings.push('Generation times can be 10-50x slower than GPU acceleration');
+      }
+
+      if (!isSupported) {
+        warnings.push('For optimal performance, we recommend using a system with an NVIDIA GPU');
+      }
+
+      return {
+        platform,
+        arch: systemInfoResult?.arch || 'unknown',
+        hasNvidiaGPU,
+        gpuName: gpuName || undefined,
+        isMac,
+        isAMD,
+        isSupported,
+        warnings
+      };
+    } catch (error) {
+      console.error('Error getting system info:', error);
+      return {
+        platform: 'unknown',
+        arch: 'unknown',
+        hasNvidiaGPU: false,
+        isMac: false,
+        isAMD: false,
+        isSupported: false,
+        warnings: ['Unable to detect system configuration']
+      };
+    }
+  };
+
+  // Handle user consent
+  const handleUserConsent = async () => {
+    localStorage.setItem(COMFYUI_CONSENT_KEY, 'true');
+    setUserHasConsented(true);
+    setShowCompatibilityModal(false);
+    
+    // Save consent to file for watchdog service
+    try {
+      await window.electronAPI?.saveComfyUIConsent?.(true);
+    } catch (error) {
+      console.warn('Could not save ComfyUI consent to file:', error);
+    }
+    
+    // Start ComfyUI initialization
+    initializeComfyUI();
+  };
+
+  // Handle user rejection
+  const handleUserRejection = async () => {
+    setShowCompatibilityModal(false);
+    setIsInitialSetupComplete(true);
+    
+    // Save rejection to file (so we don't keep asking immediately)
+    try {
+      await window.electronAPI?.saveComfyUIConsent?.(false);
+    } catch (error) {
+      console.warn('Could not save ComfyUI rejection to file:', error);
+    }
+    
+    // Don't set localStorage consent, so modal will show again next session
+  };
+
+  // Separate ComfyUI initialization function
+  const initializeComfyUI = useCallback(async () => {
+    // Original ComfyUI connection logic here
+    const fetchAndConnectClient = async () => {
+      try {
+        // First, check if we have a bundled ComfyUI container
+        let comfyuiBaseUrl = '127.0.0.1:8188';
+        
+        try {
+          // Check if Clara's ComfyUI container is available
+          const containers = await window.electronAPI?.getContainers();
+          const comfyuiContainer = containers?.find(c => c.name === 'clara_comfyui');
+          
+          if (comfyuiContainer) {
+            console.log('Found Clara ComfyUI container:', comfyuiContainer.state);
+            
+            // Start the container if it's not running
+            if (comfyuiContainer.state !== 'running') {
+              setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
+              console.log('Starting Clara ComfyUI container...');
+              await window.electronAPI?.containerAction(comfyuiContainer.id, 'start');
+              
+              // Wait for container to fully start
+              await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+            
+            comfyuiBaseUrl = '127.0.0.1:8188'; // Use bundled ComfyUI
+          } else {
+            // Fall back to user's configuration
+            const config = await db.getAPIConfig();
+            comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
+          }
+        } catch (error) {
+          console.warn('Could not check for bundled ComfyUI, using configuration:', error);
+          // Fall back to user's configuration
+          const config = await db.getAPIConfig();
+          comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
+        }
+
+        console.log('API Config:', { comfyui_base_url: comfyuiBaseUrl });
+
         let url = comfyuiBaseUrl;
         if (comfyuiBaseUrl.includes('http://') || comfyuiBaseUrl.includes('https://')) {
           url = comfyuiBaseUrl.split('//')[1];
         }
         console.log('ComfyUI base URL:', url);
-        // based on the baseURL decide ssl true or false
-        const ssl_type =  comfyuiBaseUrl.includes('https') ? true : false;
+        const ssl_type = comfyuiBaseUrl.includes('https') ? true : false;
         console.log('SSL Type:', ssl_type);
         const client = new Client({ api_host: url, ssl: ssl_type });
         clientRef.current = client;
@@ -416,17 +878,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       }
     };
 
-    // Run only once on mount
     fetchAndConnectClient();
-
-    // Cleanup: close client on unmount
-    return () => {
-      if (clientRef.current) {
-        clientRef.current.close();
-        clientRef.current = null;
-      }
-    };
-  }, []); // Empty dependency array to avoid reinitializing the client
+  }, []);
 
   // Save the selected model to localStorage when it changes
   useEffect(() => {
@@ -1113,7 +1566,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         systemStats={systemStats}
       />
       <div className="flex-1 flex flex-col">
-        <ImageGenHeader userName="User" onPageChange={onPageChange} systemStats={systemStats} />
+        <ImageGenHeader 
+          userName="User" 
+          onPageChange={onPageChange} 
+          systemStats={systemStats}
+          onComfyUIManager={() => setShowComfyUIManager(true)}
+          onModelManager={() => setShowModelManager(true)}
+        />
         {isGenerating && (
           <LoadingOverlay 
             progress={progress} 
@@ -1158,6 +1617,20 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         <div className="fixed top-4 right-4 z-50 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transition-opacity duration-300">
           {notificationMessage}
         </div>
+      )}
+      {showComfyUIManager && (
+        <ComfyUIManager onClose={() => setShowComfyUIManager(false)} />
+      )}
+      {showModelManager && (
+        <ModelManager onClose={() => setShowModelManager(false)} />
+      )}
+      {showCompatibilityModal && systemInfo && (
+        <SystemCompatibilityModal
+          isOpen={showCompatibilityModal}
+          onClose={handleUserRejection}
+          onAccept={handleUserConsent}
+          systemInfo={systemInfo}
+        />
       )}
       <SettingsDrawer
         drawerRef={edgeRef}
