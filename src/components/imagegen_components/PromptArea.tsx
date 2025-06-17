@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Settings, RefreshCw, Wand2, ImagePlus, X, Sparkles, ChevronDown } from 'lucide-react';
+import { Settings, RefreshCw, Wand2, ImagePlus, X, Sparkles } from 'lucide-react';
 
 // Import Clara types
 import { ClaraModel, ClaraProvider } from '../../types/clara_assistant_types';

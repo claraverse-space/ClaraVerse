@@ -77,7 +77,7 @@ interface ApiKeys {
   civitai?: string;
 }
 
-const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const ModelManager: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<'discover' | 'library'>('discover');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -421,12 +421,14 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <Key className="w-5 h-5" />
             </button>
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
