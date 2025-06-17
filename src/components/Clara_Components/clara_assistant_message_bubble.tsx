@@ -591,6 +591,8 @@ const MessageActions: React.FC<{
 }) => {
   const [copied, setCopied] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editContent, setEditContent] = useState('');
   const { copyToClipboard } = useCopyWithToast();
 
   const handleCopy = async () => {
@@ -605,71 +607,148 @@ const MessageActions: React.FC<{
   };
 
   const handleEdit = () => {
-    const newContent = prompt('Edit message:', message.content);
-    if (newContent && newContent !== message.content) {
-      onEdit?.(message.id, newContent);
+    setEditContent(message.content);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (editContent.trim() && editContent !== message.content) {
+      onEdit?.(message.id, editContent.trim());
+    }
+    setShowEditModal(false);
+    setEditContent('');
+  };
+
+  const handleCancelEdit = () => {
+    setShowEditModal(false);
+    setEditContent('');
+  };
+
+  // Handle keyboard shortcuts in edit modal
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelEdit();
     }
   };
 
   return (
-    <div 
-      className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
-    >
-      {/* TTS button (for assistant messages) */}
-      {message.role === 'assistant' && isTTSHealthy && onTTSToggle && !message.metadata?.isStreaming && (
+    <>
+      <div 
+        className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+        onMouseEnter={() => setShowActions(true)}
+        onMouseLeave={() => setShowActions(false)}
+      >
+        {/* TTS button (for assistant messages) */}
+        {message.role === 'assistant' && isTTSHealthy && onTTSToggle && !message.metadata?.isStreaming && (
+          <button
+            onClick={onTTSToggle}
+            disabled={isTTSLoading}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
+            title={isTTSPlaying ? "Stop speaking" : "Read aloud"}
+          >
+            {isTTSLoading ? (
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+            ) : isTTSPlaying ? (
+              <VolumeX className="w-4 h-4 text-blue-500" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            )}
+          </button>
+        )}
+
+        {/* Copy button */}
         <button
-          onClick={onTTSToggle}
-          disabled={isTTSLoading}
-          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-          title={isTTSPlaying ? "Stop speaking" : "Read aloud"}
+          onClick={handleCopy}
+          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+          title="Copy message"
         >
-          {isTTSLoading ? (
-            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-          ) : isTTSPlaying ? (
-            <VolumeX className="w-4 h-4 text-blue-500" />
+          {copied ? (
+            <Check className="w-4 h-4 text-green-500" />
           ) : (
-            <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           )}
         </button>
-      )}
 
-      {/* Copy button */}
-      <button
-        onClick={handleCopy}
-        className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-        title="Copy message"
-      >
-        {copied ? (
-          <Check className="w-4 h-4 text-green-500" />
-        ) : (
-          <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        {/* Edit button (for user messages) */}
+        {isEditable && onEdit && (
+          <button
+            onClick={handleEdit}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+            title="Edit message"
+          >
+            <Edit3 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          </button>
         )}
-      </button>
 
-      {/* Edit button (for user messages) */}
-      {isEditable && onEdit && (
-        <button
-          onClick={handleEdit}
-          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-          title="Edit message"
-        >
-          <Edit3 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </button>
-      )}
+        {/* Retry button (for failed assistant messages) */}
+        {message.role === 'assistant' && onRetry && (
+          <button
+            onClick={handleRetry}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+            title="Retry generation"
+          >
+            <RotateCcw className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          </button>
+        )}
+      </div>
 
-      {/* Retry button (for failed assistant messages) */}
-      {message.role === 'assistant' && onRetry && (
-        <button
-          onClick={handleRetry}
-          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-          title="Retry generation"
-        >
-          <RotateCcw className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </button>
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 m-4 max-w-2xl w-full mx-auto transform transition-all duration-300 ease-out scale-100 animate-in fade-in-0 zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Edit Message
+              </h3>
+              <button
+                onClick={handleCancelEdit}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              </button>
+            </div>
+
+            {/* Edit textarea */}
+            <div className="mb-4">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+                placeholder="Edit your message..."
+                className="w-full min-h-[120px] max-h-[300px] p-3 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg resize-vertical focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-colors text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Press Ctrl+Enter (Cmd+Enter) to save, or Escape to cancel
+              </p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelEdit}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={!editContent.trim() || editContent === message.content}
+                className="px-4 py-2 text-sm font-medium text-white bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 };
 
