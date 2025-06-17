@@ -36,6 +36,14 @@ models:
       --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 16384 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     ttl: 300
 
+  "tinyllama:1.1b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "C:\Users\prave\Desktop\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
+      -m "C:\Users\prave\.clara\llama-models\tinyllama-1.1b-chat-v1.0.Q4_0.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 16384 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    ttl: 300
+
   "qwen2.5:14b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
@@ -61,5 +69,6 @@ groups:
       - "llama3.2:3b"
       - "moondream:2"
       - "qwen3:14b"
+      - "tinyllama:1.1b"
       - "qwen2.5:14b"
       - "uigen-t3-preview-q8-0"

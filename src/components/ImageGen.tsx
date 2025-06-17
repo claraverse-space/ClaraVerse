@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
 import ComfyUIManager from './ComfyUIManager';
-import ModelManager from './ModelManager';
+import ImageModelManager from './ImageModelManager';
 import { claraApiService } from '../services/claraApiService';
 import { ClaraModel, ClaraProvider } from '../types/clara_assistant_types';
 
@@ -2079,7 +2079,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         <ComfyUIManager onClose={() => setShowComfyUIManager(false)} />
       )}
       {showModelManager && (
-        <ModelManager onClose={() => setShowModelManager(false)} />
+        <ImageModelManager onClose={() => setShowModelManager(false)} />
       )}
       {showCompatibilityModal && systemInfo && (
         <SystemCompatibilityModal
