@@ -5,6 +5,8 @@ import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
 import ComfyUIManager from './ComfyUIManager';
 import ModelManager from './ModelManager';
+import { claraApiService } from '../services/claraApiService';
+import { ClaraModel, ClaraProvider } from '../types/clara_assistant_types';
 
 import PromptArea from './imagegen_components/PromptArea';
 import GeneratedGallery from './imagegen_components/GeneratedGallery';
@@ -12,6 +14,97 @@ import SettingsDrawer, { Resolution } from './imagegen_components/SettingsDrawer
 import LoadingOverlay from './imagegen_components/LoadingOverlay';
 import InitialLoadingOverlay from './imagegen_components/InitialLoadingOverlay';
 import { Buffer } from 'buffer';
+import { ArrowLeftRight, RefreshCw } from 'lucide-react';
+
+// Add TypeScript declaration for webview
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string;
+        allowpopups?: string;
+        webpreferences?: string;
+        partition?: string;
+        useragent?: string;
+        preload?: string;
+      };
+    }
+  }
+}
+
+// ComfyUI WebView Component
+const ComfyUIWebView: React.FC<{
+  onLoad: () => void;
+  onError: () => void;
+  comfyUIKey: number;
+}> = ({ onLoad, onError, comfyUIKey }) => {
+  const webviewRef = useRef<any>(null);
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
+
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview || useIframeFallback) return;
+
+    const handleDomReady = () => {
+      console.log('ComfyUI WebView DOM ready');
+      onLoad();
+    };
+
+    const handleDidFailLoad = (event: any) => {
+      console.error('ComfyUI WebView failed to load:', event);
+      // Try iframe fallback
+      setUseIframeFallback(true);
+    };
+
+    const handleDidFinishLoad = () => {
+      console.log('ComfyUI WebView finished loading');
+      onLoad();
+    };
+
+    // Add event listeners
+    webview.addEventListener('dom-ready', handleDomReady);
+    webview.addEventListener('did-fail-load', handleDidFailLoad);
+    webview.addEventListener('did-finish-load', handleDidFinishLoad);
+
+    return () => {
+      // Cleanup event listeners
+      if (webview) {
+        webview.removeEventListener('dom-ready', handleDomReady);
+        webview.removeEventListener('did-fail-load', handleDidFailLoad);
+        webview.removeEventListener('did-finish-load', handleDidFinishLoad);
+      }
+    };
+  }, [onLoad, onError, useIframeFallback]);
+
+  // Fallback to iframe if webview fails
+  if (useIframeFallback) {
+    return (
+      <iframe
+        key={`comfyui-iframe-fallback-${comfyUIKey}`}
+        src="http://localhost:8188"
+        className="w-full h-full border-0"
+        title="ComfyUI Interface"
+        onLoad={onLoad}
+        onError={onError}
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+        style={{ width: '100%', height: '100%' }}
+      />
+    );
+  }
+
+  return (
+    <webview
+      ref={webviewRef}
+      key={`comfyui-webview-${comfyUIKey}`}
+      src="http://localhost:8188"
+      className="w-full h-full border-0"
+      allowpopups="true"
+      webpreferences="nodeIntegration=false,contextIsolation=true,webSecurity=false"
+      partition="persist:comfyui"
+      style={{ width: '100%', height: '100%', display: 'flex' }}
+    />
+  );
+};
 
 // Resolutions constant
 const RESOLUTIONS: Resolution[] = [
@@ -253,7 +346,7 @@ const SystemCompatibilityModal: React.FC<{
                 <>
                   {systemInfo.isMac && (
                     <>
-                      <p>• macOS currently lacks Metal acceleration support in ComfyUI</p>
+                      <p>• macOS currently lacks Metal acceleration support in ComfyUI Docker containers</p>
                       <p>• Image generation will be significantly slower on CPU</p>
                       <p>• Consider using cloud-based alternatives for better performance</p>
                     </>
@@ -430,6 +523,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [isLLMConnected, setIsLLMConnected] = useState(false);
   const [showComfyUIManager, setShowComfyUIManager] = useState(false);
   const [showModelManager, setShowModelManager] = useState(false);
+
+  // Add new state for interface switching
+  const [showComfyUIInterface, setShowComfyUIInterface] = useState(false);
+  const [comfyUILoadError, setComfyUILoadError] = useState(false);
+  const [comfyUILoading, setComfyUILoading] = useState(false);
+  const [comfyUIKey, setComfyUIKey] = useState(0); // Add key to prevent unnecessary re-renders
+
+  // Add new state variables for the provider system
+  const [providers, setProviders] = useState<ClaraProvider[]>([]);
+  const [availableModels, setAvailableModels] = useState<ClaraModel[]>([]);
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -1392,29 +1495,228 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setImageBuffer(buffer);
   };
 
+  // Function to make direct API calls for prompt enhancement
+  const makeDirectEnhancementCall = async (
+    provider: ClaraProvider,
+    model: ClaraModel,
+    prompt: string,
+    imageData?: { preview: string; buffer: ArrayBuffer; base64: string }
+  ): Promise<string> => {
+    console.log(`🔧 Making direct API call to ${provider.name} (${provider.type})`);
+    
+    try {
+      // Prepare the messages array
+      const messages = [];
+      
+      if (imageData) {
+        // For vision models, include the image
+        messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: prompt
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/png;base64,${imageData.base64}`
+              }
+            }
+          ]
+        });
+      } else {
+        // Text-only request
+        messages.push({
+          role: 'user',
+          content: prompt
+        });
+      }
+
+      // Prepare the request body based on provider type
+      let requestBody: any;
+      let apiUrl: string;
+      let headers: Record<string, string>;
+
+      switch (provider.type) {
+        case 'openai':
+          apiUrl = `${provider.baseUrl || 'https://api.openai.com/v1'}/chat/completions`;
+          headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey}`
+          };
+          requestBody = {
+            model: model.name,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000,
+            response_format: { type: 'text' }
+          };
+          break;
+
+        case 'ollama':
+          apiUrl = `${provider.baseUrl || 'http://localhost:11434'}/api/chat`;
+          headers = {
+            'Content-Type': 'application/json'
+          };
+          requestBody = {
+            model: model.name,
+            messages: messages,
+            stream: false,
+            options: {
+              temperature: 0.7,
+              num_predict: 1000
+            }
+          };
+          break;
+
+        case 'openrouter':
+          apiUrl = `${provider.baseUrl || 'https://openrouter.ai/api/v1'}/chat/completions`;
+          headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey}`,
+            'HTTP-Referer': 'https://claraverse.app',
+            'X-Title': 'ClaraVerse ImageGen Enhancement'
+          };
+          requestBody = {
+            model: model.name,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000
+          };
+          break;
+
+        case 'claras-pocket':
+          // Clara's Pocket - OpenAI-compatible API (base URL already includes /v1)
+          apiUrl = `${provider.baseUrl || 'http://localhost:8080'}/chat/completions`;
+          headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey || 'clara-key'}`
+          };
+          requestBody = {
+            model: model.name,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000
+          };
+          break;
+
+        case 'custom':
+          // For custom providers, assume OpenAI-compatible API
+          apiUrl = `${provider.baseUrl}/chat/completions`;
+          headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey}`
+          };
+          requestBody = {
+            model: model.name,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 1000
+          };
+          break;
+
+        default:
+          throw new Error(`Unsupported provider type: ${provider.type}`);
+      }
+
+      console.log(`📡 Making request to ${apiUrl}`);
+      console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+
+            // Make the API call
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const responseData = await response.json();
+      console.log('📥 API response:', responseData);
+
+      // Extract the response based on provider type
+      let enhancedText: string;
+      
+      if (provider.type === 'ollama') {
+        enhancedText = responseData.message?.content || responseData.response || '';
+      } else {
+        // OpenAI-compatible response format
+        enhancedText = responseData.choices?.[0]?.message?.content || '';
+      }
+
+      if (!enhancedText) {
+        throw new Error('No content received from API response');
+      }
+
+      return enhancedText.trim();
+
+    } catch (error) {
+      console.error(`❌ Direct API call failed for ${provider.name}:`, error);
+      
+      // Provide helpful error messages for common issues
+      if (error instanceof Error && error.message.includes('CORS')) {
+        throw new Error(`CORS error: ${provider.name} doesn't allow cross-origin requests. Try using a different provider like OpenAI or Ollama, or configure ${provider.name} to allow CORS headers.`);
+      } else if (error instanceof Error && error.message.includes('Failed to fetch')) {
+        throw new Error(`Network error: Cannot connect to ${provider.name} at ${provider.baseUrl}. Make sure the service is running and accessible.`);
+      }
+      
+      throw new Error(`Enhancement failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   // Add this effect to check LLM connection
   useEffect(() => {
     const checkLLMConnection = async () => {
       try {
-        const config = await db.getAPIConfig();
+        console.log('🔍 Checking LLM connection and loading providers...');
         
-        // Fix URL construction - don't add http:// if already present
-        const baseUrl = config?.ollama_base_url || 'localhost:11434';
-        const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
+        // Load providers
+        const loadedProviders = await claraApiService.getProviders();
+        const enabledProviders = loadedProviders.filter(p => p.isEnabled);
+        setProviders(enabledProviders);
         
-        // Use the correct API endpoint based on the preferred server and api_type
-        if (config?.api_type === 'ollama') {
-          const response = await fetch(`${url}/api/tags`);
-          if (response.ok) {
-            setIsLLMConnected(true);
-          }
-        } else if (config?.api_type === 'openai') {
-          // For OpenAI, we can't easily test connection without making a charged API call
-          // So we'll just check if we have an API key
-          setIsLLMConnected(!!config?.openai_api_key);
+        if (enabledProviders.length === 0) {
+          console.warn('⚠️ No enabled providers found');
+          setIsLLMConnected(false);
+          return;
         }
+
+        // Load models for enhancement
+        const models = await fetchLLMModels();
+        setAvailableModels(models);
+        
+        // Test connection to at least one provider
+        let hasHealthyProvider = false;
+        for (const provider of enabledProviders) {
+          try {
+            const isHealthy = await claraApiService.testProvider(provider);
+            if (isHealthy) {
+              hasHealthyProvider = true;
+              console.log(`✅ Provider ${provider.name} is healthy`);
+              break;
+            }
+          } catch (error) {
+            console.warn(`⚠️ Provider ${provider.name} test failed:`, error);
+          }
+        }
+        
+        setIsLLMConnected(hasHealthyProvider);
+        
+        // If we have a saved model, make sure it's still available
+        const savedModel = localStorage.getItem(LAST_USED_LLM_KEY);
+        if (savedModel && !models.find(m => m.id === savedModel)) {
+          // Saved model is no longer available, clear it
+          localStorage.removeItem(LAST_USED_LLM_KEY);
+          setEnhanceSettings(prev => ({ ...prev, selectedModel: '' }));
+        }
+        
+        console.log(`🎯 LLM connection check complete. Connected: ${hasHealthyProvider}`);
       } catch (error) {
-        console.error('LLM connection check failed:', error);
+        console.error('❌ LLM connection check failed:', error);
         setIsLLMConnected(false);
       }
     };
@@ -1424,69 +1726,81 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Add enhance prompt handler
   const handleEnhancePrompt = async (currentPrompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }) => {
-    if (!isLLMConnected) return;
+    if (!isLLMConnected || !enhanceSettings.selectedModel) {
+      console.warn('⚠️ No LLM connected or no model selected for enhancement');
+      return;
+    }
     
     setIsEnhancing(true);
     try {
-      const config = await db.getAPIConfig();
+      console.log(`🚀 Enhancing prompt with model: ${enhanceSettings.selectedModel}`);
       
-      // Fix URL construction - don't add http:// if already present
-      const baseUrl = config?.ollama_base_url || 'localhost:11434';
-      const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
-      
-      console.log(`Enhancing with ${enhanceSettings.selectedModel}...`);
-      
-      // Case 1: Image only - Generate a prompt from the image
-      // Case 2: Text only - Enhance the existing prompt
-      // Case 3: Image + Text - Analyze image and incorporate original text
-      const requestBody = {
-        model: enhanceSettings.selectedModel,
-        prompt: imageData 
-          ? currentPrompt
-            ? `Analyze this image and enhance the following prompt by incorporating visual details from the image: "${currentPrompt}". 
-               Include specific details about style, composition, lighting, and important elements from both the image and original prompt.`
-            : "Analyze this image and provide a detailed text-to-image generation prompt that would recreate it. Include style, composition, lighting, and important details."
-          : enhanceSettings.systemPrompt + `\n\n ${currentPrompt}\n\n don't include the text "Original prompt:" or "Enhanced prompt:" in your response`,
-        stream: false,
-        max_tokens: 1000,
-        images: imageData ? [imageData.base64] : undefined
-      };
-
-      console.log('Sending request with body:', {
-        ...requestBody,
-        images: requestBody.images ? ['[base64 data]'] : undefined
-      });
-      
-      const response = await fetch(`${url}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to enhance prompt: ${errorText}`);
+      // Find the model and its provider
+      const selectedModel = availableModels.find(m => m.id === enhanceSettings.selectedModel);
+      if (!selectedModel) {
+        throw new Error('Selected model not found');
       }
       
-      const data = await response.json();
-      const enhancedPrompt = data.response.trim();
+      const provider = providers.find(p => p.id === selectedModel.provider);
+      if (!provider) {
+        throw new Error('Provider for selected model not found');
+      }
+      
+      console.log(`📡 Using provider: ${provider.name} (${provider.type})`);
+      
+      // Prepare the enhancement request
+      const enhancementPrompt = imageData 
+        ? currentPrompt
+          ? `Analyze this image and enhance the following prompt by incorporating visual details from the image: "${currentPrompt}". 
+             Include specific details about style, composition, lighting, and important elements from both the image and original prompt.`
+          : "Analyze this image and provide a detailed text-to-image generation prompt that would recreate it. Include style, composition, lighting, and important details."
+        : enhanceSettings.systemPrompt + `\n\n${currentPrompt}\n\nDon't include the text "Original prompt:" or "Enhanced prompt:" in your response`;
+
+      // Use Clara's API service for the enhancement
+      const enhancementConfig = {
+        provider: provider.id,
+        model: selectedModel.name,
+        temperature: 0.7,
+        maxTokens: 1000
+      };
+      
+      // Create a temporary message for the API
+      const enhancementMessage = {
+        role: 'user' as const,
+        content: enhancementPrompt,
+        attachments: imageData ? [{
+          type: 'image' as const,
+          data: imageData.base64,
+          mimeType: 'image/png'
+        }] : undefined
+      };
+
+      console.log('📤 Sending enhancement request...');
+      
+      // Make direct API call to the provider
+      const enhancedPrompt = await makeDirectEnhancementCall(
+        provider,
+        selectedModel,
+        enhancementPrompt,
+        imageData
+      );
       
       // Update prompt and notification based on the case
       if (imageData && currentPrompt) {
         // Case 3: Image + Text
         setPrompt(`${currentPrompt}\n\n${enhancedPrompt}`);
-        setNotificationMessage(`Enhanced prompt using image context and original text`);
+        setNotificationMessage(`Enhanced prompt using image context and original text via ${provider.name}`);
       } else if (imageData) {
         // Case 1: Image only
         setPrompt(enhancedPrompt);
-        setNotificationMessage(`Generated prompt from image using ${enhanceSettings.selectedModel}`);
+        setNotificationMessage(`Generated prompt from image using ${selectedModel.name} via ${provider.name}`);
       } else {
         // Case 2: Text only
         if (enhancedPrompt === currentPrompt) {
           setNotificationMessage('No changes needed to your prompt');
         } else {
           setPrompt(enhancedPrompt);
-          setNotificationMessage(`Prompt enhanced with ${enhanceSettings.selectedModel}`);
+          setNotificationMessage(`Prompt enhanced with ${selectedModel.name} via ${provider.name}`);
         }
       }
       
@@ -1494,7 +1808,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       setTimeout(() => setShowNotification(false), 3000);
       return enhancedPrompt;
     } catch (error) {
-      console.error('Error enhancing prompt:', error);
+      console.error('❌ Error enhancing prompt:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
       setShowNotification(true);
@@ -1505,47 +1819,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
   };
 
-  // Add function to fetch available LLM models
-  const fetchLLMModels = async () => {
-    try {
-      const config = await db.getAPIConfig();
+  // Add handler for model selection with provider information
+  const handleLLMModelSelect = (modelId: string) => {
+    const selectedModel = availableModels.find(m => m.id === modelId);
+    if (selectedModel) {
+      localStorage.setItem(LAST_USED_LLM_KEY, modelId);
+      setEnhanceSettings(prev => ({ ...prev, selectedModel: modelId }));
       
-      // Fix URL construction - don't add http:// if already present
-      const baseUrl = config?.ollama_base_url || 'localhost:11434';
-      const url = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`;
-      
-      // Use the correct API type
-      if (config?.api_type === 'ollama') {
-        const response = await fetch(`${url}/api/tags`);
-        if (response.ok) {
-          const data = await response.json();
-          return data.models.map((model: any) => model.name || model) || [];
-        }
-      } else if (config?.api_type === 'openai' && config.openai_api_key) {
-        // For OpenAI, return some standard models that support image enhancement
-        return ['gpt-4o-mini'];
-      }
-      return [];
-    } catch (error) {
-      console.error('Failed to fetch LLM models:', error);
-      return [];
+      const provider = providers.find(p => p.id === selectedModel.provider);
+      console.log(`🎯 Selected model: ${selectedModel.name} from ${provider?.name || 'Unknown Provider'}`);
     }
-  };
-
-  // Add state for available models
-  const [availableLLMModels, setAvailableLLMModels] = useState<string[]>([]);
-
-  // Add effect to fetch models when LLM is connected
-  useEffect(() => {
-    if (isLLMConnected) {
-      fetchLLMModels().then(setAvailableLLMModels);
-    }
-  }, [isLLMConnected]);
-
-  // Add handler for model selection
-  const handleLLMModelSelect = (model: string) => {
-    localStorage.setItem(LAST_USED_LLM_KEY, model);
-    setEnhanceSettings(prev => ({ ...prev, selectedModel: model }));
   };
 
   // Add a new function to handle explicit image clearing
@@ -1554,6 +1837,95 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setClearImageFlag(true);
     // Reset the flag after a short delay to allow for future clears
     setTimeout(() => setClearImageFlag(false), 100);
+  };
+
+  // Add handler for switching to ComfyUI interface
+  const handleSwitchToComfyUI = () => {
+    if (!showComfyUIInterface) {
+      // Only reset states when switching TO ComfyUI, not when switching back
+      setComfyUILoadError(false);
+      setComfyUILoading(true);
+      // Don't change the key to prevent refresh
+    }
+    setShowComfyUIInterface(!showComfyUIInterface);
+  };
+
+  // Handle iframe load success
+  const handleComfyUILoad = () => {
+    console.log('ComfyUI interface loaded successfully');
+    setComfyUILoading(false);
+    setComfyUILoadError(false);
+  };
+
+  // Handle iframe load error
+  const handleComfyUIError = () => {
+    console.error('Failed to load ComfyUI interface - likely due to X-Frame-Options or CORS');
+    setComfyUILoading(false);
+    setComfyUILoadError(true);
+  };
+
+  // Function to open ComfyUI in new tab as fallback
+  const openComfyUIInNewTab = () => {
+    window.open('http://localhost:8188', '_blank');
+  };
+
+  // Function to force refresh ComfyUI iframe (only when needed)
+  const refreshComfyUI = () => {
+    setComfyUIKey(prev => prev + 1);
+    setComfyUILoadError(false);
+    setComfyUILoading(true);
+  };
+
+  // Replace the fetchLLMModels function with provider-based system
+  const fetchLLMModels = async (): Promise<ClaraModel[]> => {
+    try {
+      console.log('🔄 Fetching models from all configured providers...');
+      
+      // Get all enabled providers
+      const allProviders = await claraApiService.getProviders();
+      const enabledProviders = allProviders.filter(p => p.isEnabled);
+      
+      console.log(`📡 Found ${enabledProviders.length} enabled providers:`, 
+        enabledProviders.map(p => `${p.name} (${p.type})`));
+      
+      if (enabledProviders.length === 0) {
+        console.warn('⚠️ No enabled providers found');
+        return [];
+      }
+
+      // Load models from all enabled providers
+      let allModels: ClaraModel[] = [];
+      for (const provider of enabledProviders) {
+        try {
+          console.log(`📦 Loading models from ${provider.name}...`);
+          const providerModels = await claraApiService.getModels(provider.id);
+          allModels = [...allModels, ...providerModels];
+          console.log(`✅ Loaded ${providerModels.length} models from ${provider.name}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to load models from ${provider.name}:`, error);
+        }
+      }
+      
+      // Filter to only include text and multimodal models suitable for enhancement
+      const enhancementModels = allModels.filter(model => 
+        model.type === 'text' || 
+        model.type === 'multimodal' || 
+        model.supportsVision ||
+        model.name.toLowerCase().includes('gpt') ||
+        model.name.toLowerCase().includes('claude') ||
+        model.name.toLowerCase().includes('llama') ||
+        model.name.toLowerCase().includes('qwen') ||
+        model.name.toLowerCase().includes('mistral')
+      );
+      
+      console.log(`🎯 Found ${enhancementModels.length} suitable models for enhancement:`,
+        enhancementModels.map(m => `${m.name} (${m.provider})`));
+      
+      return enhancementModels;
+    } catch (error) {
+      console.error('❌ Failed to fetch models:', error);
+      return [];
+    }
   };
 
   return (
@@ -1581,47 +1953,118 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           systemStats={systemStats}
           onComfyUIManager={() => setShowComfyUIManager(true)}
           onModelManager={() => setShowModelManager(true)}
+          onSwitchToComfyUI={handleSwitchToComfyUI}
+          onRefreshComfyUI={refreshComfyUI}
+          showComfyUIInterface={showComfyUIInterface}
         />
-        {isGenerating && (
-          <LoadingOverlay 
-            progress={progress} 
-            images={generatedImages}
-            error={generationError}
-            onCancel={handleCancelGeneration}
-            onRetry={handleRetryGeneration}
-            onNavigateHome={handleNavigateHome}
-          />
-        )}
-        <div className="flex-1 overflow-hidden flex">
-          <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
-            <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
-              <PromptArea
-                prompt={prompt}
-                setPrompt={setPrompt}
-                mustSelectModel={mustSelectModel}
-                isGenerating={isGenerating}
-                handleSettingsClick={handleSettingsClick}
-                handleGenerate={handleGenerate}
-                showSettings={showSettings}
-                handleImageUpload={handleImageUpload}
-                onEnhancePrompt={handleEnhancePrompt}
-                isEnhancing={isEnhancing}
-                isLLMConnected={isLLMConnected}
-                availableModels={availableLLMModels}
-                onModelSelect={handleLLMModelSelect}
-                clearImage={clearImageFlag}
-                onImageClear={handleImageClear}
-              />
-              <GeneratedGallery
-                generatedImages={generatedImages}
-                isGenerating={isGenerating}
-                handleDownload={handleDownload}
-                handleDelete={handleDelete}
-              />
-            </div>
+        
+        {/* Conditional rendering: Show either Clara's interface or ComfyUI interface */}
+        {showComfyUIInterface ? (
+          // ComfyUI Interface
+          <div className="flex-1 relative bg-gray-100 dark:bg-gray-900">
+            {/* Loading State */}
+            {comfyUILoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600 dark:text-gray-400">Loading ComfyUI Interface...</p>
+                </div>
+              </div>
+            )}
+
+            {/* Error State */}
+            {comfyUILoadError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
+                <div className="text-center max-w-md mx-auto p-6">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    Cannot Load ComfyUI Interface
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    ComfyUI cannot be embedded due to security restrictions (X-Frame-Options). 
+                    You can open it in a new tab instead.
+                  </p>
+                  <div className="space-y-3">
+                    <button
+                      onClick={openComfyUIInNewTab}
+                      className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      Open ComfyUI in New Tab
+                    </button>
+                    <button
+                      onClick={handleSwitchToComfyUI}
+                      className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Back to Clara ImageGen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+                         {/* ComfyUI WebView */}
+             {!comfyUILoadError && (
+               <ComfyUIWebView
+                 onLoad={handleComfyUILoad}
+                 onError={handleComfyUIError}
+                 comfyUIKey={comfyUIKey}
+               />
+             )}
+
+
           </div>
-        </div>
+        ) : (
+          // Clara's ImageGen Interface
+          <>
+            {isGenerating && (
+              <LoadingOverlay 
+                progress={progress} 
+                images={generatedImages}
+                error={generationError}
+                onCancel={handleCancelGeneration}
+                onRetry={handleRetryGeneration}
+                onNavigateHome={handleNavigateHome}
+              />
+            )}
+            <div className="flex-1 overflow-hidden flex">
+              <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
+                <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
+                  <PromptArea
+                    prompt={prompt}
+                    setPrompt={setPrompt}
+                    mustSelectModel={mustSelectModel}
+                    isGenerating={isGenerating}
+                    handleSettingsClick={handleSettingsClick}
+                    handleGenerate={handleGenerate}
+                    showSettings={showSettings}
+                    handleImageUpload={handleImageUpload}
+                    onEnhancePrompt={handleEnhancePrompt}
+                    isEnhancing={isEnhancing}
+                    isLLMConnected={isLLMConnected}
+                    availableModels={availableModels}
+                    onModelSelect={handleLLMModelSelect}
+                    clearImage={clearImageFlag}
+                    onImageClear={handleImageClear}
+                    providers={providers} // Pass providers to PromptArea
+                  />
+                  <GeneratedGallery
+                    generatedImages={generatedImages}
+                    isGenerating={isGenerating}
+                    handleDownload={handleDownload}
+                    handleDelete={handleDelete}
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
+      
+      {/* Global UI Elements */}
       {showNotification && (
         <div className="fixed top-4 right-4 z-50 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transition-opacity duration-300">
           {notificationMessage}
@@ -1641,52 +2084,56 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           systemInfo={systemInfo}
         />
       )}
-      <SettingsDrawer
-        drawerRef={edgeRef}
-        showSettings={showSettings}
-        expandedSections={expandedSections}
-        toggleSection={toggleSection}
-        sdModels={sdModels}
-        selectedModel={selectedModel}
-        setSelectedModel={handleModelSelection}
-        loras={loras}
-        selectedLora={selectedLora}
-        setSelectedLora={setSelectedLora}
-        loraStrength={loraStrength}
-        setLoraStrength={setLoraStrength}
-        vaes={vaes}
-        selectedVae={selectedVae}
-        setSelectedVae={setSelectedVae}
-        negativeTags={negativeTags}
-        negativeInput={negativeInput}
-        setNegativeInput={setNegativeInput}
-        handleNegativeTagAdd={handleNegativeTagAdd}
-        handleNegativeTagRemove={handleNegativeTagRemove}
-        handleNegativeInputKeyDown={handleNegativeInputKeyDown}
-        steps={steps}
-        setSteps={setSteps}
-        guidanceScale={guidanceScale}
-        setGuidanceScale={setGuidanceScale}
-        resolutions={RESOLUTIONS}
-        selectedResolution={selectedResolution}
-        setSelectedResolution={setSelectedResolution}
-        customWidth={customWidth}
-        setCustomWidth={setCustomWidth}
-        customHeight={customHeight}
-        setCustomHeight={setCustomHeight}
-        controlNetModels={controlNetModels}
-        selectedControlNet={selectedControlNet}
-        setSelectedControlNet={setSelectedControlNet}
-        upscaleModels={upscaleModels}
-        selectedUpscaler={selectedUpscaler}
-        setSelectedUpscaler={setSelectedUpscaler}
-        denoise={denoise}
-        setDenoise={setDenoise}
-        sampler={sampler}
-        setSampler={setSampler}
-        scheduler={scheduler}
-        setScheduler={setScheduler}
-      />
+      
+      {/* Settings Drawer - Only show in Clara interface mode */}
+      {!showComfyUIInterface && (
+        <SettingsDrawer
+          drawerRef={edgeRef}
+          showSettings={showSettings}
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+          sdModels={sdModels}
+          selectedModel={selectedModel}
+          setSelectedModel={handleModelSelection}
+          loras={loras}
+          selectedLora={selectedLora}
+          setSelectedLora={setSelectedLora}
+          loraStrength={loraStrength}
+          setLoraStrength={setLoraStrength}
+          vaes={vaes}
+          selectedVae={selectedVae}
+          setSelectedVae={setSelectedVae}
+          negativeTags={negativeTags}
+          negativeInput={negativeInput}
+          setNegativeInput={setNegativeInput}
+          handleNegativeTagAdd={handleNegativeTagAdd}
+          handleNegativeTagRemove={handleNegativeTagRemove}
+          handleNegativeInputKeyDown={handleNegativeInputKeyDown}
+          steps={steps}
+          setSteps={setSteps}
+          guidanceScale={guidanceScale}
+          setGuidanceScale={setGuidanceScale}
+          resolutions={RESOLUTIONS}
+          selectedResolution={selectedResolution}
+          setSelectedResolution={setSelectedResolution}
+          customWidth={customWidth}
+          setCustomWidth={setCustomWidth}
+          customHeight={customHeight}
+          setCustomHeight={setCustomHeight}
+          controlNetModels={controlNetModels}
+          selectedControlNet={selectedControlNet}
+          setSelectedControlNet={setSelectedControlNet}
+          upscaleModels={upscaleModels}
+          selectedUpscaler={selectedUpscaler}
+          setSelectedUpscaler={setSelectedUpscaler}
+          denoise={denoise}
+          setDenoise={setDenoise}
+          sampler={sampler}
+          setSampler={setSampler}
+          scheduler={scheduler}
+          setScheduler={setScheduler}
+        />
+      )}
     </div>
   );
 };

@@ -16,7 +16,7 @@ When Clara starts, the following happens automatically:
 ```javascript
 comfyui: {
   name: 'clara_comfyui',
-  image: 'clara17verse/clara-comfyui:latest',
+  image: 'clara17verse/clara-comfyui:with-custom-nodes',
   port: 8188,
   internalPort: 8188,
   healthCheck: () => this.isComfyUIRunning(),

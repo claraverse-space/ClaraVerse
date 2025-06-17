@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Download, Settings, Star, Eye, Heart, Filter, RefreshCw, Key, X, CheckCircle, AlertCircle, Clock, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Download, Settings, Star, Eye, Heart, Filter, RefreshCw, Key, X, CheckCircle, HardDrive, ImageIcon, Calendar, Trash2 } from 'lucide-react';
 
 // Simple HTML sanitizer to prevent XSS while allowing basic formatting
 const sanitizeHTML = (html: string): string => {
@@ -37,7 +37,7 @@ interface ModelInfo {
   };
   images: string[];
   versions: ModelVersion[];
-  source: 'civitai' | 'huggingface';
+  source: 'civitai';
   nsfw: boolean;
 }
 
@@ -75,13 +75,12 @@ interface DownloadProgress {
 
 interface ApiKeys {
   civitai?: string;
-  huggingface?: string;
 }
 
 const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<'discover' | 'library'>('discover');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSource, setSelectedSource] = useState<'civitai' | 'huggingface'>('civitai');
+
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState('Highest Rated');
   const [searchResults, setSearchResults] = useState<ModelInfo[]>([]);
@@ -96,18 +95,22 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const modelTypes = [
-    { value: 'checkpoint', label: 'Checkpoint', civitai: 'Checkpoint', hf: 'text-to-image' },
-    { value: 'lora', label: 'LoRA', civitai: 'LORA', hf: 'lora' },
-    { value: 'vae', label: 'VAE', civitai: 'VAE', hf: 'vae' },
-    { value: 'controlnet', label: 'ControlNet', civitai: 'Controlnet', hf: 'controlnet' },
-    { value: 'upscaler', label: 'Upscaler', civitai: 'Upscaler', hf: 'upscaler' },
-    { value: 'embedding', label: 'Embedding', civitai: 'TextualInversion', hf: 'textual_inversion' }
+    { value: 'checkpoint', label: 'Checkpoint', civitai: 'Checkpoint' },
+    { value: 'lora', label: 'LoRA', civitai: 'LORA' },
+    { value: 'vae', label: 'VAE', civitai: 'VAE' },
+    { value: 'controlnet', label: 'ControlNet', civitai: 'Controlnet' },
+    { value: 'upscaler', label: 'Upscaler', civitai: 'Upscaler' },
+    { value: 'embedding', label: 'Embedding', civitai: 'TextualInversion' }
   ];
 
   // Load API keys on mount
   useEffect(() => {
-    loadApiKeys();
-    loadLocalModels();
+    const loadData = async () => {
+      await loadApiKeys();
+      await loadLocalModels();
+    };
+    
+    loadData();
     
     // Set up download progress listeners for new local system
     const unsubscribeProgress = window.modelManager?.onComfyUILocalDownloadProgress?.(handleDownloadProgress);
@@ -119,25 +122,25 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     };
   }, []);
 
-  const loadApiKeys = async () => {
+  const loadApiKeys = useCallback(async () => {
     try {
       const keys = await window.modelManager?.getApiKeys?.();
       setApiKeys(keys || {});
     } catch (error) {
       console.error('Failed to load API keys:', error);
     }
-  };
+  }, []);
 
-  const saveApiKeys = async (keys: ApiKeys) => {
+  const saveApiKeys = useCallback(async (keys: ApiKeys) => {
     try {
       await window.modelManager?.saveApiKeys?.(keys);
       setApiKeys(keys);
     } catch (error) {
       console.error('Failed to save API keys:', error);
     }
-  };
+  }, []);
 
-  const loadLocalModels = async () => {
+  const loadLocalModels = useCallback(async () => {
     try {
       // Load models from all categories using the new local system
       const categories = ['checkpoints', 'loras', 'vae', 'controlnet', 'upscale_models', 'embeddings'];
@@ -161,7 +164,7 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     } catch (error) {
       console.error('Failed to load local models:', error);
     }
-  };
+  }, []);
 
   const handleDownloadProgress = (progress: DownloadProgress) => {
     setDownloads(prev => {
@@ -191,86 +194,54 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }, 1000);
   };
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     
     setIsSearching(true);
     try {
       let results: any[] = [];
       
-      if (selectedSource === 'civitai') {
-        const civitaiTypes = selectedTypes.map(type => {
-          const modelType = modelTypes.find(mt => mt.value === type);
-          return modelType?.civitai || type;
-        });
-        
-        const response = await window.modelManager?.searchCivitAI?.(
-          searchQuery,
-          civitaiTypes,
-          sortBy
-        );
-        
-        if (response?.items) {
-          results = response.items.map((item: any) => ({
-            id: item.id.toString(),
-            name: item.name,
-            description: item.description || '',
-            creator: item.creator?.username || 'Unknown',
-            type: item.type?.toLowerCase() === 'textualinversion' ? 'embedding' : item.type?.toLowerCase() || 'checkpoint',
-            tags: item.tags || [],
-            stats: {
-              downloads: item.stats?.downloadCount || 0,
-              likes: item.stats?.favoriteCount || 0,
-              rating: item.stats?.rating || 0
-            },
-            images: item.images?.slice(0, 3).map((img: any) => img.url) || [],
-            versions: item.modelVersions?.map((version: any) => ({
-              id: version.id.toString(),
-              name: version.name,
-              baseModel: version.baseModel || 'Unknown',
-              files: version.files?.map((file: any) => ({
-                name: file.name,
-                url: file.downloadUrl,
-                sizeKB: Math.round((file.sizeKB || 0)),
-                type: file.type || 'Model',
-                metadata: file.metadata || {}
-              })) || []
-            })) || [],
-            source: 'civitai' as const,
-            nsfw: item.nsfw || false
-          }));
-        }
-      } else if (selectedSource === 'huggingface') {
-        const response = await window.modelManager?.searchHuggingFace?.(
-          searchQuery,
-          selectedTypes[0],
-          undefined
-        );
-        
-        if (Array.isArray(response)) {
-          results = response.map((item: any) => ({
-            id: item.id,
-            name: item.id.split('/').pop() || item.id,
-            description: item.cardData?.title || item.pipeline_tag || '',
-            creator: item.id.split('/')[0] || 'Unknown',
-            type: 'checkpoint' as const,
-            tags: item.tags || [],
-            stats: {
-              downloads: item.downloads || 0,
-              likes: item.likes || 0,
-              rating: 0
-            },
-            images: [],
-            versions: [{
-              id: 'main',
-              name: 'Main',
-              baseModel: 'Unknown',
-              files: [] // Would need additional API call to get files
-            }],
-            source: 'huggingface' as const,
-            nsfw: false
-          }));
-        }
+      // Only search CivitAI
+      const civitaiTypes = selectedTypes.map(type => {
+        const modelType = modelTypes.find(mt => mt.value === type);
+        return modelType?.civitai || type;
+      });
+      
+      const response = await window.modelManager?.searchCivitAI?.(
+        searchQuery,
+        civitaiTypes,
+        sortBy
+      );
+      
+      if (response?.items) {
+        results = response.items.map((item: any) => ({
+          id: item.id.toString(),
+          name: item.name,
+          description: item.description || '',
+          creator: item.creator?.username || 'Unknown',
+          type: item.type?.toLowerCase() === 'textualinversion' ? 'embedding' : item.type?.toLowerCase() || 'checkpoint',
+          tags: item.tags || [],
+          stats: {
+            downloads: item.stats?.downloadCount || 0,
+            likes: item.stats?.favoriteCount || 0,
+            rating: item.stats?.rating || 0
+          },
+          images: item.images?.slice(0, 3).map((img: any) => img.url) || [],
+          versions: item.modelVersions?.map((version: any) => ({
+            id: version.id.toString(),
+            name: version.name,
+            baseModel: version.baseModel || 'Unknown',
+            files: version.files?.map((file: any) => ({
+              name: file.name,
+              url: file.downloadUrl,
+              sizeKB: Math.round((file.sizeKB || 0)),
+              type: file.type || 'Model',
+              metadata: file.metadata || {}
+            })) || []
+          })) || [],
+          source: 'civitai' as const,
+          nsfw: item.nsfw || false
+        }));
       }
       
       // Filter NSFW content if needed
@@ -283,12 +254,10 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       console.error('Search failed:', error);
     }
     setIsSearching(false);
-  };
+  }, [searchQuery, selectedTypes, sortBy, showNSFW]);
 
-  const handleDownload = async (model: ModelInfo, version: ModelVersion, file: ModelFile) => {
+  const handleDownload = useCallback(async (model: ModelInfo, version: ModelVersion, file: ModelFile) => {
     try {
-      const apiKey = model.source === 'civitai' ? apiKeys.civitai : apiKeys.huggingface;
-      
       // Check if file is already downloading
       const isDownloading = downloads.some(d => d.filename === file.name && !d.completed);
       if (isDownloading) {
@@ -321,26 +290,26 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         )
       );
     }
-  };
+  }, [downloads]);
 
-  const handleDeleteModel = async (modelType: string, filename: string) => {
+  const handleDeleteModel = useCallback(async (modelType: string, filename: string) => {
     try {
       await window.modelManager?.comfyuiLocalDeleteModel?.(filename, modelType);
       loadLocalModels();
     } catch (error) {
       console.error('Failed to delete model:', error);
     }
-  };
+  }, []);
 
-  const formatBytes = (bytes: number) => {
+  const formatBytes = useCallback((bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  }, []);
 
-  const getModelTypeDisplayName = (type: string) => {
+  const getModelTypeDisplayName = useCallback((type: string) => {
     const typeMap: Record<string, string> = {
       'checkpoints': 'Checkpoints',
       'loras': 'LoRAs', 
@@ -355,10 +324,10 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       'unet': 'UNet'
     };
     return typeMap[type] || type;
-  };
+  }, []);
 
   return (
-    <>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
       <style>{`
         .model-description {
           line-height: 1.6;
@@ -374,18 +343,18 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           color: inherit;
         }
         .model-description a {
-          color: #3b82f6;
+          color: #a855f7;
           text-decoration: underline;
           transition: color 0.2s;
         }
         .model-description a:hover {
-          color: #1d4ed8;
+          color: #9333ea;
         }
         .dark .model-description a {
-          color: #60a5fa;
+          color: #c084fc;
         }
         .dark .model-description a:hover {
-          color: #93c5fd;
+          color: #d8b4fe;
         }
         .model-description ul, .model-description ol {
           margin: 0.75rem 0;
@@ -395,13 +364,13 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           margin-bottom: 0.25rem;
         }
         .model-description code {
-          background-color: #f3f4f6;
+          background-color: rgba(168, 85, 247, 0.1);
           padding: 0.125rem 0.25rem;
           border-radius: 0.25rem;
           font-size: 0.875em;
         }
         .dark .model-description code {
-          background-color: #374151;
+          background-color: rgba(168, 85, 247, 0.2);
         }
         .model-description h1, .model-description h2, .model-description h3, .model-description h4, .model-description h5, .model-description h6 {
           font-weight: 600;
@@ -411,47 +380,50 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         .model-description h2 { font-size: 1.125rem; }
         .model-description h3 { font-size: 1rem; }
       `}</style>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col">
+        <div className="glassmorphic-enhanced rounded-xl w-full max-w-7xl h-full max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-4">
-            <Settings className="w-6 h-6 text-blue-600" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Model Manager</h2>
-            <div className="flex space-x-1">
+        <div className="flex items-center justify-between p-6 border-b border-white/10 dark:border-gray-700/30">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+              <Settings className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              Model Manager
+            </h2>
+            <div className="flex space-x-1 ml-6">
               <button
                 onClick={() => setActiveTab('discover')}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeTab === 'discover'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white/10 dark:hover:bg-gray-800/30'
                 }`}
               >
                 Discover
               </button>
               <button
                 onClick={() => setActiveTab('library')}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeTab === 'library'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white/10 dark:hover:bg-gray-800/30'
                 }`}
               >
                 Library
               </button>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowApiKeys(!showApiKeys)}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
               title="API Settings"
             >
               <Key className="w-5 h-5" />
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
             >
               <X className="w-5 h-5" />
             </button>
@@ -460,133 +432,121 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {/* API Keys Panel */}
         {showApiKeys && (
-          <div className="p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">API Keys (Optional)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">CivitAI API Key</label>
-                <input
-                  type="password"
-                  value={apiKeys.civitai || ''}
-                  onChange={(e) => setApiKeys(prev => ({ ...prev, civitai: e.target.value }))}
-                  onBlur={() => saveApiKeys(apiKeys)}
-                  placeholder="For higher rate limits and NSFW content"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                />
+          <div className="p-6 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-900/20 dark:to-pink-900/20 border-b border-white/10 dark:border-gray-700/30">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                <Key className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Hugging Face Token</label>
-                <input
-                  type="password"
-                  value={apiKeys.huggingface || ''}
-                  onChange={(e) => setApiKeys(prev => ({ ...prev, huggingface: e.target.value }))}
-                  onBlur={() => saveApiKeys(apiKeys)}
-                  placeholder="For private repositories"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                />
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">API Configuration</h3>
+            </div>
+            <div className="glassmorphic-card p-4 rounded-xl max-w-md">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">CivitAI API Key (Optional)</label>
+              <input
+                type="password"
+                value={apiKeys.civitai || ''}
+                onChange={(e) => setApiKeys(prev => ({ ...prev, civitai: e.target.value }))}
+                onBlur={() => saveApiKeys(apiKeys)}
+                placeholder="For higher rate limits and NSFW content access"
+                className="w-full px-4 py-3 border border-white/20 dark:border-gray-600/30 rounded-lg bg-white/50 dark:bg-gray-700/50 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent backdrop-blur-sm transition-all duration-200"
+              />
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                Get your API key from <a href="https://civitai.com/user/account" target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 hover:underline">CivitAI Account Settings</a>
+              </p>
             </div>
           </div>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden bg-gradient-to-br from-white/20 to-purple-50/20 dark:from-gray-900/20 dark:to-purple-900/10">
           {activeTab === 'discover' ? (
             <div className="h-full flex flex-col">
               {/* Search Interface */}
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex flex-col space-y-4">
+              <div className="p-6 border-b border-white/10 dark:border-gray-700/30">
+                <div className="flex flex-col space-y-6">
                   {/* Search Bar */}
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-3">
                     <div className="flex-1 relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-purple-400 w-5 h-5" />
                       <input
                         ref={searchInputRef}
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                        placeholder="Search for models..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Search for models on CivitAI..."
+                        className="w-full pl-12 pr-4 py-4 border border-white/20 dark:border-gray-600/30 rounded-xl bg-white/50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent backdrop-blur-sm transition-all duration-200 text-lg placeholder-gray-500 dark:placeholder-gray-400"
                       />
                     </div>
                     <button
                       onClick={handleSearch}
                       disabled={isSearching}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      className="px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                     >
                       {isSearching ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <RefreshCw className="w-5 h-5 animate-spin" />
                       ) : (
-                        <Search className="w-4 h-4" />
+                        <Search className="w-5 h-5" />
                       )}
-                      <span>Search</span>
+                      <span className="font-medium">Search</span>
                     </button>
                   </div>
 
                   {/* Filters */}
-                  <div className="flex flex-wrap items-center space-x-4 space-y-2">
-                    {/* Source Selection */}
-                    <div className="flex space-x-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Source:</label>
-                      <select
-                        value={selectedSource}
-                        onChange={(e) => setSelectedSource(e.target.value as 'civitai' | 'huggingface')}
-                        className="text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1"
-                      >
-                        <option value="civitai">CivitAI</option>
-                        <option value="huggingface">Hugging Face</option>
-                      </select>
-                    </div>
-
-                    {/* Model Type Selection */}
-                    <div className="flex flex-wrap items-center space-x-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Types:</label>
-                      {modelTypes.map((type) => (
-                        <label key={type.value} className="flex items-center space-x-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedTypes.includes(type.value)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedTypes([...selectedTypes, type.value]);
-                              } else {
-                                setSelectedTypes(selectedTypes.filter(t => t !== type.value));
-                              }
-                            }}
-                            className="w-3 h-3 text-blue-600 rounded"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">{type.label}</span>
+                  <div className="glassmorphic-card p-4 rounded-xl">
+                    <div className="flex flex-wrap items-center gap-6">
+                      {/* Model Type Selection */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <Filter className="w-4 h-4" />
+                          Types:
                         </label>
-                      ))}
-                    </div>
+                        <div className="flex flex-wrap gap-2">
+                          {modelTypes.map((type) => (
+                            <label key={type.value} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/50 dark:bg-gray-700/50 hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all duration-200 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedTypes.includes(type.value)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedTypes([...selectedTypes, type.value]);
+                                  } else {
+                                    setSelectedTypes(selectedTypes.filter(t => t !== type.value));
+                                  }
+                                }}
+                                className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                              />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{type.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
 
-                    {/* Sort */}
-                    {selectedSource === 'civitai' && (
-                      <div className="flex space-x-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Sort:</label>
+                      {/* Sort */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Sort:</label>
                         <select
                           value={sortBy}
                           onChange={(e) => setSortBy(e.target.value)}
-                          className="text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1"
+                          className="px-4 py-2 border border-white/20 dark:border-gray-600/30 rounded-lg bg-white/50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent backdrop-blur-sm transition-all duration-200"
                         >
                           <option value="Highest Rated">Highest Rated</option>
                           <option value="Most Downloaded">Most Downloaded</option>
                           <option value="Newest">Newest</option>
                         </select>
                       </div>
-                    )}
 
-                    {/* NSFW Toggle */}
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={showNSFW}
-                        onChange={(e) => setShowNSFW(e.target.checked)}
-                        className="w-3 h-3 text-blue-600 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Show NSFW</span>
-                    </label>
+                      {/* NSFW Toggle */}
+                      <label className="flex items-center gap-3 px-4 py-2 rounded-lg bg-white/50 dark:bg-gray-700/50 hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all duration-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showNSFW}
+                          onChange={(e) => setShowNSFW(e.target.checked)}
+                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Show NSFW</span>
+                        <Eye className="w-4 h-4 text-gray-500" />
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -594,46 +554,65 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               {/* Search Results */}
               <div className="flex-1 overflow-hidden flex">
                 {/* Model List */}
-                <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+                <div className="w-1/2 border-r border-white/10 dark:border-gray-700/30 overflow-y-auto">
                   {isSearching ? (
-                    <div className="flex items-center justify-center p-8">
-                      <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-                      <span className="ml-2 text-gray-600 dark:text-gray-400">Searching...</span>
+                    <div className="flex flex-col items-center justify-center p-12">
+                      <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mb-4">
+                        <RefreshCw className="w-8 h-8 animate-spin text-white" />
+                      </div>
+                      <span className="text-lg font-medium text-gray-600 dark:text-gray-400">Searching CivitAI...</span>
+                      <span className="text-sm text-gray-500 dark:text-gray-500 mt-1">Finding the best models for you</span>
                     </div>
                   ) : searchResults.length > 0 ? (
-                    <div className="space-y-1 p-4">
+                    <div className="space-y-3 p-6">
                       {searchResults.map((model) => (
                         <div
                           key={`${model.source}-${model.id}`}
                           onClick={() => setSelectedModel(model)}
-                          className={`p-4 rounded-lg cursor-pointer transition-colors ${
+                          className={`glassmorphic-card p-4 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-lg ${
                             selectedModel?.id === model.id
-                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                              : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                              ? 'ring-2 ring-purple-500 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-900/20 dark:to-pink-900/20'
+                              : 'hover:bg-white/70 dark:hover:bg-gray-700/70'
                           }`}
                         >
-                          <div className="flex items-start space-x-3">
+                          <div className="flex items-start gap-4">
                             {model.images[0] && (
-                              <img
-                                src={model.images[0]}
-                                alt={model.name}
-                                className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
-                              />
+                              <div className="relative flex-shrink-0">
+                                <img
+                                  src={model.images[0]}
+                                  alt={model.name}
+                                  className="w-20 h-20 object-cover rounded-xl shadow-md"
+                                />
+                                {model.nsfw && (
+                                  <div className="absolute top-1 right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                                    <Eye className="w-3 h-3 text-white" />
+                                  </div>
+                                )}
+                              </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-gray-900 dark:text-white truncate">{model.name}</h3>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">by {model.creator}</p>
-                              <div className="flex items-center space-x-4 mt-1">
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-                                  {model.type}
+                              <h3 className="font-semibold text-gray-900 dark:text-white truncate text-lg">{model.name}</h3>
+                              <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">by {model.creator}</p>
+                              <div className="flex items-center gap-3 mt-2">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                                  model.type === 'checkpoint' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                                  model.type === 'lora' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                                  model.type === 'vae' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
+                                  'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                                }`}>
+                                  {model.type.toUpperCase()}
                                 </span>
-                                <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
+                                <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                   <Download className="w-3 h-3" />
-                                  <span>{model.stats.downloads.toLocaleString()}</span>
+                                  <span className="font-medium">{model.stats.downloads.toLocaleString()}</span>
                                 </div>
-                                <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
-                                  <Heart className="w-3 h-3" />
-                                  <span>{model.stats.likes}</span>
+                                <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                                  <Heart className="w-3 h-3 text-red-500" />
+                                  <span className="font-medium">{model.stats.likes.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                                  <Star className="w-3 h-3 text-yellow-500" />
+                                  <span className="font-medium">{model.stats.rating.toFixed(1)}</span>
                                 </div>
                               </div>
                             </div>
@@ -642,140 +621,223 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                       ))}
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center p-8 text-gray-500 dark:text-gray-400">
-                      {searchQuery ? 'No models found. Try a different search term.' : 'Enter a search term to find models.'}
+                    <div className="flex flex-col items-center justify-center p-12 text-center">
+                      <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mb-4">
+                        <Search className="w-8 h-8 text-white" />
+                      </div>
+                      <p className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
+                        {searchQuery ? 'No models found' : 'Ready to search'}
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-500">
+                        {searchQuery ? 'Try a different search term or adjust your filters.' : 'Enter a search term to discover amazing AI models.'}
+                      </p>
                     </div>
                   )}
                 </div>
 
                 {/* Model Details */}
-                <div className="w-1/2 overflow-y-auto">
+                <div className="w-1/2 overflow-y-auto bg-gradient-to-br from-white/10 to-purple-50/10 dark:from-gray-900/10 dark:to-purple-900/5">
                   {selectedModel ? (
-                    <div className="p-6">
-                      <div className="space-y-6">
-                        {/* Model Info */}
-                        <div>
-                          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{selectedModel.name}</h2>
-                          <p className="text-gray-600 dark:text-gray-400">by {selectedModel.creator}</p>
-                                                      <div 
-                              className="text-sm text-gray-600 dark:text-gray-400 mt-2 prose prose-sm dark:prose-invert max-w-none model-description"
-                              dangerouslySetInnerHTML={{ __html: sanitizeHTML(selectedModel.description) }}
+                    <div className="p-6 space-y-6">
+                      {/* Model Info Header */}
+                      <div className="glassmorphic-card p-6 rounded-xl">
+                        <div className="flex items-start gap-4">
+                          {selectedModel.images[0] && (
+                            <img
+                              src={selectedModel.images[0]}
+                              alt={selectedModel.name}
+                              className="w-24 h-24 object-cover rounded-xl shadow-lg flex-shrink-0"
                             />
-                        </div>
-
-                        {/* Images */}
-                        {selectedModel.images.length > 0 && (
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Preview Images</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                              {selectedModel.images.map((image, index) => (
-                                <img
-                                  key={`${selectedModel.id}-image-${index}`}
-                                  src={image}
-                                  alt={`${selectedModel.name} preview ${index + 1}`}
-                                  className="w-full h-32 object-cover rounded-lg"
-                                />
-                              ))}
+                          )}
+                          <div className="flex-1">
+                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedModel.name}</h2>
+                            <p className="text-lg text-purple-600 dark:text-purple-400 font-medium mb-3">by {selectedModel.creator}</p>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold ${
+                                selectedModel.type === 'checkpoint' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                                selectedModel.type === 'lora' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                                selectedModel.type === 'vae' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
+                                'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                              }`}>
+                                {selectedModel.type.toUpperCase()}
+                              </span>
+                              <div className="flex items-center gap-2 px-3 py-2 bg-white/50 dark:bg-gray-700/50 rounded-full">
+                                <Download className="w-4 h-4 text-blue-500" />
+                                <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedModel.stats.downloads.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2 px-3 py-2 bg-white/50 dark:bg-gray-700/50 rounded-full">
+                                <Heart className="w-4 h-4 text-red-500" />
+                                <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedModel.stats.likes.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2 px-3 py-2 bg-white/50 dark:bg-gray-700/50 rounded-full">
+                                <Star className="w-4 h-4 text-yellow-500" />
+                                <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedModel.stats.rating.toFixed(1)}</span>
+                              </div>
                             </div>
                           </div>
-                        )}
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-white/10 dark:border-gray-700/30">
+                          <div 
+                            className="text-sm text-gray-600 dark:text-gray-400 prose prose-sm dark:prose-invert max-w-none model-description"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHTML(selectedModel.description) }}
+                          />
+                        </div>
+                      </div>
 
-                        {/* Versions and Downloads */}
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Available Versions</h3>
-                          <div className="space-y-4">
-                            {selectedModel.versions.map((version) => (
-                              <div key={`${selectedModel.id}-${version.id}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                                <div className="flex justify-between items-start mb-3">
-                                  <div>
-                                    <h4 className="font-medium text-gray-900 dark:text-white">{version.name}</h4>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">Base Model: {version.baseModel}</p>
+                      {/* Images Gallery */}
+                      {selectedModel.images.length > 0 && (
+                        <div className="glassmorphic-card p-6 rounded-xl">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                              <ImageIcon className="w-4 h-4 text-white" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Sample Gallery</h3>
+                            <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-sm font-medium">
+                              {selectedModel.images.length} images
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            {selectedModel.images.slice(0, 6).map((image, index) => (
+                              <div key={`${selectedModel.id}-image-${index}`} className="relative group">
+                                <img
+                                  src={image}
+                                  alt={`${selectedModel.name} sample ${index + 1}`}
+                                  className="w-full h-48 object-cover rounded-xl shadow-md transition-transform duration-200 group-hover:scale-105"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 rounded-xl flex items-center justify-center">
+                                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                    <button className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-full shadow-lg">
+                                      <Eye className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                                    </button>
                                   </div>
-                                </div>
-                                
-                                {/* Files */}
-                                <div className="space-y-2">
-                                  {version.files.map((file, fileIndex) => {
-                                    const downloadProgress = downloads.find(d => d.filename === file.name);
-                                    const isDownloading = downloadProgress && !downloadProgress.completed;
-                                    const isCompleted = downloadProgress && downloadProgress.completed;
-                                    
-                                    return (
-                                      <div key={`${selectedModel.id}-${version.id}-${file.name}-${fileIndex}`} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
-                                        <div className="flex-1">
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-sm font-medium text-gray-900 dark:text-white">{file.name}</span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                                              {formatBytes(file.sizeKB * 1024)}
-                                            </span>
-                                            {file.metadata.fp && (
-                                              <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-1 rounded">
-                                                {file.metadata.fp}
-                                              </span>
-                                            )}
-                                          </div>
-                                          {isDownloading && (
-                                            <div className="mt-2">
-                                              <div className="flex items-center space-x-2 text-xs text-gray-600 dark:text-gray-400">
-                                                <span>{Math.round(downloadProgress.progress)}%</span>
-                                                {downloadProgress.speed && <span>{downloadProgress.speed}</span>}
-                                                {downloadProgress.eta && <span>ETA: {downloadProgress.eta}</span>}
-                                              </div>
-                                              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1">
-                                                <div 
-                                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                                  style={{ width: `${downloadProgress.progress}%` }}
-                                                />
-                                              </div>
-                                            </div>
-                                          )}
-                                          {downloadProgress?.error && (
-                                            <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                                              Error: {downloadProgress.error}
-                                            </div>
-                                          )}
-                                        </div>
-                                        <button
-                                          onClick={() => handleDownload(selectedModel, version, file)}
-                                          disabled={isDownloading}
-                                          className={`ml-3 px-3 py-1 rounded-md text-sm flex items-center space-x-1 ${
-                                            isCompleted
-                                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                              : isDownloading
-                                              ? 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
-                                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
-                                          }`}
-                                        >
-                                          {isCompleted ? (
-                                            <>
-                                              <CheckCircle className="w-3 h-3" />
-                                              <span>Downloaded</span>
-                                            </>
-                                          ) : isDownloading ? (
-                                            <>
-                                              <RefreshCw className="w-3 h-3 animate-spin" />
-                                              <span>Downloading</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Download className="w-3 h-3" />
-                                              <span>Download</span>
-                                            </>
-                                          )}
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
                                 </div>
                               </div>
                             ))}
                           </div>
+                          {selectedModel.images.length > 6 && (
+                            <div className="mt-4 text-center">
+                              <button className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium">
+                                View All {selectedModel.images.length} Images
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Versions and Downloads */}
+                      <div className="glassmorphic-card p-6 rounded-xl">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                            <Download className="w-4 h-4 text-white" />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Available Versions</h3>
+                          <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-sm font-medium">
+                            {selectedModel.versions.length} versions
+                          </span>
+                        </div>
+                        <div className="space-y-4">
+                          {selectedModel.versions.map((version) => (
+                            <div key={`${selectedModel.id}-${version.id}`} className="glassmorphic-card p-4 rounded-xl border border-white/20 dark:border-gray-600/30">
+                              <div className="flex justify-between items-start mb-4">
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 dark:text-white text-lg">{version.name}</h4>
+                                  <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Base Model: {version.baseModel}</p>
+                                </div>
+                              </div>
+                              
+                              {/* Files */}
+                              <div className="space-y-3">
+                                {version.files.map((file, fileIndex) => {
+                                  const downloadProgress = downloads.find(d => d.filename === file.name);
+                                  const isDownloading = downloadProgress && !downloadProgress.completed;
+                                  const isCompleted = downloadProgress && downloadProgress.completed;
+                                  
+                                  return (
+                                    <div key={`${selectedModel.id}-${version.id}-${file.name}-${fileIndex}`} className="flex items-center justify-between p-4 bg-white/50 dark:bg-gray-700/50 rounded-lg border border-white/20 dark:border-gray-600/30">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-3 mb-2">
+                                          <span className="text-sm font-semibold text-gray-900 dark:text-white">{file.name}</span>
+                                          <span className="px-2 py-1 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full text-xs font-medium">
+                                            {formatBytes(file.sizeKB * 1024)}
+                                          </span>
+                                          {file.metadata.fp && (
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 rounded-full text-xs font-semibold">
+                                              {file.metadata.fp}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {isDownloading && (
+                                          <div className="mt-2">
+                                            <div className="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                              <span className="font-medium">{Math.round(downloadProgress.progress)}%</span>
+                                              {downloadProgress.speed && <span>{downloadProgress.speed}</span>}
+                                              {downloadProgress.eta && <span>ETA: {downloadProgress.eta}</span>}
+                                            </div>
+                                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                              <div 
+                                                className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+                                                style={{ width: `${downloadProgress.progress}%` }}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+                                        {downloadProgress?.error && (
+                                          <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-lg">
+                                            <div className="text-xs text-red-600 dark:text-red-400 font-medium">
+                                              Error: {downloadProgress.error}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDownload(selectedModel, version, file);
+                                        }}
+                                        disabled={isDownloading}
+                                        className={`ml-4 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all duration-200 ${
+                                          isCompleted
+                                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shadow-md'
+                                            : isDownloading
+                                            ? 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
+                                            : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl'
+                                        }`}
+                                      >
+                                        {isCompleted ? (
+                                          <>
+                                            <CheckCircle className="w-4 h-4" />
+                                            <span>Downloaded</span>
+                                          </>
+                                        ) : isDownloading ? (
+                                          <>
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                            <span>Downloading</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Download className="w-4 h-4" />
+                                            <span>Download</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-                      Select a model to view details and download options
+                    <div className="flex flex-col items-center justify-center h-full text-center p-12">
+                      <div className="w-20 h-20 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mb-6">
+                        <Settings className="w-10 h-10 text-white" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Select a Model</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-500 max-w-md">
+                        Choose a model from the list to view detailed information, sample images, and download options.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -784,39 +846,71 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           ) : (
             /* Library Tab */
             <div className="h-full p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Local Models</h3>
-                <button
-                  onClick={loadLocalModels}
-                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center space-x-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Refresh</span>
-                </button>
+              <div className="glassmorphic-card p-6 rounded-xl mb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                      <HardDrive className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Local Models</h3>
+                  </div>
+                  <button
+                    onClick={loadLocalModels}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span className="font-medium">Refresh</span>
+                  </button>
+                </div>
               </div>
               
               <div className="space-y-6">
                 {Object.entries(localModels).map(([modelType, models]) => (
                   models.length > 0 && (
-                    <div key={modelType}>
-                      <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
-                        {getModelTypeDisplayName(modelType)} ({models.length})
-                      </h4>
-                      <div className="grid grid-cols-1 gap-3">
+                    <div key={modelType} className="glassmorphic-card p-6 rounded-xl">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          modelType === 'checkpoints' ? 'bg-blue-500' :
+                          modelType === 'loras' ? 'bg-green-500' :
+                          modelType === 'vae' ? 'bg-purple-500' :
+                          'bg-gray-500'
+                        }`}>
+                          <HardDrive className="w-4 h-4 text-white" />
+                        </div>
+                        <h4 className="text-xl font-bold text-gray-900 dark:text-white">
+                          {getModelTypeDisplayName(modelType)}
+                        </h4>
+                        <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-sm font-medium">
+                          {models.length} models
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
                         {models.map((model, index) => (
-                          <div key={`${modelType}-${model.name}-${index}`} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                          <div key={`${modelType}-${model.name}-${index}`} className="flex items-center justify-between p-4 bg-white/50 dark:bg-gray-700/50 rounded-lg border border-white/20 dark:border-gray-600/30 hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all duration-200">
                             <div className="flex-1">
-                              <h5 className="font-medium text-gray-900 dark:text-white">{model.name}</h5>
-                              <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                                <span>{formatBytes(model.size)}</span>
-                                <span>Modified: {new Date(model.modified).toLocaleDateString()}</span>
+                              <h5 className="font-semibold text-gray-900 dark:text-white text-lg">{model.name}</h5>
+                              <div className="flex items-center gap-4 mt-2">
+                                <div className="flex items-center gap-2">
+                                  <HardDrive className="w-4 h-4 text-gray-500" />
+                                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{formatBytes(model.size)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-gray-500" />
+                                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    {new Date(model.modified).toLocaleDateString()}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             <button
-                              onClick={() => handleDeleteModel(modelType, model.name)}
-                              className="px-3 py-1 text-sm bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-md hover:bg-red-200 dark:hover:bg-red-800"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteModel(modelType, model.name);
+                              }}
+                              className="px-4 py-2 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-all duration-200 font-medium flex items-center gap-2"
                             >
-                              Delete
+                              <Trash2 className="w-4 h-4" />
+                              <span>Delete</span>
                             </button>
                           </div>
                         ))}
@@ -826,10 +920,20 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 ))}
                 
                 {Object.values(localModels).every(models => models.length === 0) && (
-                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                    <Settings className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No local models found</p>
-                    <p className="text-sm">Download models from the Discover tab to see them here</p>
+                  <div className="glassmorphic-card p-12 rounded-xl text-center">
+                    <div className="w-20 h-20 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <HardDrive className="w-10 h-10 text-white" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">No Local Models</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
+                      Download models from the Discover tab to see them here
+                    </p>
+                    <button
+                      onClick={() => setActiveTab('discover')}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
+                    >
+                      Browse Models
+                    </button>
                   </div>
                 )}
               </div>
@@ -837,8 +941,7 @@ const ModelManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           )}
         </div>
       </div>
-      </div>
-    </>
+    </div>
   );
 };
 

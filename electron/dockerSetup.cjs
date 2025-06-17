@@ -54,7 +54,7 @@ class DockerSetup extends EventEmitter {
       },
       comfyui: {
         name: 'clara_comfyui',
-        image: this.getArchSpecificImage('clara17verse/clara-comfyui', 'latest'),
+        image: this.getArchSpecificImage('clara17verse/clara-comfyui', 'with-custom-nodes'),
         port: 8188,
         internalPort: 8188,
         healthCheck: this.isComfyUIRunning.bind(this),

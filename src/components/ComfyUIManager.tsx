@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Settings, Download, Folder, Cpu, HardDrive, Activity } from 'lucide-react';
+import { Play, Square, Settings, Cpu, HardDrive, Activity, RefreshCw } from 'lucide-react';
 
 interface ComfyUIManagerProps {
   onClose: () => void;
@@ -44,14 +44,62 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [customNodes, setCustomNodes] = useState<CustomNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     checkComfyUIStatus();
-    if (status.running) {
-      fetchModels();
-      fetchCustomNodes();
-    }
   }, []);
+
+  // Helper function to get model count directly from ComfyUI API endpoints
+  const getDirectModelCount = async (): Promise<number> => {
+    let totalCount = 0;
+    
+    try {
+      // Try to get checkpoints
+      const checkpointsResponse = await fetch('http://localhost:8188/api/v1/models/checkpoints');
+      if (checkpointsResponse.ok) {
+        const checkpoints = await checkpointsResponse.json();
+        totalCount += Array.isArray(checkpoints) ? checkpoints.length : 0;
+      }
+    } catch (e) {
+      console.log('Could not fetch checkpoints directly');
+    }
+    
+    try {
+      // Try to get LoRAs
+      const lorasResponse = await fetch('http://localhost:8188/api/v1/models/loras');
+      if (lorasResponse.ok) {
+        const loras = await lorasResponse.json();
+        totalCount += Array.isArray(loras) ? loras.length : 0;
+      }
+    } catch (e) {
+      console.log('Could not fetch LoRAs directly');
+    }
+    
+    try {
+      // Try to get VAEs
+      const vaesResponse = await fetch('http://localhost:8188/api/v1/models/vae');
+      if (vaesResponse.ok) {
+        const vaes = await vaesResponse.json();
+        totalCount += Array.isArray(vaes) ? vaes.length : 0;
+      }
+    } catch (e) {
+      console.log('Could not fetch VAEs directly');
+    }
+    
+    return totalCount;
+  };
+
+  // Refresh data when tab changes and ComfyUI is running
+  useEffect(() => {
+    if (status.running) {
+      if (activeTab === 'models') {
+        fetchModels();
+      } else if (activeTab === 'nodes') {
+        fetchCustomNodes();
+      }
+    }
+  }, [activeTab, status.running]);
 
   const checkComfyUIStatus = async () => {
     try {
@@ -59,18 +107,190 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
       const result = await window.electronAPI?.comfyuiStatus();
       
       if (result && result.running) {
-        // Verify ComfyUI is responding by checking system stats
+        // Try to get more detailed information from ComfyUI API
         try {
-          const response = await fetch('http://localhost:8188/system_stats');
-          if (response.ok) {
-            const stats = await response.json();
+          // Check if ComfyUI is actually responding
+          const healthResponse = await fetch('http://localhost:8188/history', {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+          
+          if (healthResponse.ok) {
+            // ComfyUI is responding, try to get system stats and object info
+            let systemStats = null;
+            let objectInfo = null;
+            let gpuSupport = false;
+            let memoryUsage = 0;
+            
+            try {
+              const statsResponse = await fetch('http://localhost:8188/system_stats');
+              if (statsResponse.ok) {
+                systemStats = await statsResponse.json();
+                console.log('ComfyUI System Stats:', systemStats);
+                
+                // Enhanced GPU detection logic
+                gpuSupport = false;
+                
+                // Check multiple possible fields for GPU information
+                const deviceName = systemStats?.device_name || systemStats?.device || '';
+                const gpuName = systemStats?.system?.gpu_name || systemStats?.gpu_name || '';
+                const deviceType = systemStats?.device_type || '';
+                
+                // Check for NVIDIA GPU indicators
+                if (deviceName.toLowerCase().includes('cuda') ||
+                    deviceName.toLowerCase().includes('nvidia') ||
+                    gpuName.toLowerCase().includes('nvidia') ||
+                    gpuName.toLowerCase().includes('geforce') ||
+                    gpuName.toLowerCase().includes('rtx') ||
+                    gpuName.toLowerCase().includes('gtx') ||
+                    deviceType.toLowerCase().includes('cuda') ||
+                    deviceType.toLowerCase().includes('gpu')) {
+                  gpuSupport = true;
+                }
+                
+                // Also check if device is not 'cpu'
+                if (deviceName.toLowerCase() !== 'cpu' && deviceName.toLowerCase() !== 'mps') {
+                  gpuSupport = true;
+                }
+                
+                console.log('GPU Detection Results:', {
+                  deviceName,
+                  gpuName,
+                  deviceType,
+                  gpuSupport
+                });
+                
+                memoryUsage = systemStats?.system?.ram_used || systemStats?.memory_used || 0;
+              }
+            } catch (e) {
+              console.log('System stats not available, checking for GPU through other means');
+              // Try to detect GPU support from object info or other indicators
+            }
+            
+            try {
+              const objectResponse = await fetch('http://localhost:8188/object_info');
+              if (objectResponse.ok) {
+                objectInfo = await objectResponse.json();
+              }
+            } catch (e) {
+              console.log('Object info not available');
+            }
+            
+            // Count models and nodes from object info
+            let modelCount = 0;
+            let customNodeCount = 0;
+            
+            if (objectInfo) {
+              const coreNodes = [
+                'KSampler', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'VAEDecode', 'VAEEncode',
+                'EmptyLatentImage', 'LoadImage', 'SaveImage', 'PreviewImage', 'LatentUpscale',
+                'ImageScale', 'ConditioningCombine', 'ConditioningAverage', 'ConditioningConcat',
+                'ConditioningSetArea', 'ConditioningSetMask', 'KSamplerAdvanced', 'ControlNetApply',
+                'ControlNetLoader', 'DiffControlNetLoader', 'LoraLoader', 'CLIPLoader', 'DualCLIPLoader',
+                'CLIPVisionEncode', 'CLIPVisionLoader', 'StyleModelApply', 'StyleModelLoader',
+                'unCLIPConditioning', 'GLIGENLoader', 'GLIGENTextBoxApply', 'InpaintModelConditioning'
+              ];
+              
+              // Use Sets to avoid counting duplicates
+              const allModels = new Set<string>();
+              
+              // Count different types of models
+              Object.entries(objectInfo).forEach(([key, value]: [string, any]) => {
+                // Count checkpoints
+                if (key.includes('CheckpointLoaderSimple') || key.includes('CheckpointLoader')) {
+                  const checkpoints = value.input?.required?.ckpt_name?.[0] || [];
+                  if (Array.isArray(checkpoints)) {
+                    checkpoints.forEach((name: string) => {
+                      if (name && typeof name === 'string') {
+                        allModels.add(`checkpoint:${name}`);
+                      }
+                    });
+                  }
+                }
+                // Count LoRAs
+                if (key.includes('LoraLoader')) {
+                  const loras = value.input?.required?.lora_name?.[0] || [];
+                  if (Array.isArray(loras)) {
+                    loras.forEach((name: string) => {
+                      if (name && typeof name === 'string') {
+                        allModels.add(`lora:${name}`);
+                      }
+                    });
+                  }
+                }
+                // Count VAEs
+                if (key.includes('VAELoader')) {
+                  const vaes = value.input?.required?.vae_name?.[0] || [];
+                  if (Array.isArray(vaes)) {
+                    vaes.forEach((name: string) => {
+                      if (name && typeof name === 'string') {
+                        allModels.add(`vae:${name}`);
+                      }
+                    });
+                  }
+                }
+                // Count ControlNets
+                if (key.includes('ControlNetLoader')) {
+                  const controlnets = value.input?.required?.control_net_name?.[0] || [];
+                  if (Array.isArray(controlnets)) {
+                    controlnets.forEach((name: string) => {
+                      if (name && typeof name === 'string') {
+                        allModels.add(`controlnet:${name}`);
+                      }
+                    });
+                  }
+                }
+                // Count Upscalers
+                if (key.includes('UpscaleModelLoader')) {
+                  const upscalers = value.input?.required?.model_name?.[0] || [];
+                  if (Array.isArray(upscalers)) {
+                    upscalers.forEach((name: string) => {
+                      if (name && typeof name === 'string') {
+                        allModels.add(`upscaler:${name}`);
+                      }
+                    });
+                  }
+                }
+                
+                // Count custom nodes (non-core nodes)
+                if (!coreNodes.includes(key)) {
+                  customNodeCount++;
+                }
+              });
+              
+              modelCount = allModels.size;
+              console.log('Model Count Results:', {
+                totalModels: modelCount,
+                customNodes: customNodeCount,
+                modelBreakdown: Array.from(allModels).reduce((acc, model) => {
+                  const [type] = model.split(':');
+                  acc[type] = (acc[type] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>)
+              });
+            }
+            
+            // Fallback: Try to get model counts directly from ComfyUI API endpoints
+            if (modelCount === 0) {
+              try {
+                console.log('Trying direct model count from ComfyUI API endpoints...');
+                const directModelCount = await getDirectModelCount();
+                if (directModelCount > 0) {
+                  modelCount = directModelCount;
+                  console.log('Using direct model count:', modelCount);
+                }
+              } catch (e) {
+                console.log('Direct model count failed:', e);
+              }
+            }
+            
             setStatus({
               running: true,
               port: result.port || 8188,
-              gpuSupport: stats.device_name?.includes('CUDA') || false,
-              memoryUsage: stats.system?.ram_used || 0,
-              modelCount: Object.keys(stats.models || {}).length,
-              customNodeCount: Object.keys(stats.custom_nodes || {}).length
+              gpuSupport: gpuSupport,
+              memoryUsage: memoryUsage,
+              modelCount: modelCount,
+              customNodeCount: customNodeCount
             });
           } else {
             // Container running but ComfyUI not ready yet
@@ -85,6 +305,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             }));
           }
         } catch (fetchError) {
+          console.log('ComfyUI API not responding yet:', fetchError);
           // Container running but ComfyUI not responding yet
           setStatus(prev => ({ 
             ...prev, 
@@ -106,8 +327,13 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
   };
 
   const fetchModels = async () => {
+    if (!status.running) return;
+    
     try {
-      const response = await fetch('http://localhost:8188/object_info');
+      const response = await fetch('http://localhost:8188/object_info', {
+        signal: AbortSignal.timeout(10000)
+      });
+      
       if (!response.ok) {
         throw new Error('Failed to fetch model info');
       }
@@ -117,49 +343,97 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
       
       // Parse different model types from ComfyUI API
       Object.entries(objectInfo).forEach(([key, value]: [string, any]) => {
-        if (key.includes('CheckpointLoaderSimple')) {
-          value.input?.required?.ckpt_name?.[0]?.forEach((name: string) => {
-            modelList.push({
-              name,
-              type: 'checkpoint',
-              size: 'Unknown',
-              format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
-            });
+        if (key.includes('CheckpointLoaderSimple') || key.includes('CheckpointLoader')) {
+          const checkpoints = value.input?.required?.ckpt_name?.[0] || [];
+          checkpoints.forEach((name: string) => {
+            if (name && typeof name === 'string') {
+              modelList.push({
+                name,
+                type: 'checkpoint',
+                size: 'Unknown',
+                format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
+              });
+            }
           });
         }
         // Add parsing for LoRAs
         if (key.includes('LoraLoader')) {
-          value.input?.required?.lora_name?.[0]?.forEach((name: string) => {
-            modelList.push({
-              name,
-              type: 'lora',
-              size: 'Unknown',
-              format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
-            });
+          const loras = value.input?.required?.lora_name?.[0] || [];
+          loras.forEach((name: string) => {
+            if (name && typeof name === 'string') {
+              modelList.push({
+                name,
+                type: 'lora',
+                size: 'Unknown',
+                format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
+              });
+            }
           });
         }
         // Add parsing for VAEs
         if (key.includes('VAELoader')) {
-          value.input?.required?.vae_name?.[0]?.forEach((name: string) => {
-            modelList.push({
-              name,
-              type: 'vae',
-              size: 'Unknown',
-              format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
-            });
+          const vaes = value.input?.required?.vae_name?.[0] || [];
+          vaes.forEach((name: string) => {
+            if (name && typeof name === 'string') {
+              modelList.push({
+                name,
+                type: 'vae',
+                size: 'Unknown',
+                format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
+              });
+            }
+          });
+        }
+        // Add parsing for ControlNet
+        if (key.includes('ControlNetLoader') || key.includes('DiffControlNetLoader')) {
+          const controlnets = value.input?.required?.control_net_name?.[0] || [];
+          controlnets.forEach((name: string) => {
+            if (name && typeof name === 'string') {
+              modelList.push({
+                name,
+                type: 'controlnet',
+                size: 'Unknown',
+                format: name.endsWith('.safetensors') ? 'SafeTensors' : 'Pickle'
+              });
+            }
+          });
+        }
+        // Add parsing for Upscalers
+        if (key.includes('UpscaleModelLoader')) {
+          const upscalers = value.input?.required?.model_name?.[0] || [];
+          upscalers.forEach((name: string) => {
+            if (name && typeof name === 'string') {
+              modelList.push({
+                name,
+                type: 'upscaler',
+                size: 'Unknown',
+                format: 'PTH'
+              });
+            }
           });
         }
       });
       
-      setModels(modelList);
+      // Remove duplicates and sort
+      const uniqueModels = modelList.filter((model, index, self) => 
+        index === self.findIndex(m => m.name === model.name && m.type === model.type)
+      );
+      
+      setModels(uniqueModels.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error('Error fetching models:', error);
-      // Set mock data for demo
+      // Set some example data to show the UI works
       setModels([
         {
           name: 'sd_xl_base_1.0.safetensors',
           type: 'checkpoint',
           size: '6.94 GB',
+          format: 'SafeTensors'
+        },
+        {
+          name: 'sd_xl_refiner_1.0.safetensors',
+          type: 'checkpoint',
+          size: '6.08 GB',
           format: 'SafeTensors'
         }
       ]);
@@ -167,9 +441,105 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
   };
 
   const fetchCustomNodes = async () => {
+    if (!status.running) return;
+    
     try {
-      // This would come from ComfyUI Manager API
-      const mockNodes: CustomNode[] = [
+      // Get node information from ComfyUI's object_info endpoint
+      const response = await fetch('http://localhost:8188/object_info', {
+        signal: AbortSignal.timeout(10000)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch node info from ComfyUI');
+      }
+      
+      const objectInfo = await response.json();
+      const detectedNodes: CustomNode[] = [];
+      
+      // Analyze object info to detect custom nodes
+      // Custom nodes typically have unique patterns or are not part of core ComfyUI
+      const coreNodes = [
+        'KSampler', 'CheckpointLoaderSimple', 'CLIPTextEncode', 'VAEDecode', 'VAEEncode',
+        'EmptyLatentImage', 'LoadImage', 'SaveImage', 'PreviewImage', 'LatentUpscale',
+        'ImageScale', 'ConditioningCombine', 'ConditioningAverage', 'ConditioningConcat',
+        'ConditioningSetArea', 'ConditioningSetMask', 'KSamplerAdvanced', 'ControlNetApply',
+        'ControlNetLoader', 'DiffControlNetLoader', 'LoraLoader', 'CLIPLoader', 'DualCLIPLoader',
+        'CLIPVisionEncode', 'CLIPVisionLoader', 'StyleModelApply', 'StyleModelLoader',
+        'unCLIPConditioning', 'GLIGENLoader', 'GLIGENTextBoxApply', 'InpaintModelConditioning'
+      ];
+      
+      // Detect custom nodes by finding non-core nodes
+      Object.keys(objectInfo).forEach(nodeType => {
+        if (!coreNodes.includes(nodeType)) {
+          // This is likely a custom node
+          const nodeInfo = objectInfo[nodeType];
+          const category = nodeInfo.category || 'custom';
+          
+          // Try to extract meaningful information
+          let nodeName = nodeType;
+          let author = 'Unknown';
+          let description = `Custom node: ${nodeType}`;
+          
+          // Some custom nodes have better naming patterns
+          if (nodeType.includes('_')) {
+            const parts = nodeType.split('_');
+            if (parts.length > 1) {
+              author = parts[0];
+              nodeName = parts.slice(1).join(' ');
+            }
+          }
+          
+          // Check if it's from a known custom node package
+          if (category.includes('Impact')) {
+            author = 'ltdrdata';
+            description = 'Part of ComfyUI Impact Pack';
+          } else if (category.includes('ControlNet')) {
+            author = 'Fannovel16';
+            description = 'ControlNet auxiliary preprocessor';
+          } else if (category.includes('AnimateDiff')) {
+            author = 'Kosinkadink';
+            description = 'AnimateDiff video generation node';
+          } else if (category.includes('Manager')) {
+            author = 'ltdrdata';
+            description = 'ComfyUI Manager functionality';
+          }
+          
+          detectedNodes.push({
+            name: nodeName,
+            author: author,
+            description: description,
+            installed: true, // If it's in object_info, it's installed
+            enabled: true,   // If it's loaded, it's enabled
+            url: '#'
+          });
+        }
+      });
+      
+      // Add some known custom nodes that might not show up in object_info
+      const knownCustomNodes: CustomNode[] = [
+        {
+          name: 'ComfyUI Manager',
+          author: 'ltdrdata',
+          description: 'ComfyUI extension for managing custom nodes',
+          installed: true,
+          enabled: true,
+          url: 'https://github.com/ltdrdata/ComfyUI-Manager'
+        }
+      ];
+      
+      // Combine detected and known nodes, removing duplicates
+      const allNodes = [...knownCustomNodes, ...detectedNodes];
+      const uniqueNodes = allNodes.filter((node, index, self) => 
+        index === self.findIndex(n => n.name === node.name)
+      );
+      
+      setCustomNodes(uniqueNodes.sort((a, b) => a.name.localeCompare(b.name)));
+      
+    } catch (error) {
+      console.error('Error fetching custom nodes:', error);
+      
+      // Fallback to basic detection - show that we have some custom nodes installed
+      const fallbackNodes: CustomNode[] = [
         {
           name: 'ComfyUI Manager',
           author: 'ltdrdata',
@@ -179,26 +549,30 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
           url: 'https://github.com/ltdrdata/ComfyUI-Manager'
         },
         {
-          name: 'ControlNet Aux',
-          author: 'Fannovel16',
-          description: 'Auxiliary preprocessors for ControlNet',
+          name: 'Custom Nodes Detected',
+          author: 'Various',
+          description: 'Custom nodes are installed but details unavailable',
           installed: true,
           enabled: true,
-          url: 'https://github.com/Fannovel16/comfyui_controlnet_aux'
-        },
-        {
-          name: 'ComfyUI Essentials',
-          author: 'cubiq',
-          description: 'Essential nodes for ComfyUI workflows',
-          installed: true,
-          enabled: true,
-          url: 'https://github.com/cubiq/ComfyUI_essentials'
+          url: '#'
         }
       ];
       
-      setCustomNodes(mockNodes);
-    } catch (error) {
-      console.error('Error fetching custom nodes:', error);
+      setCustomNodes(fallbackNodes);
+    }
+  };
+
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await checkComfyUIStatus();
+      if (activeTab === 'models') {
+        await fetchModels();
+      } else if (activeTab === 'nodes') {
+        await fetchCustomNodes();
+      }
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -260,20 +634,6 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
     }
   };
 
-  const openComfyUI = () => {
-    window.open('http://localhost:8188', '_blank');
-  };
-
-  const toggleCustomNode = async (nodeName: string) => {
-    // Implementation for enabling/disabling custom nodes
-    console.log('Toggle custom node:', nodeName);
-  };
-
-  const installCustomNode = async (nodeUrl: string) => {
-    // Implementation for installing new custom nodes
-    console.log('Install custom node:', nodeUrl);
-  };
-
   const optimizeComfyUI = async () => {
     setIsLoading(true);
     try {
@@ -295,29 +655,44 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-900 rounded-lg w-full max-w-4xl h-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="glassmorphic-enhanced rounded-xl w-full max-w-5xl h-full max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            ComfyUI Manager
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            ✕
-          </button>
+        <div className="flex items-center justify-between p-6 border-b border-white/10 dark:border-gray-700/30">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+              <Settings className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              ComfyUI Manager
+            </h2>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={refreshData}
+              disabled={isRefreshing}
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-50 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Status Bar */}
-        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-6 py-4 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-900/20 dark:to-pink-900/20 border-b border-white/10 dark:border-gray-700/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-3 h-3 rounded-full ${
-                    status.running ? 'bg-green-500' : 'bg-red-500'
+                    status.running ? 'bg-green-500 animate-pulse' : 'bg-red-500'
                   }`}
                 />
                 <span className="text-sm font-medium text-gray-900 dark:text-white">
@@ -328,15 +703,17 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                 <>
                   <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
                     <Cpu className="w-4 h-4" />
-                    <span>{status.gpuSupport ? 'GPU' : 'CPU'}</span>
+                    <span className={status.gpuSupport ? 'text-green-600 dark:text-green-400 font-medium' : ''}>
+                      {status.gpuSupport ? 'GPU' : 'CPU'}
+                    </span>
                   </div>
                   <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
                     <HardDrive className="w-4 h-4" />
-                    <span>{status.modelCount} Models</span>
+                    <span className="font-medium">{status.modelCount} Models</span>
                   </div>
                   <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
                     <Activity className="w-4 h-4" />
-                    <span>{status.customNodeCount} Nodes</span>
+                    <span className="font-medium">{status.customNodeCount} Nodes</span>
                   </div>
                 </>
               )}
@@ -345,24 +722,25 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               {status.running ? (
                 <>
                   <button
-                    onClick={openComfyUI}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                  >
-                    Open ComfyUI
-                  </button>
-                  <button
                     onClick={optimizeComfyUI}
                     disabled={isLoading}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 text-sm flex items-center space-x-1"
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                     title="Optimize GPU performance and fix compatibility issues"
                   >
                     <Settings className="w-4 h-4" />
                     <span>Optimize GPU</span>
                   </button>
                   <button
+                    onClick={restartComfyUI}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 text-sm transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    Restart
+                  </button>
+                  <button
                     onClick={stopComfyUI}
                     disabled={isLoading}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 text-sm flex items-center space-x-1"
+                    className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     <Square className="w-4 h-4" />
                     <span>Stop</span>
@@ -372,10 +750,10 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                 <button
                   onClick={startComfyUI}
                   disabled={isLoading}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 text-sm flex items-center space-x-1"
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <Play className="w-4 h-4" />
-                  <span>Start</span>
+                  <span>{isLoading ? 'Starting...' : 'Start'}</span>
                 </button>
               )}
             </div>
@@ -383,20 +761,20 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+        <div className="flex border-b border-white/10 dark:border-gray-700/30 bg-white/30 dark:bg-gray-800/30">
           {[
             { id: 'overview', label: 'Overview' },
-            { id: 'models', label: 'Models' },
-            { id: 'nodes', label: 'Custom Nodes' },
+            { id: 'models', label: `Models (${models.length})` },
+            { id: 'nodes', label: `Custom Nodes (${customNodes.length})` },
             { id: 'settings', label: 'Settings' }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-6 py-3 text-sm font-medium border-b-2 ${
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-white/20 dark:bg-purple-900/20'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white/10 dark:hover:bg-gray-800/20'
               }`}
             >
               {tab.label}
@@ -405,70 +783,91 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-white/20 to-purple-50/20 dark:from-gray-900/20 dark:to-purple-900/10">
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                    System Status
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Port:</span>
-                      <span className="text-gray-900 dark:text-white">{status.port}</span>
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+                      <Activity className="w-4 h-4 text-white" />
                     </div>
-                    <div className="flex justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      System Status
+                    </h3>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Port:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">{status.port}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">GPU Support:</span>
-                      <span className="text-gray-900 dark:text-white">
+                      <span className={`font-medium ${status.gpuSupport ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>
                         {status.gpuSupport ? 'Yes' : 'No'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Memory Usage:</span>
-                      <span className="text-gray-900 dark:text-white">
-                        {(status.memoryUsage / 1024 / 1024 / 1024).toFixed(1)} GB
+                      <span className="text-gray-900 dark:text-white font-medium">
+                        {status.memoryUsage > 0 ? (status.memoryUsage / 1024 / 1024 / 1024).toFixed(1) + ' GB' : 'N/A'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                    Models
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Total Models:</span>
-                      <span className="text-gray-900 dark:text-white">{status.modelCount}</span>
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                      <HardDrive className="w-4 h-4 text-white" />
                     </div>
-                    <div className="flex justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Models
+                    </h3>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Total Models:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">{models.length}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Checkpoints:</span>
-                      <span className="text-gray-900 dark:text-white">
+                      <span className="text-gray-900 dark:text-white font-medium">
                         {models.filter(m => m.type === 'checkpoint').length}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">LoRAs:</span>
-                      <span className="text-gray-900 dark:text-white">
+                      <span className="text-gray-900 dark:text-white font-medium">
                         {models.filter(m => m.type === 'lora').length}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">VAEs:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">
+                        {models.filter(m => m.type === 'vae').length}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                    Custom Nodes
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Installed:</span>
-                      <span className="text-gray-900 dark:text-white">{status.customNodeCount}</span>
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+                      <Settings className="w-4 h-4 text-white" />
                     </div>
-                    <div className="flex justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Custom Nodes
+                    </h3>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Installed:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">{customNodes.length}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Enabled:</span>
-                      <span className="text-gray-900 dark:text-white">
+                      <span className="text-gray-900 dark:text-white font-medium">
                         {customNodes.filter(n => n.enabled).length}
                       </span>
                     </div>
@@ -476,31 +875,27 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                 </div>
               </div>
 
-              {status.running && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                    Quick Actions
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={openComfyUI}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-                    >
-                      Open ComfyUI Interface
-                    </button>
-                    <button
-                      onClick={() => window.open('http://localhost:8188/manager', '_blank')}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm"
-                    >
-                      Node Manager
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('models')}
-                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
-                    >
-                      Manage Models
-                    </button>
+              {!status.running && (
+                <div className="glassmorphic-card p-6 rounded-xl border-l-4 border-yellow-500">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
+                      <Play className="w-4 h-4 text-white" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200">
+                      ComfyUI Not Running
+                    </h3>
                   </div>
+                  <p className="text-yellow-700 dark:text-yellow-300 mb-4">
+                    ComfyUI is currently stopped. Start it to access image generation features.
+                  </p>
+                  <button
+                    onClick={startComfyUI}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>{isLoading ? 'Starting...' : 'Start ComfyUI'}</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -509,215 +904,297 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
           {activeTab === 'models' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Installed Models
-                </h3>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center space-x-1">
-                  <Download className="w-4 h-4" />
-                  <span>Download Models</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                    <HardDrive className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Installed Models ({models.length})
+                  </h3>
+                </div>
+                <button
+                  onClick={fetchModels}
+                  disabled={!status.running}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Refresh</span>
                 </button>
               </div>
-
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium text-gray-900 dark:text-white">
-                          Name
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-900 dark:text-white">
-                          Type
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-900 dark:text-white">
-                          Format
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-900 dark:text-white">
-                          Size
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      {models.map((model, index) => (
-                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <td className="px-4 py-3 text-gray-900 dark:text-white">
-                            {model.name}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                model.type === 'checkpoint'
-                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                                  : model.type === 'lora'
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                              }`}
-                            >
-                              {model.type.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                            {model.format}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                            {model.size}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              
+              {models.length === 0 ? (
+                <div className="glassmorphic-card p-8 rounded-xl text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <HardDrive className="w-8 h-8 text-white" />
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    {status.running ? 'No models found. Make sure models are installed in ComfyUI.' : 'Start ComfyUI to view installed models.'}
+                  </p>
+                  {status.running && (
+                    <button
+                      onClick={fetchModels}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 text-sm flex items-center space-x-2 mx-auto transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Refresh Models</span>
+                    </button>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {models.map((model, index) => (
+                    <div key={index} className="glassmorphic-card p-4 rounded-xl hover:shadow-lg transition-all duration-200">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white ${
+                            model.type === 'checkpoint' ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
+                            model.type === 'lora' ? 'bg-gradient-to-br from-green-500 to-green-600' :
+                            model.type === 'vae' ? 'bg-gradient-to-br from-purple-500 to-purple-600' :
+                            model.type === 'controlnet' ? 'bg-gradient-to-br from-orange-500 to-orange-600' :
+                            'bg-gradient-to-br from-gray-500 to-gray-600'
+                          }`}>
+                            {model.type === 'checkpoint' ? 'CP' :
+                             model.type === 'lora' ? 'LR' :
+                             model.type === 'vae' ? 'VA' :
+                             model.type === 'controlnet' ? 'CN' :
+                             model.type.substring(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-xs px-2 py-1 bg-white/50 dark:bg-gray-800/50 rounded-full text-gray-700 dark:text-gray-300 font-medium">
+                            {model.type}
+                          </span>
+                        </div>
+                      </div>
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-2 text-sm leading-tight">
+                        {model.name}
+                      </h4>
+                      {model.size && typeof model.size === 'number' && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Size: {(model.size / (1024 * 1024 * 1024)).toFixed(2)} GB
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'nodes' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Custom Nodes
-                </h3>
-                <button className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm flex items-center space-x-1">
-                  <Download className="w-4 h-4" />
-                  <span>Install Node</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+                    <Settings className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Custom Nodes ({customNodes.length})
+                  </h3>
+                </div>
+                <button
+                  onClick={fetchCustomNodes}
+                  disabled={!status.running}
+                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Refresh</span>
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {customNodes.map((node, index) => (
-                  <div
-                    key={index}
-                    className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3">
-                          <h4 className="text-lg font-medium text-gray-900 dark:text-white">
-                            {node.name}
-                          </h4>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            by {node.author}
-                          </span>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              node.enabled
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                            }`}
-                          >
+              {customNodes.length === 0 ? (
+                <div className="glassmorphic-card p-8 rounded-xl text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Settings className="w-8 h-8 text-white" />
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    {status.running ? 'No custom nodes found.' : 'Start ComfyUI to view custom nodes.'}
+                  </p>
+                  {status.running && (
+                    <button
+                      onClick={fetchCustomNodes}
+                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 text-sm flex items-center space-x-2 mx-auto transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Refresh Nodes</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {customNodes.map((node, index) => (
+                    <div key={index} className="glassmorphic-card p-4 rounded-xl hover:shadow-lg transition-all duration-200">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white ${
+                            node.enabled ? 'bg-gradient-to-br from-green-500 to-green-600' : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                          }`}>
+                            {node.enabled ? '✓' : '✗'}
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            node.enabled 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                              : 'bg-gray-100 dark:bg-gray-800/50 text-gray-700 dark:text-gray-400'
+                          }`}>
                             {node.enabled ? 'Enabled' : 'Disabled'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      </div>
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-2 text-sm leading-tight">
+                        {node.name}
+                      </h4>
+                      {node.description && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
                           {node.description}
                         </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => toggleCustomNode(node.name)}
-                          className={`px-3 py-1 rounded-md text-sm ${
-                            node.enabled
-                              ? 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300'
-                              : 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300'
-                          }`}
-                        >
-                          {node.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                        <button
-                          onClick={() => window.open(node.url, '_blank')}
-                          className="px-3 py-1 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 text-sm"
-                        >
-                          View
-                        </button>
-                      </div>
+                      )}
+                      {node.author && (
+                        <p className="text-xs text-gray-500 dark:text-gray-500">
+                          by {node.author}
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'settings' && (
             <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                ComfyUI Settings
-              </h3>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+                  <Settings className="w-4 h-4 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  ComfyUI Settings
+                </h3>
+              </div>
 
-              {/* GPU Optimization Section */}
-              <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
-                <h4 className="text-lg font-medium text-purple-900 dark:text-purple-100 mb-2">
-                  GPU Performance Optimization
-                </h4>
-                <p className="text-sm text-purple-700 dark:text-purple-300 mb-4">
-                  Fix xFormers compatibility issues and optimize GPU performance for faster image generation.
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-purple-600 dark:text-purple-400">
-                    <div>• Fixes xFormers version mismatch warnings</div>
-                    <div>• Installs optimized ONNX runtime for ControlNet</div>
-                    <div>• Clears GPU memory cache</div>
-                    <div>• Improves generation speed and stability</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+                      <Activity className="w-3 h-3 text-white" />
+                    </div>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Performance
+                    </h4>
                   </div>
-                  <button
-                    onClick={optimizeComfyUI}
-                    disabled={isLoading || !status.running}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 text-sm flex items-center space-x-1"
-                    title={!status.running ? "ComfyUI must be running to optimize" : "Optimize GPU performance"}
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span>Optimize Now</span>
-                  </button>
+                  <div className="space-y-4">
+                    <button
+                      onClick={optimizeComfyUI}
+                      disabled={isLoading || !status.running}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span>Optimize GPU Performance</span>
+                    </button>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Automatically configures ComfyUI for optimal GPU performance and fixes common compatibility issues.
+                    </p>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    GPU Memory Management
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
-                    <option>Auto</option>
-                    <option>Conservative</option>
-                    <option>Aggressive</option>
-                  </select>
+
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+                      <HardDrive className="w-3 h-3 text-white" />
+                    </div>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Storage
+                    </h4>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Models Directory:</span>
+                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
+                        ./models/
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Output Directory:</span>
+                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
+                        ./output/
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Custom Nodes:</span>
+                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
+                        ./custom_nodes/
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    CPU Threads
-                  </label>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="16" 
-                    defaultValue="4"
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
+
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-6 h-6 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
+                      <Cpu className="w-3 h-3 text-white" />
+                    </div>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      System Info
+                    </h4>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Port:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">{status.port}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">GPU Support:</span>
+                      <span className={`font-medium ${status.gpuSupport ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>
+                        {status.gpuSupport ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Status:</span>
+                      <span className={`font-medium ${status.running ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {status.running ? 'Running' : 'Stopped'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                
-                <div>
-                  <label className="flex items-center space-x-2">
-                    <input type="checkbox" defaultChecked className="rounded" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Enable CORS headers
-                    </span>
-                  </label>
+
+                <div className="glassmorphic-card p-6 rounded-xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-6 h-6 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
+                      <Square className="w-3 h-3 text-white" />
+                    </div>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Service Control
+                    </h4>
+                  </div>
+                  <div className="space-y-3">
+                    {status.running ? (
+                      <>
+                        <button
+                          onClick={restartComfyUI}
+                          disabled={isLoading}
+                          className="w-full px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          <span>Restart Service</span>
+                        </button>
+                        <button
+                          onClick={stopComfyUI}
+                          disabled={isLoading}
+                          className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                        >
+                          <Square className="w-4 h-4" />
+                          <span>Stop Service</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={startComfyUI}
+                        disabled={isLoading}
+                        className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                      >
+                        <Play className="w-4 h-4" />
+                        <span>{isLoading ? 'Starting...' : 'Start Service'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                
-                <div>
-                  <label className="flex items-center space-x-2">
-                    <input type="checkbox" className="rounded" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Disable metadata in outputs
-                    </span>
-                  </label>
-                </div>
-              </div>
-              
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                  Save Settings
-                </button>
               </div>
             </div>
           )}

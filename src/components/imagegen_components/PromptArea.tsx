@@ -1,47 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Settings, RefreshCw, Wand2, ImagePlus, X, Sparkles, ChevronDown } from 'lucide-react';
 
+// Import Clara types
+import { ClaraModel, ClaraProvider } from '../../types/clara_assistant_types';
+
 // Define missing constant
 const LAST_USED_LLM_KEY = 'clara-ollama-last-used-llm';
 
-interface ModelSelectionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  models: string[];
-  onSelect: (model: string) => void;
-}
 
-const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClose, models, onSelect }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-        <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Select LLM Model</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-          Choose an LLM model to enhance your prompts. This setting will be saved for future use.
-        </p>
-        <div className="space-y-2 max-h-60 overflow-y-auto">
-          {models.map((model) => (
-            <button
-              key={model}
-              onClick={() => onSelect(model)}
-              className="w-full text-left px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              {model}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={onClose}
-          className="mt-4 w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-};
 
 interface PromptAreaProps {
   prompt: string;
@@ -55,8 +21,9 @@ interface PromptAreaProps {
   onEnhancePrompt?: (prompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }) => Promise<string>;
   isEnhancing?: boolean;
   isLLMConnected?: boolean;
-  availableModels?: string[];
-  onModelSelect?: (model: string) => void;
+  availableModels?: ClaraModel[];
+  providers?: ClaraProvider[];
+  onModelSelect?: (modelId: string) => void;
   clearImage?: boolean;
   onImageClear?: () => void;
 }
@@ -74,6 +41,7 @@ const PromptArea: React.FC<PromptAreaProps> = ({
   isEnhancing = false,
   isLLMConnected = false,
   availableModels = [],
+  providers = [],
   onModelSelect,
   clearImage = false,
   onImageClear,
@@ -81,11 +49,53 @@ const PromptArea: React.FC<PromptAreaProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBuffer, setImageBuffer] = useState<ArrayBuffer | null>(null);
-  const [showModelSelection, setShowModelSelection] = useState(false);
   const [enhancementFeedback, setEnhancementFeedback] = useState<string | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   
-  // Get the current selected model name from localStorage
-  const currentLLMModel = localStorage.getItem(LAST_USED_LLM_KEY) || '';
+  // Get the current selected model name from localStorage and find the model object
+  const currentLLMModelId = localStorage.getItem(LAST_USED_LLM_KEY) || '';
+  const currentModel = availableModels.find(m => m.id === currentLLMModelId);
+  const currentProvider = currentModel ? providers.find(p => p.id === currentModel.provider) : null;
+  
+  // Initialize selected provider based on current model
+  useEffect(() => {
+    if (currentModel && currentProvider && !selectedProviderId) {
+      setSelectedProviderId(currentProvider.id);
+    }
+  }, [currentModel, currentProvider, selectedProviderId]);
+  
+  // Get models for the selected provider
+  const getModelsForProvider = (providerId: string) => {
+    return availableModels.filter(model => model.provider === providerId);
+  };
+  
+  // Get available providers that have models
+  const getAvailableProviders = () => {
+    const providerIds = [...new Set(availableModels.map(model => model.provider))];
+    return providers.filter(provider => providerIds.includes(provider.id));
+  };
+  
+  const handleProviderChange = (providerId: string) => {
+    setSelectedProviderId(providerId);
+    // Clear model selection when provider changes
+    const modelsForProvider = getModelsForProvider(providerId);
+    if (modelsForProvider.length > 0) {
+      // Auto-select first model if available
+      const firstModel = modelsForProvider[0];
+      onModelSelect?.(firstModel.id);
+    }
+  };
+  
+  const handleModelChange = (modelId: string) => {
+    onModelSelect?.(modelId);
+    const selectedModel = availableModels.find(m => m.id === modelId);
+    const provider = selectedModel ? providers.find(p => p.id === selectedModel.provider) : null;
+    
+    if (selectedModel && provider) {
+      setEnhancementFeedback(`Now using ${selectedModel.name} via ${provider.name} for prompt enhancement`);
+      setTimeout(() => setEnhancementFeedback(null), 3000);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,18 +135,27 @@ const PromptArea: React.FC<PromptAreaProps> = ({
 
   const handleEnhanceClick = () => {
     if (!isLLMConnected) {
-      setEnhancementFeedback("LLM not connected. Please check your API settings.");
+      setEnhancementFeedback("No AI providers connected. Please check your settings.");
+      setTimeout(() => setEnhancementFeedback(null), 3000);
+      return;
+    }
+
+    if (availableModels.length === 0) {
+      setEnhancementFeedback("No enhancement models available. Please configure your AI providers.");
       setTimeout(() => setEnhancementFeedback(null), 3000);
       return;
     }
     
-    const savedModel = localStorage.getItem(LAST_USED_LLM_KEY);
+    const savedModelId = localStorage.getItem(LAST_USED_LLM_KEY);
+    const savedModel = savedModelId ? availableModels.find(m => m.id === savedModelId) : null;
+    
     if (!savedModel) {
       setShowModelSelection(true);
       return;
     }
     
-    setEnhancementFeedback(`Enhancing with ${savedModel}...`);
+    const provider = providers.find(p => p.id === savedModel.provider);
+    setEnhancementFeedback(`Enhancing with ${savedModel.name} via ${provider?.name || 'Unknown Provider'}...`);
     
     // Prepare image data if available
     const prepareImageData = async () => {
@@ -203,24 +222,64 @@ const PromptArea: React.FC<PromptAreaProps> = ({
           </div>
         )}
         
-        {/* Enhancement model indicator and selector */}
-        {isLLMConnected && (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Enhancement Model:</span>
-              <button 
-                onClick={() => setShowModelSelection(true)}
-                className="flex items-center gap-1 px-2 py-1 text-sm rounded-lg bg-sakura-50 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-300 hover:bg-sakura-100 dark:hover:bg-sakura-800/50 transition-colors"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>{currentLLMModel || "Select Model"}</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
+        {/* Enhancement provider and model selectors */}
+        {isLLMConnected && availableModels.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-sakura-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">AI Enhancement:</span>
+              </div>
+              
+              {/* Provider Dropdown */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-500 dark:text-gray-400">Provider:</label>
+                <select
+                  value={selectedProviderId}
+                  onChange={(e) => handleProviderChange(e.target.value)}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-sakura-300 dark:focus:border-sakura-500 transition-colors min-w-[120px]"
+                >
+                  <option value="">Select Provider</option>
+                  {getAvailableProviders().map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Model Dropdown */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-500 dark:text-gray-400">Model:</label>
+                <select
+                  value={currentLLMModelId}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  disabled={!selectedProviderId}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-sakura-300 dark:focus:border-sakura-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-w-[150px]"
+                >
+                  <option value="">Select Model</option>
+                  {selectedProviderId && getModelsForProvider(selectedProviderId).map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} {model.supportsVision ? '👁️' : ''} ({model.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Model capabilities indicator */}
+              {currentModel && (
+                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                  {currentModel.supportsVision && <span title="Vision Support">👁️</span>}
+                  {currentModel.supportsCode && <span title="Code Support" className="text-blue-500">💻</span>}
+                  {currentModel.supportsTools && <span title="Tools Support" className="text-green-500">🔧</span>}
+                </div>
+              )}
             </div>
             
+            {/* Enhancement feedback */}
             {enhancementFeedback && (
-              <div className={`text-sm px-3 py-1 rounded-full transition-opacity duration-300 ${
-                enhancementFeedback.includes('failed') || enhancementFeedback.includes('not connected')
+              <div className={`text-sm px-3 py-2 rounded-lg transition-opacity duration-300 ${
+                enhancementFeedback.includes('failed') || enhancementFeedback.includes('not connected') || enhancementFeedback.includes('No ')
                   ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
                   : enhancementFeedback.includes('success')
                     ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
@@ -229,6 +288,18 @@ const PromptArea: React.FC<PromptAreaProps> = ({
                 {enhancementFeedback}
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Show message when no models are available */}
+        {isLLMConnected && availableModels.length === 0 && (
+          <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-sm">
+                No enhancement models available. Please configure AI providers in Settings.
+              </span>
+            </div>
           </div>
         )}
         
@@ -273,7 +344,7 @@ const PromptArea: React.FC<PromptAreaProps> = ({
                     </span>
                   </button>
                 )}
-                {isLLMConnected && (
+                {isLLMConnected && availableModels.length > 0 && (
                   <button
                     onClick={handleEnhanceClick}
                     disabled={isEnhancing}
@@ -342,17 +413,7 @@ const PromptArea: React.FC<PromptAreaProps> = ({
         </div>
       </div>
 
-      <ModelSelectionModal
-        isOpen={showModelSelection}
-        onClose={() => setShowModelSelection(false)}
-        models={availableModels}
-        onSelect={(model) => {
-          onModelSelect?.(model);
-          setShowModelSelection(false);
-          setEnhancementFeedback(`Using ${model} for prompt enhancement`);
-          setTimeout(() => setEnhancementFeedback(null), 3000);
-        }}
-      />
+
     </div>
   );
 };

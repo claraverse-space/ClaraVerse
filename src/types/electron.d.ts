@@ -158,14 +158,13 @@ declare global {
       onDownloadProgress: (callback: (data: any) => void) => () => void;
       stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
       
-      // Model Manager APIs (CivitAI/HuggingFace search)
+      // Model Manager APIs (CivitAI search)
       searchCivitAI: (query: string, types?: string[], sort?: string) => Promise<any>;
-      searchHuggingFace: (query: string, modelType?: string, author?: string) => Promise<any>;
       downloadModelFile: (url: string, filename: string, modelType: string, source: string) => Promise<any>;
       getLocalModelFiles: () => Promise<Record<string, any[]>>;
       deleteLocalModelFile: (modelType: string, filename: string) => Promise<{ success: boolean; error?: string }>;
-      saveApiKeys: (keys: { civitai?: string; huggingface?: string }) => Promise<void>;
-      getApiKeys: () => Promise<{ civitai?: string; huggingface?: string }>;
+      saveApiKeys: (keys: { civitai?: string }) => Promise<void>;
+      getApiKeys: () => Promise<{ civitai?: string }>;
       
       // ComfyUI Model Manager APIs
       comfyuiDownloadModel: (url: string, filename: string, modelType: string, source: string, apiKey?: string) => Promise<{ success: boolean; path?: string; modelType?: string; size?: number; error?: string }>;

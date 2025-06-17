@@ -98,7 +98,9 @@ RUN cd custom_nodes && \
 RUN cd custom_nodes && \
     git clone https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
     git clone https://github.com/cubiq/ComfyUI_essentials.git && \
-    git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+    git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git && \
+    git clone https://github.com/Acly/comfyui-tooling-nodes.git && \
+    git clone https://github.com/jags111/efficiency-nodes-comfyui.git
 
 # Install dependencies for custom nodes (with error handling)
 RUN cd custom_nodes/comfyui_controlnet_aux && \
@@ -106,6 +108,14 @@ RUN cd custom_nodes/comfyui_controlnet_aux && \
 
 RUN cd custom_nodes/ComfyUI_essentials && \
     pip3 install -r requirements.txt --no-cache-dir || echo "Some essentials dependencies failed, continuing"
+
+# Install dependencies for Acly's tooling nodes
+RUN cd custom_nodes/comfyui-tooling-nodes && \
+    pip3 install -r requirements.txt --no-cache-dir || echo "Some tooling nodes dependencies failed, continuing"
+
+# Install dependencies for Jags111's efficiency nodes
+RUN cd custom_nodes/efficiency-nodes-comfyui && \
+    pip3 install -r requirements.txt --no-cache-dir || echo "Some efficiency nodes dependencies failed, continuing"
 
 # Create a backup of custom nodes for volume mount initialization
 RUN cp -r /app/ComfyUI/custom_nodes /app/ComfyUI_custom_nodes_backup

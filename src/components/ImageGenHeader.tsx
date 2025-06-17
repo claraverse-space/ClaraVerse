@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Sun, Moon, Image, Settings, Download } from 'lucide-react';
+import { Bell, Sun, Moon, Image, Settings, Download, ExternalLink, ArrowLeftRight, RefreshCw } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 
@@ -8,6 +8,9 @@ interface ImageGenHeaderProps {
   onPageChange?: (page: string) => void;
   onComfyUIManager?: () => void;
   onModelManager?: () => void;
+  onSwitchToComfyUI?: () => void;
+  onRefreshComfyUI?: () => void;
+  showComfyUIInterface?: boolean;
   // Pass system stats from ComfyUI
   systemStats?: any;
 }
@@ -17,6 +20,9 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
   onPageChange,
   onComfyUIManager,
   onModelManager,
+  onSwitchToComfyUI,
+  onRefreshComfyUI,
+  showComfyUIInterface,
   systemStats
 }) => {
   const { isDark, toggleTheme } = useTheme();
@@ -71,6 +77,29 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
           <Settings className="w-5 h-5 text-gray-600 dark:text-gray-300" />
           <span className="text-sm text-gray-700 dark:text-gray-300">ComfyUI</span>
         </button>
+
+        {/* ComfyUI Interface Button */}
+        <button
+          onClick={onSwitchToComfyUI}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+          title={showComfyUIInterface ? "Switch back to Clara ImageGen" : "Switch to ComfyUI Interface"}
+        >
+          <ArrowLeftRight className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            {showComfyUIInterface ? "Back to Clara" : "ComfyUI Interface"}
+          </span>
+        </button>
+
+        {/* Refresh ComfyUI Button - only show when in ComfyUI mode */}
+        {showComfyUIInterface && onRefreshComfyUI && (
+          <button
+            onClick={onRefreshComfyUI}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+            title="Refresh ComfyUI Interface"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        )}
 
         <button 
           onClick={toggleTheme}

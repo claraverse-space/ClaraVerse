@@ -41,7 +41,7 @@ When you start ClaraVerse, the ComfyUI container will be automatically detected 
 
 ## 🔧 Technical Details
 
-### **Docker Image: `clara17verse/clara-comfyui:latest`**
+### **Docker Image: `clara17verse/clara-comfyui:with-custom-nodes`**
 - **Base**: Ubuntu 22.04
 - **Size**: ~13.6GB (includes PyTorch, ComfyUI, and custom nodes)
 - **Python**: 3.10.12
@@ -133,7 +133,7 @@ docker run -d \
   --name clara_comfyui \
   -p 8188:8188 \
   -v /path/to/models:/app/ComfyUI/models \
-  clara17verse/clara-comfyui:latest
+  clara17verse/clara-comfyui:with-custom-nodes
 ```
 
 ## 🐛 Troubleshooting
