@@ -2031,8 +2031,19 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
               />
             )}
             <div className="flex-1 overflow-hidden flex">
-              <div className={`flex-1 overflow-y-auto transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
-                <div className={`mx-auto space-y-8 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'}`}>
+              <div className={`flex-1 flex flex-col transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
+                {/* Gallery section - takes remaining space */}
+                <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
+                  <GeneratedGallery
+                    generatedImages={generatedImages}
+                    isGenerating={isGenerating}
+                    handleDownload={handleDownload}
+                    handleDelete={handleDelete}
+                  />
+                </div>
+                
+                {/* Prompt area - sticks to bottom */}
+                <div className={`flex-shrink-0 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
                   <PromptArea
                     prompt={prompt}
                     setPrompt={setPrompt}
@@ -2050,12 +2061,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                     clearImage={clearImageFlag}
                     onImageClear={handleImageClear}
                     providers={providers} // Pass providers to PromptArea
-                  />
-                  <GeneratedGallery
-                    generatedImages={generatedImages}
-                    isGenerating={isGenerating}
-                    handleDownload={handleDownload}
-                    handleDelete={handleDelete}
                   />
                 </div>
               </div>
