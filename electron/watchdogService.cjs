@@ -12,6 +12,7 @@ class WatchdogService extends EventEmitter {
     // Watchdog configuration
     this.config = {
       checkInterval: 30000, // Check every 30 seconds
+      startupDelay: 60000, // Wait 60 seconds before starting health checks after startup
       retryAttempts: 3,
       retryDelay: 10000, // 10 seconds between retries
       notificationTimeout: 5000, // Auto-dismiss notifications after 5 seconds
@@ -60,7 +61,9 @@ class WatchdogService extends EventEmitter {
     
     // Watchdog state
     this.isRunning = false;
+    this.isStarting = false;
     this.checkTimer = null;
+    this.startupTimer = null;
     this.activeNotifications = new Map();
     
     log.info('Watchdog Service initialized');
@@ -86,7 +89,13 @@ class WatchdogService extends EventEmitter {
     }
 
     this.isRunning = true;
+    this.isStarting = true;
     log.info('Starting Watchdog Service...');
+    
+    // Set all services to "starting" state during startup
+    for (const service of Object.values(this.services)) {
+      service.status = 'starting';
+    }
     
     // Check ComfyUI consent status
     const fs = require('fs');
@@ -108,16 +117,23 @@ class WatchdogService extends EventEmitter {
       this.setComfyUIMonitoring(false);
     }
     
-    // Perform initial health checks
-    this.performHealthChecks();
-    
-    // Schedule regular health checks
-    this.checkTimer = setInterval(() => {
+    // Wait for startup delay before beginning health checks
+    log.info(`Watchdog waiting ${this.config.startupDelay / 1000} seconds before starting health checks...`);
+    this.startupTimer = setTimeout(() => {
+      this.isStarting = false;
+      log.info('Watchdog startup delay complete, beginning health checks...');
+      
+      // Perform initial health checks
       this.performHealthChecks();
-    }, this.config.checkInterval);
+      
+      // Schedule regular health checks
+      this.checkTimer = setInterval(() => {
+        this.performHealthChecks();
+      }, this.config.checkInterval);
+    }, this.config.startupDelay);
 
     this.emit('started');
-    log.info('Watchdog Service started successfully');
+    log.info('Watchdog Service started successfully (health checks will begin after startup delay)');
   }
 
   // Stop the watchdog monitoring
@@ -127,10 +143,16 @@ class WatchdogService extends EventEmitter {
     }
 
     this.isRunning = false;
+    this.isStarting = false;
     
     if (this.checkTimer) {
       clearInterval(this.checkTimer);
       this.checkTimer = null;
+    }
+
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
     }
 
     // Clear any active notifications
@@ -145,6 +167,12 @@ class WatchdogService extends EventEmitter {
 
   // Perform health checks on all services
   async performHealthChecks() {
+    // Skip health checks during startup phase
+    if (this.isStarting) {
+      log.debug('Skipping health checks during startup phase');
+      return;
+    }
+
     const timestamp = new Date();
     log.debug('Performing watchdog health checks...');
 
@@ -488,6 +516,33 @@ class WatchdogService extends EventEmitter {
       this.stop();
       this.start();
     }
+  }
+
+  // Signal that Docker setup is complete and watchdog can start monitoring
+  signalSetupComplete() {
+    if (!this.isRunning || !this.isStarting) {
+      return;
+    }
+
+    log.info('Docker setup complete signal received, starting health checks early...');
+    
+    // Clear the startup timer if it's still running
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
+    }
+
+    this.isStarting = false;
+    
+    // Perform initial health checks
+    this.performHealthChecks();
+    
+    // Schedule regular health checks
+    this.checkTimer = setInterval(() => {
+      this.performHealthChecks();
+    }, this.config.checkInterval);
+
+    log.info('Watchdog health checks started early due to setup completion');
   }
 
   // Manual health check trigger

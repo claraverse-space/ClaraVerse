@@ -1756,6 +1756,7 @@ function registerHandlers() {
           dockerAvailable: false, 
           n8nAvailable: false,
           pythonAvailable: false,
+          comfyuiAvailable: false,
           message: 'Docker setup not initialized' 
         };
       }
@@ -1766,17 +1767,20 @@ function registerHandlers() {
           dockerAvailable: false, 
           n8nAvailable: false,
           pythonAvailable: false,
+          comfyuiAvailable: false,
           message: 'Docker is not running' 
         };
       }
 
       const n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
       const pythonRunning = await dockerSetup.isPythonRunning().catch(() => false);
+      const comfyuiRunning = await dockerSetup.isComfyUIRunning().catch(() => false);
 
       return {
         dockerAvailable: true,
         n8nAvailable: n8nRunning,
         pythonAvailable: pythonRunning,
+        comfyuiAvailable: comfyuiRunning,
         ports: dockerSetup.ports
       };
     } catch (error) {
@@ -1785,6 +1789,7 @@ function registerHandlers() {
         dockerAvailable: false, 
         n8nAvailable: false,
         pythonAvailable: false,
+        comfyuiAvailable: false,
         message: error.message 
       };
     }
@@ -2346,9 +2351,119 @@ function registerHandlers() {
     }
     return false;
   });
+
+  // Generic Docker service control handlers
+  ipcMain.handle('start-docker-service', async (event, serviceName) => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker setup not initialized');
+      }
+
+      switch (serviceName) {
+        case 'n8n':
+          await dockerSetup.startContainer(dockerSetup.containers.n8n);
+          break;
+        case 'python':
+          await dockerSetup.startContainer(dockerSetup.containers.python);
+          break;
+        case 'comfyui':
+          await dockerSetup.startContainer(dockerSetup.containers.comfyui);
+          break;
+        default:
+          throw new Error(`Unknown service: ${serviceName}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      log.error(`Error starting ${serviceName} service:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('stop-docker-service', async (event, serviceName) => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker setup not initialized');
+      }
+
+      const containerName = `clara_${serviceName}`;
+      const container = await dockerSetup.docker.getContainer(containerName);
+      await container.stop();
+
+      return { success: true };
+    } catch (error) {
+      log.error(`Error stopping ${serviceName} service:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('restart-docker-service', async (event, serviceName) => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker setup not initialized');
+      }
+
+      const containerName = `clara_${serviceName}`;
+      const container = await dockerSetup.docker.getContainer(containerName);
+      await container.restart();
+
+      return { success: true };
+    } catch (error) {
+      log.error(`Error restarting ${serviceName} service:`, error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 async function initializeApp() {
+  console.log('🚀 InitializeApp called - starting initialization process');
+  try {
+    console.log('🔍 About to check first-time setup');
+    // Check if this is first time setup
+    const SetupConfigService = require('./setupConfigService.cjs');
+    console.log('✅ SetupConfigService imported successfully');
+    const setupService = new SetupConfigService();
+    console.log('✅ SetupConfigService instance created');
+    const isFirstTime = setupService.isFirstTimeSetup(); // Remove await - this is synchronous
+    
+    console.log('🔍 First-time setup check:', { isFirstTime });
+    
+    if (isFirstTime) {
+      console.log('🎯 First-time setup detected - starting splash screen');
+      // Use splash screen for first-time setup
+      splash = new SplashScreen();
+      
+      // Wait for setup to complete before continuing
+      return new Promise((resolve) => {
+        const checkSetupComplete = setInterval(async () => {
+          const stillFirstTime = setupService.isFirstTimeSetup(); // Remove await - this is synchronous
+          console.log('⏳ Checking setup completion:', { stillFirstTime });
+          if (!stillFirstTime) {
+            console.log('✅ First-time setup completed');
+            clearInterval(checkSetupComplete);
+            if (splash) {
+              splash.close();
+              splash = null;
+            }
+            // Continue with normal initialization
+            await continueNormalInitialization();
+            resolve();
+          }
+        }, 1000);
+      });
+    } else {
+      console.log('📱 Normal startup - skipping first-time setup');
+      // Normal initialization without first-time setup
+      await continueNormalInitialization();
+    }
+  } catch (error) {
+    log.error(`Initialization error: ${error.message}`, error);
+    // Fallback to normal initialization
+    await continueNormalInitialization();
+  }
+}
+
+async function continueNormalInitialization() {
   try {
     // Show loading screen
     loadingScreen = new LoadingScreen();
@@ -2448,6 +2563,11 @@ async function initializeServicesInBackground() {
 
         if (dockerSuccess) {
           sendStatus('Docker', 'Docker services ready', 'success');
+          
+          // Signal watchdog service that Docker setup is complete
+          if (watchdogService) {
+            watchdogService.signalSetupComplete();
+          }
         } else {
           sendStatus('Docker', 'Docker not available. Some features may be limited.', 'warning');
         }

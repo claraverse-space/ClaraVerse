@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw, Power } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -25,12 +25,23 @@ interface DockerServicesStatus {
   dockerAvailable: boolean;
   n8nAvailable: boolean;
   pythonAvailable: boolean;
+  comfyuiAvailable: boolean;
   message?: string;
   ports?: {
     python: number;
     n8n: number;
     ollama: number;
+    comfyui: number;
   };
+}
+
+// Add interface for startup configuration
+interface StartupConfig {
+  autoStart: boolean;
+  startMinimized: boolean;
+  startFullscreen: boolean;
+  checkForUpdates: boolean;
+  restoreLastSession: boolean;
 }
 
 const Settings = () => {
@@ -41,7 +52,14 @@ const Settings = () => {
     email: '',
     avatar_url: '',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    theme_preference: 'system'
+    theme_preference: 'system',
+    startup_settings: {
+      autoStart: false,
+      startMinimized: false,
+      startFullscreen: false,
+      checkForUpdates: true,
+      restoreLastSession: true
+    }
   });
 
   const [apiConfig, setApiConfig] = useState<APIConfig>({
@@ -72,7 +90,17 @@ const Settings = () => {
   const [dockerServices, setDockerServices] = useState<DockerServicesStatus>({
     dockerAvailable: false,
     n8nAvailable: false,
-    pythonAvailable: false
+    pythonAvailable: false,
+    comfyuiAvailable: false
+  });
+
+  // Add startup configuration state
+  const [startupConfig, setStartupConfig] = useState<StartupConfig>({
+    autoStart: false,
+    startMinimized: false,
+    startFullscreen: false,
+    checkForUpdates: true,
+    restoreLastSession: true
   });
 
   // Type for update info to fix TypeScript errors
@@ -124,11 +152,64 @@ const Settings = () => {
           openai_base_url: savedApiConfig.openai_base_url || 'https://api.openai.com/v1',
         });
       }
+
+      // Load startup configuration
+      await loadStartupConfig();
     };
 
     loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load startup configuration from personal info
+  const loadStartupConfig = async () => {
+    try {
+      const personalInfo = await db.getPersonalInfo();
+      if (personalInfo?.startup_settings) {
+        setStartupConfig(personalInfo.startup_settings);
+      }
+    } catch (error) {
+      console.error('Failed to load startup configuration:', error);
+    }
+  };
+
+  // Update startup configuration
+  const updateStartupConfig = async (updates: Partial<StartupConfig>) => {
+    try {
+      const newConfig = { ...startupConfig, ...updates };
+      setStartupConfig(newConfig);
+      
+      // Update personal info with new startup settings
+      const currentPersonalInfo = await db.getPersonalInfo();
+      const updatedPersonalInfo = {
+        ...currentPersonalInfo,
+        name: currentPersonalInfo?.name || '',
+        email: currentPersonalInfo?.email || '',
+        avatar_url: currentPersonalInfo?.avatar_url || '',
+        timezone: currentPersonalInfo?.timezone || 'UTC',
+        theme_preference: currentPersonalInfo?.theme_preference || 'system' as const,
+        startup_settings: newConfig
+      };
+      
+      await db.updatePersonalInfo(updatedPersonalInfo);
+      
+    } catch (error) {
+      console.error('Failed to update startup configuration:', error);
+      // Revert on error
+      setStartupConfig(startupConfig);
+    }
+  };
+
+  // Reset first-time setup
+  const resetFirstTimeSetup = async () => {
+    try {
+      // For now, just show a message - this would need to be implemented in electron
+      alert('✅ First-time setup reset functionality will be implemented in a future update.');
+    } catch (error) {
+      console.error('Failed to reset first-time setup:', error);
+      alert('❌ Failed to reset first-time setup. Please try again.');
+    }
+  };
 
   // Load wallpaper from IndexedDB on mount
   useEffect(() => {
@@ -196,6 +277,7 @@ const Settings = () => {
           dockerAvailable: false,
           n8nAvailable: false,
           pythonAvailable: false,
+          comfyuiAvailable: false,
           message: 'Failed to check Docker services'
         });
       }
@@ -364,48 +446,14 @@ const Settings = () => {
   };
 
   const openReleaseNotes = () => {
-    try {
-      if (!updateInfo?.releaseUrl) {
-        console.warn('No release URL available');
-        return;
-      }
-
-      // Validate URL format
-      try {
-        new URL(updateInfo.releaseUrl);
-      } catch (urlError) {
-        console.error('Invalid release URL:', updateInfo.releaseUrl);
-        return;
-      }
-
-      console.log('Opening release notes:', updateInfo.releaseUrl);
+    if (updateInfo?.releaseUrl) {
       window.open(updateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
-
-    } catch (error) {
-      console.error('Error opening release notes:', error);
     }
   };
 
   const downloadUpdate = () => {
-    try {
-      if (!updateInfo?.downloadUrl) {
-        console.warn('No download URL available');
-        return;
-      }
-
-      // Validate URL format
-      try {
-        new URL(updateInfo.downloadUrl);
-      } catch (urlError) {
-        console.error('Invalid download URL:', updateInfo.downloadUrl);
-        return;
-      }
-
-      console.log('Opening download URL:', updateInfo.downloadUrl);
+    if (updateInfo?.downloadUrl) {
       window.open(updateInfo.downloadUrl, '_blank', 'noopener,noreferrer');
-
-    } catch (error) {
-      console.error('Error opening download URL:', error);
     }
   };
 
@@ -1236,43 +1284,158 @@ const Settings = () => {
 
           {/* General Preferences Tab */}
           {activeTab === 'preferences' && (
-            <div className="glassmorphic rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <SettingsIcon className="w-6 h-6 text-sakura-500" />
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  General Settings
-                </h2>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Theme
-                  </label>
-                  <select
-                    value={personalInfo.theme_preference}
-                    onChange={handleThemeChange}
-                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  >
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="system">System</option>
-                  </select>
+            <div className="space-y-6">
+              {/* General Settings */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <SettingsIcon className="w-6 h-6 text-sakura-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    General Settings
+                  </h2>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Timezone
-                  </label>
-                  <select
-                    value={personalInfo.timezone}
-                    onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
-                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                  >
-                    {timezoneOptions.map((tz: string) => (
-                      <option key={tz} value={tz}>{tz}</option>
-                    ))}
-                  </select>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Theme
+                    </label>
+                    <select
+                      value={personalInfo.theme_preference}
+                      onChange={handleThemeChange}
+                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    >
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">System</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Timezone
+                    </label>
+                    <select
+                      value={personalInfo.timezone}
+                      onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
+                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    >
+                      {timezoneOptions.map((tz: string) => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Startup Options */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <Power className="w-6 h-6 text-blue-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Startup Options
+                  </h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Auto Start Application
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Start ClaraVerse automatically when system boots
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={startupConfig.autoStart}
+                        onChange={(e) => updateStartupConfig({ autoStart: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Start Minimized
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Start the application in system tray
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={startupConfig.startMinimized}
+                        onChange={(e) => updateStartupConfig({ startMinimized: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Start Fullscreen
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Launch application in fullscreen mode
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={startupConfig.startFullscreen}
+                        onChange={(e) => updateStartupConfig({ startFullscreen: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Check for Updates
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Automatically check for application updates
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={startupConfig.checkForUpdates}
+                        onChange={(e) => updateStartupConfig({ checkForUpdates: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Restore Last Session
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Restore previous session on startup
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={startupConfig.restoreLastSession}
+                        onChange={(e) => updateStartupConfig({ restoreLastSession: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1433,6 +1596,28 @@ const Settings = () => {
                         </p>
                       )}
                     </div>
+
+                    {/* ComfyUI Status */}
+                    <div className={`p-4 rounded-lg border ${dockerServices.comfyuiAvailable 
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${dockerServices.comfyuiAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">ComfyUI</h4>
+                      </div>
+                      <p className={`text-sm ${dockerServices.comfyuiAvailable 
+                        ? 'text-green-700 dark:text-green-300' 
+                        : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        {dockerServices.comfyuiAvailable ? 'Running' : 'Stopped'}
+                      </p>
+                      {dockerServices.ports?.comfyui && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Port: {dockerServices.ports.comfyui}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {dockerServices.message && (
@@ -1477,7 +1662,7 @@ const Settings = () => {
                 ) : (
                   <div className="space-y-4">
                     {/* Docker Service Controls */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       {/* n8n Workflow Service */}
                       <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-3">
@@ -1630,6 +1815,87 @@ const Settings = () => {
                                   }
                                 } catch (error) {
                                   console.error('Failed to start Python API:', error);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
+                            >
+                              Start
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ComfyUI Service */}
+                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${dockerServices.comfyuiAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                              ComfyUI
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              AI image generation interface
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            dockerServices.comfyuiAvailable 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}>
+                            {dockerServices.comfyuiAvailable ? 'Running' : 'Stopped'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          {dockerServices.comfyuiAvailable ? (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.stopDockerService) {
+                                      await (window.electron as any).stopDockerService('comfyui');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to stop ComfyUI:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
+                              >
+                                Stop
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    if ((window.electron as any)?.restartDockerService) {
+                                      await (window.electron as any).restartDockerService('comfyui');
+                                    }
+                                  } catch (error) {
+                                    console.error('Failed to restart ComfyUI:', error);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
+                              >
+                                Restart
+                              </button>
+                              {dockerServices.ports?.comfyui && (
+                                <button
+                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.comfyui}`, '_blank')}
+                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Open
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if ((window.electron as any)?.startDockerService) {
+                                    await (window.electron as any).startDockerService('comfyui');
+                                  }
+                                } catch (error) {
+                                  console.error('Failed to start ComfyUI:', error);
                                 }
                               }}
                               className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
@@ -1927,11 +2193,7 @@ const ProcessButton = () => {
                                 </button>
                                 {updateInfo.releaseUrl && (
                                   <button
-                                    onClick={() => {
-                                      if (updateInfo.releaseUrl) {
-                                        window.open(updateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
-                                      }
-                                    }}
+                                    onClick={openReleaseNotes}
                                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
                                   >
                                     <ExternalLink className="w-4 h-4" />
@@ -1956,11 +2218,7 @@ const ProcessButton = () => {
                                 </button>
                                 {updateInfo.releaseUrl && (
                                   <button
-                                    onClick={() => {
-                                      if (updateInfo.releaseUrl) {
-                                        window.open(updateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
-                                      }
-                                    }}
+                                    onClick={openReleaseNotes}
                                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
                                   >
                                     <ExternalLink className="w-4 h-4" />
@@ -2159,11 +2417,7 @@ const ProcessButton = () => {
                                 
                                 {llamacppUpdateInfo.releaseUrl && (
                                   <button
-                                    onClick={() => {
-                                      if (llamacppUpdateInfo.releaseUrl) {
-                                        window.open(llamacppUpdateInfo.releaseUrl, '_blank', 'noopener,noreferrer');
-                                      }
-                                    }}
+                                    onClick={openReleaseNotes}
                                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
                                   >
                                     <ExternalLink className="w-4 h-4" />

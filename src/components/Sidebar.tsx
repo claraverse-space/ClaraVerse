@@ -93,7 +93,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
             try {
               const servicesStatus = await window.electronAPI.getServicesStatus();
               if (servicesStatus.services?.comfyui) {
-                comfyuiAvailable = servicesStatus.services.comfyui.status === 'healthy';
+                // Allow both 'healthy' and 'unknown' as available
+                comfyuiAvailable = ['healthy', 'unknown'].includes(servicesStatus.services.comfyui.status);
               }
             } catch (error) {
               console.error('Failed to check ComfyUI status:', error);
@@ -230,7 +231,6 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
       icon: ImageIcon, 
       label: 'Image Gen', 
       id: 'image-gen',
-      disabled: !dockerServices.comfyuiAvailable,
       status: dockerServices.comfyuiAvailable ? 'ready' : 'starting'
     },
     // Only show n8n if Docker services are available
@@ -276,15 +276,12 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
           {mainMenuItems.map((item) => (
             <li key={item.id}>
               <button 
-                onClick={() => !item.disabled && onPageChange(item.id)}
+                onClick={() => onPageChange(item.id)}
                 data-page={item.id}
-                disabled={item.disabled}
                 className={`w-full flex items-center rounded-lg transition-colors h-10 relative ${
                   isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                 } ${
-                  item.disabled
-                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
-                    : activePage === item.id
+                  activePage === item.id
                     ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
                 }`}
@@ -384,15 +381,12 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
             {bottomMenuItems.map((item) => (
               <li key={item.id}>
                 <button 
-                  onClick={() => !item.disabled && onPageChange(item.id)}
+                  onClick={() => onPageChange(item.id)}
                   data-page={item.id}
-                  disabled={item.disabled}
                   className={`w-full flex items-center rounded-lg transition-colors h-10 ${
                     isExpanded ? 'px-4 justify-start gap-3' : 'justify-center px-0'
                   } ${
-                    item.disabled
-                      ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
-                      : activePage === item.id
+                    activePage === item.id
                       ? 'bg-sakura-100 text-sakura-500 dark:bg-sakura-100/10'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 hover:text-sakura-500 dark:hover:bg-sakura-100/10'
                   }`}

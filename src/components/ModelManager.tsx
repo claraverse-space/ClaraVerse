@@ -229,11 +229,11 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, onDownload, onDownloadWith
                   </span>
                   {hasRequiredMmproj ? (
                     <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded-full">
-                      Γ£ô mmproj available
+                      ✓ mmproj available
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs rounded-full">
-                      ΓÜá mmproj needed
+                      ! mmproj needed
                     </span>
                   )}
                 </div>
@@ -328,7 +328,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, onDownload, onDownloadWith
                 {mmprojFiles.length > 0 && (
                   <div className="mt-3 p-3 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
                     <div className="text-xs text-blue-600 dark:text-blue-400 mb-2 font-medium">
-                      ≡ƒô╖ Required projection files for image processing:
+                      📷 Required projection files for image processing:
                     </div>
                     {mmprojFiles.map((file) => (
                       <div key={file.rfilename} className="text-xs font-mono text-blue-700 dark:text-blue-300 flex justify-between items-center">
@@ -348,7 +348,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, onDownload, onDownloadWith
                     <div className="flex items-center justify-between">
                       <span>{isExpanded ? 'Show Less' : `Show ${sortedFiles.length - 1} More Files`}</span>
                       <div className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                        Γû╝
+                        ▼
                       </div>
                     </div>
                   </button>
@@ -668,6 +668,7 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
+      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModel(modelId, fileName, downloadPath);
       if (result.success) {
         // Refresh local models
@@ -725,6 +726,7 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
+      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
@@ -1257,9 +1259,9 @@ const ModelManager: React.FC = () => {
                           model.source === 'user' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
                           'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
                         }`}>
-                          {model.source === 'custom' ? '≡ƒôé Custom' : 
-                           model.source === 'user' ? '≡ƒæñ User' : 
-                           '≡ƒôª Bundled'}
+                          {model.source === 'custom' ? '📁 Custom' : 
+                           model.source === 'user' ? '👤 User' : 
+                           '📦 Bundled'}
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-300 font-mono">{model.file}</p>
@@ -1275,7 +1277,7 @@ const ModelManager: React.FC = () => {
                         <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
                         {model.source === 'custom' && customModelPath && (
                           <span className="text-blue-600 dark:text-blue-400" title={model.path}>
-                            ≡ƒôé {customModelPath}
+                            📁 {customModelPath}
                           </span>
                         )}
                       </div>

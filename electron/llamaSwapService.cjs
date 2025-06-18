@@ -11,12 +11,17 @@ class LlamaSwapService {
   constructor() {
     this.process = null;
     this.isRunning = false;
+    this.isStarting = false; // Add this flag to prevent concurrent starts
     this.port = 8091;
     
     // Flash attention retry mechanism flags
     this.handleFlashAttentionRequired = false;
     this.flashAttentionRetryAttempted = false;
     this.forceFlashAttention = false;
+    
+    // Port cleanup retry mechanism flags
+    this.needsPortRetry = false;
+    this.portRetryAttempted = false;
     
     // Progress tracking for UI feedback
     this.progressCallback = null;
@@ -941,15 +946,40 @@ ${cmdLine}`;
   }
 
   async start() {
+    // Prevent concurrent start attempts
     if (this.isRunning) {
       log.info('Llama-swap service is already running');
       return { success: true, message: 'Service already running' };
     }
-
-    // Check for stale processes after updates
-    await this.cleanupStaleProcesses();
-
+    
+    if (this.isStarting) {
+      log.info('Llama-swap service is already starting, waiting for completion...');
+      // Wait for the current start attempt to complete
+      let attempts = 0;
+      while (this.isStarting && attempts < 30) { // Wait up to 30 seconds
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+      
+      if (this.isRunning) {
+        return { success: true, message: 'Service started by concurrent request' };
+      } else {
+        return { success: false, error: 'Concurrent start attempt failed or timed out' };
+      }
+    }
+    
+    this.isStarting = true;
+    
     try {
+      // Reset retry flags for fresh start attempt
+      this.flashAttentionRetryAttempted = false;
+      this.portRetryAttempted = false;
+      this.handleFlashAttentionRequired = false;
+      this.needsPortRetry = false;
+
+      // Check for stale processes after updates
+      await this.cleanupStaleProcesses();
+
       // macOS Security Pre-check - Prepare for potential firewall prompts
       if (process.platform === 'darwin') {
         log.info('🔒 macOS detected - checking network security requirements...');
@@ -1010,6 +1040,35 @@ ${cmdLine}`;
 
       log.info(`Starting with args: ${args.join(' ')}`);
 
+      // Final port check right before spawning - catch any lingering processes
+      log.info('🔍 Performing final port availability check...');
+      await this.killProcessesOnPort(this.port);
+      
+      // Double-check port is actually free by trying to bind to it briefly
+      try {
+        const net = require('net');
+        const testServer = net.createServer();
+        
+        await new Promise((resolve, reject) => {
+          testServer.listen(this.port, '127.0.0.1', () => {
+            testServer.close();
+            log.info(`✅ Port ${this.port} is available for use`);
+            resolve();
+          });
+          
+          testServer.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+              log.error(`❌ Port ${this.port} is still in use after cleanup attempts`);
+              reject(new Error(`Port ${this.port} is still in use after cleanup. Please manually stop any processes using this port.`));
+            } else {
+              reject(err);
+            }
+          });
+        });
+      } catch (portError) {
+        throw portError;
+      }
+
       this.process = spawn(this.binaryPaths.llamaSwap, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: this.platformManager.getPlatformEnvironment(),
@@ -1051,8 +1110,12 @@ ${cmdLine}`;
         }
         
         // Enhanced error handling for common issues
-        if (error.includes('bind: address already in use')) {
-          log.error(`❌ Port ${this.port} is already in use. Please stop any existing llama-swap processes.`);
+        if (error.includes('bind: address already in use') || 
+            error.includes('bind: Only one usage of each socket address')) {
+          log.error(`❌ Port ${this.port} is already in use - attempting automatic cleanup and retry`);
+          
+          // Mark for automatic retry with port cleanup
+          this.needsPortRetry = true;
         }
         if (error.includes('no such file or directory')) {
           log.error('❌ Binary or config file not found');
@@ -1119,6 +1182,24 @@ ${cmdLine}`;
           await this.enableFlashAttentionAndRegenerate();
           
           // Recursive retry
+          this.isStarting = false; // Reset flag before recursive call
+          return await this.start();
+        }
+        
+        // Check if we need to retry due to port binding issues
+        if (this.needsPortRetry && !this.portRetryAttempted) {
+          log.info('🔄 Automatically retrying after port cleanup...');
+          this.portRetryAttempted = true;
+          this.needsPortRetry = false;
+          
+          // Force kill all processes on the port
+          await this.killProcessesOnPort(this.port);
+          
+          // Wait a bit longer for cleanup
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          
+          // Recursive retry
+          this.isStarting = false; // Reset flag before recursive call
           return await this.start();
         }
         
@@ -1138,6 +1219,9 @@ ${cmdLine}`;
         error: error.message,
         diagnostics: error.diagnostics || null
       };
+    } finally {
+      // Always reset the starting flag
+      this.isStarting = false;
     }
   }
 
@@ -1232,6 +1316,7 @@ ${cmdLine}`;
 
   cleanup() {
     this.isRunning = false;
+    this.isStarting = false; // Reset starting flag
     this.process = null;
     // Reset flash attention retry flags for next start attempt
     this.handleFlashAttentionRequired = false;
@@ -1273,6 +1358,7 @@ ${cmdLine}`;
     
     return {
       isRunning: this.isRunning && hasProcess,
+      isStarting: this.isStarting, // Include starting status for debugging
       port: this.port,
       pid: this.process?.pid,
       apiUrl: `http://localhost:${this.port}`,
@@ -2342,6 +2428,11 @@ ${cmdLine}`;
    */
   async cleanupStaleProcesses() {
     try {
+      log.info('🧹 Cleaning up stale processes before service start...');
+      
+      // First, try to kill processes using our specific port
+      await this.killProcessesOnPort(this.port);
+      
       // On Windows, check for any remaining llama-server or llama-swap processes
       if (process.platform === 'win32') {
         const { spawn } = require('child_process');
@@ -2413,11 +2504,108 @@ ${cmdLine}`;
       }
       
       // Wait a moment for cleanup to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Increased wait time
+      
+      log.info('✅ Stale process cleanup completed');
       
     } catch (error) {
       log.warn('Stale process cleanup encountered error:', error.message);
       // Don't fail startup if cleanup fails
+    }
+  }
+
+  /**
+   * Kill processes specifically using the given port
+   */
+  async killProcessesOnPort(port) {
+    try {
+      log.info(`🔍 Checking for processes using port ${port}...`);
+      
+      if (process.platform === 'win32') {
+        const { spawn } = require('child_process');
+        
+        // Use netstat to find processes using the port
+        const netstatProcess = spawn('netstat', ['-ano'], { stdio: ['ignore', 'pipe', 'ignore'] });
+        let netstatOutput = '';
+        
+        netstatProcess.stdout.on('data', (data) => {
+          netstatOutput += data.toString();
+        });
+        
+        await new Promise((resolve) => {
+          netstatProcess.on('close', () => resolve());
+        });
+        
+        // Parse output to find PIDs using our port
+        const lines = netstatOutput.split('\n');
+        const pidsToKill = new Set();
+        
+        for (const line of lines) {
+          if (line.includes(`:${port} `) || line.includes(`:${port}\t`)) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== '0' && /^\d+$/.test(pid)) {
+              pidsToKill.add(pid);
+            }
+          }
+        }
+        
+        // Kill all processes using the port
+        for (const pid of pidsToKill) {
+          try {
+            log.info(`🔪 Killing process PID ${pid} using port ${port}`);
+            spawn('taskkill', ['/F', '/PID', pid], { stdio: 'ignore' });
+          } catch (killError) {
+            log.debug(`Could not kill PID ${pid}: ${killError.message}`);
+          }
+        }
+        
+        if (pidsToKill.size > 0) {
+          log.info(`✅ Cleaned up ${pidsToKill.size} processes using port ${port}`);
+          // Wait for processes to actually die
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } else {
+          log.info(`✅ No processes found using port ${port}`);
+        }
+        
+      } else if (process.platform === 'darwin' || process.platform === 'linux') {
+        const { spawn, exec } = require('child_process');
+        
+        // Use lsof to find processes using the port
+        return new Promise((resolve) => {
+          exec(`lsof -ti:${port}`, (error, stdout, stderr) => {
+            if (error) {
+              log.debug(`No processes found using port ${port}`);
+              resolve();
+              return;
+            }
+            
+            const pids = stdout.trim().split('\n').filter(pid => pid && /^\d+$/.test(pid));
+            
+            if (pids.length > 0) {
+              log.info(`🔪 Killing ${pids.length} processes using port ${port}`);
+              
+              for (const pid of pids) {
+                try {
+                  spawn('kill', ['-9', pid], { stdio: 'ignore' });
+                  log.info(`Killed process PID ${pid} using port ${port}`);
+                } catch (killError) {
+                  log.debug(`Could not kill PID ${pid}: ${killError.message}`);
+                }
+              }
+              
+              // Wait for processes to die
+              setTimeout(resolve, 3000);
+            } else {
+              log.info(`✅ No processes found using port ${port}`);
+              resolve();
+            }
+          });
+        });
+      }
+      
+    } catch (error) {
+      log.warn(`Error killing processes on port ${port}:`, error.message);
     }
   }
 

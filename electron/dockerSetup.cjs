@@ -914,7 +914,27 @@ class DockerSetup extends EventEmitter {
     };
     
     const dockerArch = archMap[arch] || arch;
-    return `${platform}/${dockerArch}`;
+    
+    // For Docker platform specification, use linux as the OS part
+    // This works for Windows containers running Linux containers via WSL2
+    return `linux/${dockerArch}`;
+  }
+
+  /**
+   * Get just the Docker architecture without OS prefix
+   */
+  getDockerArchitecture() {
+    const arch = os.arch();
+    
+    // Map Node.js arch to Docker arch
+    const archMap = {
+      'x64': 'amd64',
+      'arm64': 'arm64',
+      'arm': 'arm/v7',
+      'ia32': '386'
+    };
+    
+    return archMap[arch] || arch;
   }
 
   /**
@@ -928,25 +948,30 @@ class DockerSetup extends EventEmitter {
       
       console.log(`Getting clara-backend image for platform: ${platform}, arch: ${arch}`);
       
-      // For Mac (ARM64), use the default tag without suffix
-      if (platform === 'darwin' && arch === 'arm64') {
-        console.log(`Using ARM64 image: ${baseImage}:${tag}`);
-        return `${baseImage}:${tag}`;
+      // For ARM64 systems (Mac ARM64 and Linux ARM64), use the default tag without suffix
+      if (arch === 'arm64') {
+        const imageName = `${baseImage}:${tag}`;
+        console.log(`Using ARM64 image: ${imageName}`);
+        return imageName;
       }
       
-      // For non-Mac systems (typically AMD64), use the -amd64 suffix
-      if (arch === 'x64' || (platform !== 'darwin')) {
-        console.log(`Using AMD64 image: ${baseImage}:${tag}-amd64`);
-        return `${baseImage}:${tag}-amd64`;
+      // For x64/AMD64 systems (Windows x64, Linux x64, Mac x64), use the -amd64 suffix
+      if (arch === 'x64') {
+        const imageName = `${baseImage}:${tag}-amd64`;
+        console.log(`Using AMD64 image: ${imageName}`);
+        return imageName;
       }
       
-      // Fallback to original tag
-      console.log(`Using fallback image: ${baseImage}:${tag}`);
-      return `${baseImage}:${tag}`;
+      // Fallback to AMD64 for other architectures (ia32, etc.)
+      const imageName = `${baseImage}:${tag}-amd64`;
+      console.log(`Using fallback AMD64 image for arch ${arch}: ${imageName}`);
+      return imageName;
     }
     
     // For other images, use the original approach (multi-arch images)
-    return `${baseImage}:${tag}`;
+    const imageName = `${baseImage}:${tag}`;
+    console.log(`Using standard multi-arch image: ${imageName}`);
+    return imageName;
   }
 
   /**
@@ -970,64 +995,27 @@ class DockerSetup extends EventEmitter {
 
       // Pull latest image info without downloading
       return new Promise((resolve, reject) => {
+        // Try with platform specification first
         this.docker.pull(imageName, { platform: this.systemArch }, (err, stream) => {
           if (err) {
-            console.error('Error checking for updates:', err);
-            resolve({ hasUpdate: false, reason: 'Failed to check for updates', error: err.message });
+            console.error('Error checking for updates with platform specification:', err);
+            
+            // If platform-specific check fails, try without platform specification
+            console.log(`Retrying ${imageName} update check without platform specification...`);
+            
+            this.docker.pull(imageName, {}, (fallbackErr, fallbackStream) => {
+              if (fallbackErr) {
+                console.error('Error checking for updates (fallback):', fallbackErr);
+                resolve({ hasUpdate: false, reason: 'Failed to check for updates', error: fallbackErr.message });
+                return;
+              }
+              
+              this.handleUpdateCheckStream(fallbackStream, imageName, statusCallback, resolve);
+            });
             return;
           }
 
-          let hasUpdate = false;
-          let updateReason = '';
-          let downloadingDetected = false;
-
-          stream.on('data', (data) => {
-            const lines = data.toString().split('\n').filter(Boolean);
-            lines.forEach(line => {
-              try {
-                const parsed = JSON.parse(line);
-                
-                // Check for various update indicators
-                if (parsed.status) {
-                  if (parsed.status.includes('Image is up to date')) {
-                    hasUpdate = false;
-                    updateReason = 'Image is up to date';
-                  } else if (parsed.status.includes('Downloading') || 
-                           parsed.status.includes('Extracting') ||
-                           parsed.status.includes('Pulling fs layer')) {
-                    hasUpdate = true;
-                    downloadingDetected = true;
-                    updateReason = 'New version available';
-                  } else if (parsed.status.includes('Pull complete')) {
-                    if (downloadingDetected) {
-                      hasUpdate = true;
-                      updateReason = 'Update downloaded';
-                    }
-                  }
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
-            });
-          });
-
-          stream.on('end', () => {
-            statusCallback(`Update check complete for ${imageName}`);
-            resolve({ 
-              hasUpdate, 
-              reason: updateReason || 'No updates available',
-              imageName 
-            });
-          });
-
-          stream.on('error', (error) => {
-            console.error('Stream error during update check:', error);
-            resolve({ 
-              hasUpdate: false, 
-              reason: 'Error checking for updates', 
-              error: error.message 
-            });
-          });
+          this.handleUpdateCheckStream(stream, imageName, statusCallback, resolve);
         });
       });
     } catch (error) {
@@ -1038,6 +1026,63 @@ class DockerSetup extends EventEmitter {
         error: error.message 
       };
     }
+  }
+
+  /**
+   * Handle the update check stream
+   */
+  handleUpdateCheckStream(stream, imageName, statusCallback, resolve) {
+    let hasUpdate = false;
+    let updateReason = '';
+    let downloadingDetected = false;
+
+    stream.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(Boolean);
+      lines.forEach(line => {
+        try {
+          const parsed = JSON.parse(line);
+          
+          // Check for various update indicators
+          if (parsed.status) {
+            if (parsed.status.includes('Image is up to date')) {
+              hasUpdate = false;
+              updateReason = 'Image is up to date';
+            } else if (parsed.status.includes('Downloading') || 
+                     parsed.status.includes('Extracting') ||
+                     parsed.status.includes('Pulling fs layer')) {
+              hasUpdate = true;
+              downloadingDetected = true;
+              updateReason = 'New version available';
+            } else if (parsed.status.includes('Pull complete')) {
+              if (downloadingDetected) {
+                hasUpdate = true;
+                updateReason = 'Update downloaded';
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      });
+    });
+
+    stream.on('end', () => {
+      statusCallback(`Update check complete for ${imageName}`);
+      resolve({ 
+        hasUpdate, 
+        reason: updateReason || 'No updates available',
+        imageName 
+      });
+    });
+
+    stream.on('error', (error) => {
+      console.error('Stream error during update check:', error);
+      resolve({ 
+        hasUpdate: false, 
+        reason: 'Error checking for updates', 
+        error: error.message 
+      });
+    });
   }
 
   /**
@@ -1177,67 +1222,107 @@ class DockerSetup extends EventEmitter {
     return new Promise((resolve, reject) => {
       statusCallback(`Pulling ${imageName} for ${this.systemArch}...`);
       
+      // Try pulling with platform specification first
       this.docker.pull(imageName, { platform: this.systemArch }, (err, stream) => {
         if (err) {
-          console.error('Error pulling image:', err);
-          reject(err);
+          console.error('Error pulling image with platform specification:', err);
+          
+          // If platform-specific pull fails, try without platform specification
+          console.log(`Retrying ${imageName} pull without platform specification...`);
+          statusCallback(`Retrying ${imageName} pull without platform specification...`);
+          
+          this.docker.pull(imageName, {}, (fallbackErr, fallbackStream) => {
+            if (fallbackErr) {
+              console.error('Error pulling image (fallback):', fallbackErr);
+              
+              // Special fallback for clara-backend images: try base image without -amd64 suffix
+              if (imageName.includes('clara17verse/clara-backend') && imageName.includes('-amd64')) {
+                const baseImageName = imageName.replace('-amd64', '');
+                console.log(`Trying base clara-backend image: ${baseImageName}`);
+                statusCallback(`Trying base clara-backend image: ${baseImageName}`);
+                
+                this.docker.pull(baseImageName, {}, (baseErr, baseStream) => {
+                  if (baseErr) {
+                    console.error('Error pulling base clara-backend image:', baseErr);
+                    reject(baseErr);
+                    return;
+                  }
+                  
+                  this.handlePullStream(baseStream, baseImageName, statusCallback, resolve, reject);
+                });
+                return;
+              }
+              
+              reject(fallbackErr);
+              return;
+            }
+            
+            this.handlePullStream(fallbackStream, imageName, statusCallback, resolve, reject);
+          });
           return;
         }
 
-        let lastStatus = '';
-        let progress = {};
-
-        stream.on('data', (data) => {
-          const lines = data.toString().split('\n').filter(Boolean);
-          lines.forEach(line => {
-            try {
-              const parsed = JSON.parse(line);
-              
-              if (parsed.error) {
-                console.error('Pull error:', parsed.error);
-                reject(new Error(parsed.error));
-                return;
-              }
-
-              if (parsed.status && parsed.status !== lastStatus) {
-                lastStatus = parsed.status;
-                
-                // Track progress for different layers
-                if (parsed.id && parsed.progressDetail) {
-                  progress[parsed.id] = parsed.progressDetail;
-                  
-                  // Calculate overall progress
-                  const layers = Object.values(progress);
-                  const totalCurrent = layers.reduce((sum, layer) => sum + (layer.current || 0), 0);
-                  const totalTotal = layers.reduce((sum, layer) => sum + (layer.total || 0), 0);
-                  
-                  if (totalTotal > 0) {
-                    const percentage = Math.round((totalCurrent / totalTotal) * 100);
-                    statusCallback(`Pulling ${imageName}: ${parsed.status} (${percentage}%)`);
-                  } else {
-                    statusCallback(`Pulling ${imageName}: ${parsed.status}`);
-                  }
-                } else {
-                  statusCallback(`Pulling ${imageName}: ${parsed.status}`);
-                }
-              }
-            } catch (e) {
-              // Ignore parse errors
-            }
-          });
-        });
-
-        stream.on('end', () => {
-          statusCallback(`✓ Successfully pulled ${imageName}`);
-          this.updatePullTimestamp(imageName);
-          resolve();
-        });
-
-        stream.on('error', (error) => {
-          console.error('Stream error:', error);
-          reject(error);
-        });
+        this.handlePullStream(stream, imageName, statusCallback, resolve, reject);
       });
+    });
+  }
+
+  /**
+   * Handle the Docker pull stream
+   */
+  handlePullStream(stream, imageName, statusCallback, resolve, reject) {
+    let lastStatus = '';
+    let progress = {};
+
+    stream.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(Boolean);
+      lines.forEach(line => {
+        try {
+          const parsed = JSON.parse(line);
+          
+          if (parsed.error) {
+            console.error('Pull error:', parsed.error);
+            reject(new Error(parsed.error));
+            return;
+          }
+
+          if (parsed.status && parsed.status !== lastStatus) {
+            lastStatus = parsed.status;
+            
+            // Track progress for different layers
+            if (parsed.id && parsed.progressDetail) {
+              progress[parsed.id] = parsed.progressDetail;
+              
+              // Calculate overall progress
+              const layers = Object.values(progress);
+              const totalCurrent = layers.reduce((sum, layer) => sum + (layer.current || 0), 0);
+              const totalTotal = layers.reduce((sum, layer) => sum + (layer.total || 0), 0);
+              
+              if (totalTotal > 0) {
+                const percentage = Math.round((totalCurrent / totalTotal) * 100);
+                statusCallback(`Pulling ${imageName}: ${parsed.status} (${percentage}%)`);
+              } else {
+                statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+              }
+            } else {
+              statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      });
+    });
+
+    stream.on('end', () => {
+      statusCallback(`✓ Successfully pulled ${imageName}`);
+      this.updatePullTimestamp(imageName);
+      resolve();
+    });
+
+    stream.on('error', (error) => {
+      console.error('Stream error:', error);
+      reject(error);
     });
   }
 
@@ -1785,20 +1870,37 @@ class DockerSetup extends EventEmitter {
       // Automatically check for and install container updates
       await this.autoUpdateContainers(statusCallback);
 
-      // Ensure all images are available locally
+      // Resolve actual available image names and ensure all images are available locally
+      const resolvedContainers = {};
       for (const [name, config] of Object.entries(this.containers)) {
+        // Parse base image and tag
+        const [baseImage, tag] = config.image.split(':');
+        
+        // Resolve the actual available image name
+        statusCallback(`Resolving ${name} image...`);
+        const resolvedImageName = await this.resolveImageName(baseImage, tag || 'latest');
+        
+        // Create updated config with resolved image name
+        resolvedContainers[name] = {
+          ...config,
+          image: resolvedImageName
+        };
+        
         try {
-          await this.docker.getImage(config.image).inspect();
-          statusCallback(`✓ ${name} image ready`);
+          await this.docker.getImage(resolvedImageName).inspect();
+          statusCallback(`✓ ${name} image ready (${resolvedImageName})`);
         } catch (error) {
           if (error.statusCode === 404) {
-            statusCallback(`Downloading ${name} image...`);
-            await this.pullImageWithProgress(config.image, statusCallback);
+            statusCallback(`Downloading ${name} image (${resolvedImageName})...`);
+            await this.pullImageWithProgress(resolvedImageName, statusCallback);
           } else {
             throw error;
           }
         }
       }
+
+      // Update containers configuration with resolved image names
+      this.containers = resolvedContainers;
 
       // Start containers in sequence
       for (const [name, config] of Object.entries(this.containers)) {
@@ -2081,6 +2183,111 @@ class DockerSetup extends EventEmitter {
       console.error('ComfyUI health check error:', error);
       return false;
     }
+  }
+
+  /**
+   * Resolve the actual available image name by testing different variants
+   */
+  async resolveImageName(baseImage, tag) {
+    // For clara-backend, we need to test which variant is actually available
+    if (baseImage === 'clara17verse/clara-backend') {
+      const arch = os.arch();
+      
+      // List of image variants to try in order of preference
+      const imageVariants = [];
+      
+      if (arch === 'arm64') {
+        // For ARM64, prefer base image first, then amd64 as fallback
+        imageVariants.push(`${baseImage}:${tag}`);
+        imageVariants.push(`${baseImage}:${tag}-amd64`);
+      } else {
+        // For x64/AMD64, prefer amd64 image first, then base as fallback
+        imageVariants.push(`${baseImage}:${tag}-amd64`);
+        imageVariants.push(`${baseImage}:${tag}`);
+      }
+      
+      // Test each variant to see which one exists
+      for (const imageName of imageVariants) {
+        try {
+          console.log(`Testing availability of image: ${imageName}`);
+          
+          // Try to inspect the image locally first
+          try {
+            await this.docker.getImage(imageName).inspect();
+            console.log(`Found local image: ${imageName}`);
+            return imageName;
+          } catch (localError) {
+            // Image not local, try to pull manifest to check if it exists remotely
+            const manifestExists = await this.checkImageManifest(imageName);
+            if (manifestExists) {
+              console.log(`Remote image available: ${imageName}`);
+              return imageName;
+            }
+          }
+        } catch (error) {
+          console.log(`Image not available: ${imageName} - ${error.message}`);
+          continue;
+        }
+      }
+      
+      // If no specific variant works, return the original preference
+      const fallbackImage = arch === 'arm64' ? `${baseImage}:${tag}` : `${baseImage}:${tag}-amd64`;
+      console.log(`No variants found, using fallback: ${fallbackImage}`);
+      return fallbackImage;
+    }
+    
+    // For other images, return as-is
+    return `${baseImage}:${tag}`;
+  }
+
+  /**
+   * Check if an image manifest exists without pulling the full image
+   */
+  async checkImageManifest(imageName) {
+    return new Promise((resolve) => {
+      // Use a quick pull with dry-run-like behavior
+      this.docker.pull(imageName, {}, (err, stream) => {
+        if (err) {
+          resolve(false);
+          return;
+        }
+
+        let manifestFound = false;
+        
+        stream.on('data', (data) => {
+          const lines = data.toString().split('\n').filter(Boolean);
+          lines.forEach(line => {
+            try {
+              const parsed = JSON.parse(line);
+              // If we get any valid status, the manifest exists
+              if (parsed.status && !parsed.error) {
+                manifestFound = true;
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          });
+        });
+
+        stream.on('end', () => {
+          resolve(manifestFound);
+        });
+
+        stream.on('error', () => {
+          resolve(false);
+        });
+
+        // Stop the stream early since we just want to check manifest
+        setTimeout(() => {
+          try {
+            stream.destroy();
+          } catch (e) {
+            // Ignore destroy errors
+          }
+          resolve(manifestFound);
+        }, 5000);
+      });
+    });
   }
 }
 
