@@ -4,27 +4,20 @@ uvicorn
 python-multipart  # For file uploads
 pydantic # Using 1.x for better compatibility
 
-# LangChain and related
-langchain
-langchain-community
-langchain-core
-chromadb
-langchain-chroma
-langchain-ollama
-
 # Document processing
 pypdf
-python-docx
-pandas
+PyPDF2>=3.0.1  # For PDF processing
 
 # Utilities
 requests
 
-# IMPORTANT: Keep numpy locked at a compatible version
-numpy
+# IMPORTANT: Numpy version compatible with all dependencies
+numpy>=1.26.4,<2.0.0
 
+# Audio processing
 faster-whisper
 
+# Diffusers for image generation
 diffusers[torch]
 torch
 transformers
@@ -38,9 +31,38 @@ pyttsx3
 # spaCy for NLP (required by Kokoro/misaki)
 spacy>=3.4.0
 
-# Kokoro TTS
+# Kokoro TTS - Using older version compatible with numpy<2.0
 kokoro>=0.9.4
-kokoro-onnx>=0.4.9
+# Commented out kokoro-onnx due to numpy incompatibility
+# kokoro-onnx>=0.4.9
 soundfile>=0.12.1
 misaki[en]>=0.1.0
 onnxruntime>=1.16.0
+
+# FastAPI dependencies
+starlette
+pydantic_core
+pydantic-settings
+typing_inspection
+typing_extensions
+
+# LightRAG core dependencies
+lightrag-hku[api]==1.3.8
+
+# OpenAI for LLM and embeddings (updated for compatibility)
+openai>=1.3.0
+
+# HTTP client dependencies - updated for compatibility with langchain-ollama
+httpx>=0.27.0
+aiohttp>=3.8.0,<4.0.0
+
+# Neo4j driver (used in light-rag.py)
+neo4j>=5.15.0
+
+# Additional utilities
+python-dotenv>=1.0.0
+aiofiles>=23.2.1
+
+# Additional dependencies for LightRAG integration
+networkx>=3.0
+nano_vectordb

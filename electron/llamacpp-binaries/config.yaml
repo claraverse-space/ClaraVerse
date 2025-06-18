@@ -13,8 +13,22 @@ models:
     ttl: 300
 
 groups:
-  "default_group":
+  "embedding_models":
+    # Allow multiple embedding models to run together
+    swap: false
+    # Don't unload other groups when embedding models start
+    exclusive: false
+    # Prevent other groups from unloading embedding models
+    persistent: true
+    members:
+      - "e5-large-v2-q4-0:large"
+      - "mxbai-embed-large:embed"
+      - "nomic-embed-text-v1-5"
+
+  "regular_models":
+    # Only one regular model at a time (traditional behavior)
     swap: true
+    # Unload other non-persistent groups when loading
     exclusive: true
     members:
       - "llama3.2:1b"

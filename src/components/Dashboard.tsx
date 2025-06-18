@@ -742,7 +742,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   return (
     <div 
       id="dashboard-container"
-      className="h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none relative"
+      className="p-6 h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] overflow-y-auto scrollbar-none relative"
       onContextMenu={(e) => {
         e.preventDefault();
         handleContextMenu(e);
