@@ -93,6 +93,31 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
     return Object.keys(newErrors).length === 0;
   };
 
+  // Helper function to transform URLs for Docker container access
+  const transformUrlForDocker = (url: string): string => {
+    if (!url) return url;
+    
+    try {
+      const urlObj = new URL(url);
+      
+      // Replace localhost with host.docker.internal for Docker container access
+      if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+        urlObj.hostname = 'host.docker.internal';
+      }
+      
+      // Remove /v1 suffix if port is 11434 (Ollama default port)
+      if (urlObj.port === '11434' && urlObj.pathname.endsWith('/v1')) {
+        urlObj.pathname = urlObj.pathname.replace(/\/v1$/, '');
+      }
+      
+      return urlObj.toString();
+    } catch (error) {
+      // If URL parsing fails, return original URL
+      console.warn('Failed to parse URL for Docker transformation:', url, error);
+      return url;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -117,7 +142,7 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
       const llmProviderConfig: ProviderConfig = {
         name: llmProvider.name,
         type: llmProvider.type as 'openai' | 'openai_compatible' | 'ollama',
-        baseUrl: llmProvider.baseUrl,
+        baseUrl: llmProvider.baseUrl ? transformUrlForDocker(llmProvider.baseUrl) : llmProvider.baseUrl,
         apiKey: llmProvider.apiKey,
         model: llmModel.name
       };
@@ -125,7 +150,7 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
       const embeddingProviderConfig: ProviderConfig = {
         name: embeddingProvider.name,
         type: embeddingProvider.type as 'openai' | 'openai_compatible' | 'ollama',
-        baseUrl: embeddingProvider.baseUrl,
+        baseUrl: embeddingProvider.baseUrl ? transformUrlForDocker(embeddingProvider.baseUrl) : embeddingProvider.baseUrl,
         apiKey: embeddingProvider.apiKey,
         model: embeddingModel.name
       };

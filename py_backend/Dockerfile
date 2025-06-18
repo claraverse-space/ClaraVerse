@@ -18,15 +18,18 @@ RUN apt-get update \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
+# install uv for pip
+RUN pip install uv
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
 # Install dependencies with platform-specific optimizations
-RUN pip install --no-cache-dir -r requirements.txt && \
+RUN uv pip install -r requirements.txt --system && \
     rm -rf /root/.cache/pip/*
 
 # Install spaCy and download the English model explicitly
-RUN pip install spacy>=3.4.0 && \
+RUN uv pip install spacy>=3.4.0 --system && \
     python -m spacy download en_core_web_sm && \
     python -c "import spacy; nlp = spacy.load('en_core_web_sm'); print('✅ spaCy model loaded successfully')" && \
     rm -rf /root/.cache/pip/*

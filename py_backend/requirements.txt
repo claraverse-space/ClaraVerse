@@ -17,12 +17,7 @@ numpy>=1.26.4,<2.0.0
 # Audio processing
 faster-whisper
 
-# Diffusers for image generation
-diffusers[torch]
-torch
-transformers
-safetensors
-accelerate
+
 
 # Text-to-Speech
 gtts
@@ -66,3 +61,5 @@ aiofiles>=23.2.1
 # Additional dependencies for LightRAG integration
 networkx>=3.0
 nano_vectordb
+ollama
+pyvis

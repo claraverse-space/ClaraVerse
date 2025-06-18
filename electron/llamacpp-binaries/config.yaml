@@ -12,6 +12,14 @@ models:
       --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 16384 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     ttl: 300
 
+  "qwen3:0.6b":
+    proxy: "http://127.0.0.1:9998"
+    cmd: |
+      "C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
+      -m "C:\Users\BadBoy17G\Qwen3-Embedding-0.6B-Q8_0.gguf"
+      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --threads 8 --ctx-size 16384 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    ttl: 300
+
 groups:
   "embedding_models":
     # Allow multiple embedding models to run together
@@ -21,9 +29,7 @@ groups:
     # Prevent other groups from unloading embedding models
     persistent: true
     members:
-      - "e5-large-v2-q4-0:large"
-      - "mxbai-embed-large:embed"
-      - "nomic-embed-text-v1-5"
+      - "qwen3:0.6b"
 
   "regular_models":
     # Only one regular model at a time (traditional behavior)

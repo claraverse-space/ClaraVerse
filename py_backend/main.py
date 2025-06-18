@@ -67,12 +67,6 @@ logger.info(f"Starting server on {HOST}:{PORT}")
 app = FastAPI(title="Clara Backend API", version="1.0.0")
 
 # Import and include the diffusers API router
-try:
-    from diffusers_api import router as diffusers_router
-    app.include_router(diffusers_router, prefix="/diffusers")
-except Exception as e:
-    logger.warning(f"Diffusers API not loaded: {e}")
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,

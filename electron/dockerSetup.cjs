@@ -979,6 +979,17 @@ class DockerSetup extends EventEmitter {
    */
   async checkForImageUpdates(imageName, statusCallback) {
     try {
+      // Validate imageName parameter
+      if (!imageName || typeof imageName !== 'string') {
+        console.error('Invalid imageName provided to checkForImageUpdates:', imageName);
+        return { 
+          hasUpdate: false, 
+          reason: 'Invalid image name provided', 
+          imageName: imageName || 'undefined',
+          error: 'Invalid image name'
+        };
+      }
+
       statusCallback(`Checking for updates to ${imageName}...`);
       
       // Get local image info
@@ -988,7 +999,7 @@ class DockerSetup extends EventEmitter {
       } catch (error) {
         if (error.statusCode === 404) {
           statusCallback(`${imageName} not found locally, will download...`);
-          return { hasUpdate: true, reason: 'Image not found locally' };
+          return { hasUpdate: true, reason: 'Image not found locally', imageName };
         }
         throw error;
       }
@@ -1006,7 +1017,7 @@ class DockerSetup extends EventEmitter {
             this.docker.pull(imageName, {}, (fallbackErr, fallbackStream) => {
               if (fallbackErr) {
                 console.error('Error checking for updates (fallback):', fallbackErr);
-                resolve({ hasUpdate: false, reason: 'Failed to check for updates', error: fallbackErr.message });
+                resolve({ hasUpdate: false, reason: 'Failed to check for updates', error: fallbackErr.message, imageName });
                 return;
               }
               
@@ -1023,7 +1034,8 @@ class DockerSetup extends EventEmitter {
       return { 
         hasUpdate: false, 
         reason: 'Error checking for updates', 
-        error: error.message 
+        error: error.message,
+        imageName: imageName || 'undefined'
       };
     }
   }
@@ -1080,7 +1092,8 @@ class DockerSetup extends EventEmitter {
       resolve({ 
         hasUpdate: false, 
         reason: 'Error checking for updates', 
-        error: error.message 
+        error: error.message,
+        imageName // Add imageName here to fix the undefined issue
       });
     });
   }
@@ -1873,12 +1886,20 @@ class DockerSetup extends EventEmitter {
       // Resolve actual available image names and ensure all images are available locally
       const resolvedContainers = {};
       for (const [name, config] of Object.entries(this.containers)) {
-        // Parse base image and tag
-        const [baseImage, tag] = config.image.split(':');
+        // Check if image is already architecture-specific (has -amd64 or -arm64 suffix)
+        const isAlreadyArchSpecific = config.image.includes('-amd64') || config.image.includes('-arm64');
         
-        // Resolve the actual available image name
-        statusCallback(`Resolving ${name} image...`);
-        const resolvedImageName = await this.resolveImageName(baseImage, tag || 'latest');
+        let resolvedImageName;
+        if (isAlreadyArchSpecific) {
+          // Image is already architecture-specific, use as-is
+          resolvedImageName = config.image;
+          statusCallback(`Using architecture-specific ${name} image: ${resolvedImageName}`);
+        } else {
+          // Parse base image and tag and resolve the actual available image name
+          const [baseImage, tag] = config.image.split(':');
+          statusCallback(`Resolving ${name} image...`);
+          resolvedImageName = await this.resolveImageName(baseImage, tag || 'latest');
+        }
         
         // Create updated config with resolved image name
         resolvedContainers[name] = {
