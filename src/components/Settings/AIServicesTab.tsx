@@ -42,7 +42,7 @@ const AIServicesTab: React.FC<AIServicesTabProps> = ({
         return Bot;
       case 'openai':
         return Zap;
-      case 'openrouter':
+      case 'openai_compatible':
         return Router;
       case 'ollama':
         return Server;
@@ -55,8 +55,8 @@ const AIServicesTab: React.FC<AIServicesTabProps> = ({
     switch (type) {
       case 'openai':
         return { baseUrl: 'https://api.openai.com/v1', name: 'OpenAI' };
-      case 'openrouter':
-        return { baseUrl: 'https://openrouter.ai/api/v1', name: 'OpenRouter' };
+      case 'openai_compatible':
+        return { baseUrl: 'https://openrouter.ai/api/v1', name: 'OpenAI Compatible' };
       case 'ollama':
         return { baseUrl: 'http://localhost:11434/v1', name: 'Ollama' };
       case 'claras-pocket':
@@ -478,9 +478,8 @@ const AIServicesTab: React.FC<AIServicesTabProps> = ({
                   className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                 >
                   <option value="openai">OpenAI</option>
-                  <option value="openrouter">OpenRouter</option>
+                  <option value="openai_compatible">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
-                  <option value="custom">Custom</option>
                 </select>
               </div>
 

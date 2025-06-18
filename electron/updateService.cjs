@@ -1286,6 +1286,7 @@ class LlamacppUpdateService {
       // Dynamic libraries
       'libllama.dylib',
       'libggml.dylib',
+      'libggml-base.dylib',
       'libggml-metal.dylib',
       'libggml-cpu.dylib',
       'libggml-base.dylib',

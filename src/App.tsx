@@ -13,6 +13,7 @@ import Servers from './components/Servers';
 import AgentStudio from './components/AgentStudio';
 import Lumaui from './components/Lumaui';
 import LumaUILite from './components/LumaUILite';
+import Notebooks from './components/Notebooks';
 import { db } from './db';
 import { ProvidersProvider } from './contexts/ProvidersContext';
 import ClaraAssistant from './components/ClaraAssistant';
@@ -101,7 +102,7 @@ function App() {
         <div className="flex-1 flex flex-col">
           <Topbar userName={userInfo?.name} onPageChange={setActivePage} />
           
-          <main className="flex-1 p-6 overflow-auto">
+          <main className="">
             {(() => {
               switch (activePage) {
                 case 'settings':
@@ -110,6 +111,8 @@ function App() {
                   return <Debug />;
                 case 'help':
                   return <Help />;
+                case 'notebooks':
+                  return <Notebooks />;
                 case 'lumaui':
                   return <Lumaui onPageChange={setActivePage} />;
                 case 'lumaui-lite':

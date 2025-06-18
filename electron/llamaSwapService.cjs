@@ -681,9 +681,13 @@ models:
       // Find matching mmproj model for this main model
       const matchingMmproj = this.findMatchingMmproj(model, mmprojModels);
       
+      // Use different port for embedding models
+      const isEmbedding = this.isEmbeddingModel(model.file);
+      const modelPort = isEmbedding ? 9998 : 9999;
+      
       let cmdLine = `      "${llamaServerPath}"
       -m "${model.path}"
-      --port 9999`;
+      --port ${modelPort}`;
 
       // Add --jinja parameter for all models
       cmdLine += ` --jinja`;
@@ -701,6 +705,13 @@ models:
         cmdLine += `
       --mmproj "${matchingMmproj.path}"`;
       }
+      
+              // Add embedding pooling type for embedding models
+        log.info(`Model ${model.name}: isEmbeddingModel: ${isEmbedding}, port: ${modelPort}`);
+        if (isEmbedding) {
+          log.info(`Model ${model.name}: Using embedding pooling type: mean`);
+          cmdLine += ` --pooling mean`;
+        }
       
       // CPU optimization from performance settings
       cmdLine += ` --threads ${perfConfig.threads}`;
@@ -814,7 +825,7 @@ models:
       }
       
       configYaml += `  "${model.name}":
-    proxy: "http://127.0.0.1:9999"
+    proxy: "http://127.0.0.1:${modelPort}"
     cmd: |
 ${cmdLine}`;
 
@@ -836,17 +847,53 @@ ${cmdLine}`;
       groupMembers.push(model.name);
     }
 
+    // Separate models into embedding and regular groups
+    const embeddingModels = [];
+    const regularModels = [];
+    
+    groupMembers.forEach(memberName => {
+      const model = mainModels.find(m => m.name === memberName);
+      if (model && this.isEmbeddingModel(model.file)) {
+        embeddingModels.push(memberName);
+      } else {
+        regularModels.push(memberName);
+      }
+    });
+
     // Add groups configuration
-    configYaml += `groups:
-  "default_group":
+    configYaml += `groups:`;
+    
+    // Embedding models group - persistent and non-exclusive so they can run alongside other models
+    if (embeddingModels.length > 0) {
+      configYaml += `
+  "embedding_models":
+    # Allow multiple embedding models to run together
+    swap: false
+    # Don't unload other groups when embedding models start
+    exclusive: false
+    # Prevent other groups from unloading embedding models
+    persistent: true
+    members:
+`;
+      embeddingModels.forEach(member => {
+        configYaml += `      - "${member}"\n`;
+      });
+    }
+    
+    // Regular models group - traditional swapping behavior
+    if (regularModels.length > 0) {
+      configYaml += `
+  "regular_models":
+    # Only one regular model at a time (traditional behavior)
     swap: true
+    # Unload other non-persistent groups when loading
     exclusive: true
     members:
 `;
-    
-    groupMembers.forEach(member => {
-      configYaml += `      - "${member}"\n`;
-    });
+      regularModels.forEach(member => {
+        configYaml += `      - "${member}"\n`;
+      });
+    }
 
     await fs.writeFile(this.configPath, configYaml);
     log.info('Dynamic config generated with', mainModels.length, 'models using saved performance settings');
@@ -918,6 +965,19 @@ ${cmdLine}`;
     const lowerFilename = filename.toLowerCase();
     
     return visionKeywords.some(keyword => lowerFilename.includes(keyword));
+  }
+
+  // Helper method to detect embedding models
+  isEmbeddingModel(filename) {
+    const embeddingKeywords = [
+      'embed', 'embedding', 'embeddings',
+      'mxbai', 'nomic', 'bge', 'e5',
+      'sentence-transformer', 'sentence_transformer',
+      'all-minilm', 'all_minilm'
+    ];
+    const lowerFilename = filename.toLowerCase();
+    
+    return embeddingKeywords.some(keyword => lowerFilename.includes(keyword));
   }
 
   // Helper method to extract base model name from filename
