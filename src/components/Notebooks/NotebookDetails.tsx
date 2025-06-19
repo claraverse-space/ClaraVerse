@@ -17,7 +17,8 @@ import {
   CheckCircle,
   XCircle,
   Edit,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
 import NotebookChat from './NotebookChat';
@@ -241,8 +242,6 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
     }
   };
 
-
-
   const handleUpdateLLM = async () => {
     // TODO: Implement LLM update functionality
     // This would require a backend API to update the notebook's LLM provider
@@ -258,218 +257,168 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden">
-      {/* Header - Fixed height */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+    <div className="h-[94vh] flex flex-col bg-black dark:bg-black">
+      {/* Compact Header */}
+      <div className="flex-shrink-0 bg-white dark:bg-black px-4 py-2 shadow-sm">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          {/* Left side - Back button and notebook info */}
+          <div className="flex items-center space-x-3 flex-1 min-w-0">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-sakura-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="flex items-center space-x-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <ArrowLeft className="h-4 w-4" />
+              <span className="text-sm">Back</span>
             </button>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-sakura-500 rounded-lg text-white">
-                <FileText className="w-5 h-5" />
+            
+            <div className="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
+            
+            <div className="flex items-center space-x-2 flex-1 min-w-0">
+              <div className="p-1.5 bg-sakura-100 dark:bg-sakura-900/30 rounded">
+                <BookOpen className="h-4 w-4 text-sakura-600 dark:text-sakura-400" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">{notebook.name}</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {notebook.description || 'No description provided'}
-                </p>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                  {notebook.name}
+                </h1>
+                <div className="flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center space-x-1">
+                    <FileText className="h-3 w-3" />
+                    <span>{notebook.document_count} docs</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Bot className="h-3 w-3" />
+                    <span>{notebook.llm_provider?.name}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-500 dark:text-gray-400 bg-sakura-100 dark:bg-sakura-900/20 px-3 py-1 rounded-full">
-              {notebook.document_count} document{notebook.document_count !== 1 ? 's' : ''}
-            </div>
+          
+          {/* Right side - Action buttons */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center space-x-1 bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-sm transition-colors"
+            >
+              <Upload className="h-3 w-3" />
+              <span>Upload</span>
+            </button>
+            
+            <button
+              onClick={() => setShowGraphModal(true)}
+              className="flex items-center space-x-1 bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-sm transition-colors"
+            >
+              <Network className="h-3 w-3" />
+              <span>Graph</span>
+            </button>
+            
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Error Banner - Fixed height when visible */}
-      {error && (
-        <div className="flex-shrink-0 px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
-          <div className="flex items-center">
-            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mr-2" />
-            <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Split Screen Layout - Takes remaining height */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Panel - Documents & Sources */}
-        <div className="w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 backdrop-blur-sm flex flex-col overflow-hidden">
-          {/* Sources Header - Fixed */}
-          <div className="flex-shrink-0 p-4 border-b border-gray-200 dark:border-gray-700">
+      {/* Main content area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Documents panel */}
+        <div className="w-1/3 bg-white dark:bg-black overflow-y-auto">
+          <div className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-sakura-500" />
-                Sources
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Documents</h2>
               <button
                 onClick={() => setShowUploadModal(true)}
-                disabled={!claraNotebookService.isBackendHealthy()}
-                className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 flex items-center gap-2"
-                title="Add documents"
+                className="text-sakura-500 hover:text-sakura-600 transition-colors"
               >
-                <Upload className="w-4 h-4" />
-                <span className="text-sm font-medium">Upload</span>
+                <Upload className="h-5 w-5" />
               </button>
             </div>
             
-            {/* Search */}
+            {/* Search documents */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input
                 type="text"
                 placeholder="Search documents..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-sakura-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-black text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:bg-white dark:focus:bg-black transition-colors"
               />
             </div>
           </div>
 
-          {/* Documents List - Scrollable */}
-          <div className="flex-1 overflow-y-auto p-2 min-h-0">
-            {/* Processing Notice */}
-            {documents.some(doc => doc.status === 'processing') && (
-              <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                  <Clock className="w-4 h-4 animate-spin" />
-                  <div>
-                    <p className="text-sm font-medium">Processing documents...</p>
-                    <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-                      It might take a few minutes to process the documents, feel free to check back later
-                    </p>
-                  </div>
-                </div>
+          {/* Error state */}
+          {error && (
+            <div className="m-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mr-2" />
+                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
               </div>
-            )}
-            
-            {isLoading ? (
-              <div className="flex items-center justify-center h-32">
-                <div className="w-6 h-6 border-2 border-sakura-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
+
+          {/* Documents list */}
+          <div className="p-4 space-y-3">
+            {isLoading && documents.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sakura-500"></div>
+                <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading...</span>
               </div>
             ) : filteredDocuments.length === 0 ? (
               <div className="text-center py-8">
-                <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {searchQuery ? 'No documents found' : 'No documents uploaded'}
+                <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {documents.length === 0 ? 'No documents uploaded yet' : 'No documents match your search'}
                 </p>
-                {!searchQuery && claraNotebookService.isBackendHealthy() && (
-                  <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="mt-2 text-sakura-600 dark:text-sakura-400 hover:text-sakura-800 dark:hover:text-sakura-200 text-sm"
-                  >
-                    Upload your first document
-                  </button>
-                )}
               </div>
             ) : (
-              <div className="space-y-2">
-                {filteredDocuments.map((document) => (
-                  <div
-                    key={document.id}
-                    className="glassmorphic-card p-3 rounded-lg transition-all duration-200 group border border-white/30 dark:border-gray-700/50 hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg hover:-translate-y-0.5"
-                  >
-                    <div className="flex items-start gap-3">
-                      {getFileIcon(document.filename)}
+              filteredDocuments.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="p-3 bg-gray-50 dark:bg-black rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-2 flex-1 min-w-0">
+                      {getFileIcon(doc.filename)}
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {document.filename}
-                        </h4>
-                        <div className="mt-2">
-                          {getStatusBadge(document.status, document.error)}
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {doc.filename}
+                        </p>
+                        <div className="flex items-center justify-between mt-1">
+                          {getStatusBadge(doc.status, doc.error)}
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatDate(doc.uploaded_at)}
+                          </span>
                         </div>
-                        {document.status === 'failed' && document.error && (
-                          <div className="text-red-600 dark:text-red-400 text-xs mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
-                            {document.error}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          <Calendar className="w-3 h-3" />
-                          {formatDate(document.uploaded_at)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteDocument(document.id);
-                          }}
-                          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3 h-3 text-red-500" />
-                        </button>
                       </div>
                     </div>
+                    <button
+                      onClick={() => handleDeleteDocument(doc.id)}
+                      className="p-1 text-gray-400 hover:text-red-600 transition-colors ml-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             )}
           </div>
         </div>
 
-        {/* Center Panel - Chat */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Chat Header - Fixed */}
-          <div className="flex-shrink-0 p-4 border-b border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-sakura-500" />
-                Chat
-              </h2>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowGraphModal(true);
-                  }}
-                  disabled={!claraNotebookService.isBackendHealthy()}
-                  className="px-3 py-2 bg-blue-100 dark:bg-blue-900/20 hover:bg-blue-200 dark:hover:bg-blue-800/30 text-blue-700 dark:text-blue-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="View Knowledge Graph"
-                >
-                  <Network className="w-4 h-4" />
-                  <span className="text-sm font-medium">Graph</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowSettingsModal(true);
-                  }}
-                  className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors flex items-center gap-2"
-                  title="Notebook Settings"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="text-sm font-medium">Settings</span>
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Chat Content - Fixed height with internal scrolling */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <NotebookChat 
-              notebookId={notebook.id} 
-              documentCount={documents.length}
-              completedDocumentCount={documents.filter(doc => doc.status === 'completed').length}
-            />
-          </div>
+        {/* Separator */}
+        <div className="w-px bg-gray-200 dark:bg-gray-800"></div>
+
+        {/* Chat panel */}
+        <div className="flex-1 bg-gray-50 dark:bg-black">
+          <NotebookChat 
+            notebookId={notebook.id} 
+            documentCount={notebook.document_count}
+            completedDocumentCount={documents.filter(doc => doc.status === 'completed').length}
+          />
         </div>
       </div>
 
@@ -493,7 +442,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glassmorphic-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200/30 dark:border-gray-700/30">
+            <div className="flex items-center justify-between p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-gray-600 rounded-lg text-white">
                   <Settings className="w-5 h-5" />
@@ -504,7 +453,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
               </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="p-2 hover:bg-white/20 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/20 dark:hover:bg-black/30 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
@@ -513,7 +462,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
             {/* Content */}
             <div className="p-6 space-y-6">
               {/* AI Configuration */}
-              <div className="glassmorphic-card p-6 rounded-lg border border-white/30 dark:border-gray-700/50">
+              <div className="glassmorphic-card p-6 rounded-lg">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -522,7 +471,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                   {!isEditingLLM && notebook.llm_provider && (
                     <button
                       onClick={() => setIsEditingLLM(true)}
-                      className="p-2 hover:bg-white/20 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+                      className="p-2 hover:bg-white/20 dark:hover:bg-black/30 rounded-lg transition-colors"
                       title="Edit LLM Configuration"
                     >
                       <Edit className="w-4 h-4 text-gray-500" />
@@ -533,7 +482,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                 {notebook.llm_provider && notebook.embedding_provider ? (
                   <div className="space-y-4">
                     {/* LLM Configuration */}
-                    <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                    <div className="p-4 bg-white/50 dark:bg-black/30 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <Bot className="w-4 h-4 text-blue-600" />
                         <span className="font-medium text-gray-700 dark:text-gray-300">Language Model</span>
@@ -548,7 +497,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                                 setSelectedLLMProvider(e.target.value);
                                 setSelectedLLMModel('');
                               }}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 rounded-lg bg-white dark:bg-black text-gray-900 dark:text-white"
                             >
                               <option value="">Select Provider</option>
                               {providers.filter(p => p.isEnabled).map(provider => (
@@ -564,7 +513,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                               value={selectedLLMModel}
                               onChange={(e) => setSelectedLLMModel(e.target.value)}
                               disabled={!selectedLLMProvider}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50"
+                              className="w-full px-3 py-2 rounded-lg bg-white dark:bg-black text-gray-900 dark:text-white disabled:opacity-50"
                             >
                               <option value="">Select Model</option>
                               {selectedLLMProvider && getLLMModels(selectedLLMProvider).map(model => (
@@ -598,7 +547,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                     </div>
                     
                     {/* Embedding Configuration */}
-                    <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                    <div className="p-4 bg-white/50 dark:bg-black/30 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
                         <Layers className="w-4 h-4 text-green-600" />
                         <span className="font-medium text-gray-700 dark:text-gray-300">Embedding Model</span>
@@ -621,7 +570,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
               </div>
 
               {/* System Status */}
-              <div className="glassmorphic-card p-6 rounded-lg border border-white/30 dark:border-gray-700/50">
+              <div className="glassmorphic-card p-6 rounded-lg">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">System Status</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -639,7 +588,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
               </div>
 
               {/* Danger Zone */}
-              <div className="glassmorphic-card p-6 rounded-lg border border-red-200/50 dark:border-red-800/50 bg-red-50/50 dark:bg-red-900/10">
+              <div className="glassmorphic-card p-6 rounded-lg bg-red-50/50 dark:bg-red-900/10">
                 <h3 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-4">Danger Zone</h3>
                 <div className="space-y-3">
                   <button

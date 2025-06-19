@@ -1375,12 +1375,28 @@ function registerModelManagerHandlers() {
       const path = require('path');
       const os = require('os');
       
-      // Security check - ensure file is in the correct directory
-      const modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
+      // Security check - ensure file is in a valid model directory
+      const defaultModelsDir = path.join(os.homedir(), '.clara', 'llama-models');
       const normalizedPath = path.resolve(filePath);
-      const normalizedModelsDir = path.resolve(modelsDir);
+      const normalizedDefaultDir = path.resolve(defaultModelsDir);
       
-      if (!normalizedPath.startsWith(normalizedModelsDir)) {
+      let isValidPath = normalizedPath.startsWith(normalizedDefaultDir);
+      
+      // Also check custom model paths if LlamaSwapService is available
+      if (!isValidPath && llamaSwapService) {
+        const customPaths = llamaSwapService.getCustomModelPaths();
+        for (const customPath of customPaths) {
+          if (customPath) {
+            const normalizedCustomDir = path.resolve(customPath);
+            if (normalizedPath.startsWith(normalizedCustomDir)) {
+              isValidPath = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!isValidPath) {
         throw new Error('Invalid file path - security violation');
       }
       
@@ -2416,6 +2432,185 @@ function registerHandlers() {
 }
 
 /**
+ * Check if Docker Desktop is installed on Windows
+ */
+async function checkDockerDesktopInstalled() {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+  
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    // Check if Docker Desktop executable exists
+    const possiblePaths = [
+      'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe',
+      'C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe'
+    ];
+    
+    for (const dockerPath of possiblePaths) {
+      if (fs.existsSync(dockerPath)) {
+        return dockerPath;
+      }
+    }
+    
+    // Also check via registry or Windows features
+    try {
+      await execAsync('docker --version');
+      return true; // Docker CLI is available
+    } catch (error) {
+      // Docker CLI not available
+    }
+    
+    return false;
+  } catch (error) {
+    log.error('Error checking Docker Desktop installation:', error);
+    return false;
+  }
+}
+
+/**
+ * Attempt to start Docker Desktop on Windows
+ */
+async function startDockerDesktop(dockerPath) {
+  try {
+    const { spawn } = require('child_process');
+    
+    if (typeof dockerPath === 'string' && dockerPath.endsWith('.exe')) {
+      // Start Docker Desktop executable
+      const dockerProcess = spawn(dockerPath, [], { 
+        detached: true, 
+        stdio: 'ignore' 
+      });
+      dockerProcess.unref();
+      
+      log.info('Docker Desktop startup initiated');
+      return true;
+    } else {
+      // Try to start via Windows service or PowerShell
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      try {
+        await execAsync('Start-Process "Docker Desktop" -WindowStyle Hidden', { shell: 'powershell' });
+        log.info('Docker Desktop startup initiated via PowerShell');
+        return true;
+      } catch (error) {
+        log.warn('Failed to start Docker Desktop via PowerShell:', error.message);
+        return false;
+      }
+    }
+  } catch (error) {
+    log.error('Error starting Docker Desktop:', error);
+    return false;
+  }
+}
+
+/**
+ * Ask user if they want to start Docker Desktop when it's not running
+ */
+async function askToStartDockerDesktop(loadingScreen) {
+  try {
+    const dockerPath = await checkDockerDesktopInstalled();
+    
+    if (!dockerPath) {
+      log.info('Docker Desktop not detected on system');
+      return false;
+    }
+    
+    log.info('Docker Desktop is installed but not running');
+    
+    // Show dialog asking user if they want to start Docker Desktop
+    const result = await showStartupDialog(
+      loadingScreen,
+      'question',
+      'Docker Desktop Not Running',
+      'Docker Desktop is installed but not currently running. Would you like to start it now?\n\nStarting Docker Desktop will enable advanced features like ComfyUI, n8n workflows, and other AI services.',
+      ['Start Docker Desktop', 'Continue without Docker', 'Cancel']
+    );
+    
+    if (result.response === 0) { // Start Docker Desktop
+      loadingScreen?.setStatus('Starting Docker Desktop...', 'info');
+      
+      const startSuccess = await startDockerDesktop(dockerPath);
+      
+      if (startSuccess) {
+        loadingScreen?.setStatus('Docker Desktop is starting... Please wait...', 'info');
+        
+        // Wait for Docker Desktop to start (up to 60 seconds)
+        let dockerStarted = false;
+        const maxWaitTime = 60000; // 60 seconds
+        const checkInterval = 2000; // 2 seconds
+        const maxAttempts = maxWaitTime / checkInterval;
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          
+          try {
+            const tempDockerSetup = new DockerSetup();
+            const isRunning = await tempDockerSetup.isDockerRunning();
+            
+            if (isRunning) {
+              dockerStarted = true;
+              loadingScreen?.setStatus('Docker Desktop started successfully!', 'success');
+              log.info('Docker Desktop started successfully');
+              break;
+            } else {
+              loadingScreen?.setStatus(`Waiting for Docker Desktop to start... (${Math.round((attempt + 1) * checkInterval / 1000)}s)`, 'info');
+            }
+          } catch (error) {
+            // Continue waiting
+            loadingScreen?.setStatus(`Waiting for Docker Desktop to start... (${Math.round((attempt + 1) * checkInterval / 1000)}s)`, 'info');
+          }
+        }
+        
+        if (!dockerStarted) {
+          loadingScreen?.setStatus('Docker Desktop is taking longer than expected to start. Continuing without Docker...', 'warning');
+          await showStartupDialog(
+            loadingScreen,
+            'warning',
+            'Docker Startup Timeout',
+            'Docker Desktop is taking longer than expected to start. The application will continue in lightweight mode.\n\nYou can try restarting the application once Docker Desktop is fully running.',
+            ['OK']
+          );
+          return false;
+        }
+        
+        return dockerStarted;
+      } else {
+        loadingScreen?.setStatus('Failed to start Docker Desktop. Continuing without Docker...', 'warning');
+        await showStartupDialog(
+          loadingScreen,
+          'warning',
+          'Docker Startup Failed',
+          'Failed to start Docker Desktop automatically. The application will continue in lightweight mode.\n\nYou can manually start Docker Desktop and restart the application to enable full features.',
+          ['OK']
+        );
+        return false;
+      }
+      
+    } else if (result.response === 1) { // Continue without Docker
+      loadingScreen?.setStatus('Continuing without Docker...', 'info');
+      log.info('User chose to continue without Docker');
+      return false;
+      
+    } else { // Cancel
+      loadingScreen?.setStatus('Startup cancelled by user', 'warning');
+      log.info('User cancelled startup');
+      app.quit();
+      return false;
+    }
+    
+  } catch (error) {
+    log.error('Error in askToStartDockerDesktop:', error);
+    return false;
+  }
+}
+
+/**
  * Main initialization function that determines startup flow based on Docker availability
  * and initializes all necessary services
  */
@@ -2436,9 +2631,25 @@ async function initialize() {
       loadingScreen.setStatus('Docker detected - Setting up services...', 'info');
       await initializeWithDocker();
     } else {
-      console.log('Docker not available - starting in lightweight mode');
-      loadingScreen.setStatus('Docker not available - Starting in lightweight mode...', 'warning');
-      await initializeWithoutDocker();
+      console.log('Docker not available - checking if we can start it...');
+      
+      // On Windows, ask if user wants to start Docker Desktop
+      let dockerStarted = false;
+      if (process.platform === 'win32') {
+        dockerStarted = await askToStartDockerDesktop(loadingScreen);
+      }
+      
+      if (dockerStarted) {
+        // Docker was started successfully, reinitialize DockerSetup and proceed with Docker mode
+        dockerSetup = new DockerSetup();
+        console.log('Docker started - proceeding with Docker services setup');
+        loadingScreen.setStatus('Docker started - Setting up services...', 'info');
+        await initializeWithDocker();
+      } else {
+        console.log('Docker not available - starting in lightweight mode');
+        loadingScreen.setStatus('Docker not available - Starting in lightweight mode...', 'warning');
+        await initializeWithoutDocker();
+      }
     }
     
   } catch (error) {

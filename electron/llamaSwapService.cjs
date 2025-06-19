@@ -711,25 +711,39 @@ models:
       --mmproj "${matchingMmproj.path}"`;
       }
       
-              // Add embedding pooling type for embedding models
-        log.info(`Model ${model.name}: isEmbeddingModel: ${isEmbedding}, port: ${modelPort}`);
-        if (isEmbedding) {
-          log.info(`Model ${model.name}: Using embedding pooling type: mean`);
-          cmdLine += ` --pooling mean`;
-        }
+      // Add embedding pooling type for embedding models
+      log.info(`Model ${model.name}: isEmbeddingModel: ${isEmbedding}, port: ${modelPort}`);
+      if (isEmbedding) {
+        log.info(`Model ${model.name}: Using embedding pooling type: mean`);
+        cmdLine += ` --pooling mean`;
+        cmdLine += ` --embeddings`;
+        log.info(`Model ${model.name}: Embeddings support enabled`);
+      }
       
       // CPU optimization from performance settings
       cmdLine += ` --threads ${perfConfig.threads}`;
       
       // **CRITICAL KV CACHE OPTIMIZATIONS FOR CONVERSATIONAL SPEED**
       
-      // 1. Context window optimization - use saved setting or calculate optimal
-      const contextSize = perfConfig.contextSize || this.calculateOptimalContextSize(
-        model.size / (1024 * 1024 * 1024), // Convert to GB
-        gpuLayersToUse > 0,
-        16 // Assume reasonable memory amount, will be detected properly later
-      );
-      cmdLine += ` --ctx-size ${contextSize}`;
+      // 1. Context window optimization - let llama-server auto-detect from model metadata
+      // Different models have different native context lengths (8k, 32k, 128k, etc.)
+      // llama-server can read this from model metadata and use the optimal size
+      let contextSize;
+      if (!isEmbedding && perfConfig.contextSize) {
+        // User has explicitly set a context size - use their setting (but not for embedding models)
+        contextSize = perfConfig.contextSize;
+        cmdLine += ` --ctx-size ${contextSize}`;
+        log.info(`Model ${model.name}: Using user-configured context size: ${contextSize}`);
+      } else if (isEmbedding) {
+        // For embedding models, never add context size - let llama-server decide automatically
+        log.info(`Model ${model.name}: Embedding model - letting llama-server auto-detect context size`);
+        contextSize = 8192; // Default fallback for keep token calculation only (not used in command line)
+      } else {
+        // No user setting - let llama-server auto-detect from model metadata
+        // This allows each model to use its native maximum context length
+        log.info(`Model ${model.name}: Using auto-detected context size from model metadata`);
+        contextSize = 8192; // Default fallback for keep token calculation only
+      }
       
       // 2. Batch size optimization - prioritize user settings over automatic calculation
       let batchSize, ubatchSize;
@@ -786,6 +800,12 @@ models:
         cmdLine += ` --cache-type-v ${perfConfig.kvCacheType}`;
       }
       
+      // 10. Context shift for handling long conversations
+      if (perfConfig.enableContextShift !== false && !isEmbedding) {
+        cmdLine += ` --ctx-shift`;
+        log.info(`Model ${model.name}: Context shift enabled for long conversations`);
+      }
+      
       // TTFT-specific optimizations (only when explicitly enabled in settings)
       if (perfConfig.optimizeFirstToken) {
         log.info(`Model ${model.name}: TTFT mode enabled - optimizing for first token speed`);
@@ -797,9 +817,18 @@ models:
         // Skip warmup to get to first token faster (warmup is for benchmarking)
         cmdLine += ` --no-warmup`;
         
-        // TTFT mode: smaller context for faster initial response
-        const ttftContextSize = Math.min(8192, contextSize);
-        cmdLine = cmdLine.replace(`--ctx-size ${contextSize}`, `--ctx-size ${ttftContextSize}`);
+        // TTFT mode: smaller context for faster initial response (only if user set explicit context and not embedding model)
+        if (!isEmbedding && perfConfig.contextSize) {
+          const ttftContextSize = Math.min(8192, contextSize);
+          cmdLine = cmdLine.replace(`--ctx-size ${contextSize}`, `--ctx-size ${ttftContextSize}`);
+          log.info(`Model ${model.name}: TTFT context override: ${ttftContextSize}`);
+        } else if (!isEmbedding) {
+          // For auto-detected context, add a reasonable TTFT limit (but not for embedding models)
+          cmdLine += ` --ctx-size 8192`;
+          log.info(`Model ${model.name}: TTFT context limit: 8192 (overriding auto-detection for speed)`);
+        } else {
+          log.info(`Model ${model.name}: Embedding model - skipping TTFT context override, letting llama-server decide`);
+        }
         
         // TTFT mode: more aggressive cache clearing for speed over efficiency
         cmdLine = cmdLine.replace(`--defrag-thold ${defragThreshold}`, `--defrag-thold 0.05`);
@@ -807,10 +836,14 @@ models:
         // TTFT mode: disable continuous batching
         cmdLine = cmdLine.replace(` --cont-batching`, '');
         
-        log.info(`Model ${model.name}: TTFT optimizations applied - context: ${ttftContextSize}, keep: ${keepTokens}`);
+        log.info(`Model ${model.name}: TTFT optimizations applied - keep: ${keepTokens}`);
       } else {
         log.info(`Model ${model.name}: Conversational mode - optimizing for multi-turn chat speed`);
-        log.info(`Model ${model.name}: Context: ${contextSize}, Keep: ${keepTokens}, Batch: ${batchSize}`);
+        if (perfConfig.contextSize) {
+          log.info(`Model ${model.name}: Context: ${contextSize}, Keep: ${keepTokens}, Batch: ${batchSize}`);
+        } else {
+          log.info(`Model ${model.name}: Context: auto-detected, Keep: ${keepTokens}, Batch: ${batchSize}`);
+        }
       }
       
       // Get platform-specific environment variables for the model process
@@ -2106,7 +2139,9 @@ ${cmdLine}`;
       // New conversational optimization settings
       keepTokens: 1024,       // Keep more tokens for faster subsequent responses
       defragThreshold: 0.1,   // Less aggressive defrag for better cache retention
-      enableContinuousBatching: true  // Explicit continuous batching flag
+      enableContinuousBatching: true,  // Explicit continuous batching flag
+      enableContextShift: true,  // Enable context shift by default to prevent context overflow
+      conversationMode: 'balanced',
     };
   }
 
@@ -2203,6 +2238,11 @@ ${cmdLine}`;
       args.push('--flash-attn');
     }
     
+    // Context shift for long conversations
+    if (perfConfig.enableContextShift !== false) {
+      args.push('--ctx-shift');
+    }
+    
     return args;
   }
 
@@ -2292,6 +2332,7 @@ ${cmdLine}`;
       keepTokens: 1024,
       defragThreshold: 0.1,
       enableContinuousBatching: true,
+      enableContextShift: true,  // Enable context shift by default to prevent context overflow
       conversationMode: 'balanced',
       // GPU and batch settings - set to undefined by default so auto-calculation kicks in
       gpuLayers: undefined,   // undefined = auto-calculate, number = user override

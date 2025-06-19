@@ -44,6 +44,10 @@ const NotebookCard: React.FC<NotebookCardProps> = ({ notebook, onOpen, onDelete 
     setShowMenu(!showMenu);
   };
 
+  const handleCardClick = () => {
+    onOpen();
+  };
+
   // Close menu when clicking outside
   useEffect(() => {
     if (!showMenu) return;
@@ -76,17 +80,15 @@ const NotebookCard: React.FC<NotebookCardProps> = ({ notebook, onOpen, onDelete 
     };
   }, [showMenu]);
 
-
-
   return (
     <div 
-      onClick={onOpen}
-      className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5 relative"
+      onClick={handleCardClick}
+      className="group relative bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all duration-200 cursor-pointer p-4"
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="p-2 bg-sakura-100 dark:bg-sakura-900/20 rounded-lg flex-shrink-0">
+          <div className="p-2 bg-sakura-100 dark:bg-sakura-900/30 rounded-lg flex-shrink-0">
             <BookOpen className="w-4 h-4 text-sakura-600 dark:text-sakura-400" />
           </div>
           <h3 className="font-medium text-gray-900 dark:text-white truncate">
@@ -94,54 +96,13 @@ const NotebookCard: React.FC<NotebookCardProps> = ({ notebook, onOpen, onDelete 
           </h3>
         </div>
         
-        <div className="relative">
-          <button
-            ref={buttonRef}
-            onClick={handleMenuClick}
-            className="p-1.5 rounded-md opacity-30 group-hover:opacity-100 hover:bg-white/20 dark:hover:bg-gray-600/50 transition-all duration-200"
-          >
-            <MoreVertical className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          </button>
-        </div>
-
-        {/* Portal Menu - Rendered outside the card hierarchy */}
-        {showMenu && createPortal(
-          <div
-            data-dropdown-menu
-            className="fixed w-44 glassmorphic-card rounded-lg shadow-xl border border-white/30 dark:border-gray-700/50 py-2 backdrop-blur-md z-[99999]"
-            style={{
-              top: `${menuPosition.top}px`,
-              left: `${menuPosition.left}px`,
-            }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen();
-                setShowMenu(false);
-              }}
-              className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-white/10 dark:hover:bg-gray-700/50 flex items-center gap-3 transition-colors"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Start Chat
-            </button>
-            <div className="border-t border-gray-200/30 dark:border-gray-600/30 my-1"></div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMenu(false);
-                if (window.confirm(`Are you sure you want to delete "${notebook.name}"?`)) {
-                  onDelete();
-                }
-              }}
-              className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50/20 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete Notebook
-            </button>
-          </div>,
-          document.body
-        )}
+        <button
+          ref={buttonRef}
+          onClick={handleMenuClick}
+          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+        >
+          <MoreVertical className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        </button>
       </div>
 
       {/* Description */}
@@ -161,7 +122,44 @@ const NotebookCard: React.FC<NotebookCardProps> = ({ notebook, onOpen, onDelete 
         </div>
       </div>
 
-
+      {/* Portal Menu - Rendered outside the card hierarchy */}
+      {showMenu && createPortal(
+        <div
+          data-dropdown-menu
+          className="fixed w-44 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-[99999]"
+          style={{
+            top: `${menuPosition.top}px`,
+            left: `${menuPosition.left}px`,
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+              setShowMenu(false);
+            }}
+            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors"
+          >
+            <MessageSquare className="w-4 h-4" />
+            Start Chat
+          </button>
+          <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(false);
+              if (window.confirm(`Are you sure you want to delete "${notebook.name}"?`)) {
+                onDelete();
+              }
+            }}
+            className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Notebook
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

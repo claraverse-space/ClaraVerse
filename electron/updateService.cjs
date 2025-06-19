@@ -856,7 +856,7 @@ class LlamacppUpdateService {
     try {
       logger.info(`Downloading llama.cpp binaries from: ${updateInfo.downloadUrl}`);
       
-      // Download the zip file
+      // Download the main zip file
       const response = await makeRobustRequest(updateInfo.downloadUrl);
       const buffer = Buffer.from(await response.arrayBuffer());
       
@@ -868,10 +868,21 @@ class LlamacppUpdateService {
       await fs.writeFile(tempZipPath, buffer);
       logger.info(`Downloaded binaries to: ${tempZipPath}`);
       
-      // Extract zip file
+      // Extract main zip file
       const zip = new AdmZip(tempZipPath);
       const extractDir = path.join(tempDir, 'extracted');
       zip.extractAllTo(extractDir, true);
+      
+      // For Windows, also download CUDA runtime binaries if available
+      let cudaRuntimeFiles = [];
+      if (this.platform === 'win32') {
+        try {
+          cudaRuntimeFiles = await this.downloadCudaRuntimeBinaries(updateInfo, tempDir);
+        } catch (cudaError) {
+          logger.warn('Failed to download CUDA runtime binaries:', cudaError.message);
+          logger.info('Continuing with main binary update. CUDA acceleration may not work optimally.');
+        }
+      }
       
       // ===== STOP ALL SERVICES BEFORE UPDATING =====
       logger.info('🛑 Stopping all services before binary update...');
@@ -925,6 +936,16 @@ class LlamacppUpdateService {
           logger.info(`Installed official file: ${targetName}`);
         }
         
+        // Install CUDA runtime files for Windows if downloaded
+        if (cudaRuntimeFiles.length > 0) {
+          for (const [sourceFile, targetName] of cudaRuntimeFiles) {
+            const targetPath = path.join(targetPlatformDir, targetName);
+            await fs.copyFile(sourceFile, targetPath);
+            logger.info(`Installed CUDA runtime file: ${targetName}`);
+          }
+          logger.info(`Successfully installed ${cudaRuntimeFiles.length} CUDA runtime files for GPU acceleration`);
+        }
+        
         // Save version info
         const versionFile = path.join(this.binariesPath, 'version.txt');
         await fs.writeFile(versionFile, updateInfo.latestVersion);
@@ -934,6 +955,9 @@ class LlamacppUpdateService {
         
         logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}`);
         logger.info(`Clara's custom binaries (like llama-swap) were preserved and not modified`);
+        if (cudaRuntimeFiles.length > 0) {
+          logger.info(`CUDA runtime binaries were also updated for optimal GPU acceleration`);
+        }
         
       } finally {
         // ===== RESTART SERVICES AFTER UPDATE =====
@@ -946,9 +970,12 @@ class LlamacppUpdateService {
       // Cleanup
       await fs.rm(tempDir, { recursive: true, force: true });
       
+      const successMessage = `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`;
+      const cudaMessage = cudaRuntimeFiles.length > 0 ? ` CUDA runtime binaries were also updated for optimal GPU acceleration.` : '';
+      
       return { 
         success: true, 
-        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`,
+        message: successMessage + cudaMessage,
         version: updateInfo.latestVersion
       };
       
@@ -968,7 +995,7 @@ class LlamacppUpdateService {
     try {
       logger.info(`Downloading llama.cpp binaries for Windows from: ${updateInfo.downloadUrl}`);
       
-      // Download the zip file
+      // Download the main zip file
       const response = await makeRobustRequest(updateInfo.downloadUrl);
       const buffer = Buffer.from(await response.arrayBuffer());
       
@@ -990,6 +1017,15 @@ class LlamacppUpdateService {
       if (!success) {
         // Fallback to manual extraction
         throw new Error('Could not extract zip file. Please ensure adm-zip package is properly installed.');
+      }
+      
+      // Also download CUDA runtime binaries if available (Windows fallback method)
+      let cudaRuntimeFiles = [];
+      try {
+        cudaRuntimeFiles = await this.downloadCudaRuntimeBinariesWindows(updateInfo, tempDir);
+      } catch (cudaError) {
+        logger.warn('Failed to download CUDA runtime binaries (Windows fallback):', cudaError.message);
+        logger.info('Continuing with main binary update. CUDA acceleration may not work optimally.');
       }
       
       // ===== STOP ALL SERVICES BEFORE UPDATING =====
@@ -1037,6 +1073,16 @@ class LlamacppUpdateService {
           logger.info(`Installed official file: ${targetName}`);
         }
         
+        // Install CUDA runtime files for Windows if downloaded (Windows fallback)
+        if (cudaRuntimeFiles.length > 0) {
+          for (const [sourceFile, targetName] of cudaRuntimeFiles) {
+            const targetPath = path.join(targetPlatformDir, targetName);
+            await fs.copyFile(sourceFile, targetPath);
+            logger.info(`Installed CUDA runtime file: ${targetName}`);
+          }
+          logger.info(`Successfully installed ${cudaRuntimeFiles.length} CUDA runtime files for GPU acceleration (Windows fallback)`);
+        }
+        
         // Save version info
         const versionFile = path.join(this.binariesPath, 'version.txt');
         await fs.writeFile(versionFile, updateInfo.latestVersion);
@@ -1045,6 +1091,9 @@ class LlamacppUpdateService {
         await this.validateInstallation(targetPlatformDir);
         
         logger.info(`Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion} (Windows fallback method)`);
+        if (cudaRuntimeFiles.length > 0) {
+          logger.info(`CUDA runtime binaries were also updated for optimal GPU acceleration (Windows fallback)`);
+        }
         
       } finally {
         // ===== RESTART SERVICES AFTER UPDATE =====
@@ -1057,9 +1106,12 @@ class LlamacppUpdateService {
       // Cleanup
       await fs.rm(tempDir, { recursive: true, force: true });
       
+      const successMessage = `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`;
+      const cudaMessage = cudaRuntimeFiles.length > 0 ? ` CUDA runtime binaries were also updated for optimal GPU acceleration (Windows fallback).` : '';
+      
       return { 
         success: true, 
-        message: `Successfully updated llama.cpp binaries and libraries to version ${updateInfo.latestVersion}. Clara's custom binaries were preserved. Services have been restarted.`,
+        message: successMessage + cudaMessage,
         version: updateInfo.latestVersion
       };
       
@@ -1413,6 +1465,183 @@ class LlamacppUpdateService {
     } catch (error) {
       logger.error('Installation validation failed:', error);
       throw new Error(`Installation validation failed: ${error.message}`);
+    }
+  }
+
+  // Download CUDA runtime binaries for Windows
+  async downloadCudaRuntimeBinaries(updateInfo, tempDir) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    try {
+      // Get the latest release info to find CUDA runtime assets
+      const response = await makeRobustRequest(`https://api.github.com/repos/${this.githubRepo}/releases/latest`);
+      const release = await response.json();
+      
+      // Look for CUDA runtime assets (e.g., cudart-llama-bin-win-cuda-12.4-x64.zip)
+      const cudaAssets = release.assets.filter(asset => 
+        asset.name.match(/cudart.*llama.*bin.*win.*cuda.*x64\.zip/i)
+      );
+      
+      if (cudaAssets.length === 0) {
+        logger.info('No CUDA runtime binaries found in release assets');
+        return [];
+      }
+      
+      // Sort by name to get the latest CUDA version (usually the highest version number)
+      cudaAssets.sort((a, b) => b.name.localeCompare(a.name));
+      const cudaAsset = cudaAssets[0];
+      
+      logger.info(`Found CUDA runtime asset: ${cudaAsset.name}`);
+      logger.info(`Downloading CUDA runtime binaries from: ${cudaAsset.browser_download_url}`);
+      
+      // Download the CUDA runtime zip
+      const cudaResponse = await makeRobustRequest(cudaAsset.browser_download_url);
+      const cudaBuffer = Buffer.from(await cudaResponse.arrayBuffer());
+      
+      // Save CUDA runtime zip
+      const cudaTempZipPath = path.join(tempDir, 'cuda-runtime.zip');
+      await fs.writeFile(cudaTempZipPath, cudaBuffer);
+      logger.info(`Downloaded CUDA runtime to: ${cudaTempZipPath}`);
+      
+      // Extract CUDA runtime zip
+      let AdmZip;
+      try {
+        AdmZip = require('adm-zip');
+      } catch (requireError) {
+        // Try alternative require paths
+        const mainPath = require.resolve('adm-zip', { paths: [process.cwd(), __dirname, path.join(__dirname, '..', 'node_modules')] });
+        AdmZip = require(mainPath);
+      }
+      
+      const cudaZip = new AdmZip(cudaTempZipPath);
+      const cudaExtractDir = path.join(tempDir, 'cuda-extracted');
+      cudaZip.extractAllTo(cudaExtractDir, true);
+      
+      // Find all CUDA runtime files (DLLs) in the extracted directory
+      const cudaFiles = await this.findCudaRuntimeFilesInExtracted(cudaExtractDir);
+      
+      if (cudaFiles.length === 0) {
+        logger.warn('No CUDA runtime files found in extracted CUDA archive');
+        return [];
+      }
+      
+      logger.info(`Found ${cudaFiles.length} CUDA runtime files to install`);
+      return cudaFiles;
+      
+    } catch (error) {
+      logger.error('Error downloading CUDA runtime binaries:', error);
+      throw new Error(`Failed to download CUDA runtime: ${error.message}`);
+    }
+  }
+
+  // Find CUDA runtime files in extracted directory
+  async findCudaRuntimeFilesInExtracted(extractDir) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    const cudaFiles = [];
+    
+    // CUDA runtime files we're looking for
+    const cudaRuntimePatterns = [
+      /^cudart64_\d+\.dll$/i,           // CUDA runtime (e.g., cudart64_124.dll)
+      /^cublas64_\d+\.dll$/i,           // cuBLAS (e.g., cublas64_12.dll)
+      /^cublasLt64_\d+\.dll$/i,         // cuBLAS LT (e.g., cublasLt64_12.dll)
+      /^curand64_\d+\.dll$/i,           // cuRAND (e.g., curand64_10.dll)
+      /^cusolver64_\d+\.dll$/i,         // cuSOLVER (e.g., cusolver64_11.dll)
+      /^cusparse64_\d+\.dll$/i,         // cuSPARSE (e.g., cusparse64_12.dll)
+      /^nvrtc64_\d+\.dll$/i,            // NVRTC (e.g., nvrtc64_120_0.dll)
+      /^nvrtc-builtins64_\d+\.dll$/i    // NVRTC builtins
+    ];
+    
+    // Helper function to search directory recursively
+    async function searchDirectory(dir) {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          await searchDirectory(fullPath);
+        } else if (entry.isFile()) {
+          // Check if this file matches any CUDA runtime pattern
+          const matchesCudaPattern = cudaRuntimePatterns.some(pattern => 
+            pattern.test(entry.name)
+          );
+          
+          if (matchesCudaPattern) {
+            cudaFiles.push([fullPath, entry.name]);
+            logger.info(`Found CUDA runtime file: ${entry.name}`);
+          }
+        }
+      }
+    }
+    
+    await searchDirectory(extractDir);
+    
+    return cudaFiles;
+  }
+
+  // Download CUDA runtime binaries for Windows using PowerShell extraction (fallback method)
+  async downloadCudaRuntimeBinariesWindows(updateInfo, tempDir) {
+    const path = require('path');
+    const fs = require('fs').promises;
+    
+    try {
+      // Get the latest release info to find CUDA runtime assets
+      const response = await makeRobustRequest(`https://api.github.com/repos/${this.githubRepo}/releases/latest`);
+      const release = await response.json();
+      
+      // Look for CUDA runtime assets (e.g., cudart-llama-bin-win-cuda-12.4-x64.zip)
+      const cudaAssets = release.assets.filter(asset => 
+        asset.name.match(/cudart.*llama.*bin.*win.*cuda.*x64\.zip/i)
+      );
+      
+      if (cudaAssets.length === 0) {
+        logger.info('No CUDA runtime binaries found in release assets (Windows fallback)');
+        return [];
+      }
+      
+      // Sort by name to get the latest CUDA version (usually the highest version number)
+      cudaAssets.sort((a, b) => b.name.localeCompare(a.name));
+      const cudaAsset = cudaAssets[0];
+      
+      logger.info(`Found CUDA runtime asset: ${cudaAsset.name} (Windows fallback)`);
+      logger.info(`Downloading CUDA runtime binaries from: ${cudaAsset.browser_download_url}`);
+      
+      // Download the CUDA runtime zip
+      const cudaResponse = await makeRobustRequest(cudaAsset.browser_download_url);
+      const cudaBuffer = Buffer.from(await cudaResponse.arrayBuffer());
+      
+      // Save CUDA runtime zip
+      const cudaTempZipPath = path.join(tempDir, 'cuda-runtime.zip');
+      await fs.writeFile(cudaTempZipPath, cudaBuffer);
+      logger.info(`Downloaded CUDA runtime to: ${cudaTempZipPath} (Windows fallback)`);
+      
+      // Extract CUDA runtime zip using PowerShell
+      const cudaExtractDir = path.join(tempDir, 'cuda-extracted');
+      await fs.mkdir(cudaExtractDir, { recursive: true });
+      
+      const extractSuccess = await this.extractWithPowerShell(cudaTempZipPath, cudaExtractDir);
+      
+      if (!extractSuccess) {
+        throw new Error('Could not extract CUDA runtime zip using PowerShell');
+      }
+      
+      // Find all CUDA runtime files (DLLs) in the extracted directory
+      const cudaFiles = await this.findCudaRuntimeFilesInExtracted(cudaExtractDir);
+      
+      if (cudaFiles.length === 0) {
+        logger.warn('No CUDA runtime files found in extracted CUDA archive (Windows fallback)');
+        return [];
+      }
+      
+      logger.info(`Found ${cudaFiles.length} CUDA runtime files to install (Windows fallback)`);
+      return cudaFiles;
+      
+    } catch (error) {
+      logger.error('Error downloading CUDA runtime binaries (Windows fallback):', error);
+      throw new Error(`Failed to download CUDA runtime (Windows fallback): ${error.message}`);
     }
   }
 }

@@ -119,9 +119,9 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="glassmorphic-card rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-auto">
+      <div className="bg-white dark:bg-black rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-sakura-50 to-sakura-100 dark:from-sakura-900/10 dark:to-sakura-800/10 rounded-t-lg">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-sakura-50 dark:bg-sakura-900/10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-sakura-500 rounded-lg text-white">
               <Upload className="w-5 h-5" />
@@ -132,7 +132,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           >
             <X className="w-4 h-4 text-gray-500" />
           </button>
@@ -144,8 +144,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
           <div
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
               dragActive
-                ? 'border-gray-500 bg-gray-50 dark:bg-gray-900/10'
-                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 hover:bg-gray-25 dark:hover:bg-gray-900/5'
+                ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
+                : 'border-black dark:border-black bg-black dark:bg-black'
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -160,11 +160,11 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
               Supported formats: {supportedTypes.join(', ').toUpperCase()}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
-              Maximum file size: 10MB
+              Maximum file size: 20MB
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg transition-colors"
             >
               Browse Files
             </button>
@@ -180,7 +180,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
 
           {/* Errors */}
           {errors.length > 0 && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle className="w-4 h-4 text-red-600" />
                 <h4 className="font-medium text-red-800 dark:text-red-400">Upload Errors</h4>
@@ -195,16 +195,11 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
 
           {/* Selected Files */}
           {selectedFiles.length > 0 && (
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-white mb-3">
-                Selected Files ({selectedFiles.length})
-              </h4>
+            <div className="space-y-3">
+              <h3 className="font-medium text-gray-900 dark:text-white">Selected Files</h3>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {selectedFiles.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                  >
+                  <div key={index} className="flex items-center justify-between p-3 bg-black dark:bg-black rounded-lg border border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -251,7 +246,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
           <button
             onClick={handleUpload}
             disabled={selectedFiles.length === 0 || isUploading}
-            className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 bg-sakura-600 hover:bg-sakura-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             {isUploading ? (
               <>

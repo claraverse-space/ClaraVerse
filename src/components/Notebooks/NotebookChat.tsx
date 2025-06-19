@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User, Bot, Copy, Check, MessageSquare, AlertCircle, FileText, ExternalLink, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import { Send, User, Bot, Copy, Check, MessageSquare, AlertCircle, FileText, ExternalLink, ChevronDown, ChevronUp, BookOpen, AlertTriangle } from 'lucide-react';
 import { claraNotebookService, NotebookCitation } from '../../services/claraNotebookService';
 
 interface ChatMessage {
@@ -283,7 +283,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
     <div className="h-full flex flex-col">
       {/* Summary Section */}
       {(summaryMessage || isGeneratingSummary) && (
-        <div className={`flex-shrink-0 border-b border-gray-200 dark:border-gray-700 ${isSummaryCollapsed ? 'bg-gray-50 dark:bg-gray-800/50' : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20'}`}>
+        <div className={`flex-shrink-0 border-b border-gray-200 dark:border-gray-700 ${isSummaryCollapsed ? 'bg-gray-50 dark:bg-gray-900' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
           <div className="p-4">
             <button
               onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}
@@ -312,7 +312,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
             {!isSummaryCollapsed && (
               <div className="mt-3">
                 {(isGeneratingSummary || showSkeletonLoading) ? (
-                  <div className="glassmorphic-card rounded-lg p-4 border border-white/30 dark:border-gray-700/50">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                     {/* Skeleton Loading for Summary */}
                     <div className="space-y-3">
                       <div className="flex items-center space-x-2 mb-3">
@@ -322,22 +322,22 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                       
                       {/* Skeleton text lines */}
                       <div className="space-y-2">
-                        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-full skeleton-shimmer"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-11/12 skeleton-shimmer"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-4/5 skeleton-shimmer"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-full skeleton-shimmer"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-3/4 skeleton-shimmer"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full skeleton-shimmer"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-11/12 skeleton-shimmer"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-4/5 skeleton-shimmer"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full skeleton-shimmer"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 skeleton-shimmer"></div>
                       </div>
                       
                       {/* Skeleton citations */}
                       <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-600">
                         <div className="flex items-center gap-1 mb-2">
-                          <div className="w-3 h-3 bg-gray-200 dark:bg-gray-600 rounded skeleton-shimmer"></div>
-                          <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded w-16 skeleton-shimmer"></div>
+                          <div className="w-3 h-3 bg-gray-200 dark:bg-gray-700 rounded skeleton-shimmer"></div>
+                          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-16 skeleton-shimmer"></div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="h-6 bg-gray-200 dark:bg-gray-600 rounded-full w-20 skeleton-shimmer"></div>
+                            <div key={i} className="h-6 bg-gray-200 dark:bg-gray-700 rounded-full w-20 skeleton-shimmer"></div>
                           ))}
                         </div>
                       </div>
@@ -386,8 +386,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                     }} />
                   </div>
                 ) : summaryMessage ? (
-                  <div className="glassmorphic-card rounded-lg p-4 border border-white/30 dark:border-gray-700/50">
-                    <div className="prose prose-sm max-w-none text-gray-700 dark:text-gray-300 max-h-48 overflow-y-auto">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <div className=" prose-sm max-w-none text-gray-700 dark:text-gray-300 max-h-48 overflow-y-auto">
                       {typeof formatMessage(summaryMessage.content) === 'string' ? (
                         <p>{summaryMessage.content}</p>
                       ) : (
@@ -404,7 +404,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                         </h4>
                         <div className="flex flex-wrap gap-2">
                           {summaryMessage.citations.slice(0, 8).map((citation, index) => (
-                            <div key={index} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-600 rounded-full text-xs text-gray-700 dark:text-gray-300">
+                            <div key={index} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs text-gray-700 dark:text-gray-300">
                               <FileText className="w-3 h-3" />
                               <span className="truncate max-w-24" title={citation.title}>
                                 {citation.title}
@@ -412,7 +412,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                             </div>
                           ))}
                           {summaryMessage.citations.length > 8 && (
-                            <div className="inline-flex items-center px-2 py-1 bg-gray-100 dark:bg-gray-600 rounded-full text-xs text-gray-500 dark:text-gray-400">
+                            <div className="inline-flex items-center px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs text-gray-500 dark:text-gray-400">
                               +{summaryMessage.citations.length - 8} more
                             </div>
                           )}
@@ -466,7 +466,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
             className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {message.type === 'assistant' && (
-              <div className="flex-shrink-0 w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+              <div className="flex-shrink-0 w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center">
                 <Bot className="w-4 h-4 text-white" />
               </div>
             )}
@@ -475,15 +475,21 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
               <div
                 className={`rounded-lg p-4 ${
                   message.type === 'user'
-                    ? 'bg-gray-600 text-white ml-auto'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                    ? 'bg-sakura-500 text-white ml-auto'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700'
                 }`}
               >
-                <div className="prose prose-sm max-w-none break-words">
+                <div className={` prose-sm max-w-none break-words ${
+                  message.type === 'user' 
+                    ? 'prose-invert' 
+                    : 'prose-gray dark:prose-invert'
+                }`}>
                   {typeof formatMessage(message.content) === 'string' ? (
-                    <p>{message.content}</p>
+                    <p className={message.type === 'user' ? 'text-white' : ''}>{message.content}</p>
                   ) : (
-                    formatMessage(message.content)
+                    <div className={message.type === 'user' ? 'text-white' : ''}>
+                      {formatMessage(message.content)}
+                    </div>
                   )}
                 </div>
                 
@@ -514,7 +520,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                 )}
                 
                 <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                  <span                   className={`text-xs ${
+                  <span className={`text-xs ${
                     message.type === 'user' 
                       ? 'text-gray-100' 
                       : 'text-gray-500 dark:text-gray-400'
@@ -540,7 +546,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
             </div>
 
             {message.type === 'user' && (
-              <div className="flex-shrink-0 w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+              <div className="flex-shrink-0 w-8 h-8 bg-gray-600 dark:bg-gray-700 rounded-full flex items-center justify-center">
                 <User className="w-4 h-4 text-white" />
               </div>
             )}
@@ -549,10 +555,10 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
 
         {isLoading && (
           <div className="flex gap-3 justify-start">
-            <div className="flex-shrink-0 w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+            <div className="flex-shrink-0 w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center">
               <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -567,9 +573,9 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
 
       {/* Backend Status Warning */}
       {(!isBackendHealthy || completedDocumentCount === 0) && (
-        <div className="flex-shrink-0 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-t border-yellow-200 dark:border-yellow-800">
-          <div className="flex items-center text-yellow-800 dark:text-yellow-200">
-            <AlertCircle className="w-4 h-4 mr-2" />
+        <div className="flex-shrink-0 px-4 py-2 bg-red-50 dark:bg-red-900/20">
+          <div className="flex items-center text-red-700 dark:text-red-300">
+            <AlertTriangle className="w-4 h-4 mr-2" />
             <span className="text-sm">
               {!isBackendHealthy 
                 ? "Backend unavailable - Chat functionality is limited"
@@ -585,9 +591,9 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
+      <div className="flex-shrink-0 p-4 bg-white dark:bg-black">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative bg-gray-50 dark:bg-gray-900 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
             <textarea
               ref={textareaRef}
               value={inputMessage}
@@ -600,24 +606,41 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                     ? "Upload documents to start chatting..."
                     : completedDocumentCount === 0
                       ? "Processing documents..."
-                      : "Ask about your documents..."
+                      : "Message your notebook..."
               }
               disabled={!isBackendHealthy || isLoading || completedDocumentCount === 0}
-              className="w-full p-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ minHeight: '48px', maxHeight: '120px' }}
+              className="w-full p-4 pr-14 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl"
+              style={{ minHeight: '56px', maxHeight: '200px' }}
             />
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputMessage.trim() || isLoading || !isBackendHealthy || completedDocumentCount === 0}
-              className="absolute right-2 bottom-2 p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            
+            {/* Send Button */}
+            <div className="absolute right-3 bottom-3">
+              <button
+                onClick={handleSendMessage}
+                disabled={!inputMessage.trim() || isLoading || !isBackendHealthy || completedDocumentCount === 0}
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  inputMessage.trim() && !isLoading && isBackendHealthy && completedDocumentCount > 0
+                    ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 shadow-sm hover:shadow-md'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          {/* Helper Text */}
+          <div className="flex items-center justify-between mt-2 px-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Press Enter to send, Shift+Enter for new line
+            </p>
+            {isBackendHealthy && completedDocumentCount > 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {completedDocumentCount} of {documentCount} documents ready
+              </p>
+            )}
           </div>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Press Enter to send, Shift+Enter for new line
-        </p>
       </div>
     </div>
   );

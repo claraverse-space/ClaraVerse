@@ -144,12 +144,12 @@ const NotebooksContent: React.FC = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800">
+    <div className="h-[94vh] flex flex-col bg-gray-50 dark:bg-black">
       {/* Header - Fixed height */}
-      <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+      <div className="flex-shrink-0 bg-white dark:bg-black px-6 py-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <BookOpen className="h-6 w-6 text-gray-600 dark:text-gray-400" />
+            <BookOpen className="h-6 w-6 text-sakura-500" />
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               Notebooks
             </h1>
@@ -171,7 +171,7 @@ const NotebooksContent: React.FC = () => {
           <button
             onClick={() => setShowCreateModal(true)}
             disabled={!isBackendHealthy}
-            className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center space-x-2 bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
           >
             <Plus className="h-4 w-4" />
             <span>New Notebook</span>
@@ -186,7 +186,7 @@ const NotebooksContent: React.FC = () => {
             placeholder="Search notebooks..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-black text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-sakura-500 transition-colors"
           />
         </div>
       </div>
@@ -195,7 +195,7 @@ const NotebooksContent: React.FC = () => {
       <div className="flex-1 overflow-y-auto">
         {/* Error state */}
         {error && (
-          <div className="m-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="m-6 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
             <div className="flex items-center">
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mr-2" />
               <p className="text-red-800 dark:text-red-200">{error}</p>
@@ -214,8 +214,8 @@ const NotebooksContent: React.FC = () => {
         {/* Loading state */}
         {isLoading && (
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-2 text-gray-600 dark:text-gray-400">Loading notebooks...</span>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sakura-500"></div>
+            <span className="ml-2 text-black dark:text-gray-400">Loading notebooks...</span>
           </div>
         )}
 
@@ -235,7 +235,7 @@ const NotebooksContent: React.FC = () => {
             {isBackendHealthy && (
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+                className="flex items-center space-x-2 bg-sakura-500 hover:bg-sakura-600 text-white px-4 py-2 rounded-lg transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 <span>Create Notebook</span>

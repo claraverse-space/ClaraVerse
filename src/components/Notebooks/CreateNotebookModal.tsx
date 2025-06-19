@@ -191,9 +191,9 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="glassmorphic-card rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-black rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-sakura-50 to-sakura-100 dark:from-sakura-900/10 dark:to-sakura-800/10 rounded-t-lg">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-sakura-50 dark:bg-sakura-900/10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-sakura-500 rounded-lg text-white">
               <BookOpen className="w-5 h-5" />
