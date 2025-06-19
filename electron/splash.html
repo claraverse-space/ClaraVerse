@@ -20,24 +20,6 @@
       overflow: hidden;
     }
     
-    .particles {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 0;
-    }
-    
-    .particle {
-      position: absolute;
-      width: 4px;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-    }
-    
     .container {
       background: rgba(255, 255, 255, 0.95);
       backdrop-filter: blur(20px);
@@ -86,26 +68,6 @@
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       transform: scale(0);
       opacity: 0;
-    }
-    
-    .logo-glow {
-      position: absolute;
-      top: -10px;
-      left: -10px;
-      right: -10px;
-      bottom: -10px;
-      border-radius: 50%;
-      background: linear-gradient(45deg, #667eea, #764ba2, #667eea);
-      background-size: 300% 300%;
-      animation: gradient-shift 3s ease infinite;
-      opacity: 0;
-      z-index: -1;
-    }
-    
-    @keyframes gradient-shift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
     }
     
     h2 {
@@ -225,207 +187,6 @@
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
-    }
-
-    /* First-time setup styles */
-    .setup-container {
-      display: none;
-      text-align: left;
-      margin-top: 30px;
-      padding: 25px;
-      background: rgba(255, 255, 255, 0.8);
-      border-radius: 16px;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-    }
-
-    .setup-title {
-      font-size: 20px;
-      font-weight: 600;
-      color: #2c3e50;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-
-    .setup-description {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 25px;
-      text-align: center;
-      line-height: 1.6;
-    }
-
-    .service-option {
-      display: flex;
-      align-items: flex-start;
-      margin-bottom: 20px;
-      padding: 15px;
-      background: rgba(255, 255, 255, 0.6);
-      border-radius: 12px;
-      border: 2px solid transparent;
-      transition: all 0.3s ease;
-      cursor: pointer;
-    }
-
-    .service-option:hover {
-      background: rgba(255, 255, 255, 0.8);
-      border-color: rgba(102, 126, 234, 0.3);
-      transform: translateY(-2px);
-    }
-
-    .service-option.selected {
-      border-color: #667eea;
-      background: rgba(102, 126, 234, 0.1);
-    }
-
-    .service-checkbox {
-      width: 20px;
-      height: 20px;
-      margin-right: 15px;
-      margin-top: 2px;
-      accent-color: #667eea;
-      cursor: pointer;
-    }
-
-    .service-info {
-      flex: 1;
-    }
-
-    .service-name {
-      font-size: 16px;
-      font-weight: 600;
-      color: #2c3e50;
-      margin-bottom: 5px;
-    }
-
-    .service-description {
-      font-size: 13px;
-      color: #666;
-      line-height: 1.4;
-    }
-
-    .service-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      background: #667eea;
-      color: white;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 500;
-      margin-left: 10px;
-    }
-
-    .setup-buttons {
-      display: flex;
-      gap: 15px;
-      margin-top: 30px;
-      justify-content: center;
-    }
-
-    .setup-button {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      min-width: 120px;
-    }
-
-    .setup-button.primary {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white;
-    }
-
-    .setup-button.primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-    }
-
-    .setup-button.secondary {
-      background: rgba(0, 0, 0, 0.1);
-      color: #666;
-    }
-
-    .setup-button.secondary:hover {
-      background: rgba(0, 0, 0, 0.15);
-    }
-
-    .docker-warning {
-      display: none;
-      margin-top: 20px;
-      padding: 15px;
-      background: rgba(243, 156, 18, 0.1);
-      border: 1px solid rgba(243, 156, 18, 0.3);
-      border-radius: 12px;
-      color: #f39c12;
-      font-size: 14px;
-      text-align: center;
-    }
-
-    .setup-progress {
-      display: none;
-      margin-top: 25px;
-    }
-
-    .setup-progress-item {
-      display: flex;
-      align-items: center;
-      margin-bottom: 15px;
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.6);
-      border-radius: 10px;
-    }
-
-    .setup-progress-icon {
-      width: 20px;
-      height: 20px;
-      margin-right: 12px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: bold;
-    }
-
-    .setup-progress-icon.pending {
-      background: #e0e0e0;
-      color: #999;
-    }
-
-    .setup-progress-icon.downloading {
-      background: #667eea;
-      color: white;
-      animation: pulse 1.5s infinite;
-    }
-
-    .setup-progress-icon.complete {
-      background: #2ecc71;
-      color: white;
-    }
-
-    .setup-progress-icon.error {
-      background: #e74c3c;
-      color: white;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.1); }
-      100% { transform: scale(1); }
-    }
-
-    .setup-progress-text {
-      flex: 1;
-      font-size: 14px;
-      color: #333;
-    }
-
-    .setup-progress-status {
-      font-size: 12px;
-      color: #666;
-      margin-left: 10px;
     }
     
     .terminal {
@@ -577,90 +338,14 @@
   </style>
 </head>
 <body>
-  <div class="particles" id="particles"></div>
-  
   <div class="container fade" id="container">
     <div class="logo-container">
-      <div class="logo-glow"></div>
-      <img src="../../assets/icons/png/256x256.png" class="logo" alt="Clara" onerror="this.style.display='none'">
+      <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgdmlld0JveD0iMCAwIDI1NiAyNTYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxjaXJjbGUgY3g9IjEyOCIgY3k9IjEyOCIgcj0iMTI4IiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfMF8xKSIvPgo8cGF0aCBkPSJNMTI4IDQ4QzE2NC4yIDQ4IDE5My42IDY5LjYgMjA4IDEwMEMyMTYuNCA4Ni40IDIwOCA2OCAyMDggNjhTMTkyIDQ4IDE2MCA0OEMxNDQgNDggMTI4IDQ4IDEyOCA0OFoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMiIvPgo8cGF0aCBkPSJNMTI4IDIwOEM5MS44IDIwOCA2Mi40IDE4Ni40IDQ4IDE1NkMzOS42IDE2OS42IDQ4IDE4OCA0OCAxODhTNjQgMjA4IDk2IDIwOEMxMTIgMjA4IDEyOCAyMDggMTI4IDIwOFoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMiIvPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDBfbGluZWFyXzBfMSIgeDE9IjAiIHkxPSIwIiB4Mj0iMjU2IiB5Mj0iMjU2IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiM2NjdFRUEiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNzY0QkEyIi8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPHN2Zz4K" class="logo" alt="Clara" id="logo">
     </div>
     
     <h2 id="title">Clara</h2>
     <div class="subtitle" id="subtitle">Your AI Assistant</div>
     <div class="message" id="message">Setting up your environment. This may take a moment.</div>
-    
-    <!-- First-time setup container -->
-    <div class="setup-container" id="setupContainer">
-      <div class="setup-title">Welcome to Clara! 🎉</div>
-      <div class="setup-description">
-        We detected Docker is available on your system. Would you like to enable these powerful features?
-        You can change these settings later in the application.
-      </div>
-      
-      <div class="service-option" data-service="comfyui">
-        <input type="checkbox" class="service-checkbox" id="comfyui-checkbox">
-        <div class="service-info">
-          <div class="service-name">
-            ComfyUI <span class="service-badge">AI Image Generation</span>
-          </div>
-          <div class="service-description">
-            Generate stunning images with Stable Diffusion and other AI models. Perfect for creative projects and artwork.
-          </div>
-        </div>
-      </div>
-      
-      <div class="service-option" data-service="n8n">
-        <input type="checkbox" class="service-checkbox" id="n8n-checkbox">
-        <div class="service-info">
-          <div class="service-name">
-            n8n <span class="service-badge">Workflow Automation</span>
-          </div>
-          <div class="service-description">
-            Create powerful workflows and automations. Connect different services and automate repetitive tasks.
-          </div>
-        </div>
-      </div>
-      
-      <div class="service-option" data-service="tts">
-        <input type="checkbox" class="service-checkbox" id="tts-checkbox">
-        <div class="service-info">
-          <div class="service-name">
-            TTS Service <span class="service-badge">Text-to-Speech</span>
-          </div>
-          <div class="service-description">
-            High-quality text-to-speech synthesis for voice interactions and accessibility features.
-          </div>
-        </div>
-      </div>
-      
-      <div class="docker-warning" id="dockerWarning">
-        <strong>⚠️ Docker not detected</strong><br>
-        Some features require Docker to be installed. You can still use Clara's core features without Docker.
-      </div>
-      
-      <div class="setup-buttons">
-        <button class="setup-button secondary" id="skipSetup">Skip for Now</button>
-        <button class="setup-button primary" id="continueSetup">Continue Setup</button>
-      </div>
-      
-      <div class="setup-progress" id="setupProgress">
-        <div class="setup-progress-item" id="progress-comfyui">
-          <div class="setup-progress-icon pending" id="icon-comfyui">1</div>
-          <div class="setup-progress-text">ComfyUI</div>
-          <div class="setup-progress-status" id="status-comfyui">Pending</div>
-        </div>
-        <div class="setup-progress-item" id="progress-n8n">
-          <div class="setup-progress-icon pending" id="icon-n8n">2</div>
-          <div class="setup-progress-text">n8n Automation</div>
-          <div class="setup-progress-status" id="status-n8n">Pending</div>
-        </div>
-        <div class="setup-progress-item" id="progress-tts">
-          <div class="setup-progress-icon pending" id="icon-tts">3</div>
-          <div class="setup-progress-text">TTS Service</div>
-          <div class="setup-progress-status" id="status-tts">Pending</div>
-        </div>
-      </div>
-    </div>
     
     <div class="status-container">
       <div class="status" id="status">Initializing...</div>
@@ -688,51 +373,12 @@
     
     // Initialize GSAP timeline
     const tl = gsap.timeline();
-    let isFirstTimeSetup = false;
-    let selectedServices = {
-      comfyui: false,
-      n8n: false,
-      tts: false
-    };
-    
-    // Create floating particles
-    function createParticles() {
-      const particlesContainer = document.getElementById('particles');
-      const particleCount = 50;
-      
-      for (let i = 0; i < particleCount; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        particle.style.left = Math.random() * 100 + '%';
-        particle.style.top = Math.random() * 100 + '%';
-        particlesContainer.appendChild(particle);
-        
-        // Animate particles
-        gsap.to(particle, {
-          y: -100,
-          x: Math.random() * 100 - 50,
-          duration: Math.random() * 10 + 5,
-          repeat: -1,
-          ease: "none",
-          delay: Math.random() * 5
-        });
-        
-        gsap.to(particle, {
-          opacity: Math.random() * 0.5 + 0.2,
-          duration: Math.random() * 3 + 1,
-          repeat: -1,
-          yoyo: true,
-          ease: "power2.inOut"
-        });
-      }
-    }
     
     // Entrance animation
     function initializeAnimations() {
       // Set initial states
       gsap.set("#container", { scale: 0.8, opacity: 0 });
       gsap.set(".logo", { scale: 0, opacity: 0 });
-      gsap.set(".logo-glow", { scale: 0, opacity: 0 });
       gsap.set("#title", { opacity: 0, y: 30 });
       gsap.set("#subtitle", { opacity: 0, y: 20 });
       gsap.set("#message", { opacity: 0, y: 15 });
@@ -748,12 +394,6 @@
         opacity: 1, 
         ease: "back.out(1.7)" 
       })
-      .to(".logo-glow", { 
-        duration: 0.8, 
-        scale: 1, 
-        opacity: 0.3, 
-        ease: "power2.out" 
-      }, "-=0.5")
       .to(".logo", { 
         duration: 1, 
         scale: 1, 
@@ -801,131 +441,7 @@
         ease: "power2.out" 
       }, "-=0.1");
       
-      // Logo breathing animation
-      gsap.to(".logo", {
-        scale: 1.05,
-        duration: 2,
-        repeat: -1,
-        yoyo: true,
-        ease: "power2.inOut"
-      });
-      
-      // Glow animation
-      gsap.to(".logo-glow", {
-        scale: 1.1,
-        opacity: 0.5,
-        duration: 2,
-        repeat: -1,
-        yoyo: true,
-        ease: "power2.inOut"
-      });
-    }
-
-    // Setup UI functions
-    function showSetupUI(dockerAvailable = true) {
-      isFirstTimeSetup = true;
-      
-      // Hide normal loading elements
-      gsap.to("#message, #status, #progressContainer, #terminal, #spinnerContainer", {
-        opacity: 0,
-        duration: 0.5,
-        onComplete: () => {
-          document.getElementById('message').style.display = 'none';
-          document.getElementById('status').style.display = 'none';
-          document.getElementById('progressContainer').style.display = 'none';
-          document.getElementById('terminal').style.display = 'none';
-          document.getElementById('spinnerContainer').style.display = 'none';
-        }
-      });
-      
-      // Show/hide Docker warning
-      const dockerWarning = document.getElementById('dockerWarning');
-      if (!dockerAvailable) {
-        dockerWarning.style.display = 'block';
-        // Disable service checkboxes if Docker is not available
-        document.querySelectorAll('.service-checkbox').forEach(checkbox => {
-          checkbox.disabled = true;
-        });
-        document.querySelectorAll('.service-option').forEach(option => {
-          option.style.opacity = '0.5';
-          option.style.cursor = 'not-allowed';
-        });
-      }
-      
-      // Show setup container
-      const setupContainer = document.getElementById('setupContainer');
-      setupContainer.style.display = 'block';
-      gsap.fromTo(setupContainer, 
-        { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }
-      );
-    }
-
-    function hideSetupUI() {
-      const setupContainer = document.getElementById('setupContainer');
-      gsap.to(setupContainer, {
-        opacity: 0,
-        y: -30,
-        duration: 0.5,
-        onComplete: () => {
-          setupContainer.style.display = 'none';
-          
-          // Show normal loading elements
-          document.getElementById('message').style.display = 'block';
-          document.getElementById('status').style.display = 'block';
-          document.getElementById('progressContainer').style.display = 'block';
-          document.getElementById('terminal').style.display = 'block';
-          document.getElementById('spinnerContainer').style.display = 'block';
-          
-          gsap.to("#message, #status, #progressContainer, #terminal, #spinnerContainer", {
-            opacity: 1,
-            duration: 0.5
-          });
-        }
-      });
-    }
-
-    function showSetupProgress() {
-      const setupProgress = document.getElementById('setupProgress');
-      setupProgress.style.display = 'block';
-      gsap.fromTo(setupProgress,
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
-      );
-      
-      // Hide setup buttons
-      gsap.to(".setup-buttons", {
-        opacity: 0,
-        y: -20,
-        duration: 0.4,
-        onComplete: () => {
-          document.querySelector('.setup-buttons').style.display = 'none';
-        }
-      });
-    }
-
-    function updateSetupProgress(service, status, message = '') {
-      const icon = document.getElementById(`icon-${service}`);
-      const statusEl = document.getElementById(`status-${service}`);
-      
-      icon.className = `setup-progress-icon ${status}`;
-      statusEl.textContent = message || status;
-      
-      // Update icon content based on status
-      switch(status) {
-        case 'downloading':
-          icon.textContent = '⬇';
-          break;
-        case 'complete':
-          icon.textContent = '✓';
-          break;
-        case 'error':
-          icon.textContent = '✗';
-          break;
-        default:
-          // Keep number for pending
-          break;
-      }
+      // Logo and glow are now completely static - no animations
     }
     
     function addTerminalLine(message, type = 'info') {
@@ -956,11 +472,6 @@
       const statusEl = document.getElementById('status');
       const errorEl = document.getElementById('error');
       const progressEl = document.getElementById('progress');
-      
-      // Don't update status if setup UI is showing
-      if (isFirstTimeSetup && document.getElementById('setupContainer').style.display === 'block') {
-        return;
-      }
       
       // Animate status change
       gsap.to(statusEl, {
@@ -1011,15 +522,9 @@
         }
       }
       
-      // Success animation
+      // Success animation - removed logo scaling
       if (type === 'success') {
-        gsap.to(".logo", {
-          scale: 1.1,
-          duration: 0.3,
-          ease: "back.out(1.7)",
-          yoyo: true,
-          repeat: 1
-        });
+        // Logo remains static - no animations on success
       }
     }
 
@@ -1041,67 +546,9 @@
       });
     }
 
-    // Setup event listeners
-    function initializeSetupEventListeners() {
-      // Service option click handlers
-      document.querySelectorAll('.service-option').forEach(option => {
-        option.addEventListener('click', (e) => {
-          if (e.target.classList.contains('service-checkbox')) return; // Let checkbox handle its own click
-          
-          const checkbox = option.querySelector('.service-checkbox');
-          if (!checkbox.disabled) {
-            checkbox.checked = !checkbox.checked;
-            option.classList.toggle('selected', checkbox.checked);
-            
-            const service = option.dataset.service;
-            selectedServices[service] = checkbox.checked;
-          }
-        });
-      });
-
-      // Checkbox change handlers
-      document.querySelectorAll('.service-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', (e) => {
-          const option = e.target.closest('.service-option');
-          option.classList.toggle('selected', e.target.checked);
-          
-          const service = option.dataset.service;
-          selectedServices[service] = e.target.checked;
-        });
-      });
-
-      // Button handlers
-      document.getElementById('skipSetup').addEventListener('click', () => {
-        ipcRenderer.send('setup-skip');
-        hideSetupUI();
-      });
-
-      document.getElementById('continueSetup').addEventListener('click', () => {
-        const hasSelection = Object.values(selectedServices).some(selected => selected);
-        if (!hasSelection) {
-          // Show a subtle warning
-          gsap.to("#continueSetup", {
-            backgroundColor: "#f39c12",
-            duration: 0.3,
-            yoyo: true,
-            repeat: 1,
-            onComplete: () => {
-              gsap.set("#continueSetup", { backgroundColor: "" });
-            }
-          });
-          return;
-        }
-        
-        showSetupProgress();
-        ipcRenderer.send('setup-continue', selectedServices);
-      });
-    }
-
     // Initialize everything when DOM is loaded
     document.addEventListener('DOMContentLoaded', () => {
-      createParticles();
       initializeAnimations();
-      initializeSetupEventListeners();
     });
 
     // IPC listeners
@@ -1111,18 +558,6 @@
       } else {
         updateStatus(data.message, data.type);
       }
-    });
-
-    ipcRenderer.on('show-setup', (_, data) => {
-      showSetupUI(data.dockerAvailable);
-    });
-
-    ipcRenderer.on('setup-progress', (_, data) => {
-      updateSetupProgress(data.service, data.status, data.message);
-    });
-
-    ipcRenderer.on('setup-complete', () => {
-      hideSetupUI();
     });
 
     ipcRenderer.on('hide', hide);

@@ -153,7 +153,7 @@ const GPUDiagnostics: React.FC = () => {
   const [previousSettings, setPreviousSettings] = useState<PerformanceSettings | null>(null);
 
   const requiresRestart = (newSettings: PerformanceSettings, oldSettings: PerformanceSettings | null): boolean => {
-    if (!oldSettings) return true; // First time setup needs restart
+    if (!oldSettings) return true; // Initial setup requires restart
     
     return RESTART_REQUIRED_SETTINGS.some(setting => 
       newSettings[setting as keyof PerformanceSettings] !== oldSettings[setting as keyof PerformanceSettings]

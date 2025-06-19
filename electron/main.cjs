@@ -2415,84 +2415,53 @@ function registerHandlers() {
   });
 }
 
-async function initializeApp() {
-  console.log('🚀 InitializeApp called - starting initialization process');
+/**
+ * Main initialization function that determines startup flow based on Docker availability
+ * and initializes all necessary services
+ */
+async function initialize() {
   try {
-    console.log('🔍 About to check first-time setup');
-    // Check if this is first time setup
-    const SetupConfigService = require('./setupConfigService.cjs');
-    console.log('✅ SetupConfigService imported successfully');
-    const setupService = new SetupConfigService();
-    console.log('✅ SetupConfigService instance created');
-    const isFirstTime = setupService.isFirstTimeSetup(); // Remove await - this is synchronous
+    console.log('🚀 Starting application initialization');
     
-    console.log('🔍 First-time setup check:', { isFirstTime });
+    // Show loading screen first
+    loadingScreen = new LoadingScreen();
+    loadingScreen.setStatus('Checking system requirements...', 'info');
     
-    if (isFirstTime) {
-      console.log('🎯 First-time setup detected - starting splash screen');
-      // Use splash screen for first-time setup
-      splash = new SplashScreen();
-      
-      // Wait for setup to complete before continuing
-      return new Promise((resolve) => {
-        const checkSetupComplete = setInterval(async () => {
-          const stillFirstTime = setupService.isFirstTimeSetup(); // Remove await - this is synchronous
-          console.log('⏳ Checking setup completion:', { stillFirstTime });
-          if (!stillFirstTime) {
-            console.log('✅ First-time setup completed');
-            clearInterval(checkSetupComplete);
-            if (splash) {
-              splash.close();
-              splash = null;
-            }
-            // Continue with normal initialization
-            await continueNormalInitialization();
-            resolve();
-          }
-        }, 1000);
-      });
+    // Check if Docker is available
+    dockerSetup = new DockerSetup();
+    const isDockerAvailable = await dockerSetup.isDockerRunning();
+    
+    if (isDockerAvailable) {
+      console.log('Docker detected - starting with Docker services setup');
+      loadingScreen.setStatus('Docker detected - Setting up services...', 'info');
+      await initializeWithDocker();
     } else {
-      console.log('📱 Normal startup - skipping first-time setup');
-      // Normal initialization without first-time setup
-      await continueNormalInitialization();
+      console.log('Docker not available - starting in lightweight mode');
+      loadingScreen.setStatus('Docker not available - Starting in lightweight mode...', 'warning');
+      await initializeWithoutDocker();
     }
+    
   } catch (error) {
     log.error(`Initialization error: ${error.message}`, error);
-    // Fallback to normal initialization
-    await continueNormalInitialization();
+    loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
+    // Fallback to lightweight initialization
+    await initializeWithoutDocker();
   }
 }
 
-async function continueNormalInitialization() {
+async function initializeWithDocker() {
   try {
-    // Show loading screen
-    loadingScreen = new LoadingScreen();
-    
     // Register handlers for various app functions
     registerHandlers();
     
     // Initialize all services
     llamaSwapService = new LlamaSwapService();
+    mcpService = new MCPService();
+    updateService = platformUpdateService;
+    comfyUIModelService = new ComfyUIModelService();
     
-    // Load custom model path from file-based storage and set it before starting the service
-    try {
-      const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
-      
-      if (fsSync.existsSync(settingsPath)) {
-        const settingsData = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
-        const customModelPath = settingsData.customModelPath;
-        
-        if (customModelPath && fsSync.existsSync(customModelPath)) {
-          log.info('Loading custom model path from settings:', customModelPath);
-          llamaSwapService.setCustomModelPaths([customModelPath]);
-        } else if (customModelPath) {
-          log.warn('Custom model path from settings no longer exists:', customModelPath);
-        }
-      }
-    } catch (error) {
-      log.warn('Could not load custom model path during initialization:', error.message);
-      // Continue without custom path - it can be set later by the frontend
-    }
+    // Load custom model path from file-based storage
+    await loadCustomModelPath();
     
     // Set up progress callback to forward to renderer
     llamaSwapService.setProgressCallback((progressData) => {
@@ -2501,22 +2470,70 @@ async function continueNormalInitialization() {
       }
     });
     
-    // Initialize essential services (non-blocking)
-    mcpService = new MCPService();
-    updateService = platformUpdateService;
-    dockerSetup = new DockerSetup();
-    comfyUIModelService = new ComfyUIModelService();
+    // Setup Docker services with progress updates to splash screen
+    loadingScreen.setStatus('Setting up Docker environment...', 'info');
+    const dockerSuccess = await dockerSetup.setup(async (status, type = 'info') => {
+      loadingScreen.setStatus(status, type);
+      
+      // Also log to console
+      console.log(`[Docker Setup] ${status}`);
+    }, false);
+
+    if (dockerSuccess) {
+      loadingScreen.setStatus('Docker services ready - Starting application...', 'success');
+    } else {
+      loadingScreen.setStatus('Docker setup incomplete - Starting in limited mode...', 'warning');
+    }
     
-    // Create the main window immediately for fast startup
-    log.info('Creating main window...');
-    loadingScreen.setStatus('Starting main application...', 'success');
+    // Create the main window
+    loadingScreen.setStatus('Loading main application...', 'info');
     await createMainWindow();
     
-    // Initialize services in background after main window is ready
+    // Initialize remaining services in background
     initializeServicesInBackground();
     
   } catch (error) {
-    log.error(`Initialization error: ${error.message}`, error);
+    log.error(`Docker initialization error: ${error.message}`, error);
+    loadingScreen?.setStatus(`Docker setup failed: ${error.message}`, 'error');
+    
+    // Fallback to lightweight mode
+    setTimeout(async () => {
+      await initializeWithoutDocker();
+    }, 2000);
+  }
+}
+
+async function initializeWithoutDocker() {
+  try {
+    // Register handlers for various app functions
+    registerHandlers();
+    
+    // Initialize essential services only
+    llamaSwapService = new LlamaSwapService();
+    mcpService = new MCPService();
+    updateService = platformUpdateService;
+    
+    // Load custom model path from file-based storage
+    await loadCustomModelPath();
+    
+    // Set up progress callback to forward to renderer
+    llamaSwapService.setProgressCallback((progressData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('llama-progress-update', progressData);
+      }
+    });
+    
+    loadingScreen.setStatus('Initializing core services...', 'info');
+    
+    // Create the main window immediately for fast startup
+    loadingScreen.setStatus('Starting main application...', 'success');
+    await createMainWindow();
+    
+    // Initialize lightweight services in background
+    initializeLightweightServicesInBackground();
+    
+  } catch (error) {
+    log.error(`Lightweight initialization error: ${error.message}`, error);
     loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
     
     // For critical startup errors, create main window anyway and show error
@@ -2525,57 +2542,155 @@ async function continueNormalInitialization() {
   }
 }
 
-/**
- * Initialize all services in background after main window is ready
- * This provides fast startup while services initialize progressively
- */
-async function initializeServicesInBackground() {
+async function loadCustomModelPath() {
   try {
-    log.info('Starting background service initialization...');
+    const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+    
+    if (fsSync.existsSync(settingsPath)) {
+      const settingsData = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+      const customModelPath = settingsData.customModelPath;
+      
+      if (customModelPath && fsSync.existsSync(customModelPath)) {
+        log.info('Loading custom model path from settings:', customModelPath);
+        llamaSwapService.setCustomModelPaths([customModelPath]);
+      } else if (customModelPath) {
+        log.warn('Custom model path from settings no longer exists:', customModelPath);
+      }
+    }
+  } catch (error) {
+    log.warn('Could not load custom model path during initialization:', error.message);
+    // Continue without custom path - it can be set later by the frontend
+  }
+}
+
+async function continueNormalInitialization() {
+  // This function is deprecated - replaced by the new two-type startup flow
+  console.warn('continueNormalInitialization is deprecated - using new startup flow');
+  await initialize();
+}
+
+/**
+ * Initialize lightweight services in background when Docker is not available
+ * This provides fast startup with limited functionality
+ */
+async function initializeLightweightServicesInBackground() {
+  try {
+    log.info('Starting lightweight service initialization...');
     
     // Send initialization status to renderer if main window is ready
     const sendStatus = (service, status, type = 'info') => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('background-service-status', { service, status, type });
       }
-      log.info(`[Background] ${service}: ${status}`);
+      log.info(`[Lightweight] ${service}: ${status}`);
     };
 
-    // Initialize Docker setup in background
-    sendStatus('Docker', 'Initializing Docker environment...', 'info');
-    
-    if (process.env.SKIP_DOCKER_SETUP === 'true') {
-      log.info('Skipping Docker setup due to SKIP_DOCKER_SETUP environment variable');
-      sendStatus('Docker', 'Docker setup skipped. Some features may be limited.', 'warning');
-    } else {
-      try {
-        const dockerSuccess = await dockerSetup.setup(async (status, type = 'info') => {
-          sendStatus('Docker', status, type);
-          
-          // Only show error dialogs for critical errors that need user attention
-          if (type === 'error' && !status.includes('Docker is not running') && !status.includes('not available')) {
-            // Don't block startup, just log and notify user through main window
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('background-service-error', { service: 'Docker', error: status });
-            }
-          }
-        }, false);
-
-        if (dockerSuccess) {
-          sendStatus('Docker', 'Docker services ready', 'success');
-          
-          // Signal watchdog service that Docker setup is complete
-          if (watchdogService) {
-            watchdogService.signalSetupComplete();
-          }
-        } else {
-          sendStatus('Docker', 'Docker not available. Some features may be limited.', 'warning');
-        }
-      } catch (dockerError) {
-        log.error('Docker initialization error:', dockerError);
-        sendStatus('Docker', 'Docker initialization failed', 'error');
+    // Initialize LlamaSwap service
+    sendStatus('LLM', 'Initializing LLM service...', 'info');
+    try {
+      const llamaSwapSuccess = await llamaSwapService.start();
+      if (llamaSwapSuccess) {
+        sendStatus('LLM', 'LLM service started successfully', 'success');
+      } else {
+        sendStatus('LLM', 'LLM service failed to start (available for manual start)', 'warning');
       }
+    } catch (llamaSwapError) {
+      log.error('Error initializing llama-swap service:', llamaSwapError);
+      sendStatus('LLM', 'LLM service initialization failed (available for manual start)', 'warning');
     }
+
+    // Initialize MCP service
+    sendStatus('MCP', 'Initializing MCP service...', 'info');
+    try {
+      sendStatus('MCP', 'MCP service initialized', 'success');
+      
+      // Auto-start previously running servers
+      sendStatus('MCP', 'Restoring MCP servers...', 'info');
+      try {
+        const restoreResults = await mcpService.startPreviouslyRunningServers();
+        const successCount = restoreResults.filter(r => r.success).length;
+        const totalCount = restoreResults.length;
+        
+        if (totalCount > 0) {
+          sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+        } else {
+          sendStatus('MCP', 'No MCP servers to restore', 'info');
+        }
+      } catch (restoreError) {
+        log.error('Error restoring MCP servers:', restoreError);
+        sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
+      }
+    } catch (mcpError) {
+      log.error('Error initializing MCP service:', mcpError);
+      sendStatus('MCP', 'MCP service initialization failed', 'warning');
+    }
+
+    // Initialize Watchdog service (lightweight mode)
+    sendStatus('Watchdog', 'Initializing Watchdog service...', 'info');
+    try {
+      watchdogService = new WatchdogService(null, llamaSwapService, mcpService); // No Docker in lightweight mode
+      
+      // Set up event listeners for watchdog events
+      watchdogService.on('serviceRestored', (serviceKey, service) => {
+        log.info(`Watchdog: ${service.name} has been restored`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-restored', { serviceKey, service: service.name });
+        }
+      });
+      
+      watchdogService.on('serviceFailed', (serviceKey, service) => {
+        log.error(`Watchdog: ${service.name} has failed after maximum retry attempts`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-failed', { serviceKey, service: service.name });
+        }
+      });
+      
+      watchdogService.on('serviceRestarted', (serviceKey, service) => {
+        log.info(`Watchdog: ${service.name} has been restarted successfully`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watchdog-service-restarted', { serviceKey, service: service.name });
+        }
+      });
+      
+      // Start the watchdog monitoring
+      watchdogService.start();
+      
+      sendStatus('Watchdog', 'Watchdog service started successfully', 'success');
+    } catch (watchdogError) {
+      log.error('Error initializing Watchdog service:', watchdogError);
+      sendStatus('Watchdog', 'Watchdog service initialization failed', 'warning');
+    }
+
+    // Notify that lightweight initialization is complete
+    sendStatus('System', 'Lightweight initialization complete', 'success');
+    log.info('Lightweight service initialization completed');
+    
+  } catch (error) {
+    log.error('Error during lightweight service initialization:', error);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('background-service-error', { 
+        service: 'System', 
+        error: `Lightweight initialization error: ${error.message}` 
+      });
+    }
+  }
+}
+
+/**
+ * Initialize all services in background after main window is ready (Docker mode)
+ * This provides fast startup while services initialize progressively
+ */
+async function initializeServicesInBackground() {
+  try {
+    log.info('Starting remaining services initialization (Docker mode)...');
+    
+    // Send initialization status to renderer if main window is ready
+    const sendStatus = (service, status, type = 'info') => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('background-service-status', { service, status, type });
+      }
+      log.info(`[Docker Mode] ${service}: ${status}`);
+    };
 
     // Initialize LlamaSwap service in background
     sendStatus('LLM', 'Initializing LLM service...', 'info');
@@ -2617,7 +2732,7 @@ async function initializeServicesInBackground() {
       sendStatus('MCP', 'MCP service initialization failed', 'warning');
     }
 
-    // Initialize Watchdog service in background
+    // Initialize Watchdog service in background (with Docker support)
     sendStatus('Watchdog', 'Initializing Watchdog service...', 'info');
     try {
       watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
@@ -2647,24 +2762,25 @@ async function initializeServicesInBackground() {
       // Start the watchdog monitoring
       watchdogService.start();
       
+      // Signal watchdog service that Docker setup is complete
+      watchdogService.signalSetupComplete();
+      
       sendStatus('Watchdog', 'Watchdog service started successfully', 'success');
     } catch (watchdogError) {
       log.error('Error initializing Watchdog service:', watchdogError);
       sendStatus('Watchdog', 'Watchdog service initialization failed', 'warning');
     }
 
-    // All background services initialized
-    log.info('Background service initialization completed');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('background-services-ready');
-    }
-
+    // Notify that Docker mode initialization is complete
+    sendStatus('System', 'Docker mode initialization complete', 'success');
+    log.info('Docker mode service initialization completed');
+    
   } catch (error) {
-    log.error('Error during background service initialization:', error);
+    log.error('Error during Docker mode service initialization:', error);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('background-service-error', { 
-        service: 'Background Services', 
-        error: `Background initialization failed: ${error.message}` 
+        service: 'System', 
+        error: `Docker mode initialization error: ${error.message}` 
       });
     }
   }
@@ -2834,7 +2950,7 @@ async function createMainWindow() {
 }
 
 // Initialize app when ready
-app.whenReady().then(initializeApp);
+app.whenReady().then(initialize);
 
 // Quit when all windows are closed
 app.on('window-all-closed', async () => {

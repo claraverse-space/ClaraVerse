@@ -885,6 +885,10 @@ const Settings = () => {
     }
   };
 
+  const exportSettings = async () => {
+    // Implement export settings functionality
+  };
+
   return (
     <>
       {/* Wallpaper */}
