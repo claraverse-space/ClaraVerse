@@ -1257,68 +1257,9 @@ class LlamacppUpdateService {
   }
 
   // Check if a file is an official llama.cpp file (binaries, libraries, headers, etc.)
+  // Now includes ALL files except Clara's custom binaries
   isOfficialLlamacppFile(fileName) {
-    const officialBinaries = [
-      'llama-server',
-      'llama-server.exe',
-      'llama-cli',
-      'llama-cli.exe',
-      'llama-quantize',
-      'llama-quantize.exe',
-      'llama-perplexity',
-      'llama-perplexity.exe',
-      'llama-embedding',
-      'llama-embedding.exe',
-      'llama-bench',
-      'llama-bench.exe',
-      'llama-eval',
-      'llama-eval.exe',
-      'llama-export-lora',
-      'llama-export-lora.exe',
-      'llama-finetune',
-      'llama-finetune.exe',
-      'llama-convert-hf',
-      'llama-convert-hf.exe'
-    ];
-    
-    // Official supporting libraries and files
-    const officialLibraries = [
-      // Dynamic libraries
-      'libllama.dylib',
-      'libggml.dylib',
-      'libggml-base.dylib',
-      'libggml-metal.dylib',
-      'libggml-cpu.dylib',
-      'libggml-base.dylib',
-      'libggml-blas.dylib',
-      'libggml-rpc.dylib',
-      'libmtmd.dylib',
-      'libmtmd_shared.dylib',
-      // Windows DLLs
-      'llama.dll',
-      'ggml.dll',
-      'ggml-metal.dll',
-      'ggml-cpu.dll',
-      'ggml-base.dll',
-      'ggml-blas.dll',
-      'ggml-rpc.dll',
-      // Linux shared objects
-      'libllama.so',
-      'libggml.so',
-      'libggml-metal.so',
-      'libggml-cpu.so',
-      'libggml-base.so',
-      'libggml-blas.so',
-      'libggml-rpc.so',
-      'libmtmd.so',
-      'libmtmd_shared.so',
-      // Metal shaders and headers
-      'ggml-metal.metal',
-      'ggml-common.h',
-      'ggml-metal-impl.h'
-    ];
-    
-    // Exclude Clara's custom binaries
+    // Exclude Clara's custom binaries - these are the ONLY files we don't want to touch
     const claraCustomBinaries = [
       'llama-swap',
       'llama-swap.exe',
@@ -1328,45 +1269,47 @@ class LlamacppUpdateService {
       'llama-swap-win32-x64.exe'
     ];
     
-    // Don't touch Clara's custom binaries
+    // Don't touch Clara's custom binaries (llamaswap files)
     if (claraCustomBinaries.some(custom => fileName.includes(custom))) {
       return false;
     }
     
-    // Check if it's an official binary
-    if (officialBinaries.some(official => fileName === official || fileName.includes(official.replace('.exe', '')))) {
-      return true;
-    }
-    
-    // Check if it's an official library or supporting file
-    if (officialLibraries.some(lib => fileName === lib || fileName.includes(lib.replace(/\.(dylib|dll|so)$/, '')))) {
-      return true;
-    }
-    
-    return false;
+    // Everything else from the llama.cpp zip is considered official and should be updated
+    return true;
   }
 
   // Check if a file should be made executable
   isExecutableFile(fileName) {
-    const executableExtensions = ['', '.exe']; // No extension on Unix, .exe on Windows
-    const binaryNames = [
-      'llama-server',
-      'llama-cli', 
-      'llama-quantize',
-      'llama-perplexity',
-      'llama-embedding',
-      'llama-bench',
-      'llama-eval',
-      'llama-export-lora',
-      'llama-finetune',
-      'llama-convert-hf'
-    ];
+    // On Windows, executables have .exe extension
+    if (this.platform === 'win32') {
+      return fileName.endsWith('.exe');
+    }
     
-    return binaryNames.some(name => 
-      fileName === name || 
-      fileName === `${name}.exe` ||
-      fileName.startsWith(`${name}-`) // Handle versioned binaries
-    );
+    // On Unix systems (macOS/Linux), check for common binary patterns
+    // Look for files without extensions or with common binary names
+    const hasNoExtension = !fileName.includes('.') || 
+                          fileName.endsWith('.bin') || 
+                          fileName.endsWith('.out');
+    
+    // Common patterns for llama.cpp binaries
+    const isBinaryPattern = fileName.startsWith('llama-') ||
+                           fileName.startsWith('ggml-') ||
+                           fileName.includes('server') ||
+                           fileName.includes('cli') ||
+                           fileName.includes('quantize') ||
+                           fileName.includes('perplexity') ||
+                           fileName.includes('bench') ||
+                           fileName.includes('eval') ||
+                           fileName.includes('embedding') ||
+                           fileName.includes('convert') ||
+                           fileName.includes('finetune') ||
+                           fileName.includes('export');
+    
+    // Make executable if it looks like a binary and doesn't have a typical non-executable extension
+    const nonExecutableExtensions = ['.so', '.dylib', '.dll', '.h', '.hpp', '.c', '.cpp', '.txt', '.md', '.json', '.xml', '.metal', '.py', '.sh'];
+    const hasNonExecutableExtension = nonExecutableExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
+    
+    return (hasNoExtension && isBinaryPattern) && !hasNonExecutableExtension;
   }
 
   async findOfficialFilesInExtracted(extractDir) {
@@ -1375,45 +1318,12 @@ class LlamacppUpdateService {
     
     const filesMap = [];
     
-    // All files we want to update - more comprehensive mapping
-    const targetFiles = [
-      // Main binaries
-      ...(this.platform === 'win32' 
-        ? ['llama-server.exe', 'llama-cli.exe', 'llama-quantize.exe', 'llama-perplexity.exe', 'llama-bench.exe']
-        : ['llama-server', 'llama-cli', 'llama-quantize', 'llama-perplexity', 'llama-bench']),
-      
-      // Core libraries - ensure we get all variants
-      ...(this.platform === 'darwin' 
-        ? ['libllama.dylib', 'libggml.dylib', 'libggml-metal.dylib', 'libggml-cpu.dylib', 
-           'libggml-base.dylib', 'libggml-blas.dylib', 'libggml-rpc.dylib', 'libmtmd.dylib', 'libmtmd_shared.dylib']
-        : this.platform === 'win32'
-        ? [
-            // Essential core libraries
-            'llama.dll', 'ggml.dll',
-            // GPU acceleration libraries  
-            'ggml-cuda.dll', 'ggml-metal.dll',
-            // CPU optimization libraries
-            'ggml-cpu.dll', 'ggml-base.dll', 'ggml-cpu-alderlake.dll', 'ggml-cpu-haswell.dll',
-            'ggml-cpu-icelake.dll', 'ggml-cpu-sandybridge.dll', 'ggml-cpu-sapphirerapids.dll',
-            'ggml-cpu-skylakex.dll', 'ggml-cpu-sse42.dll', 'ggml-cpu-x64.dll',
-            // Communication and other libraries
-            'ggml-rpc.dll', 'ggml-blas.dll'
-          ]
-        : ['libllama.so', 'libggml.so', 'libggml-metal.so', 'libggml-cpu.so', 'libggml-base.so', 'libggml-blas.so', 'libggml-rpc.so', 'libmtmd.so', 'libmtmd_shared.so']),
-      
-      // Common supporting files
-      'ggml-metal.metal',
-      'ggml-common.h',
-      'ggml-metal-impl.h'
-    ];
-    
     // Required core files that must be present for a valid update
     const requiredFiles = this.platform === 'win32' 
-      ? ['llama-server.exe', 'llama.dll', 'ggml.dll']
-      : this.platform === 'darwin'
-      ? ['llama-server', 'libllama.dylib', 'libggml.dylib']
-      : ['llama-server', 'libllama.so', 'libggml.so'];
+      ? ['llama-server.exe']
+      : ['llama-server'];
     
+    // Helper function to search directory recursively and include ALL files except llamaswap
     async function searchDirectory(dir) {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       
@@ -1423,30 +1333,25 @@ class LlamacppUpdateService {
         if (entry.isDirectory()) {
           await searchDirectory(fullPath);
         } else if (entry.isFile()) {
-          // Check if this file matches one of our target files
-          for (const targetFile of targetFiles) {
-            // Direct name match (preferred)
-            if (entry.name === targetFile) {
-              filesMap.push([fullPath, targetFile]);
-              break;
-            }
-            
-            // Pattern-based matching for more flexible detection
-            const baseName = targetFile.replace(/\.(exe|dylib|dll|so)$/, '');
-            
-            // Handle versioned or prefix-modified binaries
-            if ((entry.name.includes(baseName) && !entry.name.includes('swap')) ||
-                (targetFile.includes('ggml') && entry.name.includes('ggml') && 
-                 entry.name.replace(/\.(dll|dylib|so)$/, '') === baseName)) {
-              
-              // Double-check we don't have this target file already mapped
-              const alreadyMapped = filesMap.some(([, mappedTarget]) => mappedTarget === targetFile);
-              if (!alreadyMapped) {
-                filesMap.push([fullPath, targetFile]);
-                break;
-              }
-            }
+          // Skip Clara's custom llamaswap binaries
+          const claraCustomBinaries = [
+            'llama-swap',
+            'llama-swap.exe',
+            'llama-swap-darwin',
+            'llama-swap-darwin-arm64',
+            'llama-swap-linux',
+            'llama-swap-win32-x64.exe'
+          ];
+          
+          // Don't include llamaswap files
+          if (claraCustomBinaries.some(custom => entry.name.includes(custom))) {
+            logger.info(`Skipping Clara custom binary: ${entry.name}`);
+            continue;
           }
+          
+          // Include ALL other files from the llama.cpp archive
+          filesMap.push([fullPath, entry.name]);
+          logger.info(`Found file for update: ${entry.name}`);
         }
       }
     }
@@ -1459,21 +1364,9 @@ class LlamacppUpdateService {
     
     if (missingRequired.length > 0) {
       logger.warn(`Missing required files for complete update: ${missingRequired.join(', ')}`);
-      logger.warn(`Found files: ${foundFiles.join(', ')}`);
+      logger.warn(`Found files: ${foundFiles.slice(0, 20).join(', ')}${foundFiles.length > 20 ? '...' : ''}`);
       logger.warn('This might cause compatibility issues. Skipping update.');
       throw new Error(`Incomplete update package: missing required files ${missingRequired.join(', ')}`);
-    }
-    
-    // Enhanced validation: ensure we have at least the minimum set of libraries
-    const essentialLibs = this.platform === 'win32' 
-      ? ['ggml.dll', 'llama.dll']
-      : this.platform === 'darwin'
-      ? ['libggml.dylib', 'libllama.dylib']  
-      : ['libggml.so', 'libllama.so'];
-    
-    const missingEssential = essentialLibs.filter(lib => !foundFiles.includes(lib));
-    if (missingEssential.length > 0) {
-      throw new Error(`Critical libraries missing from update: ${missingEssential.join(', ')}`);
     }
     
     logger.info(`Found ${filesMap.length} official files for update: ${foundFiles.slice(0, 10).join(', ')}${foundFiles.length > 10 ? '...' : ''}`);

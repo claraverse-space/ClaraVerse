@@ -345,7 +345,7 @@
     
     <h2 id="title">Clara</h2>
     <div class="subtitle" id="subtitle">Your AI Assistant</div>
-    <div class="message" id="message">Setting up your environment. This may take a moment.</div>
+    <div class="message" id="message">Setting up your AI environment. This may take a moment for the first-time setup.</div>
     
     <div class="status-container">
       <div class="status" id="status">Initializing...</div>
@@ -467,7 +467,7 @@
       }
     }
     
-    function updateStatus(message, type = 'info') {
+    function updateStatus(message, type = 'info', progressData = null) {
       console.log(`[Splash] ${type}: ${message}`);
       const statusEl = document.getElementById('status');
       const errorEl = document.getElementById('error');
@@ -511,15 +511,48 @@
       }
 
       // Update progress bar with animation
-      if (message.includes('Downloading')) {
-        const match = message.match(/(\d+)%/);
+      let progressPercentage = null;
+      
+      // Check for progress data from Docker API
+      if (progressData && progressData.percentage) {
+        progressPercentage = progressData.percentage;
+      }
+      // Fallback to parsing percentage from message
+      else if (message.includes('%')) {
+        const match = message.match(/(\d+(?:\.\d+)?)%/);
         if (match) {
-          gsap.to(progressEl, {
-            width: `${match[1]}%`,
-            duration: 0.8,
-            ease: "power2.out"
-          });
+          progressPercentage = parseFloat(match[1]);
         }
+      }
+      // Check for specific Docker pulling stages
+      else if (message.includes('Pulling')) {
+        progressPercentage = 10;
+      } else if (message.includes('Downloading') || message.includes('downloading')) {
+        progressPercentage = progressData?.percentage || 25;
+      } else if (message.includes('Extracting') || message.includes('extracting')) {
+        progressPercentage = progressData?.percentage || 75;
+      } else if (message.includes('Pull complete') || message.includes('Successfully pulled')) {
+        progressPercentage = 100;
+      }
+      // General startup progress stages
+      else if (message.includes('Docker environment')) {
+        progressPercentage = 5;
+      } else if (message.includes('checking for updates')) {
+        progressPercentage = 15;
+      } else if (message.includes('All containers are up to date')) {
+        progressPercentage = 90;
+      } else if (message.includes('All services started')) {
+        progressPercentage = 95;
+      } else if (message.includes('Ready') || message.includes('successfully')) {
+        progressPercentage = 100;
+      }
+      
+      if (progressPercentage !== null) {
+        gsap.to(progressEl, {
+          width: `${Math.min(progressPercentage, 100)}%`,
+          duration: 0.8,
+          ease: "power2.out"
+        });
       }
       
       // Success animation - removed logo scaling
@@ -556,7 +589,7 @@
       if (typeof data === 'string') {
         updateStatus(data);
       } else {
-        updateStatus(data.message, data.type);
+        updateStatus(data.message, data.type, data.progress);
       }
     });
 

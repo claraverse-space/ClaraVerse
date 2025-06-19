@@ -2472,11 +2472,15 @@ async function initializeWithDocker() {
     
     // Setup Docker services with progress updates to splash screen
     loadingScreen.setStatus('Setting up Docker environment...', 'info');
-    const dockerSuccess = await dockerSetup.setup(async (status, type = 'info') => {
-      loadingScreen.setStatus(status, type);
+    const dockerSuccess = await dockerSetup.setup(async (status, type = 'info', progress = null) => {
+      loadingScreen.setStatus(status, type, progress);
       
       // Also log to console
-      console.log(`[Docker Setup] ${status}`);
+      if (progress && progress.percentage) {
+        console.log(`[Docker Setup] ${status} (${progress.percentage}%)`);
+      } else {
+        console.log(`[Docker Setup] ${status}`);
+      }
     }, false);
 
     if (dockerSuccess) {

@@ -1286,6 +1286,20 @@ class DockerSetup extends EventEmitter {
   handlePullStream(stream, imageName, statusCallback, resolve, reject) {
     let lastStatus = '';
     let progress = {};
+    let isFirstTimePull = false;
+
+    // Check if this is a first-time pull by looking at pull timestamps
+    const timestamps = this.getPullTimestamps();
+    const lastPull = timestamps[imageName] || 0;
+    if (lastPull === 0) {
+      isFirstTimePull = true;
+    }
+
+    // Show first-time setup message
+    if (isFirstTimePull) {
+      statusCallback(`🚀 First-time setup: Downloading AI services...`, 'info', { percentage: 0 });
+      statusCallback(`This may take 5-15 minutes depending on your internet speed. Clara is downloading essential AI components - please wait...`, 'info', { percentage: 5 });
+    }
 
     stream.on('data', (data) => {
       const lines = data.toString().split('\n').filter(Boolean);
@@ -1313,12 +1327,31 @@ class DockerSetup extends EventEmitter {
               
               if (totalTotal > 0) {
                 const percentage = Math.round((totalCurrent / totalTotal) * 100);
-                statusCallback(`Pulling ${imageName}: ${parsed.status} (${percentage}%)`);
+                const progressMessage = isFirstTimePull 
+                  ? `First-time download: ${imageName} (${percentage}%) - ${parsed.status}`
+                  : `Pulling ${imageName}: ${parsed.status} (${percentage}%)`;
+                statusCallback(progressMessage, 'info', { percentage });
               } else {
-                statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+                const progressMessage = isFirstTimePull 
+                  ? `First-time setup: ${imageName} - ${parsed.status}`
+                  : `Pulling ${imageName}: ${parsed.status}`;
+                statusCallback(progressMessage, 'info', { percentage: 10 });
               }
             } else {
-              statusCallback(`Pulling ${imageName}: ${parsed.status}`);
+              // Handle status messages without progress details
+              let percentage = 10;
+              if (parsed.status.includes('Downloading')) {
+                percentage = 30;
+              } else if (parsed.status.includes('Extracting')) {
+                percentage = 70;
+              } else if (parsed.status.includes('Pull complete')) {
+                percentage = 90;
+              }
+              
+              const progressMessage = isFirstTimePull 
+                ? `First-time setup: ${imageName} - ${parsed.status}`
+                : `Pulling ${imageName}: ${parsed.status}`;
+              statusCallback(progressMessage, 'info', { percentage });
             }
           }
         } catch (e) {
@@ -1328,7 +1361,10 @@ class DockerSetup extends EventEmitter {
     });
 
     stream.on('end', () => {
-      statusCallback(`✓ Successfully pulled ${imageName}`);
+      const successMessage = isFirstTimePull 
+        ? `✓ First-time setup complete: ${imageName} downloaded successfully!`
+        : `✓ Successfully pulled ${imageName}`;
+      statusCallback(successMessage, 'success', { percentage: 100 });
       this.updatePullTimestamp(imageName);
       resolve();
     });
@@ -1878,6 +1914,15 @@ class DockerSetup extends EventEmitter {
         statusCallback('✓ Ollama detected and available at http://localhost:11434', 'success');
       } else {
         statusCallback('⚠️ Ollama not detected. Please install Ollama manually if you want local AI models. Visit: https://ollama.com', 'warning');
+      }
+
+      // Check if this is first-time setup
+      const timestamps = this.getPullTimestamps();
+      const isFirstTimeSetup = Object.values(timestamps).every(timestamp => timestamp === 0);
+      
+      if (isFirstTimeSetup) {
+        statusCallback(`🎉 Welcome to Clara! Setting up your AI environment for the first time...`, 'info', { percentage: 5 });
+        statusCallback(`This initial setup will download several AI services (may require 1-3 GB). Subsequent startups will be much faster!`, 'info', { percentage: 10 });
       }
 
       // Automatically check for and install container updates

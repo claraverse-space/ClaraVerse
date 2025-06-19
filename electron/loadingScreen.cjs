@@ -57,12 +57,13 @@ class LoadingScreen {
     this.window.loadFile(htmlPath);
   }
 
-  setStatus(message, type = 'info') {
+  setStatus(message, type = 'info', progress = null) {
     if (!this.window) return;
     
     const data = {
       message: message,
       type: type,
+      progress: progress,
       timestamp: new Date().toISOString()
     };
     
