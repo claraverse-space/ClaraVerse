@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles, RotateCcw, History, Clock, AlertTriangle, User } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles, RotateCcw, History, Clock, AlertTriangle, User, ArrowDown } from 'lucide-react';
 import { LiteProjectFile } from '../LumaUILite';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -502,6 +502,20 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
+  // Scroll management
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll events
+  const handleScroll = useCallback(() => {
+    if (containerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+      const threshold = 100; // pixels from bottom
+      const isNear = scrollTop + clientHeight >= scrollHeight - threshold;
+      setIsNearBottom(isNear);
+    }
+  }, []);
+  
   // Initialize tools with all required callbacks
   const liteTools = useMemo(() => createLumaUILiteTools({
     projectFiles,
@@ -584,10 +598,15 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
     }
   }, [selectedProviderId, providers]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when new messages arrive (only if user is near bottom)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (isNearBottom && messagesEndRef.current) {
+      const timer = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [messages, isLoading, isNearBottom]);
 
   // Sync project files when they change from parent
   useEffect(() => {
@@ -1932,9 +1951,10 @@ Use this context to maintain continuity and understand the project's evolution. 
   };
 
   return (
-    <div className="h-full flex flex-col glassmorphic border-l border-white/20 dark:border-gray-700/50 w-full overflow-hidden bg-white/80 dark:bg-gray-900/80" style={{ minWidth: '100%', maxWidth: '100%', width: '100%' }}>
+    // 80% of viewport height
+    <div className="h-[86vh] flex flex-col bg-white/80 dark:bg-gray-900/80 max-h-screen overflow-hidden">
       {/* Simple Header */}
-      <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-gray-700/50 shrink-0 bg-white/90 dark:bg-gray-800/90">
+      <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0 bg-white/90 dark:bg-gray-800/90">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-sakura-500 flex items-center justify-center">
             <Bot className="w-4 h-4 text-white" />
@@ -2047,7 +2067,7 @@ Use this context to maintain continuity and understand the project's evolution. 
 
       {/* Auto Mode Status */}
       {isAutoMode && (currentTask || showPlanning) && (
-        <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-700">
+        <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-purple-500 flex items-center justify-center">
               {currentPlanning?.status === 'planning' && <Brain className="w-3 h-3 text-white" />}
@@ -2074,24 +2094,29 @@ Use this context to maintain continuity and understand the project's evolution. 
       )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 min-h-0 bg-gray-50/50 dark:bg-gray-900/50" style={{ maxWidth: '100%', width: '100%' }}>
+      <div 
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50/50 dark:bg-gray-900/50 relative min-h-0"
+      >
+        <div className="p-4 space-y-4">
         {messages.map((message) => {
           const checkpoint = getCheckpointForMessage(message.id);
 
           return (
-            <div key={message.id} className="group w-full" style={{ maxWidth: '100%', width: '100%' }}>
-              <div className={`flex items-start gap-3 w-full ${message.type === 'user' ? 'flex-row-reverse' : ''}`} style={{ maxWidth: '100%', width: '100%' }}>
+            <div key={message.id} className="group">
+              <div className={`flex items-start gap-3 ${message.type === 'user' ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${message.type === 'user' ? 'bg-gray-600' : 'bg-sakura-500'}`}>
                   {message.type === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
                 </div>
 
                 {/* Message Bubble */}
-                <div className={`relative max-w-[75%] min-w-0 px-4 py-3 rounded-2xl break-words overflow-wrap-anywhere overflow-hidden ${
+                <div className={`relative flex-1 min-w-0 max-w-[85%] px-4 py-3 rounded-2xl break-words ${
                   message.type === 'user' 
-                    ? 'bg-sakura-500 text-white rounded-br-md' 
+                    ? 'bg-sakura-500 text-white rounded-br-md ml-auto' 
                     : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-md'
-                }`} style={{ maxWidth: '75%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                }`}>
                   {/* Checkpoint Badge */}
                   {checkpoint && (
                     <div className={`absolute -top-2 ${message.type === 'user' ? '-left-2' : '-right-2'}`}>
@@ -2101,7 +2126,7 @@ Use this context to maintain continuity and understand the project's evolution. 
                      </div>
                    )}
                   
-                  <div className={`prose prose-sm max-w-none break-words overflow-wrap-anywhere ${
+                  <div className={`prose prose-sm max-w-none break-words ${
                     message.type === 'user' 
                       ? 'prose-invert text-white' 
                       : 'text-gray-900 dark:text-gray-100'
@@ -2109,7 +2134,7 @@ Use this context to maintain continuity and understand the project's evolution. 
                     <ReactMarkdown
                       components={{
                         p: ({...props}: any) => (
-                          <p className={`mb-2 last:mb-0 break-words overflow-wrap-anywhere ${
+                          <p className={`mb-2 last:mb-0 break-words ${
                             message.type === 'user' 
                               ? 'text-white' 
                               : 'text-gray-900 dark:text-gray-100'
@@ -2151,7 +2176,7 @@ Use this context to maintain continuity and understand the project's evolution. 
                           }`} {...props} />
                         ),
                         li: ({...props}: any) => (
-                          <li className={`mb-1 break-words overflow-wrap-anywhere ${
+                          <li className={`mb-1 break-words ${
                             message.type === 'user' 
                               ? 'text-white' 
                               : 'text-gray-900 dark:text-gray-100'
@@ -2209,15 +2234,15 @@ Use this context to maintain continuity and understand the project's evolution. 
         
         {/* Loading State */}
         {isLoading && (
-          <div className="group w-full" style={{ maxWidth: '100%', width: '100%' }}>
-            <div className="flex items-start gap-3 w-full" style={{ maxWidth: '100%', width: '100%' }}>
+          <div className="group">
+            <div className="flex items-start gap-3">
               {/* Avatar */}
               <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-sakura-500">
                 <Bot className="w-4 h-4 text-white" />
               </div>
 
               {/* Message Bubble */}
-              <div className="relative max-w-[75%] min-w-0 px-4 py-3 rounded-2xl break-words overflow-wrap-anywhere overflow-hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-md" style={{ maxWidth: '75%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+              <div className="relative flex-1 min-w-0 max-w-[85%] px-4 py-3 rounded-2xl break-words bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-md">
                 <div className="flex items-center gap-3">
                   <div className="w-6 h-6 rounded bg-sakura-500 flex items-center justify-center">
                     <Loader2 className="w-3 h-3 text-white animate-spin" />
@@ -2232,10 +2257,22 @@ Use this context to maintain continuity and understand the project's evolution. 
         )}
         
         <div ref={messagesEndRef} />
+        </div>
+
+        {/* Scroll to Bottom Button */}
+        {!isNearBottom && (
+          <button
+            onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className="absolute bottom-4 right-4 w-10 h-10 bg-sakura-500 text-white rounded-full shadow-lg hover:bg-sakura-600 transition-colors flex items-center justify-center z-10"
+            title="Scroll to bottom"
+          >
+            <ArrowDown className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-white/20 dark:border-gray-700/50 shrink-0 bg-white/90 dark:bg-gray-800/90">
+      <div className="p-4 border-t border-white/20 dark:border-gray-700/50 flex-shrink-0 bg-white/90 dark:bg-gray-800/90">
         <div className="flex items-end gap-3">
           <div className="flex-1 relative">
             <textarea
