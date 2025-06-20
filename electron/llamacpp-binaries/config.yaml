@@ -1,58 +1,24 @@
 # Auto-generated llama-swap configuration
-# Models directory: C:\Users\Admin\.clara\llama-models
+# Models directory: /Users/badfy17g/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "gemma3:4b":
+  "qwen3:0.6b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\BadBoy17G\gemma-3-4b-it-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 32768 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    ttl: 300
-
-  "llama3.2:1b":
-    proxy: "http://127.0.0.1:9999"
-    cmd: |
-      "C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\BadBoy17G\Llama-3.2-1B-Instruct-IQ4_XS.gguf"
-      --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 32768 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    ttl: 300
-
-  "nomic-embed-text-v1-5":
-    proxy: "http://127.0.0.1:9998"
-    cmd: |
-      "C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\BadBoy17G\nomic-embed-text-v1.5.Q4_0.gguf"
-      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --embeddings --threads 8 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
-    ttl: 300
-
-  "nomic-embed-text-v2":
-    proxy: "http://127.0.0.1:9998"
-    cmd: |
-      "C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64\llama-server.exe"
-      -m "C:\Users\BadBoy17G\nomic-embed-text-v2-moe.Q8_0.gguf"
-      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --embeddings --threads 8 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
+      -m "/Users/badfy17g/.clara/llama-models/Qwen3-0.6B-IQ4_NL.gguf"
+      --port 9999 --jinja --n-gpu-layers 60 --threads 1 --ctx-size 8192 --batch-size 512 --ubatch-size 512 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+    env:
+      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
     ttl: 300
 
 groups:
-  "embedding_models":
-    # Allow multiple embedding models to run together
-    swap: false
-    # Don't unload other groups when embedding models start
-    exclusive: false
-    # Prevent other groups from unloading embedding models
-    persistent: true
-    members:
-      - "nomic-embed-text-v1-5"
-      - "nomic-embed-text-v2"
-
   "regular_models":
     # Only one regular model at a time (traditional behavior)
     swap: true
     # Unload other non-persistent groups when loading
     exclusive: true
     members:
-      - "gemma3:4b"
-      - "llama3.2:1b"
+      - "qwen3:0.6b"

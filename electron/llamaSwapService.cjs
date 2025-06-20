@@ -800,11 +800,11 @@ models:
         cmdLine += ` --cache-type-v ${perfConfig.kvCacheType}`;
       }
       
-      // 10. Context shift for handling long conversations
-      if (perfConfig.enableContextShift !== false && !isEmbedding) {
-        cmdLine += ` --ctx-shift`;
-        log.info(`Model ${model.name}: Context shift enabled for long conversations`);
-      }
+      // 10. Context shift for handling long conversations - DISABLED (not supported by llama-server yet)
+      // if (perfConfig.enableContextShift !== false && !isEmbedding) {
+      //   cmdLine += ` --ctx-shift`;
+      //   log.info(`Model ${model.name}: Context shift enabled for long conversations`);
+      // }
       
       // TTFT-specific optimizations (only when explicitly enabled in settings)
       if (perfConfig.optimizeFirstToken) {
@@ -2238,10 +2238,10 @@ ${cmdLine}`;
       args.push('--flash-attn');
     }
     
-    // Context shift for long conversations
-    if (perfConfig.enableContextShift !== false) {
-      args.push('--ctx-shift');
-    }
+    // Context shift for long conversations - DISABLED (not supported by llama-server yet)
+    // if (perfConfig.enableContextShift !== false) {
+    //   args.push('--ctx-shift');
+    // }
     
     return args;
   }
