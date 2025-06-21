@@ -39,8 +39,12 @@ class DockerSetup extends EventEmitter {
         internalPort: 5000,
         healthCheck: this.isPythonRunning.bind(this),
         volumes: [
+          'clara_python_data:/app/data',
+          'clara_python_models:/app/models',
+          'clara_python_cache:/root/.cache',
           `${this.appDataPath}:/root/.clara`
-        ]
+        ],
+        volumeNames: ['clara_python_data', 'clara_python_models', 'clara_python_cache']
       },
       n8n: {
         name: 'clara_n8n',
@@ -1613,6 +1617,63 @@ class DockerSetup extends EventEmitter {
     }
   }
 
+  async createDockerVolumes() {
+    try {
+      console.log('Creating Docker volumes for persistent storage...');
+      
+      // Get list of existing volumes
+      const volumes = await this.docker.listVolumes();
+      const existingVolumeNames = volumes.Volumes ? volumes.Volumes.map(vol => vol.Name) : [];
+      
+      // Collect all volume names from all containers that specify them
+      const volumesToCreate = [];
+      for (const [serviceName, config] of Object.entries(this.containers)) {
+        if (config.volumeNames) {
+          for (const volumeName of config.volumeNames) {
+            if (!existingVolumeNames.includes(volumeName)) {
+              volumesToCreate.push({
+                name: volumeName,
+                service: serviceName
+              });
+            }
+          }
+        }
+      }
+      
+      // Create volumes that don't exist
+      for (const volumeInfo of volumesToCreate) {
+        try {
+          await this.docker.createVolume({
+            Name: volumeInfo.name,
+            Driver: 'local',
+            Labels: {
+              'clara.service': volumeInfo.service,
+              'clara.managed': 'true'
+            }
+          });
+          console.log(`✓ Created Docker volume: ${volumeInfo.name} for ${volumeInfo.service}`);
+        } catch (error) {
+          // Handle conflict error (volume created between our check and creation)
+          if (error.statusCode === 409) {
+            console.log(`Volume ${volumeInfo.name} already exists, continuing...`);
+          } else {
+            console.error(`Error creating volume ${volumeInfo.name}:`, error.message);
+            // Don't throw here, continue with other volumes
+          }
+        }
+      }
+      
+      if (volumesToCreate.length === 0) {
+        console.log('All required Docker volumes already exist');
+      }
+      
+    } catch (error) {
+      console.error('Error in createDockerVolumes:', error.message);
+      // Don't throw here to allow the application to continue
+      // Containers will still work with the bind mounts if volumes fail
+    }
+  }
+
   async pullImage(imageName, statusCallback) {
     // Use the new architecture-aware pull method
     return this.pullImageWithProgress(imageName, statusCallback);
@@ -1908,6 +1969,9 @@ class DockerSetup extends EventEmitter {
       statusCallback('Creating Docker network...');
       await this.createNetwork();
 
+      statusCallback('Creating Docker volumes for persistent storage...');
+      await this.createDockerVolumes();
+
       // Check if Ollama is running on the system (no container management)
       const ollamaRunning = await this.checkOllamaAvailability();
       if (ollamaRunning) {
@@ -2005,6 +2069,44 @@ class DockerSetup extends EventEmitter {
     } catch (error) {
       console.error('Error stopping services:', error);
       throw error;
+    }
+  }
+
+  async cleanupDockerVolumes() {
+    try {
+      console.log('Cleaning up Clara-managed Docker volumes...');
+      
+      // Get list of existing volumes
+      const volumes = await this.docker.listVolumes();
+      if (!volumes.Volumes) {
+        console.log('No volumes to clean up');
+        return;
+      }
+      
+      // Find Clara-managed volumes
+      const claraVolumes = volumes.Volumes.filter(vol => 
+        vol.Labels && vol.Labels['clara.managed'] === 'true'
+      );
+      
+      // Remove Clara-managed volumes
+      for (const volume of claraVolumes) {
+        try {
+          const dockerVolume = this.docker.getVolume(volume.Name);
+          await dockerVolume.remove();
+          console.log(`✓ Removed Docker volume: ${volume.Name}`);
+        } catch (error) {
+          console.error(`Error removing volume ${volume.Name}:`, error.message);
+          // Don't throw here, continue with other volumes
+        }
+      }
+      
+      if (claraVolumes.length === 0) {
+        console.log('No Clara-managed volumes found to clean up');
+      }
+      
+    } catch (error) {
+      console.error('Error in cleanupDockerVolumes:', error.message);
+      // Don't throw here to allow the application to continue
     }
   }
 

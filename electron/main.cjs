@@ -17,6 +17,7 @@ const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
 const WatchdogService = require('./watchdogService.cjs');
 const ComfyUIModelService = require('./comfyUIModelService.cjs');
+const PlatformManager = require('./platformManager.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 
@@ -1944,6 +1945,115 @@ function registerHandlers() {
     }
   });
 
+  // System resource configuration handlers
+  ipcMain.handle('get-system-config', async () => {
+    try {
+      if (global.systemConfig) {
+        log.info('✅ Returning cached system configuration');
+        return global.systemConfig;
+      }
+      
+      // If no cached config, try to load from platform manager
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      const config = await platformManager.getSystemConfiguration();
+      
+      // Cache it globally
+      global.systemConfig = config;
+      
+      return config;
+    } catch (error) {
+      log.error('❌ Error getting system configuration:', error);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('refresh-system-config', async () => {
+    try {
+      log.info('🔄 Refreshing system configuration...');
+      
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      const config = await platformManager.getSystemConfiguration(true); // Force refresh
+      
+      // Update global cache
+      global.systemConfig = config;
+      
+      log.info('✅ System configuration refreshed successfully');
+      return config;
+    } catch (error) {
+      log.error('❌ Error refreshing system configuration:', error);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('check-feature-requirements', async (event, featureName) => {
+    try {
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      const requirements = await platformManager.checkFeatureRequirements(featureName);
+      
+      log.info(`🔍 Feature requirements check for '${featureName}':`, requirements);
+      return requirements;
+    } catch (error) {
+      log.error(`❌ Error checking requirements for feature '${featureName}':`, error);
+      return { supported: false, reason: error.message };
+    }
+  });
+
+  ipcMain.handle('get-performance-mode', async () => {
+    try {
+      if (global.systemConfig) {
+        return {
+          performanceMode: global.systemConfig.performanceMode,
+          enabledFeatures: global.systemConfig.enabledFeatures,
+          resourceLimitations: global.systemConfig.resourceLimitations
+        };
+      }
+      
+      return { performanceMode: 'unknown', enabledFeatures: {}, resourceLimitations: {} };
+    } catch (error) {
+      log.error('❌ Error getting performance mode:', error);
+      return { error: error.message };
+    }
+  });
+
+  // OS Compatibility handlers
+  ipcMain.handle('get-os-compatibility', async () => {
+    try {
+      if (global.systemConfig && global.systemConfig.osCompatibility) {
+        return global.systemConfig.osCompatibility;
+      } else {
+        // If not available globally, run fresh validation
+        const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+        const osCompatibility = await platformManager.validateOSCompatibility();
+        return osCompatibility;
+      }
+    } catch (error) {
+      log.error('Error getting OS compatibility info:', error);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-detailed-os-info', async () => {
+    try {
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      const osInfo = await platformManager.getDetailedOSInfo();
+      return osInfo;
+    } catch (error) {
+      log.error('Error getting detailed OS info:', error);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('validate-os-compatibility', async () => {
+    try {
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      const compatibility = await platformManager.validateOSCompatibility();
+      return compatibility;
+    } catch (error) {
+      log.error('Error validating OS compatibility:', error);
+      return { error: error.message };
+    }
+  });
+
   // ComfyUI consent management
   ipcMain.handle('save-comfyui-consent', async (event, hasConsented) => {
     try {
@@ -2620,11 +2730,86 @@ async function initialize() {
     
     // Show loading screen first
     loadingScreen = new LoadingScreen();
-    loadingScreen.setStatus('Checking system requirements...', 'info');
+    loadingScreen.setStatus('Validating system resources...', 'info');
     
-    // Check if Docker is available
+    // Validate system resources and OS compatibility first
+    let systemConfig;
+    try {
+      const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
+      systemConfig = await platformManager.validateSystemResources();
+      
+      // Handle critical OS compatibility issues
+      if (systemConfig.osCompatibility && !systemConfig.osCompatibility.isSupported) {
+        log.error('🚨 Critical OS compatibility issue detected');
+        log.error('❌ Your operating system version is not supported by ClaraVerse');
+        
+        // Show upgrade instructions
+        const upgradeInstructions = systemConfig.osCompatibility.upgradeInstructions;
+        if (upgradeInstructions) {
+          log.error(`📋 ${upgradeInstructions.title}`);
+          log.error(`💡 ${upgradeInstructions.description}`);
+          log.error('🔧 Upgrade Instructions:');
+          upgradeInstructions.instructions.forEach(instruction => {
+            log.error(`   ${instruction}`);
+          });
+        }
+        
+        // Show critical OS compatibility warning
+        loadingScreen.setStatus('Critical OS compatibility issue detected - Limited functionality', 'error');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Show warning for 3 seconds
+        
+        // Force core-only mode for unsupported OS
+        systemConfig.performanceMode = 'core-only';
+        systemConfig.enabledFeatures = {
+          claraCore: true,
+          dockerServices: false,
+          comfyUI: false,
+          advancedFeatures: false
+        };
+        
+        log.warn('🔧 Forcing Core-Only mode due to OS compatibility issues');
+      }
+      
+      // Log system resource validation results
+      if (systemConfig.performanceMode === 'core-only') {
+        const reason = systemConfig.osCompatibility && !systemConfig.osCompatibility.isSupported ? 
+          'OS compatibility and system resource limitations' : 'insufficient system resources';
+        loadingScreen.setStatus(`Starting in Core-Only mode due to ${reason}...`, 'warning');
+        log.warn(`🎯 Starting in Core-Only mode due to ${reason}`);
+      } else if (systemConfig.performanceMode === 'lite') {
+        loadingScreen.setStatus('Limited system resources - Starting in Lite mode...', 'warning');
+        log.info('⚡ Starting in Lite mode with reduced features');
+      } else {
+        loadingScreen.setStatus('System validation complete - Full feature mode available', 'success');
+        log.info('✅ Starting in Full feature mode');
+      }
+      
+      // Log OS compatibility warnings if any
+      if (systemConfig.osCompatibility && systemConfig.osCompatibility.warnings.length > 0) {
+        log.warn('⚠️  OS compatibility warnings:');
+        systemConfig.osCompatibility.warnings.forEach(warning => log.warn(`   • ${warning}`));
+      }
+      
+    } catch (error) {
+      log.error('❌ System resource validation failed, continuing with default configuration:', error);
+      loadingScreen.setStatus('System validation failed - Using default configuration...', 'warning');
+      systemConfig = null;
+    }
+    
+    // Store system config globally for use throughout the application
+    global.systemConfig = systemConfig;
+    
+    loadingScreen.setStatus('Checking Docker availability...', 'info');
+    
+    // Check if Docker is available (but skip if in core-only mode)
     dockerSetup = new DockerSetup();
-    const isDockerAvailable = await dockerSetup.isDockerRunning();
+    let isDockerAvailable = false;
+    
+    if (systemConfig && systemConfig.enabledFeatures.dockerServices) {
+      isDockerAvailable = await dockerSetup.isDockerRunning();
+    } else {
+      log.info('🔧 Docker services disabled due to system resource limitations');
+    }
     
     if (isDockerAvailable) {
       console.log('Docker detected - starting with Docker services setup');
@@ -2665,11 +2850,30 @@ async function initializeWithDocker() {
     // Register handlers for various app functions
     registerHandlers();
     
+    // Check system configuration before initializing services
+    const systemConfig = global.systemConfig;
+    if (systemConfig && !systemConfig.enabledFeatures.dockerServices) {
+      log.warn('🔧 Docker services disabled due to system resource limitations, falling back to lightweight mode');
+      return await initializeWithoutDocker();
+    }
+    
     // Initialize all services
     llamaSwapService = new LlamaSwapService();
     mcpService = new MCPService();
     updateService = platformUpdateService;
-    comfyUIModelService = new ComfyUIModelService();
+    
+    // Apply system resource limitations to LlamaSwap service
+    if (systemConfig && systemConfig.resourceLimitations) {
+      llamaSwapService.applyResourceLimitations(systemConfig.resourceLimitations);
+      log.info('🎯 Applied system resource limitations to LlamaSwap service:', systemConfig.resourceLimitations);
+    }
+    
+    // Only initialize ComfyUI if system supports it
+    if (systemConfig && systemConfig.enabledFeatures.comfyUI) {
+      comfyUIModelService = new ComfyUIModelService();
+    } else {
+      log.info('🎨 ComfyUI disabled due to system resource limitations');
+    }
     
     // Load custom model path from file-based storage
     await loadCustomModelPath();

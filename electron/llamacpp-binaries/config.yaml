@@ -1,24 +1,77 @@
 # Auto-generated llama-swap configuration
-# Models directory: /Users/badfy17g/.clara/llama-models
+# Models directory: /home/badboy17/.clara/llama-models
 healthCheckTimeout: 30
 logLevel: info
 
 models:
-  "qwen3:0.6b":
+  "deepseek-r1-0528:8b":
     proxy: "http://127.0.0.1:9999"
     cmd: |
-      "/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64/llama-server"
-      -m "/Users/badfy17g/.clara/llama-models/Qwen3-0.6B-IQ4_NL.gguf"
-      --port 9999 --jinja --n-gpu-layers 60 --threads 1 --ctx-size 8192 --batch-size 512 --ubatch-size 512 --keep 2048 --defrag-thold 0.1 --mlock --parallel 1 --flash-attn
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 32768 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
     env:
-      - "DYLD_LIBRARY_PATH=/Users/badfy17g/ClaraVerse/electron/llamacpp-binaries/darwin-arm64:"
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursorKA9frY/usr/lib/:/tmp/.mount_CursorKA9frY/usr/lib32/:/tmp/.mount_CursorKA9frY/usr/lib64/:/tmp/.mount_CursorKA9frY/lib/:/tmp/.mount_CursorKA9frY/lib/i386-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/x86_64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/aarch64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib32/:/tmp/.mount_CursorKA9frY/lib64/:"
+    ttl: 300
+
+  "qwen3:0.6b":
+    proxy: "http://127.0.0.1:9998"
+    cmd: |
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/Qwen3-Embedding-0.6B-Q8_0.gguf"
+      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --embeddings --threads 8 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursorKA9frY/usr/lib/:/tmp/.mount_CursorKA9frY/usr/lib32/:/tmp/.mount_CursorKA9frY/usr/lib64/:/tmp/.mount_CursorKA9frY/lib/:/tmp/.mount_CursorKA9frY/lib/i386-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/x86_64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/aarch64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib32/:/tmp/.mount_CursorKA9frY/lib64/:"
+    ttl: 300
+
+  "mxbai-embed-large:embed":
+    proxy: "http://127.0.0.1:9998"
+    cmd: |
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/mxbai-embed-large-v1.Q4_0.gguf"
+      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --embeddings --threads 8 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursorKA9frY/usr/lib/:/tmp/.mount_CursorKA9frY/usr/lib32/:/tmp/.mount_CursorKA9frY/usr/lib64/:/tmp/.mount_CursorKA9frY/lib/:/tmp/.mount_CursorKA9frY/lib/i386-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/x86_64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/aarch64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib32/:/tmp/.mount_CursorKA9frY/lib64/:"
+    ttl: 300
+
+  "nomic-embed-text-v1-5":
+    proxy: "http://127.0.0.1:9998"
+    cmd: |
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/nomic-embed-text-v1.5.f16.gguf"
+      --port 9998 --jinja --n-gpu-layers 50 --pooling mean --embeddings --threads 8 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursorKA9frY/usr/lib/:/tmp/.mount_CursorKA9frY/usr/lib32/:/tmp/.mount_CursorKA9frY/usr/lib64/:/tmp/.mount_CursorKA9frY/lib/:/tmp/.mount_CursorKA9frY/lib/i386-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/x86_64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/aarch64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib32/:/tmp/.mount_CursorKA9frY/lib64/:"
+    ttl: 300
+
+  "qwen2.5:7b":
+    proxy: "http://127.0.0.1:9999"
+    cmd: |
+      "/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64/llama-server"
+      -m "/home/badboy17/.clara/llama-models/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+      --port 9999 --jinja --n-gpu-layers 50 --threads 8 --ctx-size 32768 --batch-size 256 --ubatch-size 256 --keep 2048 --defrag-thold 0.1 --mlock --parallel 4 --flash-attn --cont-batching
+    env:
+      - "LD_LIBRARY_PATH=/home/badboy17/ClaraVerse/electron/llamacpp-binaries/linux-x64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/targets/x86_64-linux/lib:/usr/local/cuda-12.6/lib64:/tmp/.mount_CursorKA9frY/usr/lib/:/tmp/.mount_CursorKA9frY/usr/lib32/:/tmp/.mount_CursorKA9frY/usr/lib64/:/tmp/.mount_CursorKA9frY/lib/:/tmp/.mount_CursorKA9frY/lib/i386-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/x86_64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib/aarch64-linux-gnu/:/tmp/.mount_CursorKA9frY/lib32/:/tmp/.mount_CursorKA9frY/lib64/:"
     ttl: 300
 
 groups:
+  "embedding_models":
+    # Allow multiple embedding models to run together
+    swap: false
+    # Don't unload other groups when embedding models start
+    exclusive: false
+    # Prevent other groups from unloading embedding models
+    persistent: true
+    members:
+      - "qwen3:0.6b"
+      - "mxbai-embed-large:embed"
+      - "nomic-embed-text-v1-5"
+
   "regular_models":
     # Only one regular model at a time (traditional behavior)
     swap: true
     # Unload other non-persistent groups when loading
     exclusive: true
     members:
-      - "qwen3:0.6b"
+      - "deepseek-r1-0528:8b"
+      - "qwen2.5:7b"

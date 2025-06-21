@@ -2982,6 +2982,73 @@ ${cmdLine}`;
   getCustomModelPaths() {
     return [...this.customModelPaths];
   }
+
+  /**
+   * Apply system resource limitations to the service
+   */
+  applyResourceLimitations(limitations) {
+    try {
+      log.info('🎯 Applying system resource limitations to LlamaSwap service:', limitations);
+      
+      this.resourceLimitations = limitations;
+      
+      // Apply thread limitations
+      if (limitations.limitedThreads) {
+        log.info(`🧵 Limiting thread count to: ${limitations.limitedThreads}`);
+        this.maxThreads = limitations.limitedThreads;
+      }
+      
+      // Apply context size limitations
+      if (limitations.maxContextSize) {
+        log.info(`📝 Limiting context size to: ${limitations.maxContextSize}`);
+        this.maxContextSize = limitations.maxContextSize;
+      }
+      
+      // Apply concurrent model limitations
+      if (limitations.maxConcurrentModels) {
+        log.info(`🔄 Limiting concurrent models to: ${limitations.maxConcurrentModels}`);
+        this.maxConcurrentModels = limitations.maxConcurrentModels;
+      }
+      
+      // Disable GPU acceleration if required
+      if (limitations.disableGPUAcceleration) {
+        log.info('🚫 GPU acceleration disabled due to system limitations');
+        this.forceDisableGPU = true;
+      }
+      
+      // Store limitations for later use in model spawning
+      this.systemLimitations = limitations;
+      
+      log.info('✅ System resource limitations applied successfully');
+    } catch (error) {
+      log.error('❌ Failed to apply system resource limitations:', error);
+    }
+  }
+
+  /**
+   * Get system resource limitations
+   */
+  getResourceLimitations() {
+    return this.resourceLimitations || {};
+  }
+
+  /**
+   * Check if a feature is limited by system resources
+   */
+  isFeatureLimited(featureName) {
+    const limitations = this.getResourceLimitations();
+    
+    switch (featureName) {
+      case 'gpu':
+        return limitations.disableGPUAcceleration || false;
+      case 'concurrent_models':
+        return limitations.maxConcurrentModels ? limitations.maxConcurrentModels < 2 : false;
+      case 'large_context':
+        return limitations.maxContextSize ? limitations.maxContextSize < 16384 : false;
+      default:
+        return false;
+    }
+  }
 }
 
 module.exports = LlamaSwapService;
