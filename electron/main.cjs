@@ -12,6 +12,7 @@ const DockerSetup = require('./dockerSetup.cjs');
 const { setupAutoUpdater, checkForUpdates, getUpdateInfo, checkLlamacppUpdates, updateLlamacppBinaries } = require('./updateService.cjs');
 const SplashScreen = require('./splash.cjs');
 const LoadingScreen = require('./loadingScreen.cjs');
+const FeatureSelectionScreen = require('./featureSelection.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
@@ -2728,7 +2729,37 @@ async function initialize() {
   try {
     console.log('🚀 Starting application initialization');
     
-    // Show loading screen first
+    // Check if this is first time launch
+    const featureSelection = new FeatureSelectionScreen();
+    let selectedFeatures = null;
+    
+    if (featureSelection.isFirstTimeLaunch()) {
+      console.log('🎯 First time launch detected - showing feature selection');
+      try {
+        selectedFeatures = await featureSelection.show();
+        console.log('✅ Feature selection completed:', selectedFeatures);
+        console.log('✅ Feature selection window should be closed now, continuing with initialization...');
+      } catch (error) {
+        console.error('❌ Feature selection failed or was cancelled:', error.message);
+        // Use default features if selection fails
+        selectedFeatures = {
+          comfyUI: true,
+          n8n: true,
+          ragAndTts: true,
+          claraCore: true
+        };
+        console.log('📋 Using default feature configuration due to error');
+      }
+    } else {
+      // Load existing feature configuration
+      selectedFeatures = FeatureSelectionScreen.getCurrentConfig();
+      console.log('📋 Loaded existing feature configuration:', selectedFeatures);
+    }
+    
+    // Store selected features globally for use throughout initialization
+    global.selectedFeatures = selectedFeatures;
+    
+    // Show loading screen after feature selection
     loadingScreen = new LoadingScreen();
     loadingScreen.setStatus('Validating system resources...', 'info');
     
@@ -2850,17 +2881,27 @@ async function initializeWithDocker() {
     // Register handlers for various app functions
     registerHandlers();
     
-    // Check system configuration before initializing services
+    // Get user's feature selections
+    const selectedFeatures = global.selectedFeatures;
     const systemConfig = global.systemConfig;
+    
+    // Check system configuration before initializing services
     if (systemConfig && !systemConfig.enabledFeatures.dockerServices) {
       log.warn('🔧 Docker services disabled due to system resource limitations, falling back to lightweight mode');
       return await initializeWithoutDocker();
     }
     
-    // Initialize all services
+    // Initialize core services (always enabled)
     llamaSwapService = new LlamaSwapService();
-    mcpService = new MCPService();
     updateService = platformUpdateService;
+    
+    // Initialize MCP service only if RAG & TTS is selected
+    if (selectedFeatures && selectedFeatures.ragAndTts) {
+      log.info('🧠 Initializing MCP service (RAG & TTS enabled)');
+      mcpService = new MCPService();
+    } else {
+      log.info('🧠 MCP service disabled (RAG & TTS not selected)');
+    }
     
     // Apply system resource limitations to LlamaSwap service
     if (systemConfig && systemConfig.resourceLimitations) {
@@ -2868,11 +2909,17 @@ async function initializeWithDocker() {
       log.info('🎯 Applied system resource limitations to LlamaSwap service:', systemConfig.resourceLimitations);
     }
     
-    // Only initialize ComfyUI if system supports it
-    if (systemConfig && systemConfig.enabledFeatures.comfyUI) {
+    // Only initialize ComfyUI if selected by user AND system supports it
+    if (selectedFeatures && selectedFeatures.comfyUI && 
+        (!systemConfig || systemConfig.enabledFeatures.comfyUI)) {
+      log.info('🎨 Initializing ComfyUI service (selected by user)');
       comfyUIModelService = new ComfyUIModelService();
     } else {
-      log.info('🎨 ComfyUI disabled due to system resource limitations');
+      if (!selectedFeatures?.comfyUI) {
+        log.info('🎨 ComfyUI disabled (not selected by user)');
+      } else {
+        log.info('🎨 ComfyUI disabled due to system resource limitations');
+      }
     }
     
     // Load custom model path from file-based storage
@@ -3492,6 +3539,65 @@ ipcMain.on('set-startup-settings', (event, settings) => {
     log.info('Startup settings saved:', settings);
   } catch (error) {
     log.error('Error saving startup settings:', error);
+  }
+});
+
+// Register feature configuration IPC handlers
+ipcMain.handle('get-feature-config', async () => {
+  try {
+    return FeatureSelectionScreen.getCurrentConfig();
+  } catch (error) {
+    log.error('Error getting feature configuration:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('update-feature-config', async (event, newConfig) => {
+  try {
+    const FeatureSelectionScreen = require('./featureSelection.cjs');
+    const featureSelection = new FeatureSelectionScreen();
+    
+    // Load current config
+    const currentConfig = featureSelection.loadConfig();
+    
+    // Update with new selections
+    const updatedConfig = {
+      ...currentConfig,
+      selectedFeatures: {
+        claraCore: true, // Always enabled
+        ...newConfig
+      },
+      setupTimestamp: new Date().toISOString()
+    };
+    
+    // Save the updated configuration
+    const success = featureSelection.saveConfig(updatedConfig);
+    
+    if (success) {
+      // Update global selected features
+      global.selectedFeatures = updatedConfig.selectedFeatures;
+      log.info('✅ Feature configuration updated:', updatedConfig.selectedFeatures);
+    }
+    
+    return success;
+  } catch (error) {
+    log.error('Error updating feature configuration:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('reset-feature-config', async () => {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'clara-features.yaml');
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+      log.info('Feature configuration reset successfully');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    log.error('Error resetting feature configuration:', error);
+    return false;
   }
 });
 

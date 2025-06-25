@@ -1966,6 +1966,14 @@ class DockerSetup extends EventEmitter {
         return false;
       }
 
+      // Get user's feature selections from global scope
+      const selectedFeatures = global.selectedFeatures || {
+        comfyUI: true,
+        n8n: true,
+        ragAndTts: true,
+        claraCore: true
+      };
+
       statusCallback('Creating Docker network...');
       await this.createNetwork();
 
@@ -1992,9 +2000,41 @@ class DockerSetup extends EventEmitter {
       // Automatically check for and install container updates
       await this.autoUpdateContainers(statusCallback);
 
+      // Filter containers based on user selections
+      const enabledContainers = {};
+      for (const [name, config] of Object.entries(this.containers)) {
+        let shouldEnable = false;
+        
+        switch (name) {
+          case 'python':
+            // Python backend is always enabled (core service)
+            shouldEnable = true;
+            break;
+          case 'n8n':
+            // N8N only if user selected it
+            shouldEnable = selectedFeatures.n8n;
+            break;
+          case 'comfyui':
+            // ComfyUI only if user selected it
+            shouldEnable = selectedFeatures.comfyUI;
+            break;
+          default:
+            // Unknown services disabled by default
+            shouldEnable = false;
+            break;
+        }
+        
+        if (shouldEnable) {
+          enabledContainers[name] = config;
+          statusCallback(`✓ ${name} service enabled (selected by user)`);
+        } else {
+          statusCallback(`⏭️ ${name} service disabled (not selected by user)`, 'info');
+        }
+      }
+
       // Resolve actual available image names and ensure all images are available locally
       const resolvedContainers = {};
-      for (const [name, config] of Object.entries(this.containers)) {
+      for (const [name, config] of Object.entries(enabledContainers)) {
         // Check if image is already architecture-specific (has -amd64 or -arm64 suffix)
         const isAlreadyArchSpecific = config.image.includes('-amd64') || config.image.includes('-arm64');
         

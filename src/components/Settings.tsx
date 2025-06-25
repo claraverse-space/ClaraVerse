@@ -103,6 +103,16 @@ const Settings = () => {
     restoreLastSession: true
   });
 
+  // Add feature configuration state
+  const [featureConfig, setFeatureConfig] = useState({
+    comfyUI: true,
+    n8n: true,
+    ragAndTts: true,
+    claraCore: true
+  });
+  const [featureConfigLoaded, setFeatureConfigLoaded] = useState(false);
+  const [savingFeatureConfig, setSavingFeatureConfig] = useState(false);
+
   // Type for update info to fix TypeScript errors
   interface UpdateInfo {
     hasUpdate: boolean;
@@ -155,6 +165,9 @@ const Settings = () => {
 
       // Load startup configuration
       await loadStartupConfig();
+
+      // Load feature configuration
+      await loadFeatureConfig();
     };
 
     loadSettings();
@@ -170,6 +183,22 @@ const Settings = () => {
       }
     } catch (error) {
       console.error('Failed to load startup configuration:', error);
+    }
+  };
+
+  // Load feature configuration
+  const loadFeatureConfig = async () => {
+    try {
+      if ((window as any).featureConfig?.getFeatureConfig) {
+        const config = await (window as any).featureConfig.getFeatureConfig();
+        if (config) {
+          setFeatureConfig(config);
+        }
+      }
+      setFeatureConfigLoaded(true);
+    } catch (error) {
+      console.error('Failed to load feature configuration:', error);
+      setFeatureConfigLoaded(true);
     }
   };
 
@@ -197,6 +226,35 @@ const Settings = () => {
       console.error('Failed to update startup configuration:', error);
       // Revert on error
       setStartupConfig(startupConfig);
+    }
+  };
+
+  // Update feature configuration
+  const updateFeatureConfig = async (updates: Partial<typeof featureConfig>) => {
+    try {
+      setSavingFeatureConfig(true);
+      const newConfig = { ...featureConfig, ...updates };
+      
+      // Clara Core is always enabled
+      newConfig.claraCore = true;
+      
+      setFeatureConfig(newConfig);
+      
+      // Save to electron backend
+      if ((window as any).featureConfig?.updateFeatureConfig) {
+        const success = await (window as any).featureConfig.updateFeatureConfig(newConfig);
+        if (!success) {
+          throw new Error('Failed to save feature configuration');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Failed to update feature configuration:', error);
+      // Revert on error
+      setFeatureConfig(featureConfig);
+      alert('❌ Failed to save feature configuration. Please try again.');
+    } finally {
+      setSavingFeatureConfig(false);
     }
   };
 
@@ -1329,6 +1387,160 @@ const Settings = () => {
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* Feature Configuration */}
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <Puzzle className="w-6 h-6 text-purple-500" />
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Feature Configuration
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Enable or disable features to optimize performance and resource usage
+                    </p>
+                  </div>
+                </div>
+
+                {featureConfigLoaded ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between py-2">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          🤖 Clara Core
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Core AI assistant functionality (Always enabled)
+                        </p>
+                      </div>
+                      <div className="relative w-11 h-6 bg-green-500 rounded-full">
+                        <div className="absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full shadow-md flex items-center justify-center">
+                          <Check className="w-3 h-3 text-green-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-2">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          🎨 ComfyUI - Image Generation
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          AI image generation with Stable Diffusion
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={featureConfig.comfyUI}
+                          onChange={(e) => updateFeatureConfig({ comfyUI: e.target.checked })}
+                          disabled={savingFeatureConfig}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 dark:peer-focus:ring-purple-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between py-2">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          ⚡ N8N - Workflow Automation
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Visual workflow builder and automation
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={featureConfig.n8n}
+                          onChange={(e) => updateFeatureConfig({ n8n: e.target.checked })}
+                          disabled={savingFeatureConfig}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 dark:peer-focus:ring-purple-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between py-2">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          🧠 RAG & TTS - Advanced AI
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Document analysis and text-to-speech capabilities
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={featureConfig.ragAndTts}
+                          onChange={(e) => updateFeatureConfig({ ragAndTts: e.target.checked })}
+                          disabled={savingFeatureConfig}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 dark:peer-focus:ring-purple-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    {savingFeatureConfig && (
+                      <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-sm text-purple-700 dark:text-purple-300">
+                            Saving feature configuration...
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-amber-700 dark:text-amber-300">
+                          <strong>Note:</strong> Changes will take effect after restarting the application. 
+                          Disabled features won't be loaded during startup, saving system resources.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <button
+                        onClick={async () => {
+                          try {
+                            if ((window as any).featureConfig?.resetFeatureConfig) {
+                              const success = await (window as any).featureConfig.resetFeatureConfig();
+                              if (success) {
+                                // Reset to defaults
+                                setFeatureConfig({
+                                  comfyUI: true,
+                                  n8n: true,
+                                  ragAndTts: true,
+                                  claraCore: true
+                                });
+                                alert('✅ Feature configuration reset to defaults. The feature selection screen will appear on next startup.');
+                              } else {
+                                alert('❌ No feature configuration found to reset.');
+                              }
+                            }
+                          } catch (error) {
+                            console.error('Failed to reset feature configuration:', error);
+                            alert('❌ Failed to reset feature configuration.');
+                          }
+                        }}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reset to First-Time Setup
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
+                  </div>
+                )}
               </div>
 
               {/* Startup Options */}

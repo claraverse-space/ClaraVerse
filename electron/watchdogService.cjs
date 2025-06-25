@@ -9,6 +9,14 @@ class WatchdogService extends EventEmitter {
     this.llamaSwapService = llamaSwapService;
     this.mcpService = mcpService;
     
+    // Get user's feature selections
+    const selectedFeatures = global.selectedFeatures || {
+      comfyUI: true,
+      n8n: true,
+      ragAndTts: true,
+      claraCore: true
+    };
+    
     // Watchdog configuration
     this.config = {
       checkInterval: 30000, // Check every 30 seconds
@@ -19,45 +27,60 @@ class WatchdogService extends EventEmitter {
       maxNotificationAttempts: 3, // Stop showing notifications after this many attempts
     };
     
-    // Service status tracking
-    this.services = {
-      clarasCore: {
-        name: "Clara's Core",
-        status: 'unknown',
-        lastCheck: null,
-        failureCount: 0,
-        isRetrying: false,
-        healthCheck: () => this.checkClarasCoreHealth(),
-        restart: () => this.restartClarasCore()
-      },
-      n8n: {
+    // Service status tracking - only include selected services
+    this.services = {};
+    
+    // Clara Core is always enabled
+    this.services.clarasCore = {
+      name: "Clara's Core",
+      status: 'unknown',
+      lastCheck: null,
+      failureCount: 0,
+      isRetrying: false,
+      enabled: true,
+      healthCheck: () => this.checkClarasCoreHealth(),
+      restart: () => this.restartClarasCore()
+    };
+    
+    // Python backend is always enabled (core service)
+    this.services.python = {
+      name: 'Python Backend Service',
+      status: 'unknown',
+      lastCheck: null,
+      failureCount: 0,
+      isRetrying: false,
+      enabled: selectedFeatures.ragAndTts, // Only if RAG & TTS is selected
+      healthCheck: () => this.checkPythonHealth(),
+      restart: () => this.restartPythonService()
+    };
+    
+    // N8N only if selected
+    if (selectedFeatures.n8n) {
+      this.services.n8n = {
         name: 'n8n Workflow Engine',
         status: 'unknown',
         lastCheck: null,
         failureCount: 0,
         isRetrying: false,
+        enabled: true,
         healthCheck: () => this.checkN8nHealth(),
         restart: () => this.restartN8nService()
-      },
-      python: {
-        name: 'Python Backend Service',
-        status: 'unknown',
-        lastCheck: null,
-        failureCount: 0,
-        isRetrying: false,
-        healthCheck: () => this.checkPythonHealth(),
-        restart: () => this.restartPythonService()
-      },
-      comfyui: {
+      };
+    }
+    
+    // ComfyUI only if selected
+    if (selectedFeatures.comfyUI) {
+      this.services.comfyui = {
         name: 'ComfyUI Image Generation',
         status: 'unknown',
         lastCheck: null,
         failureCount: 0,
         isRetrying: false,
+        enabled: true, // Will be updated based on user consent
         healthCheck: () => this.checkComfyUIHealth(),
         restart: () => this.restartComfyUIService()
-      }
-    };
+      };
+    }
     
     // Watchdog state
     this.isRunning = false;

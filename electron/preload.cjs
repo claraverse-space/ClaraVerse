@@ -350,6 +350,13 @@ contextBridge.exposeInMainWorld('startupSettings', {
   getStartupSettings: () => ipcRenderer.invoke('get-startup-settings')
 });
 
+// Add feature configuration API
+contextBridge.exposeInMainWorld('featureConfig', {
+  getFeatureConfig: () => ipcRenderer.invoke('get-feature-config'),
+  updateFeatureConfig: (config) => ipcRenderer.invoke('update-feature-config', config),
+  resetFeatureConfig: () => ipcRenderer.invoke('reset-feature-config')
+});
+
 // Notify main process when preload script has loaded
 window.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('app-ready', 'Preload script has loaded');
