@@ -50,6 +50,14 @@ interface DockerServicesStatus {
   };
 }
 
+// Add interface for feature configuration
+interface FeatureConfig {
+  comfyUI: boolean;
+  n8n: boolean;
+  ragAndTts: boolean;
+  claraCore: boolean;
+}
+
 interface MenuItem {
   icon: any;
   label: string;
@@ -68,6 +76,30 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     pythonAvailable: false,
     comfyuiAvailable: false
   });
+  const [featureConfig, setFeatureConfig] = useState<FeatureConfig>({
+    comfyUI: true,
+    n8n: true,
+    ragAndTts: true,
+    claraCore: true
+  });
+
+  // Load feature configuration on mount
+  useEffect(() => {
+    const loadFeatureConfig = async () => {
+      try {
+        if ((window as any).featureConfig?.getFeatureConfig) {
+          const config = await (window as any).featureConfig.getFeatureConfig();
+          if (config) {
+            setFeatureConfig(config);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load feature configuration:', error);
+      }
+    };
+
+    loadFeatureConfig();
+  }, []);
 
   // Listen for Clara background activity changes
   useEffect(() => {
@@ -89,9 +121,9 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
           
           // Check ComfyUI status specifically
           let comfyuiAvailable = false;
-          if (window.electronAPI?.getServicesStatus) {
+          if ((window as any).electronAPI?.getServicesStatus) {
             try {
-              const servicesStatus = await window.electronAPI.getServicesStatus();
+              const servicesStatus = await (window as any).electronAPI.getServicesStatus();
               if (servicesStatus.services?.comfyui) {
                 // Allow both 'healthy' and 'unknown' as available
                 comfyuiAvailable = ['healthy', 'unknown'].includes(servicesStatus.services.comfyui.status);
@@ -228,14 +260,15 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     { icon: BookOpen, label: 'Notebooks', id: 'notebooks' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
-    { 
+    // Only show Image Gen if ComfyUI feature is enabled
+    ...(featureConfig.comfyUI ? [{
       icon: ImageIcon, 
       label: 'Image Gen', 
       id: 'image-gen',
-      status: dockerServices.comfyuiAvailable ? 'ready' : 'starting'
-    },
-    // Only show n8n if Docker services are available
-    ...(dockerServices.dockerAvailable && dockerServices.n8nAvailable 
+      status: dockerServices.comfyuiAvailable ? 'ready' as const : 'starting' as const
+    }] : []),
+    // Only show n8n if feature is enabled AND Docker services are available
+    ...(featureConfig.n8n && dockerServices.dockerAvailable && dockerServices.n8nAvailable 
       ? [{ icon: Network, label: 'Workflows', id: 'n8n' }] 
       : [])
   ];

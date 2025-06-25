@@ -4,424 +4,341 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClaraVerse - Feature Selection</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'quicksand': ['Quicksand', 'sans-serif'],
+                        'sandy': ['Sandy', 'Quicksand', 'sans-serif'],
+                        'system': ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Inter', 'sans-serif']
+                    },
+                    colors: {
+                        sakura: {
+                            50: '#fdf2f8',
+                            100: '#fce7f3',
+                            200: '#fbcfe8',
+                            300: '#f9a8d4',
+                            400: '#f472b6',
+                            500: '#ec4899',
+                            600: '#db2777',
+                            700: '#be185d',
+                            800: '#9d174d',
+                            900: '#831843',
+                        }
+                    },
+                    backdropBlur: {
+                        'xs': '2px',
+                        '3xl': '64px',
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        @font-face {
+            font-family: 'Sandy';
+            src: url('../assets/fonts/sandy.woff2') format('woff2'),
+                 url('../assets/fonts/sandy.woff') format('woff');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            height: 100vh;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
             -webkit-app-region: drag;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Inter', sans-serif;
         }
 
-        .container {
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            padding: 15px;
+        .no-drag {
             -webkit-app-region: no-drag;
-            overflow-y: auto;
-            overflow-x: hidden;
         }
 
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-            flex-shrink: 0;
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
 
-        .logo {
-            font-size: clamp(1.8rem, 4vw, 2.5rem);
-            font-weight: 700;
-            margin-bottom: 8px;
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+        .glass-strong {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+        }
+
+        .sakura-gradient {
+            background: linear-gradient(45deg, #f472b6, #db2777);
+        }
+
+        .sakura-text-gradient {
+            background: linear-gradient(45deg, #f472b6, #db2777);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        .subtitle {
-            font-size: clamp(1rem, 2vw, 1.2rem);
-            opacity: 0.9;
-            margin-bottom: 8px;
+        .dark-gradient {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         }
 
-        .description {
-            font-size: clamp(0.875rem, 1.5vw, 1rem);
-            opacity: 0.8;
-            max-width: 600px;
-            margin: 0 auto;
-            line-height: 1.5;
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
-        .features-grid {
-            display: flex;
-            flex-direction: column;
-            gap: clamp(12px, 2vh, 20px);
-            margin-bottom: 20px;
-            flex: 1;
-            max-width: 600px;
-            width: 100%;
-            margin-left: auto;
-            margin-right: auto;
-            overflow-y: auto;
-            overflow-x: hidden;
+        @keyframes slideInUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(30px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
         }
+
+        @keyframes slideInDown {
+            from { 
+                opacity: 0; 
+                transform: translateY(-30px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .animate-slide-in-up {
+            animation: slideInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .animate-slide-in-down {
+            animation: slideInDown 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .animate-delay-200 { animation-delay: 0.2s; }
+        .animate-delay-400 { animation-delay: 0.4s; }
+        .animate-delay-600 { animation-delay: 0.6s; }
+        .animate-delay-800 { animation-delay: 0.8s; }
+        .animate-delay-1000 { animation-delay: 1.0s; }
+        .animate-delay-1200 { animation-delay: 1.2s; }
+        .animate-delay-1400 { animation-delay: 1.4s; }
+        .animate-delay-1600 { animation-delay: 1.6s; }
+        .animate-delay-1800 { animation-delay: 1.8s; }
 
         .feature-card {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: clamp(16px, 2vw, 24px);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
-            flex-shrink: 0;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .feature-card:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            transform: translateY(-4px) scale(1.02);
         }
 
         .feature-card.selected {
-            background: rgba(76, 175, 80, 0.2);
-            border-color: #4CAF50;
-            box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+            background: rgba(219, 39, 119, 0.2);
+            box-shadow: 0 0 0 2px rgba(219, 39, 119, 0.4), 0 16px 48px rgba(219, 39, 119, 0.2);
         }
 
-        .feature-card.disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            background: rgba(128, 128, 128, 0.1);
+        .feature-card.selected:hover {
+            background: rgba(219, 39, 119, 0.25);
+            box-shadow: 0 0 0 2px rgba(219, 39, 119, 0.5), 0 20px 56px rgba(219, 39, 119, 0.3);
         }
 
-        .feature-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: clamp(8px, 1vh, 12px);
-        }
-
-        .feature-icon {
-            font-size: clamp(1.5rem, 3vw, 2rem);
-            margin-right: clamp(12px, 2vw, 16px);
-            width: clamp(36px, 5vw, 48px);
-            height: clamp(36px, 5vw, 48px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            flex-shrink: 0;
-        }
-
-        .feature-title {
-            font-size: clamp(1.1rem, 2vw, 1.3rem);
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-
-        .feature-subtitle {
-            font-size: clamp(0.8rem, 1.5vw, 0.9rem);
-            opacity: 0.8;
-        }
-
-        .feature-description {
-            font-size: clamp(0.85rem, 1.5vw, 0.95rem);
-            line-height: 1.4;
-            opacity: 0.9;
-        }
-
-        .feature-status {
+        .btn-loading::after {
+            content: '';
             position: absolute;
-            top: 16px;
-            right: 16px;
-            width: 24px;
-            height: 24px;
+            width: 16px;
+            height: 16px;
+            margin: auto;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
             border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
+            animation: spin 1s linear infinite;
         }
 
-        .feature-card.selected .feature-status {
-            background: #4CAF50;
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
         }
 
-        .feature-status::after {
-            content: '✓';
-            color: white;
-            font-weight: bold;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
         }
 
-        .feature-card.selected .feature-status::after {
-            opacity: 1;
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
         }
 
-        .actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: auto;
-            flex-shrink: 0;
-            padding-top: 10px;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: clamp(10px, 1.5vw, 12px) clamp(16px, 2vw, 24px);
-            border: none;
-            border-radius: 8px;
-            font-size: clamp(0.875rem, 1.5vw, 1rem);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-        }
-
-        .btn-primary {
-            background: linear-gradient(45deg, #4CAF50, #45a049);
-            color: white;
-            box-shadow: 0 4px 16px rgba(76, 175, 80, 0.3);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .selection-info {
-            text-align: center;
-            font-size: clamp(0.8rem, 1.5vw, 0.9rem);
-            opacity: 0.8;
-            margin-bottom: 10px;
-            flex-shrink: 0;
-            padding: 0 10px;
-        }
-
-        .core-notice {
-            background: rgba(255, 193, 7, 0.2);
-            border: 1px solid rgba(255, 193, 7, 0.4);
-            border-radius: 8px;
-            padding: clamp(8px, 1.5vw, 12px);
-            margin-bottom: clamp(10px, 2vh, 20px);
-            font-size: clamp(0.8rem, 1.5vw, 0.9rem);
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .close-btn {
-            position: absolute;
-            top: 16px;
-            right: 16px;
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            -webkit-app-region: no-drag;
-        }
-
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .container {
-            animation: fadeIn 0.6s ease-out;
-        }
-
-        /* Responsive adjustments for very small windows */
-        @media (max-height: 600px) {
-            .container {
-                padding: 10px;
-            }
-            
-            .header {
-                margin-bottom: 10px;
-            }
-            
-            .logo {
-                font-size: 1.5rem;
-                margin-bottom: 4px;
-            }
-            
-            .subtitle {
-                font-size: 0.9rem;
-                margin-bottom: 4px;
-            }
-            
-            .description {
-                font-size: 0.8rem;
-                margin-bottom: 8px;
-            }
-            
-            .core-notice {
-                padding: 6px;
-                margin-bottom: 8px;
-                font-size: 0.75rem;
-            }
-            
-            .features-grid {
-                gap: 8px;
-                margin-bottom: 10px;
-            }
-            
-            .feature-card {
-                padding: 12px;
-            }
-            
-            .feature-icon {
-                width: 32px;
-                height: 32px;
-                font-size: 1.2rem;
-                margin-right: 10px;
-            }
-            
-            .feature-title {
-                font-size: 1rem;
-            }
-            
-            .feature-subtitle {
-                font-size: 0.75rem;
-            }
-            
-            .feature-description {
-                font-size: 0.75rem;
-                line-height: 1.3;
-            }
-            
-            .selection-info {
-                font-size: 0.75rem;
-                margin-bottom: 8px;
-            }
-            
-            .btn {
-                padding: 8px 12px;
-                font-size: 0.8rem;
-            }
-        }
-
-        /* Handle overflow for feature grid */
-        @media (max-height: 450px) {
-            .features-grid {
-                max-height: 200px;
-            }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
         }
     </style>
 </head>
-<body>
-    <button class="close-btn" onclick="closeWindow()">×</button>
+<body class="dark-gradient text-white min-h-screen overflow-hidden">
+    <!-- Close button -->
+    <button class="fixed top-6 right-6 z-50 glass w-10 h-10 rounded-full flex items-center justify-center text-white hover:glass-strong hover:scale-110 hover:text-sakura-400 transition-all duration-300 no-drag opacity-0 animate-fade-in animate-delay-400" onclick="closeWindow()" aria-label="Close">
+        <i data-lucide="x" class="w-5 h-5"></i>
+    </button>
     
-    <div class="container">
-        <div class="header">
-            <div class="logo">ClaraVerse</div>
-            <div class="subtitle">Welcome to Your AI Universe</div>
-            <div class="description">
-                Choose the features you want to enable. You can change these settings later in the application preferences.
+    <!-- Main container -->
+    <div class="h-screen w-screen flex flex-col p-4 sm:p-6 lg:p-8 no-drag opacity-0 animate-fade-in">
+                 <!-- Header -->
+         <header class="text-center mb-4 sm:mb-6 lg:mb-8 flex-shrink-0">
+            <!-- Logo and brand -->
+                         <div class="flex items-center justify-center gap-3 sm:gap-4 mb-4 sm:mb-6 opacity-0 animate-slide-in-down animate-delay-200">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl sakura-gradient flex items-center justify-center shadow-2xl">
+                    <i data-lucide="sparkles" class="w-6 h-6 sm:w-7 sm:h-7 text-white"></i>
+                </div>
+                                 <h1 class="font-quicksand text-2xl sm:text-3xl lg:text-4xl font-bold sakura-text-gradient">
+                     ClaraVerse
+                 </h1>
+            </div>
+            
+            <!-- Subtitle and description -->
+            <div class="opacity-0 animate-slide-in-up animate-delay-400">
+                                 <h2 class="font-quicksand text-lg sm:text-xl lg:text-2xl font-semibold mb-3 text-white">
+                     Welcome to Your AI Universe
+                 </h2>
+                <p class="text-sm sm:text-base lg:text-lg text-white/80 max-w-2xl mx-auto leading-relaxed px-4">
+                    Choose the features you want to enable. You can change these settings later in the application preferences.
+                </p>
+            </div>
+        </header>
+
+                 <!-- Core notice -->
+         <div class="glass rounded-2xl p-3 sm:p-4 lg:p-5 mb-4 sm:mb-6 text-center text-xs sm:text-sm opacity-0 animate-slide-in-up animate-delay-600">
+            <p class="text-white">
+                <span class="text-amber-400 font-semibold">Clara Core</span> (AI Assistant & Chat) is always enabled and provides the foundation for all other features.
+            </p>
+        </div>
+
+                 <!-- Features grid -->
+         <div class="flex-1 overflow-y-auto custom-scrollbar mb-4 sm:mb-6">
+                         <div class="space-y-3 sm:space-y-4 lg:space-y-5">
+                <!-- ComfyUI Feature -->
+                                 <div class="feature-card glass rounded-xl lg:rounded-2xl p-4 sm:p-5 lg:p-6 cursor-pointer relative shadow-xl opacity-0 animate-slide-in-up animate-delay-1000 selected" 
+                     data-feature="comfyUI" tabindex="0" role="button" aria-pressed="true">
+                    <!-- Selection indicator -->
+                    <div class="absolute top-5 sm:top-6 lg:top-7 right-5 sm:right-6 lg:right-7 w-7 h-7 rounded-full bg-sakura-600 flex items-center justify-center transform scale-110 shadow-lg shadow-sakura-600/40">
+                        <i data-lucide="check" class="w-4 h-4 text-white"></i>
+                    </div>
+                    
+                    <!-- Feature content -->
+                    <div class="flex items-start gap-4 sm:gap-5 lg:gap-6 mb-4 sm:mb-5">
+                        <div class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 glass rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="palette" class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-white"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-quicksand text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1 sm:mb-2">
+                                ComfyUI
+                            </h3>
+                            <p class="text-xs sm:text-sm lg:text-base text-white/70 font-medium uppercase tracking-wider">
+                                AI Image Generation
+                            </p>
+                        </div>
+                    </div>
+                    <p class="text-sm sm:text-base lg:text-lg text-white/80 leading-relaxed">
+                        Advanced AI image generation with Stable Diffusion, ControlNet, and custom workflows. 
+                        Create stunning artwork, edit images, and experiment with AI-powered creativity.
+                    </p>
+                </div>
+
+                <!-- N8N Feature -->
+                <div class="feature-card glass rounded-2xl lg:rounded-3xl p-5 sm:p-6 lg:p-7 cursor-pointer relative shadow-xl opacity-0 animate-slide-in-up animate-delay-1200 selected" 
+                     data-feature="n8n" tabindex="0" role="button" aria-pressed="true">
+                    <!-- Selection indicator -->
+                    <div class="absolute top-5 sm:top-6 lg:top-7 right-5 sm:right-6 lg:right-7 w-7 h-7 rounded-full bg-sakura-600 flex items-center justify-center transform scale-110 shadow-lg shadow-sakura-600/40">
+                        <i data-lucide="check" class="w-4 h-4 text-white"></i>
+                    </div>
+                    
+                    <!-- Feature content -->
+                    <div class="flex items-start gap-4 sm:gap-5 lg:gap-6 mb-4 sm:mb-5">
+                        <div class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 glass rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="zap" class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-white"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-quicksand text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1 sm:mb-2">
+                                N8N
+                            </h3>
+                            <p class="text-xs sm:text-sm lg:text-base text-white/70 font-medium uppercase tracking-wider">
+                                Workflow Automation
+                            </p>
+                        </div>
+                    </div>
+                    <p class="text-sm sm:text-base lg:text-lg text-white/80 leading-relaxed">
+                        Powerful workflow automation platform with 400+ integrations. 
+                        Connect apps, automate tasks, and build complex workflows without coding.
+                    </p>
+                </div>
+
+                <!-- RAG & TTS Feature -->
+                <div class="feature-card glass rounded-2xl lg:rounded-3xl p-5 sm:p-6 lg:p-7 cursor-pointer relative shadow-xl opacity-0 animate-slide-in-up animate-delay-1400 selected" 
+                     data-feature="ragAndTts" tabindex="0" role="button" aria-pressed="true">
+                    <!-- Selection indicator -->
+                    <div class="absolute top-5 sm:top-6 lg:top-7 right-5 sm:right-6 lg:right-7 w-7 h-7 rounded-full bg-sakura-600 flex items-center justify-center transform scale-110 shadow-lg shadow-sakura-600/40">
+                        <i data-lucide="check" class="w-4 h-4 text-white"></i>
+                    </div>
+                    
+                    <!-- Feature content -->
+                    <div class="flex items-start gap-4 sm:gap-5 lg:gap-6 mb-4 sm:mb-5">
+                        <div class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 glass rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="brain" class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-white"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-quicksand text-lg sm:text-xl lg:text-2xl font-bold text-white mb-1 sm:mb-2">
+                                RAG & TTS
+                            </h3>
+                            <p class="text-xs sm:text-sm lg:text-base text-white/70 font-medium uppercase tracking-wider">
+                                Advanced AI Features
+                            </p>
+                        </div>
+                    </div>
+                    <p class="text-sm sm:text-base lg:text-lg text-white/80 leading-relaxed">
+                        Retrieval-Augmented Generation for document analysis and Text-to-Speech capabilities. 
+                        Chat with your documents and enjoy natural voice synthesis.
+                    </p>
+                </div>
             </div>
         </div>
 
-        <div class="core-notice">
-            <strong>Clara Core</strong> (AI Assistant & Chat) is always enabled and provides the foundation for all other features.
-        </div>
-
-        <div class="features-grid">
-            <div class="feature-card selected" data-feature="comfyUI">
-                <div class="feature-status"></div>
-                <div class="feature-header">
-                    <div class="feature-icon">🎨</div>
-                    <div>
-                        <div class="feature-title">ComfyUI</div>
-                        <div class="feature-subtitle">AI Image Generation</div>
-                    </div>
-                </div>
-                <div class="feature-description">
-                    Advanced AI image generation with Stable Diffusion, ControlNet, and custom workflows. 
-                    Create stunning artwork, edit images, and experiment with AI-powered creativity.
-                </div>
-            </div>
-
-            <div class="feature-card selected" data-feature="n8n">
-                <div class="feature-status"></div>
-                <div class="feature-header">
-                    <div class="feature-icon">⚡</div>
-                    <div>
-                        <div class="feature-title">N8N</div>
-                        <div class="feature-subtitle">Workflow Automation</div>
-                    </div>
-                </div>
-                <div class="feature-description">
-                    Powerful workflow automation platform with 400+ integrations. 
-                    Connect apps, automate tasks, and build complex workflows without coding.
-                </div>
-            </div>
-
-            <div class="feature-card selected" data-feature="ragAndTts">
-                <div class="feature-status"></div>
-                <div class="feature-header">
-                    <div class="feature-icon">🧠</div>
-                    <div>
-                        <div class="feature-title">RAG & TTS</div>
-                        <div class="feature-subtitle">Advanced AI Features</div>
-                    </div>
-                </div>
-                <div class="feature-description">
-                    Retrieval-Augmented Generation for document analysis and Text-to-Speech capabilities. 
-                    Chat with your documents and enjoy natural voice synthesis.
-                </div>
-            </div>
-        </div>
-
-        <div class="selection-info">
+        <!-- Selection info -->
+        <div class="text-center text-sm sm:text-base text-white/60 mb-6 lg:mb-8 px-4 opacity-0 animate-fade-in animate-delay-1600">
             Click on features to enable or disable them. Selected features will be downloaded and configured during startup.
         </div>
 
-        <div class="actions">
-            <button class="btn btn-secondary" onclick="selectAll()">
-                Select All
+        <!-- Actions -->
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-6 flex-shrink-0 opacity-0 animate-slide-in-up animate-delay-1800">
+            <button class="w-full sm:w-auto glass px-6 sm:px-8 py-3 sm:py-4 rounded-2xl font-semibold text-white hover:glass-strong hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-3 shadow-lg" onclick="selectAll()">
+                <i data-lucide="check-square" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                <span class="text-sm sm:text-base">Select All</span>
             </button>
-            <button class="btn btn-primary" onclick="continueSetup()">
-                Continue Setup →
+            <button class="w-full sm:w-auto sakura-gradient px-6 sm:px-8 py-3 sm:py-4 rounded-2xl font-semibold text-white hover:-translate-y-1 hover:shadow-2xl hover:shadow-sakura-600/40 transition-all duration-300 flex items-center justify-center gap-3 shadow-lg shadow-sakura-600/30 relative overflow-hidden" onclick="continueSetup()">
+                <span class="text-sm sm:text-base">Continue Setup</span>
+                <i data-lucide="arrow-right" class="w-4 h-4 sm:w-5 sm:h-5"></i>
             </button>
         </div>
     </div>
@@ -430,6 +347,11 @@
         const { ipcRenderer } = require('electron');
         
         let currentConfig = null;
+
+        // Initialize Lucide icons
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
 
         // Load configuration when received from main process
         ipcRenderer.on('load-config', (event, config) => {
@@ -441,9 +363,14 @@
         // Listen for any errors from main process
         ipcRenderer.on('feature-selection-error', (event, error) => {
             console.error('Feature selection error:', error);
-            const continueBtn = document.querySelector('.btn-primary');
+            const continueBtn = document.querySelector('.sakura-gradient');
             continueBtn.disabled = false;
-            continueBtn.textContent = 'Continue Setup →';
+            continueBtn.classList.remove('btn-loading');
+            continueBtn.innerHTML = `
+                <span class="text-sm sm:text-base">Continue Setup</span>
+                <i data-lucide="arrow-right" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+            `;
+            lucide.createIcons();
             alert('Error saving configuration: ' + error);
         });
 
@@ -455,35 +382,68 @@
             // Update feature cards based on current selection
             document.querySelectorAll('.feature-card').forEach(card => {
                 const feature = card.dataset.feature;
+                const indicator = card.querySelector('.absolute');
+                
                 if (features[feature]) {
                     card.classList.add('selected');
+                    card.setAttribute('aria-pressed', 'true');
+                    indicator.classList.remove('bg-white/20');
+                    indicator.classList.add('bg-sakura-600', 'transform', 'scale-110', 'shadow-lg', 'shadow-sakura-600/40');
                 } else {
                     card.classList.remove('selected');
+                    card.setAttribute('aria-pressed', 'false');
+                    indicator.classList.add('bg-white/20');
+                    indicator.classList.remove('bg-sakura-600', 'transform', 'scale-110', 'shadow-lg', 'shadow-sakura-600/40');
                 }
             });
         }
 
-        // Handle feature card clicks
+        // Handle feature card clicks and keyboard interaction
         document.querySelectorAll('.feature-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const feature = card.dataset.feature;
-                
-                // Don't allow disabling Clara Core
-                if (feature === 'claraCore') return;
-                
-                // Toggle selection
-                card.classList.toggle('selected');
-                
-                // Update config
-                if (currentConfig) {
-                    currentConfig.selectedFeatures[feature] = card.classList.contains('selected');
+            card.addEventListener('click', () => toggleFeature(card));
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleFeature(card);
                 }
             });
         });
 
+        function toggleFeature(card) {
+            const feature = card.dataset.feature;
+            
+            // Don't allow disabling Clara Core
+            if (feature === 'claraCore') return;
+            
+            // Toggle selection with animation
+            const isSelected = card.classList.toggle('selected');
+            card.setAttribute('aria-pressed', isSelected.toString());
+            
+            const indicator = card.querySelector('.absolute');
+            
+            if (isSelected) {
+                indicator.classList.remove('bg-white/20');
+                indicator.classList.add('bg-sakura-600', 'transform', 'scale-110', 'shadow-lg', 'shadow-sakura-600/40');
+            } else {
+                indicator.classList.add('bg-white/20');
+                indicator.classList.remove('bg-sakura-600', 'transform', 'scale-110', 'shadow-lg', 'shadow-sakura-600/40');
+            }
+            
+            // Update config
+            if (currentConfig) {
+                currentConfig.selectedFeatures[feature] = isSelected;
+            }
+        }
+
         function selectAll() {
             document.querySelectorAll('.feature-card').forEach(card => {
                 card.classList.add('selected');
+                card.setAttribute('aria-pressed', 'true');
+                
+                const indicator = card.querySelector('.absolute');
+                indicator.classList.remove('bg-white/20');
+                indicator.classList.add('bg-sakura-600', 'transform', 'scale-110', 'shadow-lg', 'shadow-sakura-600/40');
+                
                 const feature = card.dataset.feature;
                 if (currentConfig) {
                     currentConfig.selectedFeatures[feature] = true;
@@ -499,10 +459,15 @@
                 return;
             }
 
-            // Disable the button to prevent multiple clicks
-            const continueBtn = document.querySelector('.btn-primary');
+            // Show loading state
+            const continueBtn = document.querySelector('.sakura-gradient');
             continueBtn.disabled = true;
-            continueBtn.textContent = 'Saving...';
+            continueBtn.classList.add('btn-loading');
+            continueBtn.innerHTML = `
+                <span class="text-sm sm:text-base">Saving...</span>
+                <i data-lucide="loader" class="w-4 h-4 sm:w-5 sm:h-5 animate-spin"></i>
+            `;
+            lucide.createIcons();
 
             // Get final selection
             const selectedFeatures = {};
@@ -521,8 +486,12 @@
             
             // Show visual feedback
             setTimeout(() => {
-                continueBtn.textContent = 'Saved! Closing...';
-            }, 100);
+                continueBtn.innerHTML = `
+                    <span class="text-sm sm:text-base">Saved! Closing...</span>
+                    <i data-lucide="check" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                `;
+                lucide.createIcons();
+            }, 500);
         }
 
         function closeWindow() {
