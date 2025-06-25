@@ -1,6 +1,6 @@
 {
   "name": "clara-verse",
-  "version": "0.1.21",
+  "version": "0.1.23",
   "private": true,
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for LLMs. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
@@ -150,6 +150,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
+    "@electron/rebuild": "^3.7.2",
     "@eslint/js": "^9.9.1",
     "@tailwindcss/typography": "^0.5.10",
     "@testing-library/jest-dom": "^6.6.3",
@@ -168,7 +169,7 @@
     "autoprefixer": "^10.4.18",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^36.4.0",
+    "electron": "^32.3.3",
     "electron-builder": "^25.1.8",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
@@ -186,6 +187,9 @@
     "vite": "^5.4.2",
     "vitest": "^1.6.1",
     "wait-on": "^8.0.3"
+  },
+  "overrides": {
+    "canvas": "^2.11.2"
   },
   "build": {
     "appId": "com.clara-ai.app",

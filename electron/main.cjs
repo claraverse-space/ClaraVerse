@@ -21,6 +21,7 @@ const ComfyUIModelService = require('./comfyUIModelService.cjs');
 const PlatformManager = require('./platformManager.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
+const IPCLogger = require('./ipcLogger.cjs');
 
 /**
  * Helper function to show dialogs properly during startup when loading screen is active
@@ -54,6 +55,58 @@ async function showStartupDialog(loadingScreen, dialogType, title, message, butt
 // Configure the main process logger
 log.transports.file.level = 'info';
 log.info('Application starting...');
+
+// Initialize IPC Logger
+let ipcLogger;
+
+// Wrap ipcMain.handle to log all IPC calls
+const originalHandle = ipcMain.handle;
+ipcMain.handle = function(channel, handler) {
+  return originalHandle.call(this, channel, async (event, ...args) => {
+    if (ipcLogger) {
+      ipcLogger.logIPC(channel, args, 'incoming');
+    }
+    
+    try {
+      const result = await handler(event, ...args);
+      if (ipcLogger) {
+        ipcLogger.logIPC(channel, result, 'outgoing');
+      }
+      return result;
+    } catch (error) {
+      if (ipcLogger) {
+        ipcLogger.logError(channel, error, 'outgoing');
+      }
+      throw error;
+    }
+  });
+};
+
+// Wrap ipcMain.on to log all IPC calls
+const originalOn = ipcMain.on;
+ipcMain.on = function(channel, handler) {
+  return originalOn.call(this, channel, (event, ...args) => {
+    if (ipcLogger) {
+      ipcLogger.logIPC(channel, args, 'incoming');
+    }
+    
+    try {
+      const result = handler(event, ...args);
+      return result;
+    } catch (error) {
+      if (ipcLogger) {
+        ipcLogger.logError(channel, error, 'outgoing');
+      }
+      throw error;
+    }
+  });
+};
+
+// Initialize IPC Logger after app is ready
+app.whenReady().then(() => {
+  ipcLogger = new IPCLogger();
+  ipcLogger.logSystem('Application started');
+});
 
 // macOS Security Configuration - Prevent unnecessary firewall prompts
 if (process.platform === 'darwin') {
@@ -294,7 +347,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('start-llama-swap', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.start();
@@ -329,7 +382,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('restart-llama-swap', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.restart();
@@ -403,7 +456,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('regenerate-llama-swap-config', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.generateConfig();
@@ -430,7 +483,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('get-gpu-diagnostics', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const diagnostics = await llamaSwapService.getGPUDiagnostics();
@@ -445,7 +498,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('get-performance-settings', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.getPerformanceSettings();
@@ -460,7 +513,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('save-performance-settings', async (event, settings) => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.savePerformanceSettings(settings);
@@ -475,7 +528,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('load-performance-settings', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const result = await llamaSwapService.loadPerformanceSettings();
@@ -490,7 +543,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('set-custom-model-path', async (event, customPath) => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       // Save to file-based storage for persistence across app restarts
@@ -599,7 +652,7 @@ function registerLlamaSwapHandlers() {
   ipcMain.handle('get-custom-model-paths', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       let paths = llamaSwapService.getCustomModelPaths();
@@ -1359,7 +1412,7 @@ function registerModelManagerHandlers() {
   ipcMain.handle('get-local-models', async () => {
     try {
       if (!llamaSwapService) {
-        llamaSwapService = new LlamaSwapService();
+        llamaSwapService = new LlamaSwapService(ipcLogger);
       }
       
       const models = await llamaSwapService.scanModels();
@@ -1700,6 +1753,43 @@ function registerHandlers() {
   ipcMain.handle('get-app-path', () => app.getPath('userData'));
   ipcMain.handle('getWorkflowsPath', () => {
     return path.join(app.getAppPath(), 'workflows', 'n8n_workflows_full.json');
+  });
+
+  // Developer log handlers
+  ipcMain.handle('developer-logs:read', async (event, lines = 1000) => {
+    try {
+      if (!ipcLogger) {
+        return 'IPC Logger not initialized';
+      }
+      return await ipcLogger.readLogs(lines);
+    } catch (error) {
+      log.error('Error reading developer logs:', error);
+      return `Error reading logs: ${error.message}`;
+    }
+  });
+
+  ipcMain.handle('developer-logs:get-files', async () => {
+    try {
+      if (!ipcLogger) {
+        return [];
+      }
+      return await ipcLogger.getLogFiles();
+    } catch (error) {
+      log.error('Error getting log files:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('developer-logs:clear', async () => {
+    try {
+      if (!ipcLogger) {
+        return { success: false, error: 'IPC Logger not initialized' };
+      }
+      return await ipcLogger.clearLogs();
+    } catch (error) {
+      log.error('Error clearing logs:', error);
+      return { success: false, error: error.message };
+    }
   });
 
   // Update handlers
@@ -3163,7 +3253,7 @@ async function initializeWithDocker() {
     }
     
     // Initialize core services (always enabled)
-    llamaSwapService = new LlamaSwapService();
+    llamaSwapService = new LlamaSwapService(ipcLogger);
     updateService = platformUpdateService;
     
     // Initialize MCP service only if RAG & TTS is selected
@@ -3250,7 +3340,7 @@ async function initializeWithoutDocker() {
     }
     
     // Initialize essential services only
-    llamaSwapService = new LlamaSwapService();
+    llamaSwapService = new LlamaSwapService(ipcLogger);
     mcpService = new MCPService();
     updateService = platformUpdateService;
     
@@ -3369,8 +3459,8 @@ async function initializeLightweightServicesInBackground() {
     // Initialize Watchdog service (lightweight mode)
     sendStatus('Watchdog', 'Initializing Watchdog service...', 'info');
     try {
-      watchdogService = new WatchdogService(null, llamaSwapService, mcpService); // No Docker in lightweight mode
-      
+      watchdogService = new WatchdogService(null, llamaSwapService, mcpService, ipcLogger); // No Docker in lightweight mode
+    
       // Set up event listeners for watchdog events
       watchdogService.on('serviceRestored', (serviceKey, service) => {
         log.info(`Watchdog: ${service.name} has been restored`);
@@ -3378,24 +3468,24 @@ async function initializeLightweightServicesInBackground() {
           mainWindow.webContents.send('watchdog-service-restored', { serviceKey, service: service.name });
         }
       });
-      
+
       watchdogService.on('serviceFailed', (serviceKey, service) => {
         log.error(`Watchdog: ${service.name} has failed after maximum retry attempts`);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('watchdog-service-failed', { serviceKey, service: service.name });
         }
       });
-      
+
       watchdogService.on('serviceRestarted', (serviceKey, service) => {
         log.info(`Watchdog: ${service.name} has been restarted successfully`);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('watchdog-service-restarted', { serviceKey, service: service.name });
         }
       });
-      
+
       // Start the watchdog monitoring
       watchdogService.start();
-      
+
       sendStatus('Watchdog', 'Watchdog service started successfully', 'success');
     } catch (watchdogError) {
       log.error('Error initializing Watchdog service:', watchdogError);
@@ -3476,8 +3566,8 @@ async function initializeServicesInBackground() {
     // Initialize Watchdog service in background (with Docker support)
     sendStatus('Watchdog', 'Initializing Watchdog service...', 'info');
     try {
-      watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
-      
+      watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService, ipcLogger);
+    
       // Set up event listeners for watchdog events
       watchdogService.on('serviceRestored', (serviceKey, service) => {
         log.info(`Watchdog: ${service.name} has been restored`);
@@ -3485,27 +3575,27 @@ async function initializeServicesInBackground() {
           mainWindow.webContents.send('watchdog-service-restored', { serviceKey, service: service.name });
         }
       });
-      
+
       watchdogService.on('serviceFailed', (serviceKey, service) => {
         log.error(`Watchdog: ${service.name} has failed after maximum retry attempts`);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('watchdog-service-failed', { serviceKey, service: service.name });
         }
       });
-      
+
       watchdogService.on('serviceRestarted', (serviceKey, service) => {
         log.info(`Watchdog: ${service.name} has been restarted successfully`);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('watchdog-service-restarted', { serviceKey, service: service.name });
         }
       });
-      
+
       // Start the watchdog monitoring
       watchdogService.start();
-      
+
       // Signal watchdog service that Docker setup is complete
       watchdogService.signalSetupComplete();
-      
+
       sendStatus('Watchdog', 'Watchdog service started successfully', 'success');
     } catch (watchdogError) {
       log.error('Error initializing Watchdog service:', watchdogError);

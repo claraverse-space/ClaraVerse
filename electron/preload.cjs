@@ -358,6 +358,13 @@ contextBridge.exposeInMainWorld('featureConfig', {
   resetFeatureConfig: () => ipcRenderer.invoke('reset-feature-config')
 });
 
+// Add developer logs API
+contextBridge.exposeInMainWorld('developerLogs', {
+  readLogs: (lines = 1000) => ipcRenderer.invoke('developer-logs:read', lines),
+  getLogFiles: () => ipcRenderer.invoke('developer-logs:get-files'),
+  clearLogs: () => ipcRenderer.invoke('developer-logs:clear')
+});
+
 // Notify main process when preload script has loaded
 window.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('app-ready', 'Preload script has loaded');

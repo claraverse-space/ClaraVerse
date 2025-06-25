@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw, Power } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw, Power, Code, Monitor, FileText } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -45,7 +45,7 @@ interface StartupConfig {
 }
 
 const Settings = () => {
-  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers'>('api');
+  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers' | 'developer'>('api');
   const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
@@ -148,6 +148,13 @@ const Settings = () => {
     apiKey: '',
     isEnabled: true
   });
+
+  // Developer logs state
+  const [developerLogs, setDeveloperLogs] = useState<string>('');
+  const [logFiles, setLogFiles] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logLines, setLogLines] = useState(1000);
+  const logsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -968,6 +975,91 @@ const Settings = () => {
     // Implement export settings functionality
   };
 
+  // Developer logs functions
+  const loadDeveloperLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      if ((window as any).developerLogs?.readLogs) {
+        const logs = await (window as any).developerLogs.readLogs(logLines);
+        setDeveloperLogs(logs);
+        
+        // Auto-scroll to bottom
+        setTimeout(() => {
+          if (logsTextareaRef.current) {
+            logsTextareaRef.current.scrollTop = logsTextareaRef.current.scrollHeight;
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Failed to load developer logs:', error);
+      setDeveloperLogs(`Error loading logs: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  const loadLogFiles = async () => {
+    try {
+      if ((window as any).developerLogs?.getLogFiles) {
+        const files = await (window as any).developerLogs.getLogFiles();
+        setLogFiles(files);
+      }
+    } catch (error) {
+      console.error('Failed to load log files:', error);
+      setLogFiles([]);
+    }
+  };
+
+  const clearDeveloperLogs = async () => {
+    if (!confirm('Are you sure you want to clear all developer logs? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      if ((window as any).developerLogs?.clearLogs) {
+        const result = await (window as any).developerLogs.clearLogs();
+        if (result.success) {
+          setDeveloperLogs('');
+          await loadLogFiles();
+          alert('✅ Developer logs cleared successfully.');
+        } else {
+          alert(`❌ Failed to clear logs: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to clear developer logs:', error);
+      alert(`❌ Failed to clear logs: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  // Load developer logs when developer tab is opened
+  useEffect(() => {
+    if (activeTab === 'developer') {
+      loadDeveloperLogs();
+      loadLogFiles();
+      
+      // Auto-refresh logs every 10 seconds when developer tab is active
+      const interval = setInterval(() => {
+        loadDeveloperLogs();
+        loadLogFiles();
+      }, 10000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, logLines]);
+
   return (
     <>
       {/* Wallpaper */}
@@ -1048,6 +1140,13 @@ const Settings = () => {
               label="Updates"
               icon={<RefreshCw className="w-5 h-5" />}
               isActive={activeTab === 'updates'}
+            />
+
+            <TabItem
+              id="developer"
+              label="Developer"
+              icon={<Code className="w-5 h-5" />}
+              isActive={activeTab === 'developer'}
             />
 
             {/* Save Status - Only visible when saving/saved/error */}
@@ -2794,6 +2893,172 @@ const ProcessButton = () => {
                       <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
                       <div>
                         <strong>Safe Updates:</strong> Your existing setup continues working, only official tools get performance improvements.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Developer Tab */}
+          {activeTab === 'developer' && (
+            <div className="glassmorphic rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Code className="w-6 h-6 text-sakura-500" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Developer Logs
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    View application logs for troubleshooting and debugging
+                  </p>
+                </div>
+              </div>
+
+              {/* Log Controls */}
+              <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Show last:
+                    </label>
+                    <select
+                      value={logLines}
+                      onChange={(e) => setLogLines(Number(e.target.value))}
+                      className="px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                    >
+                      <option value={100}>100 lines</option>
+                      <option value={500}>500 lines</option>
+                      <option value={1000}>1000 lines</option>
+                      <option value={2000}>2000 lines</option>
+                      <option value={5000}>5000 lines</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={loadDeveloperLogs}
+                      disabled={loadingLogs}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      {loadingLogs ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          Refresh
+                        </>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={clearDeveloperLogs}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Clear Logs
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Log Files Info */}
+              {logFiles.length > 0 && (
+                <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Log Files ({logFiles.length})
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {logFiles.map((file, index) => (
+                      <div key={index} className="bg-gray-50/50 dark:bg-gray-700/50 rounded p-3">
+                        <div className="font-mono text-xs text-gray-800 dark:text-gray-200 mb-1 truncate">
+                          {file.name}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          {formatBytes(file.size)}
+                        </div>
+                        {file.modified && (
+                          <div className="text-xs text-gray-500 dark:text-gray-500">
+                            {new Date(file.modified).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Logs Display */}
+              <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-medium text-white flex items-center gap-2">
+                    <Monitor className="w-4 h-4" />
+                    Application Logs
+                    <span className="text-xs text-gray-400 font-mono">
+                      (Auto-refreshes every 10s)
+                    </span>
+                  </h3>
+                  <div className="text-xs text-gray-400">
+                    {developerLogs.split('\n').length - 1} lines
+                  </div>
+                </div>
+                
+                <textarea
+                  ref={logsTextareaRef}
+                  value={developerLogs || 'No logs available. Logs will appear here as you interact with the application.'}
+                  readOnly
+                  className="w-full h-96 bg-black/50 text-green-400 font-mono text-xs p-3 rounded border border-gray-700 focus:outline-none focus:border-gray-600 resize-none overflow-auto"
+                  style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                    lineHeight: '1.4'
+                  }}
+                />
+                
+                {loadingLogs && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+                    <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    Loading logs...
+                  </div>
+                )}
+              </div>
+
+              {/* Help Information */}
+              <div className="mt-6 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <HelpCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                      About Developer Logs
+                    </h4>
+                    <div className="space-y-2 text-sm text-blue-700 dark:text-blue-300">
+                      <div className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <div>
+                          <strong>What's logged:</strong> All IPC calls, system events, errors, and application startup processes including llamaswap server initialization.
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <div>
+                          <strong>File rotation:</strong> Logs automatically rotate when they reach 100MB, keeping up to 5 backup files.
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <div>
+                          <strong>Performance:</strong> Logging has minimal impact on app performance and helps diagnose startup and connectivity issues.
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <div>
+                          <strong>Privacy:</strong> Logs are stored locally and contain technical information only - no personal data is logged.
+                        </div>
                       </div>
                     </div>
                   </div>

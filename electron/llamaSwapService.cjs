@@ -8,11 +8,12 @@ const { app } = require('electron');
 const PlatformManager = require('./platformManager.cjs');
 
 class LlamaSwapService {
-  constructor() {
+  constructor(ipcLogger = null) {
     this.process = null;
     this.isRunning = false;
     this.isStarting = false; // Add this flag to prevent concurrent starts
     this.port = 8091;
+    this.ipcLogger = ipcLogger; // Add IPC logger reference
     
     // Flash attention retry mechanism flags
     this.handleFlashAttentionRequired = false;
@@ -32,11 +33,16 @@ class LlamaSwapService {
     // Handle different base directory paths for development vs production
     this.baseDir = this.getBaseBinaryDirectory();
     this.modelsDir = path.join(os.homedir(), '.clara', 'llama-models');
-    this.configPath = path.join(this.baseDir, 'config.yaml');
-    this.logPath = path.join(this.baseDir, 'llama-swap.log');
+    
+    // Use userData directory for config files to avoid read-only filesystem issues in AppImage
+    const userDataDir = app && app.getPath ? app.getPath('userData') : path.join(os.homedir(), '.clara');
+    this.configPath = path.join(userDataDir, 'llama-swap-config.yaml');
+    this.logPath = path.join(userDataDir, 'llama-swap.log');
     
     log.info(`Base binary directory: ${this.baseDir}`);
     log.info(`Models directory: ${this.modelsDir}`);
+    log.info(`Config path: ${this.configPath}`);
+    log.info(`Log path: ${this.logPath}`);
     
     // Initialize platform manager
     this.platformManager = new PlatformManager(this.baseDir);
@@ -56,6 +62,10 @@ class LlamaSwapService {
     
     // Ensure models directory exists
     this.ensureDirectories();
+    
+    if (this.ipcLogger) {
+      this.ipcLogger.logServiceCall('LlamaSwapService', 'constructor', null, 'initialized');
+    }
   }
 
   /**
@@ -287,7 +297,13 @@ class LlamaSwapService {
     try {
       await fs.mkdir(path.join(os.homedir(), '.clara'), { recursive: true });
       await fs.mkdir(this.modelsDir, { recursive: true });
+      
+      // Ensure the directory for config files exists
+      const configDir = path.dirname(this.configPath);
+      await fs.mkdir(configDir, { recursive: true });
+      
       log.info(`Models directory ensured at: ${this.modelsDir}`);
+      log.info(`Config directory ensured at: ${configDir}`);
     } catch (error) {
       log.error('Error creating directories:', error);
     }
@@ -1039,6 +1055,10 @@ ${cmdLine}`;
   }
 
   async start() {
+    if (this.ipcLogger) {
+      this.ipcLogger.logServiceCall('LlamaSwapService', 'start');
+    }
+    
     // Prevent concurrent start attempts
     if (this.isRunning) {
       log.info('Llama-swap service is already running');
@@ -1077,6 +1097,10 @@ ${cmdLine}`;
       if (process.platform === 'darwin') {
         log.info('🔒 macOS detected - checking network security requirements...');
         
+        if (this.ipcLogger) {
+          this.ipcLogger.logServiceCall('LlamaSwapService', 'macOS-security-check');
+        }
+        
         // Check if port is already in use (could indicate permission issues)
         try {
           const net = require('net');
@@ -1100,6 +1124,9 @@ ${cmdLine}`;
         } catch (portError) {
           if (portError.code === 'EADDRINUSE') {
             log.warn(`⚠️ Port ${this.port} is already in use. This may cause permission prompts.`);
+          }
+          if (this.ipcLogger) {
+            this.ipcLogger.logError('LlamaSwapService.portCheck', portError);
           }
         }
         
@@ -1132,6 +1159,13 @@ ${cmdLine}`;
       ];
 
       log.info(`Starting with args: ${args.join(' ')}`);
+      
+      if (this.ipcLogger) {
+        this.ipcLogger.logProcessSpawn(this.binaryPaths.llamaSwap, args, {
+          port: this.port,
+          config: this.configPath
+        });
+      }
 
       // Final port check right before spawning - catch any lingering processes
       log.info('🔍 Performing final port availability check...');
@@ -1159,6 +1193,9 @@ ${cmdLine}`;
           });
         });
       } catch (portError) {
+        if (this.ipcLogger) {
+          this.ipcLogger.logError('LlamaSwapService.finalPortCheck', portError);
+        }
         throw portError;
       }
 
@@ -1169,6 +1206,10 @@ ${cmdLine}`;
       });
 
       this.isRunning = true;
+      
+      if (this.ipcLogger) {
+        this.ipcLogger.logServiceCall('LlamaSwapService', 'processSpawned', { pid: this.process.pid });
+      }
       
       // Start process monitoring to prevent zombie processes after updates
       this.startProcessMonitoring();
@@ -1186,6 +1227,9 @@ ${cmdLine}`;
             output.includes(`server started`) ||
             output.includes(`:${this.port}`)) {
           log.info(`llama-swap service started successfully on port ${this.port}`);
+          if (this.ipcLogger) {
+            this.ipcLogger.logServiceCall('LlamaSwapService', 'startupSuccess', { port: this.port });
+          }
         }
         
         this.parseProgressFromOutput(output);
@@ -1194,6 +1238,10 @@ ${cmdLine}`;
       this.process.stderr.on('data', (data) => {
         const error = data.toString();
         log.error(`llama-swap stderr: ${error.trim()}`);
+        
+        if (this.ipcLogger) {
+          this.ipcLogger.logServiceCall('LlamaSwapService', 'stderr', { error: error.trim() });
+        }
         
         // Check for V cache quantization error that requires flash attention
         if (error.includes('V cache quantization requires flash_attn') || 
@@ -1229,6 +1277,10 @@ ${cmdLine}`;
         log.info(`llama-swap process exited with code ${code}`);
         this.isRunning = false;
         this.process = null;
+        
+        if (this.ipcLogger) {
+          this.ipcLogger.logProcessExit('llama-swap', code);
+        }
         
         if (code !== 0 && code !== null) {
           log.error(`llama-swap service failed with exit code ${code}`);
@@ -1462,15 +1514,29 @@ ${cmdLine}`;
 
   // Add a new method to check if service is actually responding
   async getStatusWithHealthCheck() {
+    if (this.ipcLogger) {
+      this.ipcLogger.logServiceCall('LlamaSwapService', 'getStatusWithHealthCheck');
+    }
+    
     const basicStatus = this.getStatus();
     
     // If we think it's not running, return early
     if (!basicStatus.isRunning) {
+      if (this.ipcLogger) {
+        this.ipcLogger.logServiceCall('LlamaSwapService', 'getStatusWithHealthCheck', null, { 
+          isRunning: false, 
+          healthCheck: 'not-running' 
+        });
+      }
       return basicStatus;
     }
     
     // Try to make a quick health check
     try {
+      if (this.ipcLogger) {
+        this.ipcLogger.logHttpRequest('GET', `http://localhost:${this.port}/v1/models`);
+      }
+      
       let fetch;
       try {
         fetch = global.fetch || (await import('node-fetch')).default;
@@ -1488,18 +1554,32 @@ ${cmdLine}`;
       
       clearTimeout(timeoutId);
       
-      return {
+      const result = {
         ...basicStatus,
         isResponding: response.ok,
-        healthCheck: 'passed'
+        healthCheck: response.ok ? 'passed' : 'failed'
       };
+      
+      if (this.ipcLogger) {
+        this.ipcLogger.logHttpResponse('GET', `http://localhost:${this.port}/v1/models`, response.status);
+        this.ipcLogger.logServiceCall('LlamaSwapService', 'getStatusWithHealthCheck', null, result);
+      }
+      
+      return result;
     } catch (error) {
-      return {
+      const result = {
         ...basicStatus,
         isResponding: false,
         healthCheck: 'failed',
         healthError: error.message
       };
+      
+      if (this.ipcLogger) {
+        this.ipcLogger.logError('LlamaSwapService.healthCheck', error);
+        this.ipcLogger.logServiceCall('LlamaSwapService', 'getStatusWithHealthCheck', null, result);
+      }
+      
+      return result;
     }
   }
 
