@@ -2557,39 +2557,66 @@ function registerHandlers() {
 }
 
 /**
- * Check if Docker Desktop is installed on Windows
+ * Check if Docker Desktop is installed on Windows/macOS
  */
 async function checkDockerDesktopInstalled() {
-  if (process.platform !== 'win32') {
-    return false;
-  }
-  
   try {
     const { exec } = require('child_process');
     const { promisify } = require('util');
     const execAsync = promisify(exec);
     
-    // Check if Docker Desktop executable exists
-    const possiblePaths = [
-      'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe',
-      'C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe'
-    ];
-    
-    for (const dockerPath of possiblePaths) {
-      if (fs.existsSync(dockerPath)) {
-        return dockerPath;
+    if (process.platform === 'win32') {
+      // Windows Docker Desktop detection
+      const possiblePaths = [
+        'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe',
+        'C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe'
+      ];
+      
+      for (const dockerPath of possiblePaths) {
+        if (fs.existsSync(dockerPath)) {
+          return dockerPath;
+        }
+      }
+      
+      // Also check via registry or Windows features
+      try {
+        await execAsync('docker --version');
+        return true; // Docker CLI is available
+      } catch (error) {
+        // Docker CLI not available
+      }
+      
+      return false;
+      
+    } else if (process.platform === 'darwin') {
+      // macOS Docker Desktop detection
+      const dockerAppPath = '/Applications/Docker.app';
+      
+      // Check if Docker.app exists
+      if (fs.existsSync(dockerAppPath)) {
+        return dockerAppPath;
+      }
+      
+      // Also check if Docker CLI is available (could be installed via Homebrew or other methods)
+      try {
+        await execAsync('docker --version');
+        return true; // Docker CLI is available
+      } catch (error) {
+        // Docker CLI not available
+      }
+      
+      return false;
+      
+    } else {
+      // Linux or other platforms - just check for Docker CLI
+      try {
+        await execAsync('docker --version');
+        return true;
+      } catch (error) {
+        return false;
       }
     }
     
-    // Also check via registry or Windows features
-    try {
-      await execAsync('docker --version');
-      return true; // Docker CLI is available
-    } catch (error) {
-      // Docker CLI not available
-    }
-    
-    return false;
   } catch (error) {
     log.error('Error checking Docker Desktop installation:', error);
     return false;
@@ -2597,37 +2624,101 @@ async function checkDockerDesktopInstalled() {
 }
 
 /**
- * Attempt to start Docker Desktop on Windows
+ * Attempt to start Docker Desktop on Windows/macOS
  */
 async function startDockerDesktop(dockerPath) {
   try {
-    const { spawn } = require('child_process');
+    const { spawn, exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
     
-    if (typeof dockerPath === 'string' && dockerPath.endsWith('.exe')) {
-      // Start Docker Desktop executable
-      const dockerProcess = spawn(dockerPath, [], { 
-        detached: true, 
-        stdio: 'ignore' 
-      });
-      dockerProcess.unref();
+    if (process.platform === 'win32') {
+      // Windows Docker Desktop startup
+      if (typeof dockerPath === 'string' && dockerPath.endsWith('.exe')) {
+        // Start Docker Desktop executable
+        const dockerProcess = spawn(dockerPath, [], { 
+          detached: true, 
+          stdio: 'ignore' 
+        });
+        dockerProcess.unref();
+        
+        log.info('Docker Desktop startup initiated');
+        return true;
+      } else {
+        // Try to start via Windows service or PowerShell
+        try {
+          await execAsync('Start-Process "Docker Desktop" -WindowStyle Hidden', { shell: 'powershell' });
+          log.info('Docker Desktop startup initiated via PowerShell');
+          return true;
+        } catch (error) {
+          log.warn('Failed to start Docker Desktop via PowerShell:', error.message);
+          return false;
+        }
+      }
       
-      log.info('Docker Desktop startup initiated');
-      return true;
+    } else if (process.platform === 'darwin') {
+      // macOS Docker Desktop startup
+      if (typeof dockerPath === 'string' && dockerPath.endsWith('.app')) {
+        // Start Docker.app using 'open' command
+        try {
+          await execAsync(`open "${dockerPath}"`);
+          log.info('Docker Desktop startup initiated via open command');
+          return true;
+        } catch (error) {
+          log.warn('Failed to start Docker Desktop via open command:', error.message);
+          return false;
+        }
+      } else {
+        // Try alternative methods to start Docker
+        try {
+          // Check if Docker is already running first
+          try {
+            await execAsync('docker info', { timeout: 5000 });
+            log.info('Docker is already running');
+            return true;
+          } catch (checkError) {
+            // Docker not running, try to start it
+          }
+          
+          // Try using 'open' with application name
+          await execAsync('open -a Docker');
+          log.info('Docker Desktop startup initiated via open -a Docker');
+          return true;
+        } catch (error) {
+          try {
+            // Try using launchctl (if Docker is set up as a service)
+            await execAsync('launchctl load ~/Library/LaunchAgents/com.docker.docker.plist 2>/dev/null || true');
+            await execAsync('launchctl start com.docker.docker');
+            log.info('Docker Desktop startup initiated via launchctl');
+            return true;
+          } catch (launchError) {
+            log.warn('Failed to start Docker Desktop via launchctl:', launchError.message);
+            
+            // Final attempt: try to start Docker via Spotlight/Launch Services
+            try {
+              await execAsync('osascript -e \'tell application "Docker" to activate\'');
+              log.info('Docker Desktop startup initiated via AppleScript');
+              return true;
+            } catch (scriptError) {
+              log.warn('All Docker startup methods failed');
+              return false;
+            }
+          }
+        }
+      }
+      
     } else {
-      // Try to start via Windows service or PowerShell
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-      
+      // Linux or other platforms - try to start docker service
       try {
-        await execAsync('Start-Process "Docker Desktop" -WindowStyle Hidden', { shell: 'powershell' });
-        log.info('Docker Desktop startup initiated via PowerShell');
+        await execAsync('sudo systemctl start docker');
+        log.info('Docker service startup initiated via systemctl');
         return true;
       } catch (error) {
-        log.warn('Failed to start Docker Desktop via PowerShell:', error.message);
+        log.warn('Failed to start Docker service via systemctl:', error.message);
         return false;
       }
     }
+    
   } catch (error) {
     log.error('Error starting Docker Desktop:', error);
     return false;
@@ -2643,17 +2734,53 @@ async function askToStartDockerDesktop(loadingScreen) {
     
     if (!dockerPath) {
       log.info('Docker Desktop not detected on system');
-      return false;
+      
+      // Show dialog asking user to install Docker Desktop
+      const platformName = process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux';
+      const downloadUrl = process.platform === 'darwin' 
+        ? 'https://docs.docker.com/desktop/install/mac-install/' 
+        : process.platform === 'win32'
+        ? 'https://docs.docker.com/desktop/install/windows-install/'
+        : 'https://docs.docker.com/desktop/install/linux-install/';
+      
+      const result = await showStartupDialog(
+        loadingScreen,
+        'info',
+        'Docker Desktop Not Installed',
+        `Docker Desktop is not installed on your system. Docker Desktop enables advanced features like ComfyUI, n8n workflows, and other AI services.\n\nWould you like to:\n\n• Download Docker Desktop for ${platformName}\n• Continue without Docker (lightweight mode)\n• Cancel startup`,
+        ['Download Docker Desktop', 'Continue without Docker', 'Cancel']
+      );
+      
+      if (result.response === 0) { // Download Docker Desktop
+        const { shell } = require('electron');
+        shell.openExternal(downloadUrl);
+        
+        await showStartupDialog(
+          loadingScreen,
+          'info',
+          'Docker Installation',
+          'Docker Desktop download page has been opened in your browser.\n\nAfter installing Docker Desktop, please restart Clara to enable all features.',
+          ['OK']
+        );
+        
+        return false;
+      } else if (result.response === 1) { // Continue without Docker
+        return false;
+      } else { // Cancel
+        app.quit();
+        return false;
+      }
     }
     
     log.info('Docker Desktop is installed but not running');
     
     // Show dialog asking user if they want to start Docker Desktop
+    const platformName = process.platform === 'darwin' ? 'macOS' : 'Windows';
     const result = await showStartupDialog(
       loadingScreen,
       'question',
       'Docker Desktop Not Running',
-      'Docker Desktop is installed but not currently running. Would you like to start it now?\n\nStarting Docker Desktop will enable advanced features like ComfyUI, n8n workflows, and other AI services.',
+      `Docker Desktop is installed but not currently running on ${platformName}. Would you like to start it now?\n\nStarting Docker Desktop will enable advanced features like ComfyUI, n8n workflows, and other AI services.`,
       ['Start Docker Desktop', 'Continue without Docker', 'Cancel']
     );
     
@@ -2863,9 +2990,9 @@ async function initialize() {
     } else {
       console.log('Docker not available - checking if we can start it...');
       
-      // On Windows, ask if user wants to start Docker Desktop
+      // On Windows and macOS, ask if user wants to start Docker Desktop
       let dockerStarted = false;
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' || process.platform === 'darwin') {
         dockerStarted = await askToStartDockerDesktop(loadingScreen);
       }
       

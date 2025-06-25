@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Upload, FileText, AlertCircle, CheckCircle, Info } from 'lucide-react';
 
 interface DocumentUploadProps {
   onClose: () => void;
@@ -13,18 +13,18 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
   const [errors, setErrors] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const supportedTypes = ['pdf', 'txt', 'csv', 'json', 'md'];
+  const supportedTypes = ['pdf', 'txt'];
   const maxFileSize = 20 * 1024 * 1024; // 20MB
 
   const validateFile = (file: File): string | null => {
     const extension = file.name.split('.').pop()?.toLowerCase();
     
     if (!extension || !supportedTypes.includes(extension)) {
-      return `${file.name}: Unsupported file type. Supported: ${supportedTypes.join(', ')}`;
+      return `${file.name}: Unsupported file type. Supported: ${supportedTypes.join(', ').toUpperCase()}`;
     }
     
     if (file.size > maxFileSize) {
-      return `${file.name}: File too large. Maximum size is 10MB`;
+      return `${file.name}: File too large. Maximum size is 20MB`;
     }
     
     return null;
@@ -145,7 +145,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
               dragActive
                 ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
-                : 'border-black dark:border-black bg-black dark:bg-black'
+                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -172,10 +172,25 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.txt,.csv,.json,.md"
+              accept=".pdf,.txt"
               onChange={handleFileSelect}
               className="hidden"
             />
+          </div>
+
+          {/* PDF Warning */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-blue-800 dark:text-blue-400 mb-1">
+                  Important Note About PDF Files
+                </h4>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Image-based PDFs (scanned documents) might not be read properly. For best results, use text-based PDFs or convert scanned documents to text format before uploading.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Errors */}
