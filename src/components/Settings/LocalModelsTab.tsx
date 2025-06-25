@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, Zap, Download, Trash2, RefreshCw, Server, HardDrive, Eye, Search } from 'lucide-react';
+import { Brain, Zap, Download, Trash2, RefreshCw, Server, HardDrive, Eye, Search, FolderOpen } from 'lucide-react';
 import GPUDiagnostics from '../GPUDiagnostics';
 
 interface LocalModel {
@@ -184,7 +184,7 @@ const LocalModelsTab: React.FC = () => {
           {/* Clara Core Models */}
           <div className="glassmorphic rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center shadow-md">
                 <Brain className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -205,7 +205,7 @@ const LocalModelsTab: React.FC = () => {
                     className="flex items-center justify-between p-4 bg-white/50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center shadow-md">
                         <HardDrive className="w-5 h-5 text-white" />
                       </div>
                       <div>
@@ -241,7 +241,7 @@ const LocalModelsTab: React.FC = () => {
           {/* Ollama Models */}
           <div className="glassmorphic rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center shadow-md">
                 <Server className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -262,7 +262,7 @@ const LocalModelsTab: React.FC = () => {
                     className="flex items-center justify-between p-4 bg-white/50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center shadow-md">
                         <Server className="w-5 h-5 text-white" />
                       </div>
                       <div>

@@ -131,7 +131,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-xl flex items-center justify-center shadow-md">
               <Download className="w-5 h-5 text-white" />
             </div>
             <div>

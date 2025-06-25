@@ -959,7 +959,7 @@ function debounce(func, wait) {
                   <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 p-6 rounded-xl border border-purple-200 dark:border-purple-700/50">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center">
-                        <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center mr-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center mr-3 shadow-md">
                           <i className="fas fa-magic text-white"></i>
                         </div>
                         <div>

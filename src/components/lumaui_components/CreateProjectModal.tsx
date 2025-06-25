@@ -130,7 +130,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   </div>
                   {selectedConfig === config.id && (
                     <div className="w-5 h-5 bg-gradient-to-r from-sakura-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
-                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                      <Plus className="w-3 h-3 text-white" />
                     </div>
                   )}
                 </label>

@@ -1193,6 +1193,9 @@ class DockerSetup extends EventEmitter {
    */
   async autoUpdateContainers(statusCallback) {
     try {
+      console.log('🔍 Starting autoUpdateContainers...');
+      statusCallback('Starting container update check...');
+      
       // Check if we've already checked for updates recently (within the last hour)
       const lastUpdateCheckFile = path.join(this.appDataPath, 'last_update_check.json');
       const now = Date.now();
@@ -1203,6 +1206,7 @@ class DockerSetup extends EventEmitter {
         if (fs.existsSync(lastUpdateCheckFile)) {
           const lastCheck = JSON.parse(fs.readFileSync(lastUpdateCheckFile, 'utf8'));
           if (now - lastCheck.timestamp < oneHour) {
+            console.log('⏭️ Skipping update check (checked recently)');
             statusCallback('Skipping update check (checked recently)');
             shouldCheckForUpdates = false;
           }
@@ -1213,69 +1217,92 @@ class DockerSetup extends EventEmitter {
       }
       
       if (!shouldCheckForUpdates) {
+        console.log('✅ autoUpdateContainers completed (skipped)');
         return true;
       }
       
+      console.log('🔍 Checking for container updates...');
       statusCallback(`Checking for container updates (${this.systemArch})...`);
       
       // Check for updates for all containers in parallel
       const updateChecks = [];
       for (const [name, config] of Object.entries(this.containers)) {
+        console.log(`📦 Adding update check for ${name}: ${config.image}`);
         updateChecks.push(
           this.checkForImageUpdates(config.image, statusCallback)
-            .then(result => ({ ...result, containerName: name }))
-            .catch(error => ({
-              hasUpdate: false,
-              error: error.message,
-              containerName: name,
-              imageName: config.image
-            }))
+            .then(result => {
+              console.log(`✅ Update check completed for ${name}: hasUpdate=${result.hasUpdate}`);
+              return { ...result, containerName: name };
+            })
+            .catch(error => {
+              console.error(`❌ Update check failed for ${name}:`, error.message);
+              return {
+                hasUpdate: false,
+                error: error.message,
+                containerName: name,
+                imageName: config.image
+              };
+            })
         );
       }
 
+      console.log('⏳ Waiting for all update checks to complete...');
       const updateResults = await Promise.all(updateChecks);
+      console.log('✅ All update checks completed');
+      
       const updatesAvailable = updateResults.filter(result => result.hasUpdate);
 
       // Save the timestamp of this update check
       try {
         fs.writeFileSync(lastUpdateCheckFile, JSON.stringify({ timestamp: now }));
+        console.log('📝 Saved update check timestamp');
       } catch (error) {
         console.log('Error saving last update check timestamp:', error.message);
       }
 
       if (updatesAvailable.length > 0) {
+        console.log(`📥 Found ${updatesAvailable.length} container update(s) available`);
         statusCallback(`Found ${updatesAvailable.length} container update(s) available - updating automatically...`);
         
         // Update containers in parallel for faster startup
         const updatePromises = updatesAvailable.map(async (update) => {
           try {
+            console.log(`📥 Starting update for ${update.imageName}...`);
             await this.pullImageWithProgress(update.imageName, statusCallback);
+            console.log(`✅ Update completed for ${update.imageName}`);
             return { success: true, imageName: update.imageName };
           } catch (error) {
+            console.error(`❌ Update failed for ${update.imageName}:`, error.message);
             statusCallback(`Failed to update ${update.imageName}: ${error.message}`, 'warning');
-            console.error('Update error:', error);
             return { success: false, imageName: update.imageName, error: error.message };
           }
         });
 
+        console.log('⏳ Waiting for all updates to complete...');
         const updateResults = await Promise.all(updatePromises);
+        console.log('✅ All updates completed');
+        
         const successCount = updateResults.filter(r => r.success).length;
         const failCount = updateResults.filter(r => !r.success).length;
         
         if (successCount > 0) {
+          console.log(`✅ Updated ${successCount} container(s) successfully`);
           statusCallback(`✓ Updated ${successCount} container(s) successfully`);
         }
         if (failCount > 0) {
+          console.log(`⚠️ ${failCount} container(s) failed to update`);
           statusCallback(`⚠️ ${failCount} container(s) failed to update`, 'warning');
         }
       } else {
+        console.log('✅ All containers are up to date');
         statusCallback('All containers are up to date');
       }
 
+      console.log('✅ autoUpdateContainers completed successfully');
       return true;
     } catch (error) {
+      console.error('❌ autoUpdateContainers failed:', error);
       statusCallback(`Update check failed: ${error.message}`, 'warning');
-      console.error('Auto update error:', error);
       return false;
     }
   }
@@ -2025,7 +2052,94 @@ class DockerSetup extends EventEmitter {
     }
   }
 
-  async setup(statusCallback, forceUpdateCheck = false, loadingScreen = null) {
+  /**
+   * Wrapper function with timeout to prevent indefinite hangs
+   */
+  async withTimeout(promise, timeoutMs, operationName) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`Operation '${operationName}' timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      promise
+        .then(result => {
+          clearTimeout(timeout);
+          resolve(result);
+        })
+        .catch(error => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+    });
+  }
+
+  /**
+   * Enhanced setup with timeout protection and better error handling
+   */
+  async setup(selectedFeatures, statusCallback) {
+    const setupStartTime = Date.now();
+    console.log('🚀 Starting Docker setup with timeout protection...');
+    
+    try {
+      // Set overall timeout for setup (10 minutes)
+      return await this.withTimeout(
+        this.performSetup(selectedFeatures, statusCallback),
+        10 * 60 * 1000, // 10 minutes
+        'Docker Setup'
+      );
+    } catch (error) {
+      const setupDuration = ((Date.now() - setupStartTime) / 1000).toFixed(2);
+      console.error(`❌ Docker setup failed after ${setupDuration}s:`, error);
+      
+      if (error.message.includes('timed out')) {
+        statusCallback(`Setup timed out after ${setupDuration}s. This may indicate a network or Docker issue.`, 'error');
+        
+        // Provide recovery suggestions
+        statusCallback('💡 Try restarting Docker Desktop and Clara, or check your internet connection.', 'info');
+        
+        // Attempt graceful cleanup
+        try {
+          console.log('🧹 Attempting cleanup after timeout...');
+          await this.cleanupAfterTimeout();
+        } catch (cleanupError) {
+          console.error('Cleanup after timeout failed:', cleanupError);
+        }
+      } else {
+        statusCallback(`Setup failed: ${error.message}`, 'error');
+      }
+      
+      return false;
+    }
+  }
+
+  /**
+   * Cleanup operations after a timeout
+   */
+  async cleanupAfterTimeout() {
+    try {
+      // Stop any partially started containers
+      for (const [name, config] of Object.entries(this.containers)) {
+        try {
+          const container = await this.docker.getContainer(config.name);
+          const containerInfo = await container.inspect();
+          if (containerInfo.State.Running) {
+            console.log(`🛑 Stopping partially started container: ${config.name}`);
+            await container.stop({ t: 10 }); // 10 second graceful stop
+          }
+        } catch (error) {
+          // Ignore errors during cleanup
+          console.log(`Cleanup: Could not stop ${config.name}:`, error.message);
+        }
+      }
+    } catch (error) {
+      console.error('Error during timeout cleanup:', error);
+    }
+  }
+
+  /**
+   * Main setup logic (extracted to allow timeout wrapping)
+   */
+  async performSetup(selectedFeatures, statusCallback) {
     try {
       if (!await this.isDockerRunning()) {
         let dockerDownloadLink;
@@ -2084,9 +2198,12 @@ class DockerSetup extends EventEmitter {
       }
 
       // Automatically check for and install container updates
+      console.log('🔄 Calling autoUpdateContainers...');
       await this.autoUpdateContainers(statusCallback);
+      console.log('✅ autoUpdateContainers completed, continuing with setup...');
 
       // Filter containers based on user selections
+      console.log('🔍 Filtering containers based on user selections...');
       const enabledContainers = {};
       for (const [name, config] of Object.entries(this.containers)) {
         let shouldEnable = false;
@@ -2112,15 +2229,21 @@ class DockerSetup extends EventEmitter {
         
         if (shouldEnable) {
           enabledContainers[name] = config;
+          console.log(`✓ ${name} service enabled (selected by user)`);
           statusCallback(`✓ ${name} service enabled (selected by user)`);
         } else {
+          console.log(`⏭️ ${name} service disabled (not selected by user)`);
           statusCallback(`⏭️ ${name} service disabled (not selected by user)`, 'info');
         }
       }
+      console.log(`📦 Enabled containers: ${Object.keys(enabledContainers).join(', ')}`);
 
       // Resolve actual available image names and ensure all images are available locally
+      console.log('🔍 Resolving container images...');
       const resolvedContainers = {};
       for (const [name, config] of Object.entries(enabledContainers)) {
+        console.log(`🔍 Resolving image for ${name}...`);
+        
         // Check if image is already architecture-specific (has -amd64 or -arm64 suffix)
         const isAlreadyArchSpecific = config.image.includes('-amd64') || config.image.includes('-arm64');
         
@@ -2128,12 +2251,15 @@ class DockerSetup extends EventEmitter {
         if (isAlreadyArchSpecific) {
           // Image is already architecture-specific, use as-is
           resolvedImageName = config.image;
+          console.log(`✓ Using architecture-specific ${name} image: ${resolvedImageName}`);
           statusCallback(`Using architecture-specific ${name} image: ${resolvedImageName}`);
         } else {
           // Parse base image and tag and resolve the actual available image name
           const [baseImage, tag] = config.image.split(':');
+          console.log(`🔍 Resolving ${name} image from base: ${baseImage}:${tag || 'latest'}`);
           statusCallback(`Resolving ${name} image...`);
           resolvedImageName = await this.resolveImageName(baseImage, tag || 'latest');
+          console.log(`✓ Resolved ${name} image: ${resolvedImageName}`);
         }
         
         // Create updated config with resolved image name
@@ -2142,28 +2268,47 @@ class DockerSetup extends EventEmitter {
           image: resolvedImageName
         };
         
+        console.log(`🔍 Checking if ${name} image is available locally...`);
         try {
           await this.docker.getImage(resolvedImageName).inspect();
+          console.log(`✓ ${name} image ready (${resolvedImageName})`);
           statusCallback(`✓ ${name} image ready (${resolvedImageName})`);
         } catch (error) {
           if (error.statusCode === 404) {
+            console.log(`📥 ${name} image not found locally, downloading...`);
             statusCallback(`Downloading ${name} image (${resolvedImageName})...`);
             await this.pullImageWithProgress(resolvedImageName, statusCallback);
+            console.log(`✅ ${name} image downloaded successfully`);
           } else {
+            console.error(`❌ Error checking ${name} image:`, error);
             throw error;
           }
         }
       }
 
       // Update containers configuration with resolved image names
+      console.log('📝 Updating containers configuration...');
       this.containers = resolvedContainers;
+      console.log(`✅ Container configuration updated with ${Object.keys(resolvedContainers).length} containers`);
 
       // Start containers in sequence
+      console.log('🚀 Starting containers...');
       for (const [name, config] of Object.entries(this.containers)) {
+        console.log(`🚀 Starting ${name} service...`);
         statusCallback(`Starting ${name} service...`);
-        await this.startContainer(config);
+        
+        try {
+          await this.startContainer(config);
+          console.log(`✅ ${name} service started successfully`);
+          statusCallback(`✅ ${name} service started successfully`);
+        } catch (error) {
+          console.error(`❌ Failed to start ${name} service:`, error);
+          statusCallback(`❌ Failed to start ${name} service: ${error.message}`, 'error');
+          throw error;
+        }
       }
 
+      console.log('✅ All services started successfully');
       statusCallback('All services started successfully');
       return true;
     } catch (error) {

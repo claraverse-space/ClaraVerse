@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Settings, Cpu, HardDrive, Activity, RefreshCw } from 'lucide-react';
+import { Play, Square, Settings, Cpu, HardDrive, Activity, RefreshCw, AlertTriangle, Server, Shield } from 'lucide-react';
 
 interface ComfyUIManagerProps {
   onClose: () => void;
@@ -656,11 +656,11 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="glassmorphic-enhanced rounded-xl w-full max-w-5xl h-full max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl w-full max-w-5xl h-full max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10 dark:border-gray-700/30">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200/50 dark:border-gray-700/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center shadow-md">
               <Settings className="w-5 h-5 text-white" />
             </div>
             <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
@@ -671,14 +671,14 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <button
               onClick={refreshData}
               disabled={isRefreshing}
-              className="p-2 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-50 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-50 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800/30"
               title="Refresh data"
             >
               <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800/30"
             >
               ✕
             </button>
@@ -686,7 +686,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Status Bar */}
-        <div className="px-6 py-4 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-900/20 dark:to-pink-900/20 border-b border-white/10 dark:border-gray-700/30">
+        <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-b border-gray-200/50 dark:border-gray-700/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
               <div className="flex items-center space-x-2">
@@ -701,17 +701,17 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               </div>
               {status.running && (
                 <>
-                  <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center space-x-1 text-sm text-gray-700 dark:text-gray-300">
                     <Cpu className="w-4 h-4" />
                     <span className={status.gpuSupport ? 'text-green-600 dark:text-green-400 font-medium' : ''}>
                       {status.gpuSupport ? 'GPU' : 'CPU'}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center space-x-1 text-sm text-gray-700 dark:text-gray-300">
                     <HardDrive className="w-4 h-4" />
                     <span className="font-medium">{status.modelCount} Models</span>
                   </div>
-                  <div className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center space-x-1 text-sm text-gray-700 dark:text-gray-300">
                     <Activity className="w-4 h-4" />
                     <span className="font-medium">{status.customNodeCount} Nodes</span>
                   </div>
@@ -761,7 +761,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10 dark:border-gray-700/30 bg-white/30 dark:bg-gray-800/30">
+        <div className="flex border-b border-gray-200/50 dark:border-gray-700/30 bg-gray-50/50 dark:bg-gray-800/30">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'models', label: `Models (${models.length})` },
@@ -773,8 +773,8 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               onClick={() => setActiveTab(tab.id as any)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-white/20 dark:bg-purple-900/20'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-white/10 dark:hover:bg-gray-800/20'
+                  ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-white/70 dark:bg-purple-900/20'
+                  : 'border-transparent text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800/20'
               }`}
             >
               {tab.label}
@@ -783,13 +783,13 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-white/20 to-purple-50/20 dark:from-gray-900/20 dark:to-purple-900/10">
+        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-gray-50/50 to-purple-50/30 dark:from-gray-900/20 dark:to-purple-900/10">
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                       <Activity className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -816,9 +816,9 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   </div>
                 </div>
 
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                       <HardDrive className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -851,9 +851,9 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   </div>
                 </div>
 
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                       <Settings className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -876,9 +876,9 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               </div>
 
               {!status.running && (
-                <div className="glassmorphic-card p-6 rounded-xl border-l-4 border-yellow-500">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl border-l-4 border-yellow-500 shadow-sm">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                       <Play className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200">
@@ -905,7 +905,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                     <HardDrive className="w-4 h-4 text-white" />
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -923,11 +923,11 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               </div>
               
               {models.length === 0 ? (
-                <div className="glassmorphic-card p-8 rounded-xl text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-8 rounded-xl text-center shadow-sm">
+                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
                     <HardDrive className="w-8 h-8 text-white" />
                   </div>
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
                     {status.running ? 'No models found. Make sure models are installed in ComfyUI.' : 'Start ComfyUI to view installed models.'}
                   </p>
                   {status.running && (
@@ -943,10 +943,10 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {models.map((model, index) => (
-                    <div key={index} className="glassmorphic-card p-4 rounded-xl hover:shadow-lg transition-all duration-200">
+                    <div key={index} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-4 rounded-xl hover:shadow-lg transition-all duration-200 shadow-sm">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white ${
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white shadow-sm ${
                             model.type === 'checkpoint' ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
                             model.type === 'lora' ? 'bg-gradient-to-br from-green-500 to-green-600' :
                             model.type === 'vae' ? 'bg-gradient-to-br from-purple-500 to-purple-600' :
@@ -959,7 +959,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                              model.type === 'controlnet' ? 'CN' :
                              model.type.substring(0, 2).toUpperCase()}
                           </div>
-                          <span className="text-xs px-2 py-1 bg-white/50 dark:bg-gray-800/50 rounded-full text-gray-700 dark:text-gray-300 font-medium">
+                          <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700/50 rounded-full text-gray-700 dark:text-gray-300 font-medium border border-gray-200/50 dark:border-gray-600/30 shadow-sm">
                             {model.type}
                           </span>
                         </div>
@@ -983,7 +983,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                     <Settings className="w-4 h-4 text-white" />
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -993,25 +993,25 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                 <button
                   onClick={fetchCustomNodes}
                   disabled={!status.running}
-                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>Refresh</span>
                 </button>
               </div>
-
+              
               {customNodes.length === 0 ? (
-                <div className="glassmorphic-card p-8 rounded-xl text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-8 rounded-xl text-center shadow-sm">
+                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
                     <Settings className="w-8 h-8 text-white" />
                   </div>
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
                     {status.running ? 'No custom nodes found.' : 'Start ComfyUI to view custom nodes.'}
                   </p>
                   {status.running && (
                     <button
                       onClick={fetchCustomNodes}
-                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 text-sm flex items-center space-x-2 mx-auto transition-all duration-200 shadow-lg hover:shadow-xl"
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 text-sm flex items-center space-x-2 mx-auto transition-all duration-200 shadow-lg hover:shadow-xl"
                     >
                       <RefreshCw className="w-4 h-4" />
                       <span>Refresh Nodes</span>
@@ -1019,37 +1019,50 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {customNodes.map((node, index) => (
-                    <div key={index} className="glassmorphic-card p-4 rounded-xl hover:shadow-lg transition-all duration-200">
+                    <div key={index} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-4 rounded-xl shadow-sm">
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-white ${
-                            node.enabled ? 'bg-gradient-to-br from-green-500 to-green-600' : 'bg-gradient-to-br from-gray-500 to-gray-600'
-                          }`}>
-                            {node.enabled ? '✓' : '✗'}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`w-3 h-3 rounded-full ${
+                              node.enabled ? 'bg-green-500' : 'bg-gray-400'
+                            }`} />
+                            <h4 className="font-medium text-gray-900 dark:text-white text-sm">
+                              {node.name}
+                            </h4>
                           </div>
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            node.enabled 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                              : 'bg-gray-100 dark:bg-gray-800/50 text-gray-700 dark:text-gray-400'
-                          }`}>
-                            {node.enabled ? 'Enabled' : 'Disabled'}
-                          </span>
+                          <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-2">
+                            by {node.author}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                            {node.description}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-3">
+                          {node.installed && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-200/50 dark:border-green-800/30 shadow-sm">
+                              Installed
+                            </span>
+                          )}
+                          {node.enabled && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/30 shadow-sm">
+                              Enabled
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <h4 className="font-medium text-gray-900 dark:text-white mb-2 text-sm leading-tight">
-                        {node.name}
-                      </h4>
-                      {node.description && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
-                          {node.description}
-                        </p>
-                      )}
-                      {node.author && (
-                        <p className="text-xs text-gray-500 dark:text-gray-500">
-                          by {node.author}
-                        </p>
+                      {node.url && (
+                        <div className="mt-3 pt-3 border-t border-gray-200/50 dark:border-gray-700/30">
+                          <a
+                            href={node.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium underline transition-colors"
+                          >
+                            View on GitHub
+                          </a>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1061,7 +1074,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
           {activeTab === 'settings' && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                   <Settings className="w-4 h-4 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -1070,9 +1083,9 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
                       <Activity className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1080,23 +1093,53 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                     </h4>
                   </div>
                   <div className="space-y-4">
-                    <button
-                      onClick={optimizeComfyUI}
-                      disabled={isLoading || !status.running}
-                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-                    >
-                      <Settings className="w-4 h-4" />
-                      <span>Optimize GPU Performance</span>
-                    </button>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      Automatically configures ComfyUI for optimal GPU performance and fixes common compatibility issues.
-                    </p>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        GPU Optimization
+                      </label>
+                      <button
+                        onClick={optimizeComfyUI}
+                        disabled={!status.running || isLoading}
+                        className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span>Optimize GPU Settings</span>
+                      </button>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                        Automatically configure GPU settings for optimal performance
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                      <Server className="w-3 h-3 text-white" />
+                    </div>
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Network
+                    </h4>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Models Directory:</span>
+                      <span className="text-gray-900 dark:text-white font-medium text-xs">
+                        ComfyUI/models/
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 dark:text-gray-400">Output Directory:</span>
+                      <span className="text-gray-900 dark:text-white font-medium text-xs">
+                        ComfyUI/output/
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
                       <HardDrive className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1106,93 +1149,38 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Models Directory:</span>
-                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
-                        ./models/
+                      <span className="text-gray-900 dark:text-white font-medium text-xs">
+                        ComfyUI/models/
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Output Directory:</span>
-                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
-                        ./output/
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600 dark:text-gray-400">Custom Nodes:</span>
-                      <span className="text-gray-900 dark:text-white font-mono text-xs bg-white/50 dark:bg-gray-800/50 px-2 py-1 rounded">
-                        ./custom_nodes/
+                      <span className="text-gray-900 dark:text-white font-medium text-xs">
+                        ComfyUI/output/
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="glassmorphic-card p-6 rounded-xl">
+                <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
-                      <Cpu className="w-3 h-3 text-white" />
+                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                      <Shield className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      System Info
+                      Security
                     </h4>
                   </div>
                   <div className="space-y-3 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600 dark:text-gray-400">Port:</span>
-                      <span className="text-gray-900 dark:text-white font-medium">{status.port}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600 dark:text-gray-400">GPU Support:</span>
-                      <span className={`font-medium ${status.gpuSupport ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>
-                        {status.gpuSupport ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600 dark:text-gray-400">Status:</span>
-                      <span className={`font-medium ${status.running ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {status.running ? 'Running' : 'Stopped'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glassmorphic-card p-6 rounded-xl">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
-                      <Square className="w-3 h-3 text-white" />
-                    </div>
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Service Control
-                    </h4>
-                  </div>
-                  <div className="space-y-3">
-                    {status.running ? (
-                      <>
-                        <button
-                          onClick={restartComfyUI}
-                          disabled={isLoading}
-                          className="w-full px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                          <span>Restart Service</span>
-                        </button>
-                        <button
-                          onClick={stopComfyUI}
-                          disabled={isLoading}
-                          className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-                        >
-                          <Square className="w-4 h-4" />
-                          <span>Stop Service</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={startComfyUI}
-                        disabled={isLoading}
-                        className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-sm flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-                      >
-                        <Play className="w-4 h-4" />
-                        <span>{isLoading ? 'Starting...' : 'Start Service'}</span>
-                      </button>
-                    )}
+                    <p className="text-gray-600 dark:text-gray-400">
+                      If you encounter issues:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+                      <li>Try restarting ComfyUI</li>
+                      <li>Check GPU optimization settings</li>
+                      <li>Verify model installations</li>
+                      <li>Review console logs for errors</li>
+                    </ul>
                   </div>
                 </div>
               </div>

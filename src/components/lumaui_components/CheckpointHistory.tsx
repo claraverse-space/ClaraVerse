@@ -162,8 +162,8 @@ const CheckpointHistory: React.FC<CheckpointHistoryProps> = ({ onRevert }) => {
                           onClick={() => !isLatest && handleRevert(checkpoint.id)}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-sakura-400 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <MessageSquare className="w-4 h-4 text-white" />
+                            <div className="w-8 h-8 bg-gradient-to-br from-sakura-400 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+                              <Clock className="w-4 h-4 text-white" />
                             </div>
                             
                             <div className="flex-1 min-w-0">

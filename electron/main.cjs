@@ -2557,7 +2557,7 @@ function registerHandlers() {
 }
 
 /**
- * Check if Docker Desktop is installed on Windows/macOS
+ * Check if Docker Desktop is installed on Windows/macOS/Linux
  */
 async function checkDockerDesktopInstalled() {
   try {
@@ -2607,8 +2607,58 @@ async function checkDockerDesktopInstalled() {
       
       return false;
       
+    } else if (process.platform === 'linux') {
+      // Linux Docker Desktop detection
+      const possiblePaths = [
+        '/opt/docker-desktop/bin/docker-desktop',
+        '/usr/bin/docker-desktop',
+        '/usr/local/bin/docker-desktop'
+      ];
+      
+      // Check for Docker Desktop executable
+      for (const dockerPath of possiblePaths) {
+        if (fs.existsSync(dockerPath)) {
+          return dockerPath;
+        }
+      }
+      
+      // Check if Docker Desktop is installed via package manager
+      try {
+        await execAsync('which docker-desktop');
+        return 'docker-desktop'; // Docker Desktop is in PATH
+      } catch (error) {
+        // Docker Desktop not found in PATH
+      }
+      
+      // Check if Docker CLI is available (could be Docker Engine or Docker Desktop)
+      try {
+        await execAsync('docker --version');
+        
+        // Try to determine if it's Docker Desktop by checking for desktop-specific features
+        try {
+          const { stdout } = await execAsync('docker context ls --format json');
+          const contexts = stdout.trim().split('\n').map(line => JSON.parse(line));
+          const hasDesktopContext = contexts.some(ctx => 
+            ctx.Name === 'desktop-linux' || 
+            ctx.DockerEndpoint && ctx.DockerEndpoint.includes('desktop')
+          );
+          
+          if (hasDesktopContext) {
+            return 'docker-desktop'; // Docker Desktop detected via context
+          }
+        } catch (contextError) {
+          // Context check failed, continue with regular Docker check
+        }
+        
+        return true; // Docker CLI is available (could be Docker Engine)
+      } catch (error) {
+        // Docker CLI not available
+      }
+      
+      return false;
+      
     } else {
-      // Linux or other platforms - just check for Docker CLI
+      // Other platforms - just check for Docker CLI
       try {
         await execAsync('docker --version');
         return true;
@@ -2624,7 +2674,7 @@ async function checkDockerDesktopInstalled() {
 }
 
 /**
- * Attempt to start Docker Desktop on Windows/macOS
+ * Attempt to start Docker Desktop on Windows/macOS/Linux
  */
 async function startDockerDesktop(dockerPath) {
   try {
@@ -2707,8 +2757,80 @@ async function startDockerDesktop(dockerPath) {
         }
       }
       
+    } else if (process.platform === 'linux') {
+      // Linux Docker Desktop startup
+      if (typeof dockerPath === 'string' && dockerPath.includes('docker-desktop')) {
+        // Start Docker Desktop executable directly
+        try {
+          if (dockerPath === 'docker-desktop') {
+            // Docker Desktop is in PATH
+            const dockerProcess = spawn('docker-desktop', [], { 
+              detached: true, 
+              stdio: 'ignore' 
+            });
+            dockerProcess.unref();
+          } else {
+            // Docker Desktop is at specific path
+            const dockerProcess = spawn(dockerPath, [], { 
+              detached: true, 
+              stdio: 'ignore' 
+            });
+            dockerProcess.unref();
+          }
+          
+          log.info('Docker Desktop startup initiated via executable');
+          return true;
+        } catch (error) {
+          log.warn('Failed to start Docker Desktop via executable:', error.message);
+        }
+      }
+      
+      // Try alternative methods to start Docker Desktop on Linux
+      try {
+        // Check if Docker is already running first
+        try {
+          await execAsync('docker info', { timeout: 5000 });
+          log.info('Docker is already running');
+          return true;
+        } catch (checkError) {
+          // Docker not running, try to start it
+        }
+        
+        // Try to start Docker Desktop via desktop entry
+        try {
+          await execAsync('gtk-launch docker-desktop || true');
+          log.info('Docker Desktop startup initiated via gtk-launch');
+          return true;
+        } catch (gtkError) {
+          // gtk-launch failed, try other methods
+        }
+        
+        // Try to start via XDG desktop entry
+        try {
+          await execAsync('xdg-open /usr/share/applications/docker-desktop.desktop || true');
+          log.info('Docker Desktop startup initiated via xdg-open');
+          return true;
+        } catch (xdgError) {
+          // XDG method failed
+        }
+        
+        // Try to start Docker service as fallback (Docker Engine)
+        try {
+          await execAsync('sudo systemctl start docker');
+          log.info('Docker service startup initiated via systemctl');
+          return true;
+        } catch (systemctlError) {
+          log.warn('Failed to start Docker service via systemctl:', systemctlError.message);
+        }
+        
+        return false;
+      } catch (error) {
+        log.warn('All Linux Docker startup methods failed:', error.message);
+        return false;
+      }
+      
     } else {
-      // Linux or other platforms - try to start docker service
+      // Other platforms - try to start docker service
       try {
         await execAsync('sudo systemctl start docker');
         log.info('Docker service startup initiated via systemctl');
@@ -2775,7 +2897,7 @@ async function askToStartDockerDesktop(loadingScreen) {
     log.info('Docker Desktop is installed but not running');
     
     // Show dialog asking user if they want to start Docker Desktop
-    const platformName = process.platform === 'darwin' ? 'macOS' : 'Windows';
+    const platformName = process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux';
     const result = await showStartupDialog(
       loadingScreen,
       'question',
@@ -2990,9 +3112,9 @@ async function initialize() {
     } else {
       console.log('Docker not available - checking if we can start it...');
       
-      // On Windows and macOS, ask if user wants to start Docker Desktop
+      // On Windows, macOS, and Linux, ask if user wants to start Docker Desktop
       let dockerStarted = false;
-      if (process.platform === 'win32' || process.platform === 'darwin') {
+      if (process.platform === 'win32' || process.platform === 'darwin' || process.platform === 'linux') {
         dockerStarted = await askToStartDockerDesktop(loadingScreen);
       }
       
@@ -3019,11 +3141,19 @@ async function initialize() {
 
 async function initializeWithDocker() {
   try {
-    // Register handlers for various app functions
-    registerHandlers();
+    // Register handlers for various app functions (only if not already registered)
+    if (!global.handlersRegistered) {
+      registerHandlers();
+      global.handlersRegistered = true;
+    }
     
     // Get user's feature selections
-    const selectedFeatures = global.selectedFeatures;
+    const selectedFeatures = global.selectedFeatures || {
+      comfyUI: true,
+      n8n: true,
+      ragAndTts: true,
+      claraCore: true
+    };
     const systemConfig = global.systemConfig;
     
     // Check system configuration before initializing services
@@ -3075,7 +3205,8 @@ async function initializeWithDocker() {
     
     // Setup Docker services with progress updates to splash screen
     loadingScreen.setStatus('Setting up Docker environment...', 'info');
-    const dockerSuccess = await dockerSetup.setup(async (status, type = 'info', progress = null) => {
+    
+    const dockerSuccess = await dockerSetup.setup(selectedFeatures, async (status, type = 'info', progress = null) => {
       loadingScreen.setStatus(status, type, progress);
       
       // Also log to console
@@ -3084,7 +3215,7 @@ async function initializeWithDocker() {
       } else {
         console.log(`[Docker Setup] ${status}`);
       }
-    }, false);
+    });
 
     if (dockerSuccess) {
       loadingScreen.setStatus('Docker services ready - Starting application...', 'success');
@@ -3112,8 +3243,11 @@ async function initializeWithDocker() {
 
 async function initializeWithoutDocker() {
   try {
-    // Register handlers for various app functions
-    registerHandlers();
+    // Register handlers for various app functions (only if not already registered)
+    if (!global.handlersRegistered) {
+      registerHandlers();
+      global.handlersRegistered = true;
+    }
     
     // Initialize essential services only
     llamaSwapService = new LlamaSwapService();

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
-import { Brain, Sparkles } from 'lucide-react';
+import { Brain, Sparkles, MessageCircle } from 'lucide-react';
 
 interface TypingIndicatorProps {
   isVisible: boolean;
@@ -115,7 +115,7 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
           ref={iconRef}
           className="w-6 h-6 bg-gradient-to-br from-sakura-400 to-pink-500 rounded-full flex items-center justify-center shadow-md"
         >
-          <Brain className="w-3.5 h-3.5 text-white" />
+          <MessageCircle className="w-3 h-3 text-white" />
         </div>
 
         {/* Thinking message */}
