@@ -30,6 +30,19 @@ class DockerSetup extends EventEmitter {
     this.systemArch = this.getSystemArchitecture();
     console.log(`Detected system architecture: ${this.systemArch}`);
 
+    // Ensure app data directory exists
+    if (!fs.existsSync(this.appDataPath)) {
+      fs.mkdirSync(this.appDataPath, { recursive: true });
+    }
+
+    // Create python_backend_data directory for explicit Python container persistence
+    // NOTE: This MUST be defined before the containers object to avoid undefined reference
+    this.pythonBackendDataPath = path.join(this.appDataPath, 'python_backend_data');
+    if (!fs.existsSync(this.pythonBackendDataPath)) {
+      fs.mkdirSync(this.pythonBackendDataPath, { recursive: true });
+      console.log(`📁 Created Python backend data directory: ${this.pythonBackendDataPath}`);
+    }
+
     // Container configuration - Removed Ollama container
     this.containers = {
       python: {
@@ -39,12 +52,12 @@ class DockerSetup extends EventEmitter {
         internalPort: 5000,
         healthCheck: this.isPythonRunning.bind(this),
         volumes: [
-          'clara_python_data:/app/data',
-          'clara_python_models:/app/models',
-          'clara_python_cache:/root/.cache',
-          `${this.appDataPath}:/root/.clara`
+          // Mount the python_backend_data folder as the clara user's home directory
+          `${this.pythonBackendDataPath}:/home/clara`,
+          // Keep backward compatibility for existing data paths
+          'clara_python_models:/app/models'
         ],
-        volumeNames: ['clara_python_data', 'clara_python_models', 'clara_python_cache']
+        volumeNames: ['clara_python_models']
       },
       n8n: {
         name: 'clara_n8n',
@@ -86,10 +99,8 @@ class DockerSetup extends EventEmitter {
       }
     };
 
-    // Ensure app data directory exists
-    if (!fs.existsSync(this.appDataPath)) {
-      fs.mkdirSync(this.appDataPath, { recursive: true });
-    }
+    // Initialize Python backend directory structure
+    this.initializePythonBackendDirectories();
 
     // Initialize pull timestamps if not exists
     this.initializePullTimestamps();
@@ -143,6 +154,81 @@ class DockerSetup extends EventEmitter {
         fs.mkdirSync(dirPath, { recursive: true });
       }
     });
+  }
+
+  /**
+   * Initialize Python backend directory structure
+   * This creates the necessary subdirectories within the python_backend_data folder
+   * to ensure proper data organization and persistence
+   */
+  initializePythonBackendDirectories() {
+    try {
+      console.log('🔧 Initializing Python backend directory structure...');
+      
+      // Create essential directories for Python backend data
+      const pythonDirectories = [
+        '.clara',                    // Clara configuration directory
+        '.clara/lightrag_storage',   // RAG storage directory
+        '.clara/lightrag_storage/metadata', // Metadata for notebooks and documents
+        '.cache',                    // Python cache directory
+        'uploads',                   // File uploads directory
+        'temp'                       // Temporary files directory
+      ];
+
+      pythonDirectories.forEach(dir => {
+        const dirPath = path.join(this.pythonBackendDataPath, dir);
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath, { recursive: true });
+          console.log(`  ✓ Created: ${dir}`);
+        }
+      });
+
+      // Create initial metadata files if they don't exist
+      const metadataFiles = [
+        { file: '.clara/lightrag_storage/metadata/notebooks.json', content: '{}' },
+        { file: '.clara/lightrag_storage/metadata/documents.json', content: '{}' }
+      ];
+
+      metadataFiles.forEach(({ file, content }) => {
+        const filePath = path.join(this.pythonBackendDataPath, file);
+        if (!fs.existsSync(filePath)) {
+          fs.writeFileSync(filePath, content, 'utf8');
+          console.log(`  ✓ Created: ${file}`);
+        }
+      });
+
+      console.log('✅ Python backend directory structure initialized successfully');
+      
+    } catch (error) {
+      console.error('❌ Error initializing Python backend directories:', error.message);
+      // Don't throw here - the container can still work without perfect directory structure
+    }
+  }
+
+  /**
+   * Get information about the Python backend data directory
+   * This provides transparency about where data is stored
+   */
+  getPythonBackendInfo() {
+    return {
+      dataPath: this.pythonBackendDataPath,
+      mountPoint: '/home/clara',
+      description: 'All Python backend data is stored in a dedicated folder and mounted as the clara user home directory',
+      structure: {
+        '.clara/': 'Clara configuration and storage',
+        '.clara/lightrag_storage/': 'RAG system data and embeddings',
+        '.clara/lightrag_storage/metadata/': 'Notebook and document metadata',
+        '.cache/': 'Python package cache and temporary files',
+        'uploads/': 'User uploaded files',
+        'temp/': 'Temporary processing files'
+      },
+      benefits: [
+        'Complete data persistence across container restarts',
+        'Easy backup - just copy the python_backend_data folder',
+        'Transparent data location on host system',
+        'No data loss when updating containers'
+      ]
+    };
   }
 
   /**

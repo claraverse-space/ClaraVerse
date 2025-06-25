@@ -94,6 +94,9 @@ const Settings = () => {
     comfyuiAvailable: false
   });
 
+  // Add Python backend info state
+  const [pythonBackendInfo, setPythonBackendInfo] = useState<any>(null);
+
   // Add startup configuration state
   const [startupConfig, setStartupConfig] = useState<StartupConfig>({
     autoStart: false,
@@ -346,6 +349,24 @@ const Settings = () => {
     const interval = setInterval(checkDockerServices, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Load Python backend information
+  useEffect(() => {
+    const loadPythonBackendInfo = async () => {
+      try {
+        if ((window.electron as any)?.getPythonBackendInfo) {
+          const info = await (window.electron as any).getPythonBackendInfo();
+          setPythonBackendInfo(info);
+        }
+      } catch (error) {
+        console.error('Failed to load Python backend info:', error);
+      }
+    };
+
+    if (activeTab === 'servers') {
+      loadPythonBackendInfo();
+    }
+  }, [activeTab]);
 
   // Update checking functionality - Enhanced with bulletproof error handling
   const checkForUpdates = async () => {
@@ -1846,6 +1867,80 @@ const Settings = () => {
                 </div>
 
               </div>
+
+              {/* Python Backend Data Information */}
+              {pythonBackendInfo && (
+                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <HardDrive className="w-5 h-5 text-green-500" />
+                    Python Backend Data Storage
+                  </h4>
+                  
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-green-800 dark:text-green-200 mb-2">
+                          <strong>📁 Data Location:</strong> {pythonBackendInfo.dataPath}
+                        </p>
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          {pythonBackendInfo.description}
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                          Directory Structure:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                          {Object.entries(pythonBackendInfo.structure || {}).map(([dir, desc]) => (
+                            <div key={dir} className="flex">
+                              <code className="text-green-700 dark:text-green-300 font-mono mr-2 flex-shrink-0">
+                                {dir}
+                              </code>
+                              <span className="text-green-600 dark:text-green-400">
+                                {String(desc)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                          ✅ Benefits:
+                        </p>
+                        <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
+                          {(pythonBackendInfo.benefits || []).map((benefit: string, index: number) => (
+                            <li key={index}>• {benefit}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => {
+                            if ((window as any).electron?.shell) {
+                              (window as any).electron.shell.openPath(pythonBackendInfo.dataPath);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Open Folder
+                        </button>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(pythonBackendInfo.dataPath);
+                          }}
+                          className="px-3 py-1.5 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 transition-colors"
+                        >
+                          Copy Path
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Service Actions */}
               <div className="glassmorphic rounded-xl p-6">

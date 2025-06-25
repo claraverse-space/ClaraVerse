@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('electron', {
   getPythonPort: () => ipcRenderer.invoke('get-python-port'),
   checkPythonBackend: () => ipcRenderer.invoke('check-python-backend'),
   checkDockerServices: () => ipcRenderer.invoke('check-docker-services'),
+  getPythonBackendInfo: () => ipcRenderer.invoke('get-python-backend-info'),
   startDockerService: (serviceName) => ipcRenderer.invoke('start-docker-service', serviceName),
   stopDockerService: (serviceName) => ipcRenderer.invoke('stop-docker-service', serviceName),
   restartDockerService: (serviceName) => ipcRenderer.invoke('restart-docker-service', serviceName),

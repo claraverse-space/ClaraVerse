@@ -70,7 +70,7 @@ export interface PersonalInfo {
 export interface Provider {
   id: string;
   name: string;
-  type: 'claras-pocket' | 'openai' | 'openai_compatible' | 'ollama';
+  type: 'claras-pocket' | 'openai' | 'openai_compatible' | 'ollama' | 'openrouter';
   baseUrl?: string;
   apiKey?: string;
   isEnabled: boolean;

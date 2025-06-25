@@ -1813,6 +1813,20 @@ function registerHandlers() {
     }
   });
 
+  // Get Python backend information
+  ipcMain.handle('get-python-backend-info', async () => {
+    try {
+      if (!dockerSetup) {
+        throw new Error('Docker setup not initialized');
+      }
+      
+      return dockerSetup.getPythonBackendInfo();
+    } catch (error) {
+      log.error('Error getting Python backend info:', error);
+      return { error: error.message };
+    }
+  });
+
   // Check for container updates
   ipcMain.handle('docker-check-updates', async () => {
     try {
