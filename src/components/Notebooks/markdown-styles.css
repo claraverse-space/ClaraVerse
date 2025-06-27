@@ -1,0 +1,83 @@
+/* Comprehensive markdown overflow prevention */
+.markdown-content {
+  width: 100%;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  box-sizing: border-box;
+}
+
+.markdown-content * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Code blocks */
+.markdown-content pre {
+  overflow-x: auto !important;
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  max-width: 100% !important;
+}
+
+.markdown-content code {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  white-space: pre-wrap !important;
+}
+
+/* Tables */
+.markdown-content table {
+  width: 100% !important;
+  table-layout: fixed !important;
+  word-wrap: break-word !important;
+  border-collapse: collapse !important;
+}
+
+.markdown-content td,
+.markdown-content th {
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  min-width: 0 !important;
+  padding: 8px !important;
+}
+
+/* Images */
+.markdown-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block !important;
+}
+
+/* Links */
+.markdown-content a {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Block elements */
+.markdown-content p,
+.markdown-content div,
+.markdown-content blockquote,
+.markdown-content li {
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  max-width: 100% !important;
+}
+
+/* Syntax highlighter specific */
+.markdown-content .react-syntax-highlighter {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}
+
+/* Container constraints */
+.markdown-content-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+} 

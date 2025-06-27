@@ -23,6 +23,7 @@ import {
 import DocumentUpload from './DocumentUpload';
 import NotebookChat from './NotebookChat';
 import GraphViewer from './GraphViewer';
+import NotebookWorkspace from './NotebookWorkspace';
 import { 
   claraNotebookService, 
   NotebookResponse, 
@@ -56,6 +57,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
   const [selectedLLMProvider, setSelectedLLMProvider] = useState('');
   const [selectedLLMModel, setSelectedLLMModel] = useState('');
   const [models, setModels] = useState<ClaraModel[]>([]);
+  const [useWorkspaceView, setUseWorkspaceView] = useState(true);
   
   // Get providers from context
   const { providers } = useProviders();
@@ -256,6 +258,18 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
     );
   };
 
+  // If using workspace view, render the new layout
+  if (useWorkspaceView) {
+    return (
+      <NotebookWorkspace
+        notebook={notebook}
+        documents={documents}
+        onClose={onClose}
+        onNotebookUpdated={onNotebookUpdated}
+      />
+    );
+  }
+
   return (
     <div className="h-[94vh] flex flex-col bg-black dark:bg-black">
       {/* Compact Header */}
@@ -291,6 +305,30 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                     <span>{notebook.llm_provider?.name}</span>
                   </div>
                 </div>
+              </div>
+              
+              {/* View Toggle */}
+              <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                <button
+                  onClick={() => setUseWorkspaceView(true)}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    useWorkspaceView
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  Workspace
+                </button>
+                <button
+                  onClick={() => setUseWorkspaceView(false)}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                    !useWorkspaceView
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  Classic
+                </button>
               </div>
             </div>
           </div>

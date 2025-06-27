@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User, Bot, Copy, Check, MessageSquare, AlertCircle, FileText, ExternalLink, ChevronDown, ChevronUp, BookOpen, AlertTriangle } from 'lucide-react';
+import { Send, User, Bot, Copy, Check, MessageSquare, AlertCircle, FileText, ExternalLink, ChevronDown, ChevronUp, BookOpen, AlertTriangle, Upload, Loader2, Brain } from 'lucide-react';
 import { claraNotebookService, NotebookCitation } from '../../services/claraNotebookService';
+import DocumentUpload from './DocumentUpload';
 
 interface ChatMessage {
   id: string;
@@ -10,13 +11,22 @@ interface ChatMessage {
   citations?: NotebookCitation[];
 }
 
+interface ProgressState {
+  isActive: boolean;
+  type: string;
+  message: string;
+  progress: number;
+  details?: string;
+}
+
 interface NotebookChatProps {
   notebookId: string;
   documentCount: number;
   completedDocumentCount: number;
+  onDocumentUpload?: (files: File[]) => void;
 }
 
-const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, completedDocumentCount }) => {
+const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, completedDocumentCount, onDocumentUpload }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +36,8 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
   const [summaryGenerated, setSummaryGenerated] = useState(false);
   const [showSkeletonLoading, setShowSkeletonLoading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -33,6 +45,78 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
   useEffect(() => {
     const unsubscribe = claraNotebookService.onHealthChange(setIsBackendHealthy);
     return unsubscribe;
+  }, []);
+
+  // Listen for progress updates from Clara assistant
+  useEffect(() => {
+    let hideTimeout: NodeJS.Timeout | null = null;
+
+    const handleProgressUpdate = (event: CustomEvent<ProgressState>) => {
+      // Clear any existing timeout
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+
+      setProgressState(event.detail);
+      
+      // Auto-hide progress after completion with longer delay
+      if (event.detail.progress >= 100) {
+        hideTimeout = setTimeout(() => {
+          setProgressState(null);
+        }, 3000);
+      }
+    };
+
+    // Listen for progress events
+    window.addEventListener('clara-progress-update', handleProgressUpdate as EventListener);
+
+    // Also listen for console logs from Clara assistant and parse them
+    const originalLog = console.log;
+    console.log = (...args) => {
+      originalLog.apply(console, args);
+      
+      // Check if this is a Clara progress log
+      if (args.length > 0 && typeof args[0] === 'string' && args[0].includes('Setting new progressState')) {
+        try {
+          // Parse the progress object from the log
+          const progressObj = args.find(arg => 
+            typeof arg === 'object' && 
+            arg !== null && 
+            'isActive' in arg && 
+            'message' in arg && 
+            'progress' in arg
+          );
+          
+          if (progressObj) {
+            // Clear any existing timeout
+            if (hideTimeout) {
+              clearTimeout(hideTimeout);
+              hideTimeout = null;
+            }
+
+            setProgressState(progressObj as ProgressState);
+            
+            // Auto-hide progress after completion with longer delay
+            if (progressObj.progress >= 100) {
+              hideTimeout = setTimeout(() => {
+                setProgressState(null);
+              }, 3000);
+            }
+          }
+        } catch (error) {
+          // Ignore parsing errors
+        }
+      }
+    };
+
+    return () => {
+      window.removeEventListener('clara-progress-update', handleProgressUpdate as EventListener);
+      console.log = originalLog;
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+      }
+    };
   }, []);
 
   // Generate summary when notebook changes or backend becomes healthy
@@ -190,12 +274,123 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
     }
   };
 
+  const handleDocumentUpload = async (files: File[]) => {
+    setShowUploadModal(false);
+    if (onDocumentUpload) {
+      onDocumentUpload(files);
+    }
+  };
+
+  // Test function to simulate progress (for development)
+  const testProgress = () => {
+    setProgressState({
+      isActive: true,
+      type: 'context_loading',
+      message: 'Loading Context',
+      progress: 0,
+      details: 'Processed 0 tokens, batch size 57'
+    });
+
+    // Simulate progress
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 10;
+      setProgressState({
+        isActive: true,
+        type: 'context_loading',
+        message: 'Loading Context',
+        progress: progress,
+        details: `Processed ${Math.floor(progress * 0.57)} tokens, batch size 57`
+      });
+
+      if (progress >= 100) {
+        clearInterval(interval);
+      }
+    }, 200);
+  };
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
+  };
+
+  // Progress indicator component
+  const ProgressIndicator: React.FC<{ progress: ProgressState }> = ({ progress }) => {
+    const circumference = 2 * Math.PI * 16; // radius = 16
+    const strokeDasharray = circumference;
+    const strokeDashoffset = circumference - (progress.progress / 100) * circumference;
+
+    return (
+      <div className="fixed top-20 right-4 z-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 min-w-[200px] animate-in slide-in-from-right-2 duration-300">
+        <div className="flex items-center gap-3">
+          {/* Progress Ring */}
+          <div className="relative w-10 h-10 flex-shrink-0">
+            <svg className="w-10 h-10 transform -rotate-90" viewBox="0 0 36 36">
+              {/* Background circle */}
+              <circle
+                cx="18"
+                cy="18"
+                r="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-gray-200 dark:text-gray-600"
+              />
+              {/* Progress circle */}
+              <circle
+                cx="18"
+                cy="18"
+                r="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                className="text-blue-500"
+                style={{
+                  transition: 'stroke-dashoffset 0.3s ease-in-out'
+                }}
+              />
+            </svg>
+            {/* Icon in center */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {progress.type === 'context_loading' ? (
+                <Brain className="w-4 h-4 text-blue-500" />
+              ) : (
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              )}
+            </div>
+          </div>
+
+          {/* Progress text */}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+              {progress.message}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {progress.progress}%
+              {progress.details && (
+                <div className="truncate mt-1">
+                  {progress.details}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={() => setProgressState(null)}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+          >
+            <Check className="w-3 h-3 text-gray-400" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // Simple markdown-like formatting
@@ -280,7 +475,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
   const chatMessages = messages.filter(m => m.type !== 'summary');
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Summary Section */}
       {(summaryMessage || isGeneratingSummary) && (
         <div className={`flex-shrink-0 border-b border-gray-200 dark:border-gray-700 ${isSummaryCollapsed ? 'bg-gray-50 dark:bg-gray-900' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
@@ -299,6 +494,14 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                     {summaryMessage.citations.length} sources
                   </span>
                 )}
+                {/* Test Progress Button (Development) */}
+                <button
+                  onClick={testProgress}
+                  className="ml-2 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                  title="Test Progress Indicator"
+                >
+                  Test Progress
+                </button>
               </div>
               <div className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300">
                 {isSummaryCollapsed ? (
@@ -593,7 +796,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
       {/* Input Area */}
       <div className="flex-shrink-0 p-4 bg-white dark:bg-black">
         <div className="max-w-4xl mx-auto">
-          <div className="relative bg-gray-50 dark:bg-gray-900 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="relative bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
             <textarea
               ref={textareaRef}
               value={inputMessage}
@@ -609,12 +812,22 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                       : "Message your notebook..."
               }
               disabled={!isBackendHealthy || isLoading || completedDocumentCount === 0}
-              className="w-full p-4 pr-14 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl"
+              className="w-full p-4 pr-24 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl"
               style={{ minHeight: '56px', maxHeight: '200px' }}
             />
             
-            {/* Send Button */}
-            <div className="absolute right-3 bottom-3">
+            {/* Action Buttons */}
+            <div className="absolute right-3 bottom-3 flex items-center gap-2">
+              {/* Upload Button */}
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="p-2 rounded-lg transition-all duration-200 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                title="Upload Documents"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+              
+              {/* Send Button */}
               <button
                 onClick={handleSendMessage}
                 disabled={!inputMessage.trim() || isLoading || !isBackendHealthy || completedDocumentCount === 0}
@@ -642,6 +855,19 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
           </div>
         </div>
       </div>
+
+      {/* Document Upload Modal */}
+      {showUploadModal && (
+        <DocumentUpload
+          onClose={() => setShowUploadModal(false)}
+          onUpload={handleDocumentUpload}
+        />
+      )}
+
+      {/* Progress Indicator */}
+      {progressState && progressState.isActive && (
+        <ProgressIndicator progress={progressState} />
+      )}
     </div>
   );
 };
