@@ -62,12 +62,96 @@ const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = (
   const [renderedSvg, setRenderedSvg] = useState<string>('');
   const diagramRef = useRef<HTMLDivElement>(null);
   const diagramId = useRef(`inline-mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastContentRef = useRef<string>('');
+
+  // Conservative syntax fixing function - only fix actual errors
+  const fixMermaidSyntax = (code: string): string => {
+    let fixed = code.trim();
+    
+    // Only fix clear syntax errors, don't touch valid syntax
+    fixed = fixed
+      // Fix only obvious malformed arrows (not valid labeled arrows like -->|label|)
+      .replace(/-->->/g, '-->')  // Fix -->-> to -->
+      .replace(/-->-(?!\|)/g, '-->')   // Fix -->- to --> (but not -->|label|)
+      .replace(/->>->/g, '-->>')  // Fix ->>-> to -->>
+      .replace(/->>-(?!\|)/g, '-->>')   // Fix ->>- to -->> (but not ->>|label|)
+      
+      // Fix incomplete arrows only at end of lines or before whitespace
+      .replace(/\s+AWS\s*-\s*$/gm, ' AWS --> ')
+      .replace(/\s+AWS\s*-\s+(?![|\w])/g, ' AWS --> ')  // Don't break AWS-something patterns
+      
+      // Fix single dash only when it's clearly wrong (not part of valid syntax)
+      .replace(/([A-Za-z0-9_]+)\s+-\s*$/gm, '$1 --> ')   // Fix - at end of line
+      .replace(/([A-Za-z0-9_]+)\s+-\s+(?![|\w])/g, '$1 --> ')  // Fix single dash but preserve - in valid contexts
+      
+      // Clean up extra spaces around arrows (but preserve labeled arrows)
+      .replace(/\s*-->\s*(?!\|)/g, ' --> ')  // Clean --> but not -->|
+      .replace(/\s*---\s*/g, ' --- ')
+      .replace(/\s*-\.\s*/g, ' -. ')
+      .replace(/\s*\.\.\>\s*/g, ' ..> ')
+      
+      // Ensure proper line endings
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+    
+    return fixed;
+  };
+
+  // Validate if the diagram has proper Mermaid structure
+  const isValidMermaid = (code: string): boolean => {
+    const lines = code.split('\n').filter(line => line.trim());
+    
+    // Must have at least one diagram type declaration
+    const hasDeclaration = lines.some(line => 
+      line.match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gitgraph|pie|quadrantChart|timeline|mindmap|sankey|c4Context|c4Container|c4Component|c4Dynamic|c4Deployment)\s/)
+    );
+    
+    // Must have at least one connection or valid syntax
+    const hasConnections = lines.some(line => 
+      line.includes('-->') || 
+      line.includes('---') ||
+      line.includes('..>') ||
+      line.includes('-.') ||
+      line.match(/^\s*[A-Za-z0-9_]+\s*:/) || // sequence diagram
+      line.match(/^\s*[A-Za-z0-9_]+\s*\{/) || // class diagram
+      line.match(/^\s*[A-Za-z0-9_]+\s*\[/) // flowchart node
+    );
+    
+    return hasDeclaration || hasConnections;
+  };
 
   useEffect(() => {
-    const renderMermaid = async () => {
+    // Debounce rendering to prevent repeated attempts
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
+    }
+
+    // Skip if same content as last render
+    if (lastContentRef.current === content) {
+      return;
+    }
+
+    renderTimeoutRef.current = setTimeout(async () => {
       try {
         setIsLoading(true);
         setError(null);
+        lastContentRef.current = content;
+        
+        // Validate diagram code before attempting to render
+        if (!content || !content.trim()) {
+          setError('Empty diagram content');
+          setIsLoading(false);
+          return;
+        }
+
+        let cleanCode = content.trim();
+        
+        // Ensure diagram has a proper declaration first
+        if (!cleanCode.match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gitgraph|pie|quadrantChart|timeline|mindmap|sankey|c4Context|c4Container|c4Component|c4Dynamic|c4Deployment)/m)) {
+          // Add a graph declaration if missing
+          cleanCode = `graph TD\n${cleanCode}`;
+        }
         
         // Dynamic import of mermaid
         const mermaid = await import('mermaid');
@@ -78,8 +162,8 @@ const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = (
           theme: isDark ? 'dark' : 'default',
           securityLevel: 'loose',
           fontFamily: 'inherit',
-          logLevel: 'fatal', // Suppress error messages in UI
-          suppressErrorRendering: true, // Prevent error messages from being rendered to DOM
+          logLevel: 'fatal', // Suppress console spam
+          suppressErrorRendering: true, // Prevent DOM pollution
           flowchart: {
             useMaxWidth: true,
             htmlLabels: true,
@@ -97,25 +181,63 @@ const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = (
         // Generate unique ID for this diagram
         const uniqueId = diagramId.current;
         
-        // Render the diagram
-        const result = await mermaid.default.render(uniqueId, content.trim());
-        setRenderedSvg(result.svg);
+        // Clear any existing diagrams
+        const existingEl = document.getElementById(uniqueId);
+        if (existingEl) {
+          existingEl.remove();
+        }
+        
+        try {
+          // First try to render the original code (with declaration if needed)
+          const result = await mermaid.default.render(uniqueId, cleanCode);
+          setRenderedSvg(result.svg);
+        } catch (originalError) {
+          // Only if original fails, try with syntax fixes
+          console.log('Original syntax failed, trying fixes...', originalError);
+          
+          const fixedCode = fixMermaidSyntax(cleanCode);
+          
+          if (!isValidMermaid(fixedCode)) {
+            throw new Error('Invalid Mermaid syntax - missing diagram declaration or connections');
+          }
+          
+          const fixedResult = await mermaid.default.render(`${uniqueId}-fixed`, fixedCode);
+          setRenderedSvg(fixedResult.svg);
+        }
         
       } catch (err) {
         console.error('Inline Mermaid rendering error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Unknown rendering error';
+        
+        // Enhanced error reporting with specific guidance
+        let errorMessage = 'Failed to render diagram';
+        if (err instanceof Error) {
+          if (err.message.includes('Parse error') || err.message.includes('Expecting')) {
+            // Extract line number and issue from error
+            const lineMatch = err.message.match(/line (\d+):/);
+            const expectingMatch = err.message.match(/Expecting '([^']+)'/);
+            
+            errorMessage = `Syntax Error on line ${lineMatch ? lineMatch[1] : 'unknown'}`;
+            if (expectingMatch) {
+              errorMessage += ` - Expected: ${expectingMatch[1]}`;
+            }
+          } else {
+            errorMessage = `Rendering Error: ${err.message}`;
+          }
+        }
+        
         setError(errorMessage);
+        
       } finally {
         setIsLoading(false);
       }
-    };
+    }, 300); // 300ms debounce
 
-    if (content.trim()) {
-      renderMermaid();
-    } else {
-      setIsLoading(false);
-      setError('Empty diagram content');
-    }
+    // Cleanup
+    return () => {
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
+      }
+    };
   }, [content, isDark]);
 
   if (isLoading) {
@@ -128,6 +250,9 @@ const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = (
   }
 
   if (error) {
+    const fixedCode = fixMermaidSyntax(content);
+    const showFixed = fixedCode !== content.trim();
+    
     return (
       <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
         <div className="flex items-center gap-2 text-red-700 dark:text-red-400 mb-2">
@@ -135,12 +260,34 @@ const InlineMermaidRenderer: React.FC<{ content: string; isDark?: boolean }> = (
           <span className="font-medium">Diagram Error</span>
         </div>
         <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
+        
+        {showFixed && (
+          <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
+            <p className="text-xs text-green-600 dark:text-green-400 mb-2">🔧 Suggested fix:</p>
+            <pre className="text-xs text-green-700 dark:text-green-300 overflow-x-auto">
+              {fixedCode}
+            </pre>
+          </div>
+        )}
+        
         <details className="text-xs">
-          <summary className="text-red-500 dark:text-red-400 cursor-pointer">Show diagram source</summary>
+          <summary className="text-red-500 dark:text-red-400 cursor-pointer hover:text-red-600 dark:hover:text-red-300">
+            Show diagram source
+          </summary>
           <pre className="mt-2 p-2 bg-red-100 dark:bg-red-900/40 rounded text-red-700 dark:text-red-300 overflow-x-auto">
             {content}
           </pre>
         </details>
+        <div className="mt-3 text-xs text-red-400 dark:text-red-500">
+          <p className="font-medium mb-1">Quick fixes:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Use proper arrows: <code>--&gt;</code> or <code>---</code></li>
+            <li>Add diagram type: <code>flowchart TD</code> or <code>graph LR</code></li>
+            <li>Check node syntax: <code>A[Node Name]</code></li>
+            <li>Avoid special characters in node IDs</li>
+            <li>Ensure balanced brackets and quotes</li>
+          </ul>
+        </div>
       </div>
     );
   }
@@ -676,16 +823,32 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
   useEffect(() => {
     if (!isDark) {
       const checkTheme = () => {
-        const isDarkMode = document.documentElement.classList.contains('dark') ||
-                          window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setDarkMode(isDarkMode);
+        // Add null checks for document.documentElement
+        if (!document?.documentElement) {
+          console.warn('document.documentElement is not available');
+          return;
+        }
+        
+        try {
+          const isDarkMode = document.documentElement.classList.contains('dark') ||
+                            window.matchMedia('(prefers-color-scheme: dark)').matches;
+          setDarkMode(isDarkMode);
+        } catch (error) {
+          console.error('Error checking theme:', error);
+          // Fallback to light mode
+          setDarkMode(false);
+        }
       };
 
       checkTheme();
-      const observer = new MutationObserver(checkTheme);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
       
-      return () => observer.disconnect();
+      // Only set up observer if document.documentElement exists
+      if (document?.documentElement) {
+        const observer = new MutationObserver(checkTheme);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        
+        return () => observer.disconnect();
+      }
     } else {
       setDarkMode(isDark);
     }

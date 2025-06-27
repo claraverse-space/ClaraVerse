@@ -52,6 +52,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
+    "@blocknote/core": "^0.32.0",
+    "@blocknote/react": "^0.32.0",
     "@electron/remote": "^2.1.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
@@ -115,6 +117,7 @@
     "monaco-editor": "^0.52.2",
     "ngrok": "^5.0.0-beta.2",
     "node-fetch": "^3.3.2",
+    "novel": "^1.0.2",
     "ollama": "^0.5.14",
     "openai": "^4.0.0",
     "openai-zod-functions": "^0.1.2",

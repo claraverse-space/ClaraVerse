@@ -8,8 +8,7 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import mermaid from 'mermaid';
-import MonacoEditor from './MilkdownEditor';
-import SimpleMonacoTest from './SimpleMonacoTest';
+import MonacoEditor from './MonacoEditor';
 import { 
   Plus, 
   Search, 
@@ -50,7 +49,9 @@ import {
   ExternalLink,
   Play,
   SplitSquareHorizontal,
-  Monitor
+  Monitor,
+  Menu,
+  PanelLeft
 } from 'lucide-react';
 
 // Import CSS for math rendering and markdown constraints
@@ -60,43 +61,249 @@ import './markdown-styles.css';
 // Separate Mermaid component to handle useEffect properly
 const MermaidDiagram: React.FC<{ code: string; id: string }> = ({ code, id }) => {
   const [svg, setSvg] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCodeRef = useRef<string>('');
+
+  // Conservative syntax fixing function - only fix actual errors
+  const fixMermaidSyntax = (code: string): string => {
+    let fixed = code.trim();
+    
+    // Only fix clear syntax errors, don't touch valid syntax
+    fixed = fixed
+      // Fix only obvious malformed arrows (not valid labeled arrows like -->|label|)
+      .replace(/-->->/g, '-->')  // Fix -->-> to -->
+      .replace(/-->-(?!\|)/g, '-->')   // Fix -->- to --> (but not -->|label|)
+      .replace(/->>->/g, '-->>')  // Fix ->>-> to -->>
+      .replace(/->>-(?!\|)/g, '-->>')   // Fix ->>- to -->> (but not ->>|label|)
+      
+      // Fix incomplete arrows only at end of lines or before whitespace
+      .replace(/\s+AWS\s*-\s*$/gm, ' AWS --> ')
+      .replace(/\s+AWS\s*-\s+(?![|\w])/g, ' AWS --> ')  // Don't break AWS-something patterns
+      
+      // Fix single dash only when it's clearly wrong (not part of valid syntax)
+      .replace(/([A-Za-z0-9_]+)\s+-\s*$/gm, '$1 --> ')   // Fix - at end of line
+      .replace(/([A-Za-z0-9_]+)\s+-\s+(?![|\w])/g, '$1 --> ')  // Fix single dash but preserve - in valid contexts
+      
+      // Clean up extra spaces around arrows (but preserve labeled arrows)
+      .replace(/\s*-->\s*(?!\|)/g, ' --> ')  // Clean --> but not -->|
+      .replace(/\s*---\s*/g, ' --- ')
+      .replace(/\s*-\.\s*/g, ' -. ')
+      .replace(/\s*\.\.\>\s*/g, ' ..> ')
+      
+      // Ensure proper line endings
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+    
+    return fixed;
+  };
+
+  // Validate if the diagram has proper Mermaid structure
+  const isValidMermaid = (code: string): boolean => {
+    const lines = code.split('\n').filter(line => line.trim());
+    
+    // Must have at least one diagram type declaration
+    const hasDeclaration = lines.some(line => 
+      line.match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gitgraph|pie|quadrantChart|timeline|mindmap|sankey|c4Context|c4Container|c4Component|c4Dynamic|c4Deployment)\s/)
+    );
+    
+    // Must have at least one connection or valid syntax
+    const hasConnections = lines.some(line => 
+      line.includes('-->') || 
+      line.includes('---') ||
+      line.includes('..>') ||
+      line.includes('-.') ||
+      line.match(/^\s*[A-Za-z0-9_]+\s*:/) || // sequence diagram
+      line.match(/^\s*[A-Za-z0-9_]+\s*\{/) || // class diagram
+      line.match(/^\s*[A-Za-z0-9_]+\s*\[/) // flowchart node
+    );
+    
+    return hasDeclaration || hasConnections;
+  };
 
   useEffect(() => {
-    const renderDiagram = async () => {
+    // Debounce rendering to prevent repeated attempts
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
+    }
+
+    // Skip if same code as last render
+    if (lastCodeRef.current === code) {
+      return;
+    }
+
+    renderTimeoutRef.current = setTimeout(async () => {
       try {
-        const { svg: renderedSvg } = await mermaid.render(id, code);
-        setSvg(renderedSvg);
-        setError('');
+        setIsLoading(true);
+        setError(null);
+        lastCodeRef.current = code;
+        
+        // Validate diagram code
+        if (!code || !code.trim()) {
+          setError('Empty diagram code');
+          setIsLoading(false);
+          return;
+        }
+
+        let cleanCode = code.trim();
+        
+        // Ensure diagram has a proper declaration first
+        if (!cleanCode.match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gitgraph|pie|quadrantChart|timeline|mindmap|sankey|c4Context|c4Container|c4Component|c4Dynamic|c4Deployment)/m)) {
+          // Add a graph declaration if missing
+          cleanCode = `graph TD\n${cleanCode}`;
+        }
+
+        const { default: mermaid } = await import('mermaid');
+        
+        // Reinitialize mermaid with safe settings
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'default',
+          securityLevel: 'loose',
+          fontFamily: 'inherit',
+          logLevel: 'fatal', // Suppress console spam
+          suppressErrorRendering: true, // Prevent DOM pollution
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: 'basis'
+          },
+          sequence: {
+            useMaxWidth: true,
+            wrap: true
+          },
+          gantt: {
+            useMaxWidth: true
+          }
+        });
+
+        // Generate unique ID to avoid conflicts
+        const uniqueId = `mermaid-${id}-${Date.now()}`;
+        
+        // Clear any existing diagrams
+        const existingEl = document.getElementById(uniqueId);
+        if (existingEl) {
+          existingEl.remove();
+        }
+
+        try {
+          // First try to render the original code (with declaration if needed)
+          const result = await mermaid.render(uniqueId, cleanCode);
+          setSvg(result.svg);
+        } catch (originalError) {
+          // Only if original fails, try with syntax fixes
+          console.log('Original syntax failed, trying fixes...', originalError);
+          
+          const fixedCode = fixMermaidSyntax(cleanCode);
+          
+          if (!isValidMermaid(fixedCode)) {
+            throw new Error('Invalid Mermaid syntax - missing diagram declaration or connections');
+          }
+          
+          const fixedResult = await mermaid.render(`${uniqueId}-fixed`, fixedCode);
+          setSvg(fixedResult.svg);
+        }
+        
       } catch (err) {
         console.error('Mermaid rendering error:', err);
-        setError('Failed to render diagram');
+        
+        // Enhanced error reporting with specific guidance
+        let errorMessage = 'Failed to render diagram';
+        if (err instanceof Error) {
+          if (err.message.includes('Parse error') || err.message.includes('Expecting')) {
+            // Extract line number and issue from error
+            const lineMatch = err.message.match(/line (\d+):/);
+            const expectingMatch = err.message.match(/Expecting '([^']+)'/);
+            
+            errorMessage = `Syntax Error on line ${lineMatch ? lineMatch[1] : 'unknown'}`;
+            if (expectingMatch) {
+              errorMessage += ` - Expected: ${expectingMatch[1]}`;
+            }
+          } else {
+            errorMessage = `Rendering Error: ${err.message}`;
+          }
+        }
+        
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300); // 300ms debounce
+
+    // Cleanup
+    return () => {
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
       }
     };
-
-    renderDiagram();
   }, [code, id]);
 
+  if (isLoading) {
+    return (
+      <div className="my-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+          <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+          <span className="text-sm">Rendering Mermaid diagram...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
+    const fixedCode = fixMermaidSyntax(code);
+    const showFixed = fixedCode !== code.trim();
+    
     return (
       <div className="my-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-        <div className="text-red-600 dark:text-red-400 text-sm font-medium mb-2">Mermaid Error</div>
-        <pre className="text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap">{error}</pre>
+        <div className="text-red-600 dark:text-red-400 text-sm font-medium mb-2">Mermaid Syntax Error</div>
+        <p className="text-xs text-red-600 dark:text-red-400 mb-3">{error}</p>
+        
+        {showFixed && (
+          <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
+            <p className="text-xs text-green-600 dark:text-green-400 mb-2">🔧 Suggested fix:</p>
+            <pre className="text-xs text-green-700 dark:text-green-300 overflow-x-auto">
+              {fixedCode}
+            </pre>
+          </div>
+        )}
+        
+        <details className="text-xs">
+          <summary className="text-red-500 dark:text-red-400 cursor-pointer hover:text-red-600 dark:hover:text-red-300">
+            View original code
+          </summary>
+          <pre className="mt-2 p-2 bg-red-100 dark:bg-red-900/40 rounded text-red-700 dark:text-red-300 overflow-x-auto">
+            {code}
+          </pre>
+        </details>
+        
+        <div className="mt-3 text-xs text-red-400 dark:text-red-500">
+          <p className="font-medium mb-1">Quick fixes:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Use proper arrows: <code>--&gt;</code> or <code>---</code></li>
+            <li>Add diagram type: <code>flowchart TD</code> or <code>graph LR</code></li>
+            <li>Check node syntax: <code>A[Node Name]</code></li>
+            <li>Avoid special characters in node IDs</li>
+            <li>Ensure balanced brackets and quotes</li>
+          </ul>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="my-4 w-full overflow-hidden">
+    <div className="my-4 w-full overflow-hidden group">
       <div className="flex items-center justify-between bg-gray-800 px-4 py-2 text-sm text-gray-300">
         <span>Mermaid Diagram</span>
-        <button
-          onClick={() => navigator.clipboard.writeText(code)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-700 rounded"
-          title="Copy diagram code"
-        >
-          <Copy className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigator.clipboard.writeText(code)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-700 rounded"
+            title="Copy original code"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+        </div>
       </div>
       <div 
         className="flex justify-center items-center p-4 bg-white dark:bg-gray-900 rounded-b-lg border overflow-x-auto"
@@ -151,6 +358,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
   const [editingFolderName, setEditingFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const splitPreviewRef = useRef<HTMLDivElement>(null);
@@ -303,6 +511,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
     setIsEditing(true);
     setEditTitle(newNote.title);
     setEditContent(newNote.content);
+    // Auto-collapse sidebar when creating a new note
+    setIsSidebarCollapsed(true);
     onNoteCreated?.(newNote);
   };
 
@@ -368,6 +578,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
       }
     }
     setIsEditing(false);
+    // Auto-expand sidebar when saving edit
+    setIsSidebarCollapsed(false);
   };
 
   // Filter notes based on search and folder
@@ -426,6 +638,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
       setEditContent(currentNote.content);
     }
     setIsEditing(false);
+    // Auto-expand sidebar when exiting edit mode
+    setIsSidebarCollapsed(false);
   };
 
   // Start editing
@@ -435,7 +649,14 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
       setEditTitle(currentNote.title);
       setEditContent(currentNote.content);
       setIsEditing(true);
+      // Auto-collapse sidebar when editing starts for more space
+      setIsSidebarCollapsed(true);
     }
+  };
+
+  // Toggle sidebar collapse
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
   };
 
   // Initialize Mermaid
@@ -445,6 +666,19 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
       theme: 'dark',
       securityLevel: 'loose',
     });
+  }, []);
+
+  // Keyboard shortcut for sidebar toggle (Ctrl/Cmd + \)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Enhanced markdown renderer with custom components
@@ -536,7 +770,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
               );
             }
             
-            return (
+          return (
               <code 
                 className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono break-all"
                 style={{ 
@@ -697,18 +931,18 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
           span({ className, children, ...props }: any) {
             if (className === 'wiki-link') {
               const noteId = props['data-note-id'];
-              return (
-                <button
-                  onClick={() => {
+                  return (
+                    <button
+                      onClick={() => {
                     setSelectedNoteId(noteId);
-                    setIsEditing(false);
-                  }}
+                          setIsEditing(false);
+                      }}
                   className="text-blue-500 hover:text-blue-700 underline bg-blue-50 dark:bg-blue-900/20 px-1 py-0.5 rounded"
-                >
+                    >
                   [[{children}]]
-                </button>
-              );
-            }
+                    </button>
+                  );
+                }
             
             if (className === 'wiki-link-missing') {
               return (
@@ -740,8 +974,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                   </div>
                 </div>
               );
-            }
-
+        }
+        
             // Callouts
             if (className?.startsWith('callout')) {
               const type = className.split('-')[1];
@@ -788,23 +1022,23 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
 
   return (
     <div className="h-full flex bg-white dark:bg-black overflow-hidden">
-      {/* Left Sidebar - File Tree */}
-      <div className="w-80 flex flex-col bg-white dark:bg-black border-r border-gray-100 dark:border-gray-800">
+      {/* Collapsible Left Sidebar - File Tree */}
+      <div className={`${isSidebarCollapsed ? 'w-0' : 'w-80'} flex flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-300 ease-in-out overflow-hidden`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-100 dark:border-gray-800">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900 dark:text-white">Notes</h2>
-            <div className="flex items-center gap-2">
+        <div className="px-6 py-5 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Notes</h2>
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => setIsCreatingFolder(true)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all duration-200 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:scale-105"
                 title="New Folder"
               >
                 <FolderPlus className="w-4 h-4" />
               </button>
               <button
                 onClick={() => createNote()}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                className="p-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all duration-200 hover:scale-105 shadow-sm"
                 title="New Note"
               >
                 <Plus className="w-4 h-4" />
@@ -814,80 +1048,82 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
           
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
               placeholder="Search notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white"
+              className="w-full pl-11 pr-4 py-3 bg-gray-100 dark:bg-gray-700 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-600 text-gray-900 dark:text-white transition-all duration-200 placeholder-gray-500 dark:placeholder-gray-400"
             />
           </div>
 
           {/* Create Folder Input */}
           {isCreatingFolder && (
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Folder name..."
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') createFolder();
-                  if (e.key === 'Escape') {
+            <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter folder name..."
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createFolder();
+                    if (e.key === 'Escape') {
+                      setIsCreatingFolder(false);
+                      setNewFolderName('');
+                    }
+                  }}
+                  className="flex-1 px-3 py-2.5 bg-white dark:bg-gray-600 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                  autoFocus
+                />
+                <button
+                  onClick={createFolder}
+                  className="p-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all duration-200 hover:scale-105"
+                  title="Create"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
                     setIsCreatingFolder(false);
                     setNewFolderName('');
-                  }
-                }}
-                className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-white"
-                autoFocus
-              />
-              <button
-                onClick={createFolder}
-                className="p-2 text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
-                title="Create"
-              >
-                <Check className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => {
-                  setIsCreatingFolder(false);
-                  setNewFolderName('');
-                }}
-                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                title="Cancel"
-              >
-                <X className="w-4 h-4" />
-              </button>
+                  }}
+                  className="p-2.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all duration-200 hover:scale-105"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Folder Tree */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto px-4 py-6">
           {!hasAnyContent ? (
             /* Empty State */
-            <div className="flex flex-col items-center justify-center h-full text-center p-6">
-              <div className="bg-gray-50 dark:bg-gray-900 rounded-full p-6 mb-4">
-                <FileText className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+            <div className="flex flex-col items-center justify-center h-full text-center p-8">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl p-8 mb-6 shadow-sm">
+                <FileText className="w-16 h-16 text-blue-400 dark:text-blue-500 mx-auto" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">
                 No notes yet
               </h3>
-              <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
-                Create your first note or folder to get started
+              <p className="text-gray-600 dark:text-gray-400 mb-8 text-sm leading-relaxed max-w-xs">
+                Create your first note or organize with folders to get started
               </p>
-              <div className="flex flex-col gap-2 w-full">
+              <div className="flex flex-col gap-3 w-full max-w-xs">
                 <button
                   onClick={() => createNote()}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="flex items-center justify-center gap-3 px-6 py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
                 >
                   <Plus className="w-4 h-4" />
                   Create Note
                 </button>
                 <button
                   onClick={() => setIsCreatingFolder(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-500 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-600 dark:hover:bg-gray-700 transition-colors"
+                  className="flex items-center justify-center gap-3 px-6 py-3.5 bg-white dark:bg-gray-600 text-gray-700 dark:text-white border border-gray-200 dark:border-gray-500 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-500 transition-all duration-200 font-semibold shadow-sm hover:shadow-md hover:scale-105"
                 >
                   <FolderPlus className="w-4 h-4" />
                   Create Folder
@@ -898,15 +1134,15 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
             <>
               {/* Notes without folder */}
               {notesWithoutFolder.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 p-2 text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800 mb-2">
-                    <FileText className="w-4 h-4" />
-                    <span className="text-sm font-medium">Unsorted Notes</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
+                <div className="mb-6">
+                  <div className="flex items-center gap-3 px-3 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
+                    <FileText className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm font-semibold">Unsorted Notes</span>
+                    <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded-full ml-auto">
                       {notesWithoutFolder.length}
                     </span>
                   </div>
-                  <div className="ml-6 space-y-1">
+                  <div className="ml-2 space-y-2">
                     {notesWithoutFolder.map(note => (
                       <button
                         key={note.id}
@@ -914,16 +1150,18 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                           setSelectedNoteId(note.id);
                           setIsEditing(false);
                         }}
-                        className={`w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors border ${
+                        className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                           selectedNoteId === note.id 
-                            ? 'bg-blue-500 text-white border-blue-600' 
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700'
+                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105' 
+                            : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md hover:scale-102 bg-gray-50 dark:bg-gray-800/50'
                         }`}
                       >
-                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <div className={`p-2 rounded-lg ${selectedNoteId === note.id ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`}>
+                          <FileText className="w-4 h-4 flex-shrink-0" />
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{note.title}</div>
-                          <div className="text-xs opacity-75 truncate">{(note.content || '').substring(0, 50)}...</div>
+                          <div className="text-sm font-semibold truncate mb-1">{note.title}</div>
+                          <div className="text-xs opacity-75 truncate leading-relaxed">{(note.content || '').substring(0, 60)}...</div>
                         </div>
                       </button>
                     ))}
@@ -933,8 +1171,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
 
               {/* Folders */}
               {(folders || []).map(folder => (
-                <div key={folder.id} className="mb-2">
-                  <div className="flex items-center gap-1">
+                <div key={folder.id} className="mb-4">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
                         setSelectedFolder(selectedFolder === folder.id ? null : folder.id);
@@ -944,14 +1182,16 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                         );
                         saveFolders(updatedFolders);
                       }}
-                      className={`flex-1 flex items-center gap-2 p-2 rounded-lg text-left transition-colors border ${
+                      className={`flex-1 flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                         selectedFolder === folder.id 
-                          ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 border-blue-300 dark:border-blue-700' 
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700'
+                          ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg' 
+                          : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md bg-gray-50 dark:bg-gray-800/50'
                       }`}
                     >
-                      <ChevronRight className={`w-4 h-4 transition-transform ${folder.isExpanded ? 'rotate-90' : ''}`} />
-                      {folder.isExpanded ? <FolderOpen className="w-4 h-4 text-blue-500 dark:text-blue-400" /> : <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
+                      <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${folder.isExpanded ? 'rotate-90' : ''} ${selectedFolder === folder.id ? 'text-white' : 'text-gray-400'}`} />
+                      <div className={`p-2 rounded-lg ${selectedFolder === folder.id ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`}>
+                        {folder.isExpanded ? <FolderOpen className="w-4 h-4 text-current" /> : <Folder className="w-4 h-4 text-current" />}
+                      </div>
                       
                       {editingFolderId === folder.id ? (
                         <input
@@ -966,14 +1206,14 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                             }
                           }}
                           onBlur={() => editFolder(folder.id, editingFolderName)}
-                          className="flex-1 text-sm font-medium bg-transparent focus:outline-none"
+                          className="flex-1 text-sm font-semibold bg-transparent focus:outline-none"
                           autoFocus
                         />
                       ) : (
-                        <span className="text-sm font-medium">{folder.name}</span>
+                        <span className="text-sm font-semibold flex-1">{folder.name}</span>
                       )}
                       
-                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
+                      <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded-full">
                         {(notes || []).filter(note => note.folder === folder.id).length}
                       </span>
                     </button>
@@ -984,23 +1224,23 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                         setEditingFolderId(folder.id);
                         setEditingFolderName(folder.name);
                       }}
-                      className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                      className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all duration-200"
                       title="Edit Folder"
                     >
-                      <Edit className="w-3 h-3" />
+                      <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => deleteFolder(folder.id)}
-                      className="p-1 text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                      className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200"
                       title="Delete Folder"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   
                   {/* Notes in folder */}
                   {folder.isExpanded && (
-                    <div className="ml-6 mt-1 space-y-1">
+                    <div className="ml-6 mt-3 space-y-2">
                       {(filteredNotes || [])
                         .filter(note => note.folder === folder.id)
                         .map(note => (
@@ -1010,16 +1250,18 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                               setSelectedNoteId(note.id);
                               setIsEditing(false);
                             }}
-                            className={`w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors border ${
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                               selectedNoteId === note.id 
-                                ? 'bg-blue-500 text-white border-blue-600' 
-                                : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700'
+                                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105' 
+                                : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md hover:scale-102 bg-gray-50 dark:bg-gray-800/50'
                             }`}
                           >
-                            <FileText className="w-4 h-4 flex-shrink-0" />
+                            <div className={`p-2 rounded-lg ${selectedNoteId === note.id ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`}>
+                              <FileText className="w-4 h-4 flex-shrink-0" />
+                            </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate">{note.title}</div>
-                              <div className="text-xs opacity-75 truncate">{(note.content || '').substring(0, 50)}...</div>
+                              <div className="text-sm font-semibold truncate mb-1">{note.title}</div>
+                              <div className="text-xs opacity-75 truncate leading-relaxed">{(note.content || '').substring(0, 60)}...</div>
                             </div>
                           </button>
                         ))}
@@ -1027,10 +1269,12 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                       {/* Create note in folder */}
                       <button
                         onClick={() => createNote(folder.id)}
-                        className="w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
+                        className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 group"
                       >
-                        <Plus className="w-4 h-4" />
-                        <span className="text-sm">New note in {folder.name}</span>
+                        <div className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-200 dark:group-hover:bg-blue-800 transition-all duration-200">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm font-medium">New note in {folder.name}</span>
                       </button>
                     </div>
                   )}
@@ -1048,6 +1292,14 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
             {/* Editor Header */}
             <div className="flex items-center justify-between p-4 bg-white dark:bg-black border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Sidebar Toggle Button */}
+                <button
+                  onClick={toggleSidebar}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-200 text-gray-700 dark:text-gray-300 hover:scale-105"
+                  title={`${isSidebarCollapsed ? "Show" : "Hide"} Sidebar (Ctrl+\\)`}
+                >
+                  <PanelLeft className="w-4 h-4" />
+                </button>
                 {isEditing ? (
                   <input
                     type="text"
@@ -1088,7 +1340,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                   <>
                     {/* View Mode Controls */}
                     <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                      <button
+                    <button
                         onClick={() => setViewMode('edit')}
                         className={`p-2 rounded-md transition-colors ${
                           viewMode === 'edit' 
@@ -1116,11 +1368,11 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                           viewMode === 'preview' 
                             ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                        }`}
+                      }`}
                         title="Preview Mode"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     </div>
                     
                     <button
@@ -1142,17 +1394,28 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
               </div>
             </div>
 
-                        {/* Editor Content */}
+            {/* Editor Content */}
             <div className="flex-1 min-w-0 overflow-hidden">
               {isEditing ? (
-                <SimpleMonacoTest
+                <MonacoEditor
                   content={editContent}
                   onChange={setEditContent}
+                  placeholder="Start writing your note...
+
+Tips:
+- Use # for headers
+- Use [[Note Title]] to link to other notes
+- Use - for bullet points
+- Use ** for bold text"
+                  language="markdown"
+                  theme="vs-dark"
+                  height="100%"
+                  className="w-full h-full"
                 />
               ) : viewMode === 'edit' ? (
-                <SimpleMonacoTest
+                <MonacoEditor
                   content={currentNote.content}
-                  onChange={(newContent) => {
+                  onChange={(newContent: string) => {
                     // Update the current note content immediately for responsive UI
                     const updatedNotes = (notes || []).map(note => 
                       note.id === currentNote.id 
@@ -1163,14 +1426,26 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                     // Debounced save for backlinks and final persistence
                     debouncedSave(currentNote.id, newContent);
                   }}
+                  placeholder="Start writing your note...
+
+Tips:
+- Use # for headers
+- Use [[Note Title]] to link to other notes
+- Use - for bullet points
+- Use ** for bold text
+- Use ```mermaid for diagrams"
+                  language="markdown"
+                  theme="vs-dark"
+                  height="100%"
+                  className="w-full h-full"
                 />
               ) : viewMode === 'split' ? (
                 <div className="flex h-full">
                   {/* Editor Side */}
                   <div className="flex-1 border-r border-gray-200 dark:border-gray-700">
-                    <SimpleMonacoTest
+                    <MonacoEditor
                       content={currentNote.content}
-                      onChange={(newContent) => {
+                      onChange={(newContent: string) => {
                         // Update the current note content immediately for responsive UI
                         const updatedNotes = (notes || []).map(note => 
                           note.id === currentNote.id 
@@ -1181,8 +1456,20 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                         // Debounced save for backlinks and final persistence
                         debouncedSave(currentNote.id, newContent);
                       }}
+                      placeholder="Start writing your note...
+
+Tips:
+- Use # for headers
+- Use [[Note Title]] to link to other notes
+- Use - for bullet points
+- Use ** for bold text
+- Use ```mermaid for diagrams"
+                      language="markdown"
+                      theme="vs-dark"
+                      height="100%"
+                      className="w-full h-full"
                     />
-                  </div>
+                      </div>
                   
                   {/* Preview Side */}
                   <div 
@@ -1191,16 +1478,16 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                   >
                     <div className="prose prose-gray dark:prose-invert max-w-none markdown-content">
                       {renderMarkdown(currentNote.content)}
-                    </div>
+                      </div>
                   </div>
-                </div>
+                  </div>
               ) : (
                 <div className="h-full overflow-y-auto overflow-x-hidden p-6 bg-white dark:bg-black text-gray-900 dark:text-white markdown-content-container">
                   <div className="prose prose-gray dark:prose-invert max-w-none markdown-content">
                     {renderMarkdown(currentNote.content)}
-                  </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
 
 
@@ -1226,6 +1513,17 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
           </div>
         )}
       </div>
+
+      {/* Floating Sidebar Toggle (when collapsed) */}
+      {isSidebarCollapsed && (
+        <button
+          onClick={toggleSidebar}
+          className="fixed top-4 left-4 z-50 p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110"
+          title="Show Sidebar (Ctrl+\)"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 };

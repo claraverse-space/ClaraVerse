@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { FileText, Eye, EyeOff, Code, Zap, Settings, CheckCircle, AlertTriangle } from 'lucide-react';
+import { FileText, Eye, EyeOff, Code, Zap, Settings, CheckCircle, AlertTriangle, Search, Replace, Command, Palette, MoreVertical, Wand2, RefreshCw } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { FileNode } from '../../types';
 
@@ -27,6 +27,42 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
 }) => {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof monaco | null>(null);
+  
+  // Enhanced state management with debugging
+  const [diagnostics, setDiagnostics] = useState<monaco.editor.IMarker[]>([]);
+  const [isEditorReady, setIsEditorReady] = useState(false);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+  const [editorSettings, setEditorSettings] = useState({
+    fontSize: 14,
+    tabSize: 2,
+    wordWrap: 'on' as 'on' | 'off',
+    minimap: false,
+    lineNumbers: 'on' as 'on' | 'off',
+  });
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔧 Monaco Editor Debug Info:', {
+      fileName,
+      contentLength: content.length,
+      projectFilesCount: projectFiles.length,
+      isEditorReady,
+      editorError
+    });
+  }, [fileName, content.length, projectFiles.length, isEditorReady, editorError]);
+
+  // Loading timeout
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!isEditorReady && !editorError) {
+        console.warn('⚠️ Monaco Editor taking too long to load, showing fallback');
+        setLoadingTimeout(true);
+      }
+    }, 10000); // 10 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [isEditorReady, editorError]);
 
   const getLanguageFromFileName = (fileName: string): string => {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -55,15 +91,24 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
     switch (ext) {
       case 'tsx':
       case 'ts':
+        return <Code className="w-4 h-4 text-blue-500" />;
       case 'jsx':
       case 'js':
-        return <Code className="w-4 h-4 text-emerald-500" />;
+        return <Code className="w-4 h-4 text-yellow-500" />;
+      case 'css':
+        return <FileText className="w-4 h-4 text-purple-500" />;
+      case 'html':
+        return <FileText className="w-4 h-4 text-orange-500" />;
+      case 'json':
+        return <FileText className="w-4 h-4 text-green-500" />;
+      case 'md':
+        return <FileText className="w-4 h-4 text-gray-500" />;
       default:
-        return <FileText className="w-4 h-4 text-sakura-500" />;
+        return <FileText className="w-4 h-4 text-gray-400" />;
     }
   };
 
-  // Flatten file structure to get all file paths and contents
+  // Flatten file structure for TypeScript language service
   const flattenFiles = useCallback((files: FileNode[]): Array<{path: string, content: string, isDirectory: boolean}> => {
     const result: Array<{path: string, content: string, isDirectory: boolean}> = [];
     
@@ -84,479 +129,379 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
     return result;
   }, []);
 
-  // Setup TypeScript compiler options and language service
-  const setupTypeScriptLanguageService = useCallback(async (monacoInstance: typeof monaco) => {
+  // Setup TypeScript language service for better IntelliSense
+  const setupTypeScriptLanguageService = useCallback((monacoInstance: typeof monaco) => {
     if (!monacoInstance || projectFiles.length === 0) return;
 
     try {
-      // Get all project files
-      const allFiles = flattenFiles(projectFiles);
-    
-    // Configure TypeScript compiler options
-    const compilerOptions: monaco.languages.typescript.CompilerOptions = {
-      target: monaco.languages.typescript.ScriptTarget.ES2020,
-      lib: ['ES2020', 'DOM', 'DOM.Iterable'],
-      allowJs: true,
-      skipLibCheck: true,
-      esModuleInterop: true,
-      allowSyntheticDefaultImports: true,
-      strict: true,
-      forceConsistentCasingInFileNames: true,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      resolveJsonModule: true,
-      isolatedModules: true,
-      noEmit: true,
-      jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
-      module: monaco.languages.typescript.ModuleKind.ESNext,
-      declaration: false,
-      declarationMap: false,
-      sourceMap: false,
-      outDir: './dist',
-      removeComments: false,
-      noImplicitAny: false,
-      strictNullChecks: true,
-      strictFunctionTypes: true,
-      noImplicitReturns: true,
-      noFallthroughCasesInSwitch: true,
-      noUncheckedIndexedAccess: false,
-      noImplicitOverride: true,
-      allowUnreachableCode: false,
-      allowUnusedLabels: false,
-      exactOptionalPropertyTypes: false,
-      noImplicitThis: true,
-      useUnknownInCatchVariables: true,
-      alwaysStrict: true,
-      noUnusedLocals: false,
-      noUnusedParameters: false,
-             noPropertyAccessFromIndexSignature: false,
-      baseUrl: '.',
-      paths: {
-        '@/*': ['./src/*'],
-        '@/components/*': ['./src/components/*'],
-        '@/utils/*': ['./src/utils/*'],
-        '@/types/*': ['./src/types/*'],
-        '@/services/*': ['./src/services/*'],
-        '@/hooks/*': ['./src/hooks/*']
-      }
-    };
+      console.log('🔧 Setting up TypeScript Language Service...');
+      const flatFiles = flattenFiles(projectFiles);
+      const compilerOptions: monaco.languages.typescript.CompilerOptions = {
+        target: monaco.languages.typescript.ScriptTarget.ES2020,
+        lib: ['ES2020', 'DOM'],
+        allowNonTsExtensions: true,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        module: monaco.languages.typescript.ModuleKind.ESNext,
+        noEmit: true,
+        esModuleInterop: true,
+        jsx: monaco.languages.typescript.JsxEmit.React,
+        reactNamespace: 'React',
+        allowJs: true,
+        typeRoots: ['node_modules/@types']
+      };
 
-    // Set TypeScript compiler options
-    monacoInstance.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
-    monacoInstance.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
+      // Configure TypeScript compiler options
+      monacoInstance.languages.typescript.typescriptDefaults.setCompilerOptions(compilerOptions);
+      monacoInstance.languages.typescript.javascriptDefaults.setCompilerOptions(compilerOptions);
 
-    // Configure diagnostics
-    monacoInstance.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      noSuggestionDiagnostics: false,
-    });
-
-    monacoInstance.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      noSuggestionDiagnostics: false,
-    });
-
-    // Add project files to Monaco's file system
-    for (const file of allFiles) {
-      if (!file.isDirectory && file.content) {
-        const uri = monacoInstance.Uri.parse(`file:///${file.path}`);
-        
-        // Check if model already exists
-        let model = monacoInstance.editor.getModel(uri);
-        if (model) {
-          // Update existing model
-          model.setValue(file.content);
-        } else {
-          // Create new model
-          const language = getLanguageFromFileName(file.path);
-          model = monacoInstance.editor.createModel(file.content, language, uri);
+      // Add project files to Monaco's file system
+      flatFiles.forEach(file => {
+        if (!file.isDirectory && file.content) {
+          const uri = monacoInstance.Uri.parse(`file:///${file.path}`);
+          const existingModel = monacoInstance.editor.getModel(uri);
+          
+          if (existingModel) {
+            existingModel.setValue(file.content);
+          } else {
+            monacoInstance.editor.createModel(
+              file.content,
+              getLanguageFromFileName(file.path),
+              uri
+            );
+          }
         }
-      }
-    }
+      });
 
-    // Add common React and Node.js type definitions
-    const reactTypes = `
-declare module 'react' {
-  export interface Component<P = {}, S = {}> {}
-  export interface FunctionComponent<P = {}> {
-    (props: P): JSX.Element | null;
-  }
-  export const useState: <T>(initial: T) => [T, (value: T) => void];
-  export const useEffect: (effect: () => void | (() => void), deps?: any[]) => void;
-  export const useCallback: <T extends (...args: any[]) => any>(callback: T, deps: any[]) => T;
-  export const useMemo: <T>(factory: () => T, deps: any[]) => T;
-  export const useRef: <T>(initial: T | null) => { current: T | null };
-  export default React;
-}
-
-declare global {
-  namespace JSX {
-    interface Element {}
-    interface IntrinsicElements {
-      [elemName: string]: any;
-    }
-  }
-}
-`;
-
-    const nodeTypes = `
-declare module 'fs' {
-  export function readFile(path: string, encoding: string): Promise<string>;
-  export function writeFile(path: string, data: string): Promise<void>;
-  export function mkdir(path: string, options?: any): Promise<void>;
-}
-
-declare module 'path' {
-  export function join(...paths: string[]): string;
-  export function resolve(...paths: string[]): string;
-  export function dirname(path: string): string;
-  export function basename(path: string): string;
-  export function extname(path: string): string;
-}
-`;
-
-    // Add type definitions
-    monacoInstance.languages.typescript.typescriptDefaults.addExtraLib(reactTypes, 'file:///node_modules/@types/react/index.d.ts');
-    monacoInstance.languages.typescript.typescriptDefaults.addExtraLib(nodeTypes, 'file:///node_modules/@types/node/index.d.ts');
-
-    // Try to load package.json for dependency information
-    const packageJsonFile = allFiles.find(f => f.path === 'package.json');
-    if (packageJsonFile && packageJsonFile.content) {
-      try {
-        const packageJson = JSON.parse(packageJsonFile.content);
-        const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-        
-        // Add basic type definitions for common dependencies
-        if (dependencies['@types/react']) {
-          // React types already added above
-        }
-        
-        if (dependencies['tailwindcss']) {
-          const tailwindTypes = `
-declare module 'tailwindcss' {
-  export interface Config {
-    content: string[];
-    theme?: any;
-    plugins?: any[];
-  }
-  const config: Config;
-  export default config;
-}
-`;
-          monacoInstance.languages.typescript.typescriptDefaults.addExtraLib(tailwindTypes, 'file:///node_modules/tailwindcss/index.d.ts');
-        }
-
-        if (dependencies['vite']) {
-          const viteTypes = `
-declare module 'vite' {
-  export interface UserConfig {
-    plugins?: any[];
-    server?: any;
-    build?: any;
-  }
-  export function defineConfig(config: UserConfig): UserConfig;
-}
-`;
-          monacoInstance.languages.typescript.typescriptDefaults.addExtraLib(viteTypes, 'file:///node_modules/vite/index.d.ts');
-        }
-      } catch (error) {
-        console.warn('Failed to parse package.json for type definitions:', error);
-      }
-    }
-
-    console.log(`✅ TypeScript language service configured with ${allFiles.length} project files`);
+      console.log('✅ TypeScript Language Service configured with', flatFiles.length, 'files');
     } catch (error) {
-      console.error('Failed to setup TypeScript language service:', error);
+      console.error('❌ Failed to setup TypeScript Language Service:', error);
     }
-  }, [projectFiles.length, flattenFiles, getLanguageFromFileName]);
+  }, [projectFiles, flattenFiles]);
 
-  // Setup Monaco editor when it mounts
-  const handleEditorDidMount = useCallback(async (editor: monaco.editor.IStandaloneCodeEditor, monacoInstance: typeof monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monacoInstance;
-
-    // Setup TypeScript language service
-    await setupTypeScriptLanguageService(monacoInstance);
-
-    // Configure editor for better development experience
-    editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
-      // Save command - could trigger auto-save
-      console.log('Save command triggered');
-    });
-
-    // Add custom actions
-    editor.addAction({
-      id: 'format-document',
-      label: 'Format Document',
-      keybindings: [monacoInstance.KeyMod.Shift | monacoInstance.KeyMod.Alt | monacoInstance.KeyCode.KeyF],
-      run: () => {
-        editor.getAction('editor.action.formatDocument')?.run();
-      }
-    });
-
-    // Configure hover provider for better IntelliSense
-    monacoInstance.languages.registerHoverProvider(['typescript', 'javascript'], {
-      provideHover: (model, position) => {
-        // Custom hover information could be added here
-        return null;
-      }
-    });
-
-    // Auto-resize editor
-    const resizeObserver = new ResizeObserver(() => {
-      editor.layout();
-    });
-    
-    const editorElement = editor.getDomNode();
-    if (editorElement?.parentElement) {
-      resizeObserver.observe(editorElement.parentElement);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [setupTypeScriptLanguageService]);
-
-  // Update language service when project files change (with debouncing)
-  useEffect(() => {
-    if (!monacoRef.current || projectFiles.length === 0) return;
-    
-    const timeoutId = setTimeout(() => {
-      setupTypeScriptLanguageService(monacoRef.current!);
-    }, 500); // Debounce for 500ms
-    
-    return () => clearTimeout(timeoutId);
-  }, [projectFiles.length, setupTypeScriptLanguageService]); // Only depend on file count, not the entire array
-
-  // Get editor diagnostics for current file
+  // Get diagnostics for current file
   const getDiagnostics = useCallback(() => {
     if (!monacoRef.current || !fileName) return [];
     
-    const uri = monacoRef.current.Uri.parse(`file:///${fileName}`);
-    const model = monacoRef.current.editor.getModel(uri);
-    
-    if (!model) return [];
-    
-    const markers = monacoRef.current.editor.getModelMarkers({ resource: uri });
-    return markers;
+    try {
+      const uri = monacoRef.current.Uri.parse(`file:///${fileName}`);
+      const model = monacoRef.current.editor.getModel(uri);
+      if (model) {
+        return monacoRef.current.editor.getModelMarkers({ resource: uri });
+      }
+    } catch (error) {
+      console.error('Error getting diagnostics:', error);
+    }
+    return [];
   }, [fileName]);
 
-  const diagnostics = getDiagnostics();
+  // Handle editor mount with enhanced error handling
+  const handleEditorDidMount = useCallback((editor: monaco.editor.IStandaloneCodeEditor, monacoInstance: typeof monaco) => {
+    try {
+      console.log('🎉 Monaco Editor mounted successfully!');
+      editorRef.current = editor;
+      monacoRef.current = monacoInstance;
+      setIsEditorReady(true);
+      setEditorError(null);
+      
+      // Setup TypeScript language service
+      setupTypeScriptLanguageService(monacoInstance);
+      
+      // Update diagnostics periodically
+      const diagnosticsInterval = setInterval(() => {
+        const newDiagnostics = getDiagnostics();
+        setDiagnostics(newDiagnostics);
+      }, 2000);
+
+      // Cleanup on unmount
+      return () => {
+        clearInterval(diagnosticsInterval);
+      };
+    } catch (error) {
+      console.error('❌ Error during Monaco Editor mount:', error);
+      setEditorError(error instanceof Error ? error.message : 'Unknown error');
+      setIsEditorReady(false);
+    }
+  }, [setupTypeScriptLanguageService, getDiagnostics]);
+
+  // Handle editor mount errors
+  const handleEditorError = useCallback((error: any) => {
+    console.error('❌ Monaco Editor failed to load:', error);
+    setEditorError(error?.message || 'Failed to load Monaco Editor');
+    setIsEditorReady(false);
+  }, []);
+
+  // Update diagnostics when file changes
+  useEffect(() => {
+    if (monacoRef.current && fileName) {
+      const timeoutId = setTimeout(() => {
+        const newDiagnostics = getDiagnostics();
+        setDiagnostics(newDiagnostics);
+      }, 1000);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [fileName, content, getDiagnostics]);
+
+  // Calculate diagnostic counts
   const hasErrors = diagnostics.some(d => d.severity === monaco?.MarkerSeverity.Error);
   const hasWarnings = diagnostics.some(d => d.severity === monaco?.MarkerSeverity.Warning);
+  const errorCount = diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Error).length;
+  const warningCount = diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Warning).length;
+
+  // Fallback textarea editor
+  const FallbackEditor = () => (
+    <div className="h-full w-full relative">
+      <div className="absolute top-2 left-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-lg text-sm z-10">
+        Using fallback editor - Monaco failed to load
+      </div>
+      <textarea
+        value={content}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-full p-4 pt-12 font-mono text-sm bg-gray-900 text-gray-100 border-none outline-none resize-none"
+        style={{
+          fontFamily: '"Fira Code", "Monaco", "Menlo", "Ubuntu Mono", monospace',
+          lineHeight: '1.5',
+          tabSize: 2
+        }}
+        placeholder="Start typing your code here..."
+      />
+    </div>
+  );
 
   return (
-    <div className="h-full flex flex-col glassmorphic">
-      {/* Enhanced Header */}
-      <div className="glassmorphic-card border-b border-white/20 dark:border-gray-700/50 shrink-0 h-14">
-        <div className="flex items-center justify-between px-4 py-3">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
+      {/* Clean, Professional Header */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        {/* File Info Section */}
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-sakura-100 to-pink-100 dark:from-sakura-900/30 dark:to-pink-900/30 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
               {getFileTypeIcon(fileName)}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                   {fileName || 'No file selected'}
-                </span>
+                </h2>
                 {fileName && (
-                  <span className="text-xs px-2 py-0.5 bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-300 rounded-full font-medium">
+                  <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm font-medium">
                     {getLanguageFromFileName(fileName)}
                   </span>
                 )}
-                {/* Diagnostics indicators */}
+                {/* Editor Status */}
                 {fileName && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
+                    {isEditorReady && (
+                      <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs font-medium">
+                        Monaco Ready
+                      </span>
+                    )}
+                    {editorError && (
+                      <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-xs font-medium">
+                        Fallback Mode
+                      </span>
+                    )}
+                    {!isEditorReady && !editorError && !loadingTimeout && (
+                      <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
+                        Loading...
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-4 mt-1">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {fileName ? (
+                    projectFiles.length > 0 ? 
+                      `IntelliSense enabled • ${projectFiles.filter(f => f.type === 'file').length} files indexed` :
+                      'Ready to edit'
+                  ) : (
+                    'Select a file to start editing'
+                  )}
+                </p>
+                
+                {/* Diagnostics - Clean and Minimal */}
+                {fileName && isEditorReady && (
+                  <div className="flex items-center gap-3">
                     {hasErrors && (
-                      <div className="flex items-center gap-1 text-red-500" title={`${diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Error).length} errors`}>
-                        <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs">{diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Error).length}</span>
+                      <div className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span className="text-sm font-medium">{errorCount}</span>
                       </div>
                     )}
                     {hasWarnings && (
-                      <div className="flex items-center gap-1 text-yellow-500" title={`${diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Warning).length} warnings`}>
-                        <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs">{diagnostics.filter(d => d.severity === monaco?.MarkerSeverity.Warning).length}</span>
+                      <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span className="text-sm font-medium">{warningCount}</span>
                       </div>
                     )}
                     {!hasErrors && !hasWarnings && fileName && (
-                      <div className="flex items-center gap-1 text-green-500" title="No issues">
-                        <CheckCircle className="w-3 h-3" />
+                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">No issues</span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                {fileName ? (
-                  <>
-                    {projectFiles.length > 0 ? 'IntelliSense enabled' : 'Ready to edit'}
-                    {projectFiles.length > 0 && (
-                      <span className="ml-2 text-green-600 dark:text-green-400">
-                        • {projectFiles.filter(f => f.type === 'file').length} files indexed
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  'Select a file to start editing'
-                )}
-              </p>
             </div>
           </div>
+        </div>
+
+        {/* Action Buttons - Minimal and Clean */}
+        <div className="flex items-center gap-2">
+          {fileName && projectFiles.length > 0 && isEditorReady && (
+            <button
+              onClick={() => setupTypeScriptLanguageService(monacoRef.current!)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title="Refresh IntelliSense"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Refresh</span>
+            </button>
+          )}
           
-          <div className="flex items-center gap-2">
-            {fileName && projectFiles.length > 0 && (
-              <button
-                onClick={() => setupTypeScriptLanguageService(monacoRef.current!)}
-                className="p-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:text-sakura-500 dark:hover:text-sakura-400 rounded-lg transition-all duration-200 hover:shadow-md transform hover:scale-105"
-                title="Refresh IntelliSense"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
-            {showPreviewToggle && onTogglePreview && (
-              <button
-                onClick={onTogglePreview}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-105 ${
-                  isPreviewVisible
-                    ? 'bg-gradient-to-r from-sakura-500 to-pink-500 text-white shadow-sakura-500/25'
-                    : 'glassmorphic-card border border-white/30 dark:border-gray-700/50 text-gray-700 dark:text-gray-300 hover:text-sakura-600 dark:hover:text-sakura-400'
-                }`}
-                title={isPreviewVisible ? 'Show Editor' : 'Show Preview'}
-              >
-                {isPreviewVisible ? (
-                  <>
-                    <EyeOff className="w-4 h-4" />
-                    <span>Editor</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-4 h-4" />
-                    <span>Preview</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+          {showPreviewToggle && onTogglePreview && (
+            <button
+              onClick={onTogglePreview}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                isPreviewVisible
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {isPreviewVisible ? (
+                <>
+                  <EyeOff className="w-4 h-4" />
+                  <span>Show Editor</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4" />
+                  <span>Show Preview</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Editor Content */}
-      <div className="flex-1 relative overflow-hidden bg-white dark:bg-gray-900">
+      {/* Editor Content - Full Height with Proper Constraints */}
+      <div className="flex-1 min-h-0 bg-white dark:bg-gray-900">
         {fileName ? (
-          <Editor
-            height="100%"
-            language={getLanguageFromFileName(fileName)}
-            value={content}
-            onChange={(value) => onChange(value || '')}
-            theme="vs-dark"
-            onMount={handleEditorDidMount}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              lineNumbers: 'on',
-              renderWhitespace: 'selection',
-              automaticLayout: true,
-              wordWrap: 'on',
-              scrollBeyondLastLine: false,
-              folding: true,
-              autoIndent: 'full',
-              formatOnPaste: true,
-              formatOnType: true,
-              suggest: {
-                showKeywords: true,
-                showSnippets: true,
-                showFunctions: true,
-                showConstructors: true,
-                showFields: true,
-                showVariables: true,
-                showClasses: true,
-                showStructs: true,
-                showInterfaces: true,
-                showModules: true,
-                showProperties: true,
-                showEvents: true,
-                showOperators: true,
-                showUnits: true,
-                showValues: true,
-                showConstants: true,
-                showEnums: true,
-                showEnumMembers: true,
-                showColors: true,
-                showFiles: true,
-                showReferences: true,
-                showFolders: true,
-                showTypeParameters: true,
-                showIssues: true,
-                showUsers: true,
-                showWords: true,
-              },
-              quickSuggestions: {
-                other: true,
-                comments: true,
-                strings: true
-              },
-              parameterHints: {
-                enabled: true,
-                cycle: true
-              },
-              hover: {
-                enabled: true,
-                delay: 300
-              },
-                                            lightbulb: {
-                 enabled: 'on' as any
-               },
-              padding: { top: 16, bottom: 16 },
-              fontFamily: '"Fira Code", "Monaco", "Menlo", "Ubuntu Mono", monospace',
-              fontLigatures: true,
-              cursorBlinking: 'smooth',
-              renderLineHighlight: 'gutter',
-              smoothScrolling: true,
-              mouseWheelZoom: true,
-              contextmenu: true,
-              copyWithSyntaxHighlighting: true,
-              links: true,
-              colorDecorators: true,
-              dragAndDrop: true,
-              showFoldingControls: 'always',
-              foldingStrategy: 'indentation',
-              showUnused: true,
-              bracketPairColorization: {
-                enabled: true
-              },
-              guides: {
-                bracketPairs: true,
-                bracketPairsHorizontal: true,
-                highlightActiveBracketPair: true,
-                indentation: true,
-                highlightActiveIndentation: true
-              },
-              inlineSuggest: {
-                enabled: true
-              },
-              stickyScroll: {
-                enabled: true
-              }
-            }}
-          />
+          <div className="h-full w-full relative">
+            {(editorError || loadingTimeout) ? (
+              <FallbackEditor />
+            ) : (
+              <Editor
+                height="100%"
+                width="100%"
+                language={getLanguageFromFileName(fileName)}
+                value={content}
+                onChange={(value) => onChange(value || '')}
+                theme="vs-dark"
+                onMount={handleEditorDidMount}
+                onValidate={(markers) => {
+                  console.log('🔧 Monaco validation markers:', markers);
+                }}
+                beforeMount={(monaco) => {
+                  console.log('🔧 Monaco before mount:', monaco);
+                }}
+                loading={
+                  <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                    <div className="text-center">
+                      <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-gray-600 dark:text-gray-400">Loading Monaco Editor...</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                        If this takes too long, we'll show a fallback editor
+                      </p>
+                    </div>
+                  </div>
+                }
+                options={{
+                  // Core editor settings with enhanced line numbers
+                  fontSize: editorSettings.fontSize,
+                  tabSize: editorSettings.tabSize,
+                  wordWrap: editorSettings.wordWrap,
+                  lineNumbers: 'on', // Always show line numbers
+                  lineNumbersMinChars: 3, // Minimum width for line numbers
+                  lineDecorationsWidth: 10, // Space for line decorations
+                  minimap: { enabled: editorSettings.minimap },
+                  
+                  // Essential functionality
+                  automaticLayout: true,
+                  scrollBeyondLastLine: false,
+                  folding: true,
+                  autoIndent: 'full',
+                  formatOnPaste: true,
+                  formatOnType: true,
+                  
+                  // Modern editor features
+                  find: {
+                    addExtraSpaceOnTop: false,
+                    autoFindInSelection: 'never',
+                    seedSearchStringFromSelection: 'always',
+                    loop: true
+                  },
+                  multiCursorModifier: 'ctrlCmd',
+                  fontLigatures: true,
+                  smoothScrolling: true,
+                  cursorBlinking: 'smooth',
+                  cursorSmoothCaretAnimation: 'on',
+                  
+                  // Visual enhancements
+                  padding: { top: 20, bottom: 20 },
+                  fontFamily: '"Fira Code", "Monaco", "Menlo", "Ubuntu Mono", monospace',
+                  renderLineHighlight: 'all', // Highlight current line
+                  renderLineHighlightOnlyWhenFocus: false, // Always show line highlight
+                  selectOnLineNumbers: true, // Allow clicking line numbers to select lines
+                  bracketPairColorization: { enabled: true },
+                  guides: {
+                    bracketPairs: true,
+                    indentation: true,
+                    highlightActiveIndentation: true
+                  },
+                  
+                  // IntelliSense and suggestions
+                  quickSuggestions: {
+                    other: true,
+                    comments: true,
+                    strings: true
+                  },
+                  parameterHints: { enabled: true },
+                  hover: { enabled: true, delay: 300 },
+                  suggest: {
+                    showKeywords: true,
+                    showSnippets: true,
+                    showFunctions: true,
+                    showConstructors: true,
+                    showFields: true,
+                    showVariables: true,
+                    showClasses: true,
+                    showInterfaces: true,
+                    showModules: true,
+                    showProperties: true,
+                  }
+                }}
+              />
+            )}
+          </div>
         ) : (
-          /* Empty State */
-          <div className="h-full flex items-center justify-center p-8">
-            <div className="text-center max-w-md">
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-sakura-100 to-pink-100 dark:from-sakura-900/30 dark:to-pink-900/30 rounded-2xl flex items-center justify-center shadow-lg">
-                <Code className="w-10 h-10 text-sakura-600 dark:text-sakura-400" />
+          /* Clean Empty State */
+          <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+            <div className="text-center max-w-md mx-auto px-6">
+              <div className="w-16 h-16 mx-auto mb-6 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center">
+                <Code className="w-8 h-8 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 Ready to Code
               </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-                Select a file from the explorer to start editing. The Monaco editor supports syntax highlighting, IntelliSense, and more.
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+                Select a file from the explorer to start editing with our powerful Monaco editor featuring IntelliSense, syntax highlighting, and more.
               </p>
-              <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Zap className="w-4 h-4" />
-                <span>Powered by Monaco Editor with TypeScript Language Service</span>
+                <span>Powered by Monaco Editor</span>
               </div>
             </div>
           </div>

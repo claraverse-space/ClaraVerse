@@ -735,39 +735,47 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     const suppressMermaidErrors = () => {
       // Look for and remove any Mermaid error elements that might be added to the DOM
       const removeMermaidErrors = () => {
-        // Remove any elements containing Mermaid error text
-        const allElements = document.querySelectorAll('*');
-        allElements.forEach(element => {
-          if (element.textContent?.includes('Syntax error in text') && 
-              element.textContent?.includes('mermaid version')) {
-            element.remove();
-          }
-        });
-        
-        // Also check for any text nodes containing Mermaid errors
-        const walker = document.createTreeWalker(
-          document.body,
-          NodeFilter.SHOW_TEXT,
-          {
-            acceptNode: (node) => {
-              const text = node.textContent || '';
-              return (text.includes('Syntax error in text') && text.includes('mermaid version')) ? 
-                     NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        try {
+          // Remove any elements containing Mermaid error text
+          const allElements = document.querySelectorAll('*');
+          allElements.forEach(element => {
+            if (element.textContent?.includes('Syntax error in text') && 
+                element.textContent?.includes('mermaid version')) {
+              element.remove();
             }
+          });
+          
+          // Also check for any text nodes containing Mermaid errors
+          // Only proceed if document.body exists
+          if (document.body) {
+            const walker = document.createTreeWalker(
+              document.body,
+              NodeFilter.SHOW_TEXT,
+              {
+                acceptNode: (node) => {
+                  const text = node.textContent || '';
+                  return (text.includes('Syntax error in text') && text.includes('mermaid version')) ? 
+                         NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                }
+              }
+            );
+            
+            const textNodes = [];
+            let node;
+            while (node = walker.nextNode()) {
+              textNodes.push(node);
+            }
+            
+            textNodes.forEach(textNode => {
+              if (textNode.parentNode) {
+                textNode.parentNode.removeChild(textNode);
+              }
+            });
           }
-        );
-        
-        const textNodes = [];
-        let node;
-        while (node = walker.nextNode()) {
-          textNodes.push(node);
+        } catch (error) {
+          // Silently handle any DOM errors to prevent crashes
+          console.debug('Mermaid error cleanup failed:', error);
         }
-        
-        textNodes.forEach(textNode => {
-          if (textNode.parentNode) {
-            textNode.parentNode.removeChild(textNode);
-          }
-        });
       };
       
       // Run error removal periodically

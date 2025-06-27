@@ -281,33 +281,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
     }
   };
 
-  // Test function to simulate progress (for development)
-  const testProgress = () => {
-    setProgressState({
-      isActive: true,
-      type: 'context_loading',
-      message: 'Loading Context',
-      progress: 0,
-      details: 'Processed 0 tokens, batch size 57'
-    });
 
-    // Simulate progress
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      setProgressState({
-        isActive: true,
-        type: 'context_loading',
-        message: 'Loading Context',
-        progress: progress,
-        details: `Processed ${Math.floor(progress * 0.57)} tokens, batch size 57`
-      });
-
-      if (progress >= 100) {
-        clearInterval(interval);
-      }
-    }, 200);
-  };
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -494,14 +468,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
                     {summaryMessage.citations.length} sources
                   </span>
                 )}
-                {/* Test Progress Button (Development) */}
-                <button
-                  onClick={testProgress}
-                  className="ml-2 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
-                  title="Test Progress Indicator"
-                >
-                  Test Progress
-                </button>
+
               </div>
               <div className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300">
                 {isSummaryCollapsed ? (
