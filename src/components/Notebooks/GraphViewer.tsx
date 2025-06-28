@@ -179,7 +179,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
           <div className="overflow-y-auto min-h-0">
             <div className="p-4">
               <div 
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
               >
                 {filteredNodes.map((node) => (
@@ -203,7 +203,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
                     </h4>
                     {node.properties?.description && (
                       <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">
-                        {renderSafeValue(node.properties.description)}
+                        {String(renderSafeValue(node.properties.description))}
                       </p>
                     )}
                     
@@ -303,7 +303,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
                       <div key={key} className="text-xs">
                         <div className="text-gray-600 dark:text-gray-400 capitalize">{key}:</div>
                         <div className="text-gray-900 dark:text-white break-words">
-                          {renderSafeValue(value)}
+                          {String(renderSafeValue(value))}
                         </div>
                       </div>
                     ))}

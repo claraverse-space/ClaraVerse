@@ -56,11 +56,11 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         automaticLayout: true,
-        padding: { top: 16, bottom: 16 },
+        padding: { top: 24, bottom: 24 },
         lineNumbers: 'off',
-        glyphMargin: false,
+        glyphMargin: true,
         folding: false,
-        lineDecorationsWidth: 0,
+        lineDecorationsWidth: 10,
         lineNumbersMinChars: 0,
         renderLineHighlight: 'none',
         scrollbar: {
@@ -127,11 +127,6 @@ const MonacoEditor: React.FC<MonacoEditorProps> = ({
     }
   };
 
-  const handleEditorError = (error: any) => {
-    console.error('Monaco Editor loading error:', error);
-    setLoadingError('Failed to load Monaco Editor');
-    setIsEditorReady(false);
-  };
 
   // Update editor content when prop changes
   useEffect(() => {

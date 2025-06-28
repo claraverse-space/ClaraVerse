@@ -1021,24 +1021,24 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
   const hasAnyContent = (notes || []).length > 0 || (folders || []).length > 0;
 
   return (
-    <div className="h-full flex bg-white dark:bg-black overflow-hidden">
+    <div className="h-full flex bg-gradient-to-br from-white to-sakura-100/20 dark:from-gray-900 dark:to-sakura-900/10 overflow-hidden">
       {/* Collapsible Left Sidebar - File Tree */}
-      <div className={`${isSidebarCollapsed ? 'w-0' : 'w-80'} flex flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-300 ease-in-out overflow-hidden`}>
+      <div className={`${isSidebarCollapsed ? 'w-0' : 'w-80'} flex flex-col glassmorphic-card border-r border-white/30 dark:border-gray-700/30 transition-all duration-300 ease-in-out overflow-hidden`}>
         {/* Sidebar Header */}
-        <div className="px-6 py-5 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-6 py-5 glassmorphic border-b border-white/20 dark:border-gray-800/20">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Notes</h2>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setIsCreatingFolder(true)}
-                className="p-2.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all duration-200 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:scale-105"
+                className="p-2.5 glassmorphic hover:bg-white/40 dark:hover:bg-gray-700/40 rounded-xl transition-all duration-200 text-gray-600 dark:text-gray-400 hover:text-sakura-600 dark:hover:text-sakura-400 hover:scale-105"
                 title="New Folder"
               >
                 <FolderPlus className="w-4 h-4" />
               </button>
               <button
                 onClick={() => createNote()}
-                className="p-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all duration-200 hover:scale-105 shadow-sm"
+                className="p-2.5 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-xl transition-all duration-200 hover:scale-105 shadow-lg"
                 title="New Note"
               >
                 <Plus className="w-4 h-4" />
@@ -1054,13 +1054,13 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
               placeholder="Search notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-gray-100 dark:bg-gray-700 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-600 text-gray-900 dark:text-white transition-all duration-200 placeholder-gray-500 dark:placeholder-gray-400"
+              className="w-full pl-11 pr-4 py-3 glassmorphic border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:bg-white/90 dark:focus:bg-gray-600/90 text-gray-900 dark:text-white transition-all duration-200 placeholder-gray-500 dark:placeholder-gray-400"
             />
           </div>
 
           {/* Create Folder Input */}
           {isCreatingFolder && (
-            <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+            <div className="mt-4 p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-600/30">
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -1074,12 +1074,12 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                       setNewFolderName('');
                     }
                   }}
-                  className="flex-1 px-3 py-2.5 bg-white dark:bg-gray-600 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                  className="flex-1 px-3 py-2.5 glassmorphic border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                   autoFocus
                 />
                 <button
                   onClick={createFolder}
-                  className="p-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all duration-200 hover:scale-105"
+                  className="p-2.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
                   title="Create"
                 >
                   <Check className="w-4 h-4" />
@@ -1089,7 +1089,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                     setIsCreatingFolder(false);
                     setNewFolderName('');
                   }}
-                  className="p-2.5 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all duration-200 hover:scale-105"
+                  className="p-2.5 glassmorphic hover:bg-white/40 dark:hover:bg-gray-700/40 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all duration-200 hover:scale-105"
                   title="Cancel"
                 >
                   <X className="w-4 h-4" />
@@ -1104,8 +1104,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
           {!hasAnyContent ? (
             /* Empty State */
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl p-8 mb-6 shadow-sm">
-                <FileText className="w-16 h-16 text-blue-400 dark:text-blue-500 mx-auto" />
+              <div className="glassmorphic-card bg-gradient-to-br from-sakura-50/50 to-pink-100/50 dark:from-sakura-900/20 dark:to-pink-900/20 rounded-2xl p-8 mb-6 shadow-xl">
+                <FileText className="w-16 h-16 text-sakura-400 dark:text-sakura-500 mx-auto" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">
                 No notes yet
@@ -1116,14 +1116,14 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
               <div className="flex flex-col gap-3 w-full max-w-xs">
                 <button
                   onClick={() => createNote()}
-                  className="flex items-center justify-center gap-3 px-6 py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
+                  className="flex items-center justify-center gap-3 px-6 py-3.5 bg-gradient-to-r from-sakura-500 to-sakura-600 text-white rounded-xl hover:from-sakura-600 hover:to-sakura-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
                 >
                   <Plus className="w-4 h-4" />
                   Create Note
                 </button>
                 <button
                   onClick={() => setIsCreatingFolder(true)}
-                  className="flex items-center justify-center gap-3 px-6 py-3.5 bg-white dark:bg-gray-600 text-gray-700 dark:text-white border border-gray-200 dark:border-gray-500 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-500 transition-all duration-200 font-semibold shadow-sm hover:shadow-md hover:scale-105"
+                  className="flex items-center justify-center gap-3 px-6 py-3.5 glassmorphic-card text-gray-700 dark:text-white border border-white/30 dark:border-gray-500/30 rounded-xl hover:bg-white/80 dark:hover:bg-gray-500/80 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
                 >
                   <FolderPlus className="w-4 h-4" />
                   Create Folder
@@ -1152,8 +1152,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                         }}
                         className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                           selectedNoteId === note.id 
-                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105' 
-                            : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md hover:scale-102 bg-gray-50 dark:bg-gray-800/50'
+                            ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-xl scale-105 ring-4 ring-sakura-100 dark:ring-sakura-900/20' 
+                            : 'glassmorphic-card hover:bg-white/80 dark:hover:bg-gray-800/80 text-gray-900 dark:text-white shadow-lg hover:shadow-xl hover:scale-102'
                         }`}
                       >
                         <div className={`p-2 rounded-lg ${selectedNoteId === note.id ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`}>
@@ -1184,8 +1184,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                       }}
                       className={`flex-1 flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                         selectedFolder === folder.id 
-                          ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg' 
-                          : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md bg-gray-50 dark:bg-gray-800/50'
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-xl ring-4 ring-purple-100 dark:ring-purple-900/20' 
+                          : 'glassmorphic-card hover:bg-white/80 dark:hover:bg-gray-800/80 text-gray-900 dark:text-white shadow-lg hover:shadow-xl'
                       }`}
                     >
                       <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${folder.isExpanded ? 'rotate-90' : ''} ${selectedFolder === folder.id ? 'text-white' : 'text-gray-400'}`} />
@@ -1252,8 +1252,8 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                             }}
                             className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 group ${
                               selectedNoteId === note.id 
-                                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105' 
-                                : 'hover:bg-white dark:hover:bg-gray-800 text-gray-900 dark:text-white shadow-sm hover:shadow-md hover:scale-102 bg-gray-50 dark:bg-gray-800/50'
+                                ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-xl scale-105 ring-4 ring-sakura-100 dark:ring-sakura-900/20' 
+                                : 'glassmorphic-card hover:bg-white/80 dark:hover:bg-gray-800/80 text-gray-900 dark:text-white shadow-lg hover:shadow-xl hover:scale-102'
                             }`}
                           >
                             <div className={`p-2 rounded-lg ${selectedNoteId === note.id ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700 group-hover:bg-gray-300 dark:group-hover:bg-gray-600'}`}>
@@ -1269,9 +1269,9 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                       {/* Create note in folder */}
                       <button
                         onClick={() => createNote(folder.id)}
-                        className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 group"
+                        className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 border-2 border-dashed border-white/30 dark:border-gray-600/30 hover:border-sakura-400 dark:hover:border-sakura-500 hover:bg-sakura-50/20 dark:hover:bg-sakura-900/10 text-gray-600 dark:text-gray-400 hover:text-sakura-600 dark:hover:text-sakura-400 group glassmorphic-card"
                       >
-                        <div className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 group-hover:bg-blue-200 dark:group-hover:bg-blue-800 transition-all duration-200">
+                                                  <div className="p-2 rounded-lg glassmorphic group-hover:bg-sakura-200/50 dark:group-hover:bg-sakura-800/50 transition-all duration-200">
                           <Plus className="w-4 h-4" />
                         </div>
                         <span className="text-sm font-medium">New note in {folder.name}</span>
@@ -1518,7 +1518,7 @@ Tips:
       {isSidebarCollapsed && (
         <button
           onClick={toggleSidebar}
-          className="fixed top-4 left-4 z-50 p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110"
+          className="fixed top-4 left-4 z-50 p-3 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-full shadow-xl glassmorphic-card border border-white/20 transition-all duration-200 hover:scale-110 animate-pulse"
           title="Show Sidebar (Ctrl+\)"
         >
           <Menu className="w-5 h-5" />

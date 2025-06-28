@@ -12,11 +12,15 @@ import {
   ChevronRight,
   FileText,
   Clock,
-  Users
+  Users,
+  Download
 } from 'lucide-react';
 import NotebookChat from './NotebookChat';
 import NotebookCanvas from './NotebookCanvas';
 import GraphViewer from './GraphViewer';
+import ExportModal from './ExportModal';
+import NotebookExportService, { NotebookContent, ExportOptions } from './NotebookExportService';
+import { notebookDataCollector } from './NotebookDataCollector';
 import { NotebookResponse, NotebookDocumentResponse, claraNotebookService } from '../../services/claraNotebookService';
 
 interface NotebookWorkspaceProps {
@@ -39,11 +43,15 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
   const [rightSidebarContent, setRightSidebarContent] = useState<'chat' | 'outline' | 'graph'>('chat');
   
   // Layout states
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(400);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(500);
   
   // Note-related states
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
-
+  
+  // Export states
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [notebookContent, setNotebookContent] = useState<NotebookContent | null>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
 
   // Calculate completed document count
   const completedDocumentCount = documents.filter(doc => doc.status === 'completed').length;
@@ -98,7 +106,7 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
     const startWidth = rightSidebarWidth;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(300, Math.min(600, startWidth - (e.clientX - startX)));
+      const newWidth = Math.max(350, Math.min(800, startWidth - (e.clientX - startX)));
       setRightSidebarWidth(newWidth);
     };
 
@@ -111,7 +119,93 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-      return (
+  // Auto-expand sidebar for different content types
+  const handleContentChange = (contentType: 'chat' | 'outline' | 'graph') => {
+    setRightSidebarContent(contentType);
+    
+    // Auto-expand to optimal width based on content type
+    const optimalWidths = {
+      chat: 500,    // Good width for chat messages and interactions
+      outline: 400, // Compact width for outline/list view
+      graph: 650    // Wider width for graph visualization and entity cards
+    };
+    
+    // Only expand if current width is smaller than optimal
+    const optimalWidth = optimalWidths[contentType];
+    if (rightSidebarWidth < optimalWidth) {
+      setRightSidebarWidth(Math.min(optimalWidth, 800)); // Don't exceed max width
+    }
+  };
+
+  const handleOpenExportModal = async () => {
+    setIsLoadingContent(true);
+    setShowExportModal(true);
+    
+    try {
+      // Collect notebook data when opening the modal
+      let content: NotebookContent;
+      
+      try {
+        // Try to collect real notebook data
+        content = await notebookDataCollector.collectNotebookData(notebook.id);
+        console.log('Collected real notebook data for export modal:', content);
+      } catch (error) {
+        console.warn('Failed to collect real data, using sample data:', error);
+        // Fallback to sample data for demonstration
+        content = await notebookDataCollector.createSampleData(notebook.id, notebook.name);
+      }
+      
+      setNotebookContent(content);
+    } catch (error) {
+      console.error('Failed to load notebook content:', error);
+      // Create minimal content structure as fallback
+      setNotebookContent({
+        notebook: {
+          id: notebook.id,
+          name: notebook.name,
+          description: notebook.description || '',
+          created_at: notebook.created_at || new Date().toISOString()
+        },
+        notes: [],
+        chatHistory: [],
+        graphData: undefined
+      });
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
+
+  const handleExport = async (options: ExportOptions) => {
+    try {
+      console.log('Starting export with options:', options);
+      
+      if (!notebookContent) {
+        throw new Error('No notebook content available for export');
+      }
+
+      // Perform export
+      console.log('Exporting with service...');
+      const exportService = new NotebookExportService();
+      const { blob, filename } = await exportService.export(notebookContent, options);
+
+      // Download the file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log(`Successfully exported notebook as ${filename}`);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed: ' + (error as Error).message);
+    }
+  };
+
+  return (
     <div className="h-[95vh] flex bg-white dark:bg-black overflow-hidden">
       {/* Center Panel - Notes Canvas */}
       <div 
@@ -135,9 +229,30 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Export Button */}
+            <button
+              onClick={handleOpenExportModal}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700"
+              title="Export Notebook"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+
             {/* Right Panel Toggle */}
             <button
-              onClick={() => setShowRightSidebar(!showRightSidebar)}
+              onClick={() => {
+                if (!showRightSidebar) {
+                  // Auto-expand to optimal width when opening sidebar
+                  const optimalWidths = {
+                    chat: 500,
+                    outline: 400,
+                    graph: 650
+                  };
+                  const optimalWidth = optimalWidths[rightSidebarContent];
+                  setRightSidebarWidth(Math.min(optimalWidth, 800));
+                }
+                setShowRightSidebar(!showRightSidebar);
+              }}
               className={`p-2 rounded-lg transition-colors ${
                 showRightSidebar
                   ? 'bg-blue-500 text-white'
@@ -190,7 +305,7 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
               {/* Tab Navigation */}
               <div className="flex border-b border-gray-200 dark:border-gray-700">
                 <button
-                  onClick={() => setRightSidebarContent('chat')}
+                  onClick={() => handleContentChange('chat')}
                   className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
                     rightSidebarContent === 'chat'
                       ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
@@ -201,7 +316,7 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
                   Chat
                 </button>
                 <button
-                  onClick={() => setRightSidebarContent('outline')}
+                  onClick={() => handleContentChange('outline')}
                   className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
                     rightSidebarContent === 'outline'
                       ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
@@ -213,7 +328,7 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setRightSidebarContent('graph')}
+                  onClick={() => handleContentChange('graph')}
                   className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
                     rightSidebarContent === 'graph'
                       ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
@@ -229,12 +344,14 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
             {/* Right Sidebar Content */}
             <div className="flex-1 overflow-hidden min-h-0">
               {rightSidebarContent === 'chat' && (
-                <NotebookChat
-                  notebookId={notebook.id}
-                  documentCount={documents.length}
-                  completedDocumentCount={completedDocumentCount}
-                  onDocumentUpload={handleDocumentUpload}
-                />
+                <div className="h-full">
+                  <NotebookChat
+                    notebookId={notebook.id}
+                    documentCount={documents.length}
+                    completedDocumentCount={completedDocumentCount}
+                    onDocumentUpload={handleDocumentUpload}
+                  />
+                </div>
               )}
               {rightSidebarContent === 'outline' && (
                 <div className="p-4 h-full overflow-y-auto">
@@ -250,6 +367,29 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
             </div>
           </div>
         </>
+      )}
+
+      {/* Export Modal */}
+      {notebookContent && (
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => {
+            setShowExportModal(false);
+            setNotebookContent(null);
+          }}
+          onExport={handleExport}
+          notebookContent={notebookContent}
+        />
+      )}
+
+      {/* Loading overlay for export modal */}
+      {isLoadingContent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-500"></div>
+            <span className="text-gray-900 dark:text-gray-100">Loading notebook content...</span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -288,10 +428,10 @@ const NotebookOutline: React.FC<{ notebookId: string; selectedNotes: string[] }>
             {type === 'todo' && <FileText className="w-4 h-4" />}
             {type === 'idea' && <FileText className="w-4 h-4" />}
             {type === 'query' && <FileText className="w-4 h-4" />}
-            {type} ({typeNotes.length})
+            {type} ({(typeNotes as any[]).length})
           </h3>
           <div className="space-y-1">
-            {typeNotes.map(note => (
+            {(typeNotes as any[]).map((note: any) => (
               <div
                 key={note.id}
                 className={`p-2 rounded-lg text-sm cursor-pointer transition-colors ${
@@ -323,7 +463,5 @@ const NotebookOutline: React.FC<{ notebookId: string; selectedNotes: string[] }>
     </div>
   );
 };
-
-
 
 export default NotebookWorkspace; 

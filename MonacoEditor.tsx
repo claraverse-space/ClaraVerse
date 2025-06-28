@@ -1,0 +1,26 @@
+// Configure editor options
+editor.updateOptions({
+  fontSize: 14,
+  lineHeight: 1.6,
+  fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
+  wordWrap: 'on',
+  minimap: { enabled: false },
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  padding: { top: 16, bottom: 16, left: 16, right: 16 },
+  lineNumbers: 'off',
+  glyphMargin: false,
+  folding: false,
+  lineDecorationsWidth: 8,
+  lineNumbersMinChars: 0,
+  renderLineHighlight: 'none',
+  scrollbar: {
+    vertical: 'auto',
+    horizontal: 'auto',
+    verticalScrollbarSize: 8,
+    horizontalScrollbarSize: 8,
+  },
+  overviewRulerLanes: 0,
+  hideCursorInOverviewRuler: true,
+  overviewRulerBorder: false,
+}); 
