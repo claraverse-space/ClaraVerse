@@ -16,7 +16,7 @@ const LLMNode = memo<NodeProps>((props) => {
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const [isConfigSaved, setIsConfigSaved] = useState(false);
 
-  // Default models (fallback)
+  // Default models (fallback) - only used for initial state, not displayed
   const defaultModels = [
     'gpt-3.5-turbo',
     'gpt-4',
@@ -64,8 +64,8 @@ const LLMNode = memo<NodeProps>((props) => {
   };
 
   const loadModelsFromAPI = async () => {
-    if (!apiKey || !apiBaseUrl) {
-      setModelLoadError('API Key and Base URL are required');
+    if (!apiBaseUrl) {
+      setModelLoadError('API Base URL is required');
       return;
     }
 
@@ -73,12 +73,18 @@ const LLMNode = memo<NodeProps>((props) => {
     setModelLoadError(null);
 
     try {
+      // Prepare headers - only add Authorization if API key is provided
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (apiKey && apiKey.trim()) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
       const response = await fetch(`${apiBaseUrl}/models`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) {
@@ -89,18 +95,22 @@ const LLMNode = memo<NodeProps>((props) => {
       
       if (data.data && Array.isArray(data.data)) {
         // Extract model IDs and sort them
-        const models = data.data
+        const apiModels = data.data
           .map((model: any) => model.id)
           .filter((id: string) => id && typeof id === 'string')
           .sort();
         
-        if (models.length > 0) {
-          setAvailableModels(models);
+        if (apiModels.length > 0) {
+          // Create a merged list: keep defaults if they're not in API, add all API models
+          const mergedModels = [...new Set([...defaultModels, ...apiModels])];
+          setAvailableModels(mergedModels);
           setIsConfigSaved(true);
           
-          // If current model is not in the list, set to first available model
-          if (!models.includes(model)) {
-            const firstModel = models[0];
+          // Only change the model if it's not in either defaults or API models
+          // This preserves user's selection as long as it's valid
+          if (!mergedModels.includes(model)) {
+            // Only change if the current model is truly invalid
+            const firstModel = apiModels[0];
             setModel(firstModel);
             if (data.onUpdate) {
               data.onUpdate({ data: { ...data, model: firstModel } });
@@ -115,8 +125,8 @@ const LLMNode = memo<NodeProps>((props) => {
     } catch (error) {
       console.error('Failed to load models:', error);
       setModelLoadError(error instanceof Error ? error.message : 'Failed to load models');
-      // Fall back to default models
-      setAvailableModels(defaultModels);
+      // Don't fall back to default models - show no models loaded
+      setAvailableModels([]);
     } finally {
       setIsLoadingModels(false);
     }
@@ -141,7 +151,7 @@ const LLMNode = memo<NodeProps>((props) => {
     await loadModelsFromAPI();
   };
 
-  const modelsToShow = availableModels.length > 0 ? availableModels : defaultModels;
+  const modelsToShow = availableModels.length > 0 ? availableModels : [];
   const isVisionModel = model.includes('vision') || model.includes('gpt-4');
 
   return (
@@ -177,15 +187,21 @@ const LLMNode = memo<NodeProps>((props) => {
             onChange={(e) => handleModelChange(e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
           >
-            {modelsToShow.map((modelOption) => (
-              <option key={modelOption} value={modelOption}>
-                {modelOption}
+            {modelsToShow.length === 0 ? (
+              <option value={model || ""}>
+                {model || "No models loaded - configure API to load models"}
               </option>
-            ))}
+            ) : (
+              modelsToShow.map((modelOption) => (
+                <option key={modelOption} value={modelOption}>
+                  {modelOption}
+                </option>
+              ))
+            )}
           </select>
           {availableModels.length === 0 && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Default models shown. Configure API to load available models.
+              No models loaded. Configure API and click "Save & Load Models" to load available models.
             </p>
           )}
         </div>
@@ -245,7 +261,7 @@ const LLMNode = memo<NodeProps>((props) => {
                 type="text"
                 value={apiBaseUrl}
                 onChange={(e) => handleApiBaseUrlChange(e.target.value)}
-                placeholder="https://api.openai.com/v1"
+                placeholder="https://api.openai.com/v1 or http://localhost:11434/v1"
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
               />
             </div>
@@ -257,7 +273,7 @@ const LLMNode = memo<NodeProps>((props) => {
                 type="password"
                 value={apiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder="sk-..."
+                placeholder="sk-... (optional for local APIs)"
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
               />
             </div>
@@ -266,7 +282,7 @@ const LLMNode = memo<NodeProps>((props) => {
             <div className="pt-2">
               <button
                 onClick={handleSaveAndLoadModels}
-                disabled={!apiKey || !apiBaseUrl || isLoadingModels}
+                disabled={!apiBaseUrl || isLoadingModels}
                 className="w-full px-3 py-2.5 text-sm bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
               >
                 {isLoadingModels ? (
@@ -315,9 +331,9 @@ const LLMNode = memo<NodeProps>((props) => {
         {/* Status Indicators */}
         <div className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700/30 rounded-lg p-3">
           <div className="flex items-center gap-2.5">
-            <div className={`w-3 h-3 rounded-full ${apiKey ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${apiKey ? 'bg-green-400 animate-pulse' : 'bg-blue-400'}`}></div>
             <span className="text-gray-600 dark:text-gray-400 font-medium">
-              {apiKey ? '✓ API Ready' : '⚠ Missing API Key'}
+              {apiKey ? '✓ API with Auth' : 'ℹ No Auth (Local/Public API)'}
             </span>
           </div>
           {isVisionModel && (

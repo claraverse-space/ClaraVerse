@@ -17,7 +17,7 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const [isConfigSaved, setIsConfigSaved] = useState(false);
 
-  // Default models (fallback)
+  // Default models (fallback) - only used for initial state, not displayed
   const defaultModels = [
     { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
     { label: 'GPT-4o', value: 'gpt-4o' },
@@ -61,13 +61,14 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
   };
 
   const validateConfig = (key: string, url: string) => {
-    const isValid = key.trim().length > 0 && url.trim().length > 0;
+    // Only require base URL - API key is optional for some APIs
+    const isValid = url.trim().length > 0;
     setIsValidConfig(isValid);
   };
 
   const loadModelsFromAPI = async () => {
-    if (!apiKey || !apiBaseUrl) {
-      setModelLoadError('API Key and Base URL are required');
+    if (!apiBaseUrl) {
+      setModelLoadError('API Base URL is required');
       return;
     }
 
@@ -75,12 +76,18 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
     setModelLoadError(null);
 
     try {
+      // Prepare headers - only add Authorization if API key is provided
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (apiKey && apiKey.trim()) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
       const response = await fetch(`${apiBaseUrl}/models`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) {
@@ -91,26 +98,31 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
       
       if (data.data && Array.isArray(data.data)) {
         // Extract all model IDs - show everything available
-        const allModels = data.data
+        const apiModels = data.data
           .map((model: any) => model.id)
           .filter((id: string) => id && typeof id === 'string')
           .sort();
         
         // Use ALL available models - no filtering needed since our backend supports any model
-        if (allModels.length > 0) {
-          setAvailableModels(allModels);
+        if (apiModels.length > 0) {
+          // Create a merged list: keep defaults if they're not in API, add all API models
+          const defaultModelValues = defaultModels.map(m => m.value);
+          const mergedModels = [...new Set([...defaultModelValues, ...apiModels])];
+          setAvailableModels(mergedModels);
           setIsConfigSaved(true);
           
-          // If current model is not in the list, set to first available model
-          if (!allModels.includes(model)) {
-            const firstModel = allModels[0];
+          // Only change the model if it's not in either defaults or API models
+          // This preserves user's selection as long as it's valid
+          if (!mergedModels.includes(model)) {
+            // Only change if the current model is truly invalid
+            const firstModel = apiModels[0];
             setModel(firstModel);
             updateConfig({ model: firstModel });
           }
         } else {
-          // Fallback to default models if no models found
-          setAvailableModels(defaultModels.map(m => m.value));
-          setModelLoadError('No models found from API. Using defaults.');
+          // No models found from API
+          setAvailableModels([]);
+          setModelLoadError('No models found from API.');
         }
       } else {
         throw new Error('Invalid API response format');
@@ -118,8 +130,8 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
     } catch (error) {
       console.error('Failed to load models:', error);
       setModelLoadError(error instanceof Error ? error.message : 'Failed to load models');
-      // Fall back to default models
-      setAvailableModels(defaultModels.map(m => m.value));
+      // Don't fall back to default models - show no models loaded
+      setAvailableModels([]);
     } finally {
       setIsLoadingModels(false);
     }
@@ -139,10 +151,10 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
     await loadModelsFromAPI();
   };
 
-  // Prepare models for display
+  // Prepare models for display - don't show defaults when no models loaded
   const modelsToShow = availableModels.length > 0 
     ? availableModels.map(modelId => ({ label: modelId, value: modelId }))
-    : defaultModels;
+    : [];
 
   return (
     <BaseNode
@@ -171,10 +183,10 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
                 <span>Ready</span>
               </div>
             )}
-            {!isValidConfig && apiKey && (
+            {!isValidConfig && (
               <div className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
                 <AlertCircle className="w-3 h-3" />
-                <span>Invalid</span>
+                <span>Missing Base URL</span>
               </div>
             )}
           </div>
@@ -198,7 +210,7 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
                 type="text"
                 value={apiBaseUrl}
                 onChange={(e) => handleApiBaseUrlChange(e.target.value)}
-                placeholder="https://api.openai.com/v1"
+                placeholder="https://api.openai.com/v1 or http://localhost:11434/v1"
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
               />
             </div>
@@ -212,7 +224,7 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
                 type="password"
                 value={apiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder="sk-..."
+                placeholder="sk-... (optional for local APIs)"
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
               />
             </div>
@@ -245,11 +257,17 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
                 onChange={(e) => handleModelChange(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
               >
-                {modelsToShow.map((modelOption) => (
-                  <option key={modelOption.value} value={modelOption.value}>
-                    {modelOption.label}
+                {modelsToShow.length === 0 ? (
+                  <option value={model || ""}>
+                    {model || "No models loaded - configure API to load models"}
                   </option>
-                ))}
+                ) : (
+                  modelsToShow.map((modelOption) => (
+                    <option key={modelOption.value} value={modelOption.value}>
+                      {modelOption.label}
+                    </option>
+                  ))
+                )}
               </select>
               
               {/* Model loading status and errors */}
@@ -269,7 +287,7 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
               
               {availableModels.length === 0 && !isLoadingModels && !modelLoadError && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Default models shown. Click refresh to load available models.
+                  No models loaded. Configure API and click refresh to load available models.
                 </p>
               )}
               

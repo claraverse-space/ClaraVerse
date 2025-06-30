@@ -1102,7 +1102,7 @@ const Settings = () => {
 
             <TabItem
               id="mcp"
-              label="Extensions"
+              label="MCP Servers"
               icon={<Puzzle className="w-5 h-5" />}
               isActive={activeTab === 'mcp'}
             />

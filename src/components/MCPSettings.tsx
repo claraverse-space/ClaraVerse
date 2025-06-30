@@ -97,6 +97,14 @@ const MCPSettings: React.FC = () => {
   
   // MCP sub-tab state
   const [activeSubTab, setActiveSubTab] = useState<'servers' | 'templates' | 'diagnosis'>('servers');
+  
+        // JSON import state
+      const [showJsonImportModal, setShowJsonImportModal] = useState(false);
+      const [jsonImportText, setJsonImportText] = useState('');
+      const [isImportingJson, setIsImportingJson] = useState(false);
+      
+      // Add timeout configuration for better debugging
+      const MCP_TIMEOUT = 15000; // 15 seconds
 
   // Load MCP servers and templates
   useEffect(() => {
@@ -285,6 +293,19 @@ const MCPSettings: React.FC = () => {
 
         console.log('Full tools result:', JSON.stringify(toolsResult, null, 2)); // Enhanced debug log
 
+        // Check if tools/list request failed
+        if (!toolsResult.success) {
+          console.log('Tools listing failed:', toolsResult.error);
+          setMcpTestResults(prev => ({ 
+            ...prev, 
+            [name]: { 
+              status: 'error',
+              error: `Tool listing failed: ${toolsResult.error || 'Unknown error'}`
+            } 
+          }));
+          return; // Don't continue with basic test if tools/list specifically failed
+        }
+
         // Try multiple possible response structures
         let tools = null;
         
@@ -321,25 +342,23 @@ const MCPSettings: React.FC = () => {
             } 
           }));
         } else {
-          console.log('No valid tools found, falling back to basic test');
-          // Fallback to basic test
-          const result = await window.mcpService.testServer(name);
+          console.log('Tools listed successfully but no tools returned - empty server');
           setMcpTestResults(prev => ({ 
             ...prev, 
             [name]: { 
-              status: result.success ? 'success' : 'error', 
-              error: result.error 
+              status: 'success',
+              tools: [],
+              error: 'Server responded successfully but provides no tools'
             } 
           }));
         }
       } catch (toolsError) {
-        // Fallback to basic test if tools discovery fails
-        const result = await window.mcpService.testServer(name);
+        console.error('Exception during tools listing:', toolsError);
         setMcpTestResults(prev => ({ 
           ...prev, 
           [name]: { 
-            status: result.success ? 'success' : 'error', 
-            error: result.error 
+            status: 'error',
+            error: `Tool listing failed: ${toolsError instanceof Error ? toolsError.message : 'Unknown error'}`
           } 
         }));
       }
@@ -413,6 +432,76 @@ const MCPSettings: React.FC = () => {
     } catch (error) {
       console.error('Error importing Claude config:', error);
       alert('Failed to import Claude Desktop config.');
+    }
+  };
+
+  const handleJsonImport = async () => {
+    if (!window.mcpService || !jsonImportText.trim()) return;
+    
+    setIsImportingJson(true);
+    try {
+      const config = JSON.parse(jsonImportText);
+      
+      // Validate the JSON structure
+      if (!config.mcpServers || typeof config.mcpServers !== 'object') {
+        throw new Error('Invalid JSON format. Expected "mcpServers" object at root level.');
+      }
+      
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+      
+      // Import each server
+      for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+        try {
+          const mcpServerConfig = serverConfig as any;
+          
+          // Check if server already exists
+          const existingServers = await window.mcpService.getServers();
+          if (existingServers.some((s: MCPServer) => s.name === serverName)) {
+            skipped++;
+            continue;
+          }
+          
+          // Convert to our format
+          const newServerConfig = {
+            name: serverName,
+            type: 'stdio' as const,
+            command: mcpServerConfig.command || '',
+            args: mcpServerConfig.args || [],
+            env: mcpServerConfig.env || {},
+            description: mcpServerConfig.description || `Imported server: ${serverName}`,
+            enabled: mcpServerConfig.enabled !== false
+          };
+          
+          await window.mcpService.addServer(newServerConfig);
+          imported++;
+        } catch (error) {
+          errors.push(`Failed to import ${serverName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Show results
+      let message = `Import completed!\n`;
+      if (imported > 0) message += `✅ Successfully imported: ${imported} servers\n`;
+      if (skipped > 0) message += `⚠️ Skipped (already exist): ${skipped} servers\n`;
+      if (errors.length > 0) message += `❌ Failed: ${errors.length} servers\n\nErrors:\n${errors.join('\n')}`;
+      
+      alert(message);
+      
+      // Refresh servers list
+      const servers = await window.mcpService.getServers();
+      setMcpServers(servers);
+      
+      // Close modal and clear text
+      setShowJsonImportModal(false);
+      setJsonImportText('');
+      
+    } catch (error) {
+      console.error('Error importing JSON:', error);
+      alert(`Failed to import JSON: ${error instanceof Error ? error.message : 'Invalid JSON format'}`);
+    } finally {
+      setIsImportingJson(false);
     }
   };
 
@@ -523,13 +612,13 @@ const MCPSettings: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* <button
-                onClick={handleImportClaudeConfig}
-                className="px-4 py-2 bg-sakura-400 text-white rounded-lg hover:bg-sakura-500 transition-colors flex items-center gap-2"
+              <button
+                onClick={() => setShowJsonImportModal(true)}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
               >
                 <Upload className="w-4 h-4" />
-                Import Claude Config
-              </button> */}
+                Import JSON
+              </button>
               <button
                 onClick={() => {
                   setEditingMcpServer(null);
@@ -1214,6 +1303,117 @@ const MCPSettings: React.FC = () => {
               >
                 <Check className="w-4 h-4" />
                 {editingMcpServer ? 'Update' : 'Add'} Server
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* JSON Import Modal */}
+      {showJsonImportModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-4xl mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Import MCP Servers from JSON
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Paste your MCP configuration JSON below
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowJsonImportModal(false);
+                  setJsonImportText('');
+                }}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  JSON Configuration
+                </label>
+                <textarea
+                  value={jsonImportText}
+                  onChange={(e) => setJsonImportText(e.target.value)}
+                  className="w-full h-64 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:outline-none focus:border-blue-300 dark:focus:border-blue-600 dark:text-gray-100 font-mono text-sm resize-none"
+                  placeholder={`{
+  "mcpServers": {
+    "desktop-commander": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@wonderwhy-er/desktop-commander",
+        "--key",
+        "19a80d11-46ae-4bd8-a5e8-8dab60cfc125"
+      ]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-filesystem",
+        "/path/to/allowed/files"
+      ],
+      "env": {
+        "API_KEY": "your-api-key"
+      },
+      "description": "File system access server"
+    }
+  }
+}`}
+                />
+              </div>
+
+              {/* Format help */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Expected JSON Format
+                </h4>
+                <div className="text-sm text-blue-700 dark:text-blue-300 space-y-2">
+                  <p>• <strong>mcpServers</strong>: Object containing server configurations</p>
+                  <p>• <strong>command</strong>: Executable command (required)</p>
+                  <p>• <strong>args</strong>: Array of command arguments (optional)</p>
+                  <p>• <strong>env</strong>: Environment variables object (optional)</p>
+                  <p>• <strong>description</strong>: Server description (optional)</p>
+                  <p>• <strong>enabled</strong>: Whether server is enabled (optional, defaults to true)</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowJsonImportModal(false);
+                  setJsonImportText('');
+                }}
+                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleJsonImport}
+                disabled={!jsonImportText.trim() || isImportingJson}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                {isImportingJson ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Import Servers
+                  </>
+                )}
               </button>
             </div>
           </div>

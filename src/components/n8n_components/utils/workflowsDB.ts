@@ -81,4 +81,45 @@ export async function fetchWorkflowJson(jsonLink: string): Promise<string | null
     console.error('Failed to fetch workflow JSON:', error);
     return null;
   }
+}
+
+// Function to prefetch and store workflows (for caching/offline use)
+export async function prefetchAndStoreWorkflows(): Promise<Workflow[]> {
+  try {
+    console.log('Prefetching workflows...');
+    const workflows = await fetchWorkflows();
+    
+    // Store in localStorage for offline access
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('n8n_workflows_cache', JSON.stringify({
+          timestamp: Date.now(),
+          workflows: workflows
+        }));
+        console.log(`Cached ${workflows.length} workflows to localStorage`);
+      } catch (error) {
+        console.warn('Failed to cache workflows to localStorage:', error);
+      }
+    }
+    
+    return workflows;
+  } catch (error) {
+    console.error('Failed to prefetch workflows:', error);
+    
+    // Try to load from cache if available
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('n8n_workflows_cache');
+        if (cached) {
+          const cacheData = JSON.parse(cached);
+          console.log(`Loaded ${cacheData.workflows?.length || 0} workflows from cache`);
+          return cacheData.workflows || [];
+        }
+      } catch (cacheError) {
+        console.warn('Failed to load workflows from cache:', cacheError);
+      }
+    }
+    
+    throw error;
+  }
 } 

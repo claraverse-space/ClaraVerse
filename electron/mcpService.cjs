@@ -331,6 +331,7 @@ class MCPService {
       serverProcess.on('spawn', () => {
         log.info(`MCP server '${name}' spawned successfully`);
         serverInfo.status = 'running';
+        serverInfo.initialized = false; // Reset initialization status for new process
       });
 
       serverProcess.on('error', (error) => {
@@ -771,6 +772,22 @@ class MCPService {
         return await this.executeRemoteToolCall(serverInfo, toolName, args, callId);
       }
 
+      // **CRITICAL FIX: Ensure MCP server is properly initialized before executing tools**
+      if (!serverInfo.initialized) {
+        log.info(`[${serverName}] Server not initialized, performing MCP handshake first...`);
+        try {
+          await this.initializeMCPServer(serverName);
+          log.info(`[${serverName}] MCP initialization completed successfully`);
+        } catch (initError) {
+          log.error(`[${serverName}] MCP initialization failed:`, initError);
+          return {
+            callId,
+            success: false,
+            error: `MCP initialization failed: ${initError.message}`
+          };
+        }
+      }
+
       // For stdio servers, use the existing implementation
       const mcpRequest = {
         jsonrpc: '2.0',
@@ -905,6 +922,120 @@ class MCPService {
     }
   }
 
+  // Initialize MCP server with proper handshake
+  async initializeMCPServer(serverName) {
+    const serverInfo = this.servers.get(serverName);
+    if (!serverInfo || serverInfo.status !== 'running') {
+      throw new Error(`Server ${serverName} is not running`);
+    }
+
+    // Skip initialization for remote servers or if already initialized
+    if (serverInfo.type === 'remote' || serverInfo.initialized) {
+      return true;
+    }
+
+    log.info(`[${serverName}] Starting MCP initialization handshake...`);
+
+    return new Promise((resolve, reject) => {
+      let initResponseReceived = false;
+      const initCallId = `init-${Date.now()}`;
+      
+      // Step 1: Send initialize request
+      const initRequest = {
+        jsonrpc: '2.0',
+        id: initCallId,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {
+            tools: {},
+            resources: {}
+          },
+          clientInfo: {
+            name: 'ClaraVerse',
+            version: '1.0.0'
+          }
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        if (!initResponseReceived) {
+          serverInfo.process.stdout.off('data', onInitData);
+          reject(new Error(`MCP initialization timeout for ${serverName}`));
+        }
+      }, 10000); // 10 second timeout for initialization
+
+      const onInitData = (data) => {
+        const responseData = data.toString();
+        log.info(`[${serverName}] Init response data:`, responseData);
+        
+        try {
+          const lines = responseData.split('\n').filter(line => line.trim());
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine.startsWith('{')) continue;
+            
+            try {
+              const response = JSON.parse(trimmedLine);
+              if (response.id === initCallId) {
+                clearTimeout(timeout);
+                serverInfo.process.stdout.off('data', onInitData);
+                initResponseReceived = true;
+
+                if (response.error) {
+                  log.error(`[${serverName}] MCP initialization failed:`, response.error);
+                  reject(new Error(`MCP initialization failed: ${response.error.message}`));
+                  return;
+                }
+
+                log.info(`[${serverName}] MCP initialization successful:`, response.result);
+
+                // Step 2: Send initialized notification
+                const initializedNotification = {
+                  jsonrpc: '2.0',
+                  method: 'notifications/initialized',
+                  params: {}
+                };
+
+                try {
+                  serverInfo.process.stdin.write(JSON.stringify(initializedNotification) + '\n');
+                  log.info(`[${serverName}] Sent initialized notification`);
+                  
+                  // Mark as initialized
+                  serverInfo.initialized = true;
+                  resolve(true);
+                } catch (notifyError) {
+                  log.error(`[${serverName}] Failed to send initialized notification:`, notifyError);
+                  reject(notifyError);
+                }
+                return;
+              }
+            } catch (lineParseError) {
+              log.debug(`[${serverName}] Skipping non-JSON line during init:`, trimmedLine);
+              continue;
+            }
+          }
+        } catch (parseError) {
+          log.debug(`[${serverName}] Parse error during initialization:`, parseError.message);
+        }
+      };
+
+      // Listen for initialization response
+      serverInfo.process.stdout.on('data', onInitData);
+
+      // Send initialization request
+      try {
+        const requestString = JSON.stringify(initRequest) + '\n';
+        log.info(`[${serverName}] Sending MCP initialize request:`, initRequest);
+        serverInfo.process.stdin.write(requestString);
+      } catch (writeError) {
+        clearTimeout(timeout);
+        serverInfo.process.stdout.off('data', onInitData);
+        reject(new Error(`Failed to send initialize request: ${writeError.message}`));
+      }
+    });
+  }
+
   // List tools from an MCP server
   async listToolsFromServer(serverName, callId) {
     try {
@@ -968,6 +1099,22 @@ class MCPService {
             type: 'remote'
           }
         };
+      }
+
+      // **CRITICAL FIX: Ensure MCP server is properly initialized before sending tools/list**
+      if (!serverInfo.initialized) {
+        log.info(`[${serverName}] Server not initialized, performing MCP handshake first...`);
+        try {
+          await this.initializeMCPServer(serverName);
+          log.info(`[${serverName}] MCP initialization completed successfully`);
+        } catch (initError) {
+          log.error(`[${serverName}] MCP initialization failed:`, initError);
+          return {
+            callId,
+            success: false,
+            error: `MCP initialization failed: ${initError.message}`
+          };
+        }
       }
 
       // Handle stdio servers (existing logic)
@@ -1045,9 +1192,9 @@ class MCPService {
           resolve({
             callId,
             success: false,
-            error: 'Tool listing timeout'
+            error: 'Tool listing timeout (waited 60s)'
           });
-        }, 10000); // 10 second timeout for listing
+        }, 60000); // 60 second timeout for all MCP servers
 
         serverInfo.process.stdout.on('data', onData);
 

@@ -1149,6 +1149,129 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     return currentProviderModels.slice(0, 3); // Return top 3 vision models
   }, [models, sessionConfig.aiConfig?.provider]);
 
+  /**
+   * Create a refined streaming response by sending the raw autonomous response back to the LLM
+   * This temporarily switches to streaming mode for the final response refinement
+   */
+  const createRefinedStreamingResponse = useCallback(async (
+    rawUnfilteredResponse: string,
+    originalUserQuestion: string,
+    streamingMessageId: string,
+    enforcedConfig: ClaraAIConfig,
+    conversationHistory: ClaraMessage[],
+    providersArray: ClaraProvider[]
+  ): Promise<string | null> => {
+    try {
+      console.log('🔄 Starting final streaming refinement...');
+      
+      // Create a temporary streaming-enabled config
+      const streamingConfig: ClaraAIConfig = {
+        ...enforcedConfig,
+        features: {
+          ...enforcedConfig.features,
+          enableStreaming: true,
+          enableTools: false,    // Disable tools for final streaming
+          enableMCP: false       // Disable MCP for final streaming
+        },
+        autonomousAgent: {
+          enabled: false,         // Disable autonomous mode for final streaming
+          maxRetries: enforcedConfig.autonomousAgent?.maxRetries || 3,
+          retryDelay: enforcedConfig.autonomousAgent?.retryDelay || 1000,
+          enableSelfCorrection: enforcedConfig.autonomousAgent?.enableSelfCorrection || true,
+          enableToolGuidance: enforcedConfig.autonomousAgent?.enableToolGuidance || true,
+          enableProgressTracking: enforcedConfig.autonomousAgent?.enableProgressTracking || true,
+          maxToolCalls: enforcedConfig.autonomousAgent?.maxToolCalls || 10,
+          confidenceThreshold: enforcedConfig.autonomousAgent?.confidenceThreshold || 0.7,
+          enableChainOfThought: enforcedConfig.autonomousAgent?.enableChainOfThought || true,
+          enableErrorLearning: enforcedConfig.autonomousAgent?.enableErrorLearning || true
+        }
+      };
+
+      // Create refinement prompt
+      const refinementPrompt = `You are Clara, reviewing and refining an AI response to make it more user-friendly and resonant.
+
+**Original User Question:**
+"${originalUserQuestion}"
+
+**Raw Unfiltered Response:**
+---------
+${rawUnfilteredResponse}
+---------
+
+**Your Task:**
+Please create a refined, conversational response that:
+1. Directly answers the user's original question
+2. Uses the key information from the raw response
+3. Removes technical artifacts, console outputs, and execution details
+4. Presents the information in a natural, helpful way
+5. Maintains accuracy while being more engaging
+6. Ends with a friendly offer to help further
+
+**Important Guidelines:**
+- Be conversational and warm, not robotic
+- Focus on what the user actually asked for
+- Remove any technical jargon or system messages
+- Keep the core facts and data accurate
+- Make it feel like a natural conversation
+
+Please provide your refined response:`;
+
+      // Track the refined content as it streams
+      let refinedContent = '';
+      
+      // Create streaming callback for refinement
+      const refinementStreamingCallback = (chunk: string) => {
+        refinedContent += chunk;
+        
+        // Update the message in real-time during refinement
+        setMessages(prev => prev.map(msg => 
+          msg.id === streamingMessageId 
+            ? { 
+                ...msg, 
+                content: refinedContent,
+                metadata: {
+                  ...msg.metadata,
+                  isRefinementStreaming: true
+                }
+              }
+            : msg
+        ));
+      };
+
+      // Get current provider for streaming
+      const currentProvider = providersArray.find(p => p.id === streamingConfig.provider);
+      if (!currentProvider) {
+        console.error('❌ Current provider not found for streaming refinement');
+        return null;
+      }
+
+      // Get system prompt for refinement
+      const systemPrompt = getDefaultSystemPrompt(currentProvider, streamingConfig.artifacts);
+      
+      console.log('📡 Sending refinement request with streaming...');
+      
+      // Send refinement request with streaming
+      const refinementResponse = await claraApiService.sendChatMessage(
+        refinementPrompt,
+        streamingConfig,
+        [], // No attachments for refinement
+        systemPrompt,
+        [], // No conversation history for refinement (clean slate)
+        refinementStreamingCallback
+      );
+
+      console.log('✅ Streaming refinement completed');
+      console.log('📏 Refined content length:', refinedContent.length);
+      
+      // Return the streamed content (which should be the same as refinementResponse.content)
+      return refinedContent || refinementResponse.content || null;
+      
+    } catch (error) {
+      console.error('❌ Error in streaming refinement:', error);
+      return null;
+    }
+  }, [setMessages]);
+
   // Create new session
   const createNewSession = useCallback(async (): Promise<ClaraChatSession> => {
     try {
@@ -1390,12 +1513,35 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       
       // Post-process autonomous agent responses for better UX
       if (enforcedConfig.autonomousAgent?.enabled && aiMessage.content) {
-        const postProcessedContent = await postProcessAutonomousResponse(
-          aiMessage.content,
-          content, // Original user request
-          aiMessage.metadata?.toolsUsed || []
+        // **NEW: Final streaming refinement step**
+        console.log('🎯 Starting final streaming refinement for autonomous response...');
+        
+        // Store the raw unfiltered response
+        const rawUnfilteredResponse = aiMessage.content;
+        
+        // Create a refined response using streaming mode
+        const refinedResponse = await createRefinedStreamingResponse(
+          rawUnfilteredResponse,
+          content, // Original user question
+          streamingMessageId,
+          enforcedConfig,
+          conversationHistory,
+          providers
         );
-        aiMessage.content = postProcessedContent;
+        
+        if (refinedResponse) {
+          aiMessage.content = refinedResponse;
+          console.log('✅ Final streaming refinement completed successfully');
+        } else {
+          // Fallback to post-processing if streaming refinement fails
+          const postProcessedContent = await postProcessAutonomousResponse(
+            aiMessage.content,
+            content, // Original user request
+            aiMessage.metadata?.toolsUsed || []
+          );
+          aiMessage.content = postProcessedContent;
+          console.log('⚠️ Streaming refinement failed, using post-processing fallback');
+        }
       }
 
       // **NEW: Automatic artifact detection**
@@ -2797,14 +2943,16 @@ Console output:`;
     initializeSession();
   }, [isLoadingSessions, sessions.length, currentSession, createNewSession]);
 
-  /**
-   * Post-process autonomous agent response to create clean, user-friendly output
-   */
-  const postProcessAutonomousResponse = async (
-    rawResponse: string, 
-    userRequest: string, 
-    completedTools: any[]
-  ): Promise<string> => {
+  
+
+/**
+ * Post-process autonomous agent response to create clean, user-friendly output
+ */
+const postProcessAutonomousResponse = async (
+  rawResponse: string, 
+  userRequest: string, 
+  completedTools: any[]
+): Promise<string> => {
     try {
       // Remove common autonomous mode artifacts
       let cleanedResponse = rawResponse

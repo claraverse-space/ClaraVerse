@@ -507,6 +507,13 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
   // Handle keyboard events for copy-paste and save (removed delete functionality)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle shortcuts when user is typing in input fields or text areas
+      if (event.target instanceof HTMLInputElement || 
+          event.target instanceof HTMLTextAreaElement ||
+          (event.target instanceof HTMLElement && event.target.isContentEditable)) {
+        return;
+      }
+
       // Handle save (Ctrl+S or Cmd+S)
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault();
