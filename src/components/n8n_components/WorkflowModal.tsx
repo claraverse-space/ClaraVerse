@@ -107,13 +107,8 @@ const WorkflowModal: React.FC<WorkflowModalProps> = ({ workflow, onClose, onDown
         ? workflow.jsonLink 
         : JSON.stringify(workflow.jsonLink, null, 2);
       
-      // Use electron clipboard API
-      if (window.electron?.clipboard) {
-        window.electron.clipboard.writeText(jsonToCopy);
-      } else {
-        // Fallback to navigator clipboard if electron is not available
-        await navigator.clipboard.writeText(jsonToCopy);
-      }
+      // Copy to clipboard
+      await navigator.clipboard.writeText(jsonToCopy);
       
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

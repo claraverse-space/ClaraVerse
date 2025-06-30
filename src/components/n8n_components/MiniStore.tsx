@@ -86,13 +86,8 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
     try {
       const rawUrl = toRawGitHubUrl(jsonLink);
       
-      // Use electron clipboard API
-      if (window.electron?.clipboard) {
-        window.electron.clipboard.writeText(rawUrl);
-      } else {
-        // Fallback to navigator clipboard if electron is not available
-        await navigator.clipboard.writeText(rawUrl);
-      }
+      // Copy to clipboard
+      await navigator.clipboard.writeText(rawUrl);
       
       setCopiedLinks(prev => ({ ...prev, [workflowName]: true }));
       setTimeout(() => {

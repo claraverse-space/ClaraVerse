@@ -77,6 +77,7 @@ export interface AgentFlow {
   id: string;
   name: string;
   description?: string;
+  icon?: string; // Custom icon (emoji or icon name)
   nodes: FlowNode[];
   connections: Connection[];
   variables: FlowVariable[];

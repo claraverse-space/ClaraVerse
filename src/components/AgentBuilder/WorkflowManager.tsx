@@ -464,6 +464,35 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
     return date.toLocaleDateString();
   };
 
+  const getAgentIcon = (workflow: AgentFlow) => {
+    // Use custom icon if available
+    if (workflow.icon) {
+      return workflow.icon;
+    }
+    
+    // Fallback to auto-generated icon based on agent characteristics
+    const nodeCount = workflow.nodes?.length || 0;
+    const hasLLMNode = workflow.nodes?.some(node => node.type === 'llm' || node.type === 'structured-llm');
+    const hasAPINode = workflow.nodes?.some(node => node.type === 'api-request');
+    const hasImageNode = workflow.nodes?.some(node => node.type === 'image-input');
+    const hasFileNode = workflow.nodes?.some(node => node.type === 'file-upload' || node.type === 'pdf-input');
+    
+    // Determine icon based on functionality
+    if (hasLLMNode && hasImageNode) return '👁️'; // Vision AI
+    if (hasLLMNode && hasFileNode) return '📄'; // Document AI
+    if (hasLLMNode && hasAPINode) return '🔗'; // Connected AI
+    if (hasLLMNode) return '🤖'; // AI Agent
+    if (hasAPINode) return '🌐'; // API Agent
+    if (hasImageNode) return '🖼️'; // Image Agent
+    if (hasFileNode) return '📁'; // File Agent
+    
+    // Fallback based on complexity
+    if (nodeCount === 0) return '🧠';
+    if (nodeCount < 5) return '⚡';
+    if (nodeCount < 10) return '🛠️';
+    return '🔥';
+  };
+
   return (
     <div
       className={`relative bg-white dark:bg-gray-700 rounded-xl border-2 transition-all duration-200 hover:shadow-lg cursor-pointer group ${
@@ -476,13 +505,18 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
       {/* Header */}
       <div className="p-4 border-b border-gray-100 dark:border-gray-600">
         <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-              {workflow.name}
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-              {workflow.description || 'No description'}
-            </p>
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-lg flex-shrink-0">
+              {getAgentIcon(workflow)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                {workflow.name}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                {workflow.description || 'No description'}
+              </p>
+            </div>
           </div>
           
           <div className="relative">

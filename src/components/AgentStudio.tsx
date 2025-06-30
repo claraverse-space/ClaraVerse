@@ -21,17 +21,26 @@ interface AgentStudioProps {
 const NewFlowModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (name: string, description?: string) => void;
+  onConfirm: (name: string, description?: string, icon?: string) => void;
 }> = ({ isOpen, onClose, onConfirm }) => {
   const [flowName, setFlowName] = useState('');
   const [description, setDescription] = useState('');
+  const [selectedIcon, setSelectedIcon] = useState('🧠');
+
+  // Predefined icon options
+  const iconOptions = [
+    '🧠', '🤖', '⚡', '🔥', '🛠️', '👁️', '📄', '🔗', 
+    '🌐', '🖼️', '📁', '🚀', '💡', '⭐', '🎯', '🎨',
+    '🔧', '⚙️', '🎮', '📊', '💰', '🏆', '🌟', '💎'
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (flowName.trim()) {
-      onConfirm(flowName.trim(), description.trim() || undefined);
+      onConfirm(flowName.trim(), description.trim() || undefined, selectedIcon);
       setFlowName('');
       setDescription('');
+      setSelectedIcon('🧠');
       onClose();
     }
   };
@@ -39,6 +48,7 @@ const NewFlowModal: React.FC<{
   const handleClose = () => {
     setFlowName('');
     setDescription('');
+    setSelectedIcon('🧠');
     onClose();
   };
 
@@ -86,6 +96,34 @@ const NewFlowModal: React.FC<{
               rows={3}
               className="w-full px-3 py-2 border border-white/30 dark:border-gray-700/50 rounded-lg glassmorphic-card text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 resize-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Icon
+            </label>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-lg">
+                {selectedIcon}
+              </div>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Selected icon</span>
+            </div>
+            <div className="grid grid-cols-8 gap-2 max-h-32 overflow-y-auto border border-white/30 dark:border-gray-700/50 rounded-lg p-2 glassmorphic-card">
+              {iconOptions.map((icon) => (
+                <button
+                  key={icon}
+                  type="button"
+                  onClick={() => setSelectedIcon(icon)}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all hover:scale-110 ${
+                    selectedIcon === icon
+                      ? 'bg-sakura-500 text-white shadow-lg transform scale-110'
+                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
           
           <div className="flex justify-end gap-3 pt-4">
@@ -249,8 +287,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
     setIsNewFlowModalOpen(true);
   };
 
-  const handleConfirmNewFlow = (name: string, description?: string) => {
-    createNewFlow(name, description);
+  const handleConfirmNewFlow = (name: string, description?: string, icon?: string) => {
+    createNewFlow(name, description, icon);
   };
 
   const handleCreateCustomNode = () => {

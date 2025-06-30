@@ -4,7 +4,6 @@ import { ArrowLeft, Store as StoreIcon, Search, Database, Globe2, FileText, Zap,
 import WorkflowCard from './WorkflowCard';
 import WorkflowModal from './WorkflowModal';
 import { fetchWorkflows } from './utils/workflowsDB';
-import { supabase } from '../../supabaseClient';
 
 export interface Workflow {
   id: string;
@@ -124,45 +123,8 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
     const loadWorkflows = async () => {
       try {
         setLoading(true);
-        
-        // Try to fetch from Supabase first
-        const { data: supabaseData, error } = await supabase
-          .from('shared_workflows')
-          .select('*')
-          .eq('is_prebuilt', true);
-
-        if (error || !supabaseData) {
-          console.warn('Falling back to local workflows:', error?.message);
-          // Fallback to local workflows if Supabase fails
-          const localData = await fetchWorkflows();
-          setWorkflows(localData);
-        } else {
-          // Transform Supabase data to match Workflow interface
-          const transformedData = supabaseData.map(item => {
-            // Parse workflow_json if it's a string
-            const workflowJson = typeof item.workflow_json === 'string' 
-              ? JSON.parse(item.workflow_json)
-              : item.workflow_json;
-
-            // Extract nodes from workflow JSON
-            const nodes = workflowJson?.nodes || [];
-            
-            return {
-              id: item.id,
-              category: item.category || workflowJson?.category || 'uncategorized',
-              name: item.title || workflowJson?.name,
-              description: item.description || workflowJson?.description,
-              nodeCount: nodes.length,
-              tags: item.tags || workflowJson?.tags || [],
-              jsonLink: typeof workflowJson === 'string' ? workflowJson : JSON.stringify(workflowJson),
-              nodeNames: nodes.map((n: any) => n.type || n.name),
-              readmeLink: item.readme_url || '',
-              downloads: item.downloads || 0,
-              is_prebuilt: item.is_prebuilt
-            };
-          });
-          setWorkflows(transformedData);
-        }
+        const data = await fetchWorkflows();
+        setWorkflows(data);
       } catch (error) {
         console.error('Failed to load workflows:', error);
       } finally {
@@ -220,15 +182,7 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
 
   const handleDownloadWorkflow = async (workflow: Workflow) => {
     try {
-      // Increment download count in Supabase
-      const { error } = await supabase
-        .from('shared_workflows')
-        .update({ downloads: (workflow.downloads || 0) + 1 })
-        .eq('id', workflow.id);
-
-      if (error) throw error;
-
-      // Update local state
+      // Update local download count
       setWorkflows(prev => prev.map(w => 
         w.id === workflow.id ? { ...w, downloads: (w.downloads || 0) + 1 } : w
       ));
@@ -257,13 +211,8 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
         jsonToCopy = JSON.stringify(workflow.jsonLink, null, 2);
       }
       
-      // Use electron clipboard API if available
-      if (window.electron?.clipboard) {
-        window.electron.clipboard.writeText(jsonToCopy);
-      } else {
-        // Fallback to navigator clipboard if electron is not available
-        await navigator.clipboard.writeText(jsonToCopy);
-      }
+      // Copy to clipboard
+      await navigator.clipboard.writeText(jsonToCopy);
       
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -372,7 +321,6 @@ const Store: React.FC<StoreProps> = ({ onBack }) => {
           workflow={selectedWorkflow}
           onClose={() => setSelectedWorkflow(null)}
           onDownload={() => handleDownloadWorkflow(selectedWorkflow)}
-          onCopy={(e) => handleCopy(selectedWorkflow, e)}
         />
       )}
     </div>

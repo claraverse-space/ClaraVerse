@@ -79,11 +79,31 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
   };
 
   const getAgentIcon = (agent: AgentFlow) => {
-    // Get icon based on agent type or use default
+    // Use custom icon if available
+    if (agent.icon) {
+      return agent.icon;
+    }
+    
+    // Fallback to auto-generated icon based on agent characteristics
     const nodeCount = agent.nodes?.length || 0;
+    const hasLLMNode = agent.nodes?.some(node => node.type === 'llm' || node.type === 'structured-llm');
+    const hasAPINode = agent.nodes?.some(node => node.type === 'api-request');
+    const hasImageNode = agent.nodes?.some(node => node.type === 'image-input');
+    const hasFileNode = agent.nodes?.some(node => node.type === 'file-upload' || node.type === 'pdf-input');
+    
+    // Determine icon based on functionality
+    if (hasLLMNode && hasImageNode) return '👁️'; // Vision AI
+    if (hasLLMNode && hasFileNode) return '📄'; // Document AI
+    if (hasLLMNode && hasAPINode) return '🔗'; // Connected AI
+    if (hasLLMNode) return '🤖'; // AI Agent
+    if (hasAPINode) return '🌐'; // API Agent
+    if (hasImageNode) return '🖼️'; // Image Agent
+    if (hasFileNode) return '📁'; // File Agent
+    
+    // Fallback based on complexity
     if (nodeCount === 0) return '🧠';
     if (nodeCount < 5) return '⚡';
-    if (nodeCount < 10) return '🤖';
+    if (nodeCount < 10) return '🛠️';
     return '🔥';
   };
 

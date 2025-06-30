@@ -41,7 +41,7 @@ interface AgentBuilderContextType {
   isExecutionLogOpen: boolean;
   
   // Flow Management
-  createNewFlow: (name: string, description?: string) => AgentFlow;
+  createNewFlow: (name: string, description?: string, icon?: string) => AgentFlow;
   loadFlow: (flow: AgentFlow) => void;
   saveFlow: () => Promise<void>;
   exportFlow: (format: string) => Promise<any>;
@@ -352,11 +352,12 @@ export const AgentBuilderProvider: React.FC<AgentBuilderProviderProps> = ({ chil
   }, []);
 
   // Flow Management
-  const createNewFlow = useCallback((name: string, description?: string): AgentFlow => {
+  const createNewFlow = useCallback((name: string, description?: string, icon?: string): AgentFlow => {
     const newFlow: AgentFlow = {
       id: generateId(),
       name,
       description,
+      icon,
       nodes: [],
       connections: [],
       variables: [],
