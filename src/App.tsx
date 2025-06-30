@@ -11,6 +11,8 @@ import Help from './components/Help';
 import N8N from './components/N8N';
 import Servers from './components/Servers';
 import AgentStudio from './components/AgentStudio';
+import AgentManager from './components/AgentManager';
+import AgentRunnerSDK from './components/AgentRunnerSDK';
 import Lumaui from './components/Lumaui';
 import LumaUILite from './components/LumaUILite';
 import Notebooks from './components/Notebooks';
@@ -24,6 +26,9 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userInfo, setUserInfo] = useState<{ name: string } | null>(null);
   const [alphaFeaturesEnabled, setAlphaFeaturesEnabled] = useState(false);
+  const [agentMode, setAgentMode] = useState<'manager' | 'studio' | 'runner'>('manager');
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [runningAgentId, setRunningAgentId] = useState<string | null>(null);
 
   useEffect(() => {
     const checkUserInfo = async () => {
@@ -63,6 +68,12 @@ function App() {
   useEffect(() => {
     console.log('Storing activePage:', activePage);
     localStorage.setItem('activePage', activePage);
+    
+    // Reset agent mode when navigating away from agents page
+    if (activePage !== 'agents') {
+      setAgentMode('manager');
+      setEditingAgentId(null);
+    }
   }, [activePage]);
 
   const renderContent = () => {
@@ -74,7 +85,53 @@ function App() {
     // This allows it to run in the background
     
     if (activePage === 'agents') {
-      return <AgentStudio onPageChange={setActivePage} userName={userInfo?.name} />;
+      const handleEditAgent = (agentId: string) => {
+        setEditingAgentId(agentId);
+        setAgentMode('studio');
+      };
+
+      const handleOpenAgent = (agentId: string) => {
+        setRunningAgentId(agentId);
+        setAgentMode('runner');
+      };
+
+      const handleCreateAgent = () => {
+        setEditingAgentId(null);
+        setAgentMode('studio');
+      };
+
+      const handleBackToManager = () => {
+        setAgentMode('manager');
+        setEditingAgentId(null);
+        setRunningAgentId(null);
+      };
+
+      if (agentMode === 'manager') {
+        return (
+          <AgentManager
+            onPageChange={setActivePage}
+            onEditAgent={handleEditAgent}
+            onOpenAgent={handleOpenAgent}
+            onCreateAgent={handleCreateAgent}
+            userName={userInfo?.name}
+          />
+        );
+      } else if (agentMode === 'studio') {
+        return (
+          <AgentStudio
+            onPageChange={handleBackToManager}
+            userName={userInfo?.name}
+            editingAgentId={editingAgentId}
+          />
+        );
+      } else if (agentMode === 'runner' && runningAgentId) {
+        return (
+          <AgentRunnerSDK
+            agentId={runningAgentId}
+            onClose={handleBackToManager}
+          />
+        );
+      }
     }
     
 

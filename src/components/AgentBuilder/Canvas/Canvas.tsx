@@ -39,6 +39,7 @@ import FileUploadNode from '../Nodes/FileUploadNode';
 import WhisperTranscriptionNode from '../Nodes/WhisperTranscriptionNode';
 import CombineTextNode from '../Nodes/CombineTextNode';
 import APIRequestNode from '../Nodes/APIRequestNode';
+import StaticTextNode from '../Nodes/StaticTextNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -57,6 +58,7 @@ console.log('Node imports loaded:', {
   WhisperTranscriptionNode: !!WhisperTranscriptionNode,
   CombineTextNode: !!CombineTextNode,
   APIRequestNode: !!APIRequestNode,
+  StaticTextNode: !!StaticTextNode,
 });
 
 // Define base node types with proper imports - moved outside component to ensure immediate availability
@@ -74,6 +76,7 @@ const baseNodeTypes: NodeTypes = {
   'whisper-transcription': WhisperTranscriptionNode,
   'combine-text': CombineTextNode,
   'api-request': APIRequestNode,
+  'static-text': StaticTextNode,
   'text': TextNode,
   'math': MathNode,
 };

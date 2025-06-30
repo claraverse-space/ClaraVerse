@@ -39,6 +39,38 @@ export class NodeRegistry {
       return outputInput;
     });
 
+    // Static Text Node
+    this.nodeExecutors.set('static-text', (node: FlowNode) => {
+      const text = node.data.text || node.data.customText || 'Enter your static text here...';
+      const textFormat = node.data.textFormat || 'plain';
+      
+      // Process text based on format
+      let processedText = text;
+      
+      switch (textFormat) {
+        case 'json':
+          try {
+            // For JSON format, parse and return the parsed object
+            processedText = JSON.parse(text);
+          } catch {
+            processedText = text; // Return as-is if invalid JSON
+          }
+          break;
+        case 'template':
+          // Future: Could add template variable replacement here
+          processedText = text;
+          break;
+        case 'markdown':
+        case 'plain':
+        default:
+          processedText = text;
+          break;
+      }
+      
+      // Return with correct port name to match node definition
+      return { text: processedText };
+    });
+
     // JSON Parse Node
     this.nodeExecutors.set('json-parse', (node: FlowNode, inputs: Record<string, any>) => {
       const inputValue = inputs.input || Object.values(inputs)[0] || '';
@@ -320,23 +352,19 @@ export class NodeRegistry {
       
       if (!imageFile) {
         return {
-          output: {
-            base64: '',
-            metadata: {}
-          }
+          base64: '',
+          metadata: {}
         };
       }
       
-      // For now, return the image as is - in real implementation, this would process the image
+      // Return data with keys matching the output port IDs
       return {
-        output: {
-          base64: imageFile, // Assume it's already base64 for now
-          metadata: {
-            width: maxWidth,
-            height: maxHeight,
-            type: 'image/jpeg',
-            size: imageFile.length
-          }
+        base64: imageFile, // Direct base64 string for LLM image input
+        metadata: {
+          width: maxWidth,
+          height: maxHeight,
+          type: 'image/jpeg',
+          size: imageFile.length
         }
       };
     });

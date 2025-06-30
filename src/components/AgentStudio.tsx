@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Play, Save, Download, Upload, Settings, Calculator, Type, ArrowRight, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap } from 'lucide-react';
+import { Plus, Play, Save, Download, Upload, Settings, Calculator, Type, ArrowRight, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout } from 'lucide-react';
 import { AgentBuilderProvider, useAgentBuilder } from '../contexts/AgentBuilder/AgentBuilderContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -10,10 +10,12 @@ import ExportModal from './AgentBuilder/ExportModal';
 import { CustomNodeDefinition } from '../types/agent/types';
 import { customNodeManager } from './AgentBuilder/NodeCreator/CustomNodeManager';
 import { db } from '../db';
+import UIBuilder from './AgentBuilder/UIBuilder/UIBuilder';
 
 interface AgentStudioProps {
   onPageChange: (page: string) => void;
   userName?: string;
+  editingAgentId?: string | null;
 }
 
 const NewFlowModal: React.FC<{
@@ -107,7 +109,7 @@ const NewFlowModal: React.FC<{
   );
 };
 
-const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userName?: string }> = ({ onPageChange, userName }) => {
+const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userName?: string; editingAgentId?: string | null }> = ({ onPageChange, userName, editingAgentId }) => {
   const {
     currentFlow,
     nodes,
@@ -132,6 +134,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
   const [isWorkflowManagerOpen, setIsWorkflowManagerOpen] = useState(false);
   const [isNodeCreatorOpen, setIsNodeCreatorOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isUIBuilderOpen, setIsUIBuilderOpen] = useState(false);
   const [editingCustomNode, setEditingCustomNode] = useState<CustomNodeDefinition | null>(null);
   const [customNodes, setCustomNodes] = useState<CustomNodeDefinition[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
@@ -157,6 +160,26 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
     };
     loadWallpaper();
   }, []);
+
+  // Load specific agent when editingAgentId is provided
+  useEffect(() => {
+    const loadSpecificAgent = async () => {
+      if (editingAgentId) {
+        try {
+          const { agentWorkflowStorage } = await import('../services/agentWorkflowStorage');
+          const agent = await agentWorkflowStorage.getWorkflow(editingAgentId);
+          if (agent) {
+            loadFlow(agent);
+          } else {
+            console.error('Agent not found:', editingAgentId);
+          }
+        } catch (error) {
+          console.error('Failed to load agent:', error);
+        }
+      }
+    };
+    loadSpecificAgent();
+  }, [editingAgentId, loadFlow]);
 
   // Prevent body scrolling and ensure proper viewport containment
   useEffect(() => {
@@ -357,6 +380,15 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                 >
                   <Zap className="w-4 h-4" />
                   Create Node
+                </button>
+                                  <button 
+                  onClick={() => setIsUIBuilderOpen(true)}
+                  disabled={!currentFlow}
+                  className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
+                  title="Create Agent UI"
+                >
+                  <Layout className="w-4 h-4" />
+                  Create UI
                 </button>
                 <button 
                   onClick={handleImport}
@@ -559,6 +591,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                       </h3>
                       <div className="space-y-2">
                         {[
+                          { 
+                            name: 'Static Text', 
+                            type: 'static-text', 
+                            icon: '📝', 
+                            description: 'Provides fixed text content set during workflow creation', 
+                            color: 'bg-gray-500',
+                            features: ['Fixed content', 'Multiple formats', 'Template support', 'Prompt building']
+                          },
                           { 
                             name: 'Combine Text', 
                             type: 'combine-text', 
@@ -1062,15 +1102,21 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
         currentFlow={currentFlow ? { ...currentFlow, nodeCount: nodes.length } : null}
         hasCustomNodes={hasCustomNodes}
       />
+
+      {/* UI Builder */}
+      <UIBuilder
+        isOpen={isUIBuilderOpen}
+        onClose={() => setIsUIBuilderOpen(false)}
+      />
       </div>
     </div>
   );
 };
 
-const AgentStudio: React.FC<AgentStudioProps> = ({ onPageChange, userName }) => {
+const AgentStudio: React.FC<AgentStudioProps> = ({ onPageChange, userName, editingAgentId }) => {
   return (
     <AgentBuilderProvider>
-      <AgentStudioContent onPageChange={onPageChange} userName={userName} />
+      <AgentStudioContent onPageChange={onPageChange} userName={userName} editingAgentId={editingAgentId} />
     </AgentBuilderProvider>
   );
 };

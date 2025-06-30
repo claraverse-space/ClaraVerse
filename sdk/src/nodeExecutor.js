@@ -20,6 +20,7 @@ export class NodeExecutor {
       'pdf-input': this.executePDFInputNode.bind(this),
       'api-request': this.executeAPIRequestNode.bind(this),
       'combine-text': this.executeCombineTextNode.bind(this),
+      'static-text': this.executeStaticTextNode.bind(this),
       'file-upload': this.executeFileUploadNode.bind(this),
       'whisper-transcription': this.executeWhisperTranscriptionNode.bind(this),
     };
@@ -1222,6 +1223,44 @@ export class NodeExecutor {
     }
     
     return text1 + actualSeparator + text2;
+  }
+
+  /**
+   * Execute Static Text Node
+   * Returns static text content configured during workflow creation
+   * Uses the real logic from the Agent Builder UI
+   */
+  async executeStaticTextNode(inputs, data) {
+    const { text = '', textFormat = 'plain' } = data;
+    
+    // Use text field or fallback to customText for backward compatibility
+    const staticText = text || data.customText || 'Enter your static text here...';
+    
+    // Process text based on format (same as AgentStudio logic)
+    let processedText;
+    switch (textFormat) {
+      case 'json':
+        try {
+          // For JSON format, parse and return the parsed object
+          processedText = JSON.parse(staticText);
+        } catch {
+          this.logger.warn('Static text: Failed to parse JSON, returning as string');
+          processedText = staticText; // Return as-is if invalid JSON
+        }
+        break;
+      case 'template':
+        // Future: Could add template variable replacement here
+        processedText = staticText;
+        break;
+      case 'markdown':
+      case 'plain':
+      default:
+        processedText = staticText;
+        break;
+    }
+    
+    // Return with 'text' property to match node definition output port
+    return { text: processedText };
   }
 
   /**

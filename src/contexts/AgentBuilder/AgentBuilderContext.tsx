@@ -82,6 +82,7 @@ interface AgentBuilderContextType {
   // Execution
   executeFlow: () => Promise<void>;
   stopExecution: () => void;
+  clearExecutionResults: () => void;
   
   // Execution Logs
   addExecutionLog: (log: Omit<ExecutionLog, 'id' | 'timestamp'>) => void;
@@ -1135,6 +1136,10 @@ const result = await flow.executeWithCallback(
     setIsExecuting(false);
   }, []);
 
+  const clearExecutionResults = useCallback(() => {
+    setExecutionResults({});
+  }, []);
+
   return (
     <AgentBuilderContext.Provider
       value={{
@@ -1183,7 +1188,8 @@ const result = await flow.executeWithCallback(
         exportFlow,
         importFlow,
         saveDraftState,
-        clearDraftState
+        clearDraftState,
+        clearExecutionResults
       }}
     >
       {children}

@@ -167,6 +167,14 @@ export class IndexedDBService {
           metadataStore.createIndex('workflow_id_index', 'workflowId', { unique: false });
           metadataStore.createIndex('type_index', 'type', { unique: false });
         }
+
+        // Add Agent UI designs store
+        if (!db.objectStoreNames.contains('agent_ui_designs')) {
+          const uiStore = db.createObjectStore('agent_ui_designs', { keyPath: 'id' });
+          uiStore.createIndex('agent_id_index', 'agentId', { unique: false });
+          uiStore.createIndex('created_at_index', 'createdAt', { unique: false });
+          uiStore.createIndex('updated_at_index', 'updatedAt', { unique: false });
+        }
       };
     });
   }

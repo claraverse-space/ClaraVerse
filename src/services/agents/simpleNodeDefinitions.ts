@@ -789,6 +789,101 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
     }
   },
 
+  // STATIC TEXT NODE
+  {
+    id: 'static-text-node',
+    name: 'Static Text',
+    type: 'static-text',
+    category: 'data',
+    description: 'Provides static text content with fixed values set during workflow creation',
+    icon: 'file-text',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [],
+    outputs: [
+      {
+        id: 'text',
+        name: 'Text Output',
+        type: 'output',
+        dataType: 'string',
+        required: true,
+        description: 'The static text content'
+      }
+    ],
+    properties: [
+      {
+        id: 'text',
+        name: 'Text Content',
+        type: 'string',
+        defaultValue: 'Enter your static text here...',
+        description: 'Fixed text content that will be output by this node'
+      },
+      {
+        id: 'label',
+        name: 'Node Label',
+        type: 'string',
+        defaultValue: 'Static Text',
+        description: 'Display label for this static text node'
+      },
+      {
+        id: 'textFormat',
+        name: 'Text Format',
+        type: 'select',
+        defaultValue: 'plain',
+        options: [
+          { label: 'Plain Text', value: 'plain' },
+          { label: 'Template (with variables)', value: 'template' },
+          { label: 'JSON String', value: 'json' },
+          { label: 'Markdown', value: 'markdown' }
+        ],
+        description: 'Format of the static text content'
+      },
+      {
+        id: 'multiline',
+        name: 'Multiline Support',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Whether the text supports multiple lines'
+      }
+    ],
+    executionHandler: 'static-text-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'System Prompt',
+          description: 'Static system prompt for AI models',
+          config: {
+            text: 'You are a helpful AI assistant. Please respond in a friendly and professional manner.',
+            label: 'System Prompt',
+            textFormat: 'plain',
+            multiline: true
+          }
+        },
+        {
+          name: 'API Instructions',
+          description: 'Fixed instructions for API requests',
+          config: {
+            text: 'Please analyze the following data and provide insights:\n\n',
+            label: 'API Instructions',
+            textFormat: 'template',
+            multiline: true
+          }
+        },
+        {
+          name: 'JSON Template',
+          description: 'Static JSON structure template',
+          config: {
+            text: '{"role": "system", "content": "You are a helpful assistant"}',
+            label: 'JSON Template',
+            textFormat: 'json',
+            multiline: false
+          }
+        }
+      ],
+      tags: ['text', 'static', 'prompt', 'template', 'content', 'fixed', 'constant']
+    }
+  },
+
   // WHISPER TRANSCRIPTION NODE
   {
     id: 'whisper-transcription-node',
