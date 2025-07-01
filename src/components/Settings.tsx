@@ -156,6 +156,19 @@ const Settings = () => {
   const [logLines, setLogLines] = useState(1000);
   const logsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Add enhanced service status state
+  const [enhancedServiceStatus, setEnhancedServiceStatus] = useState<any>({});
+  const [serviceConfigs, setServiceConfigs] = useState<any>({});
+  const [platformCompatibility, setPlatformCompatibility] = useState<any>({});
+  const [loadingServiceConfigs, setLoadingServiceConfigs] = useState(false);
+  const [testingServices, setTestingServices] = useState<{ [key: string]: boolean }>({});
+  const [serviceTestResults, setServiceTestResults] = useState<{ [key: string]: any }>({});
+  const [savingServiceConfig, setSavingServiceConfig] = useState<{ [key: string]: boolean }>({});
+  const [tempServiceUrls, setTempServiceUrls] = useState<{ [key: string]: string }>({});
+
+  // Current platform detection
+  const [currentPlatform, setCurrentPlatform] = useState<string>('');
+
   useEffect(() => {
     const loadSettings = async () => {
       const savedPersonalInfo = await db.getPersonalInfo();
@@ -1060,6 +1073,214 @@ const Settings = () => {
     }
   }, [activeTab, logLines]);
 
+  useEffect(() => {
+    // Detect current platform
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('mac')) setCurrentPlatform('darwin');
+    else if (platform.includes('win')) setCurrentPlatform('win32'); 
+    else setCurrentPlatform('linux');
+  }, []);
+
+  // Load service configurations when Services tab is opened
+  useEffect(() => {
+    if (activeTab === 'servers') {
+      loadServiceConfigurations();
+    }
+  }, [activeTab]);
+
+  // Load service configurations
+  const loadServiceConfigurations = async () => {
+    setLoadingServiceConfigs(true);
+    try {
+      // Load platform compatibility
+      if ((window as any).electronAPI?.invoke) {
+        const compatibility = await (window as any).electronAPI.invoke('service-config:get-platform-compatibility');
+        setPlatformCompatibility(compatibility);
+
+        // Load current service configurations
+        const configs = await (window as any).electronAPI.invoke('service-config:get-all-configs');
+        setServiceConfigs(configs);
+
+                                // Load enhanced service status
+                        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+                        console.log('🔍 Enhanced service status received by UI:', status);
+                        setEnhancedServiceStatus(status);
+
+                        // Clear temp URLs to show the saved URLs properly
+                        setTempServiceUrls({});
+      }
+    } catch (error) {
+      console.error('Failed to load service configurations:', error);
+    } finally {
+      setLoadingServiceConfigs(false);
+    }
+  };
+
+  // Update service configuration
+  const updateServiceConfig = async (serviceName: string, mode: string, url?: string) => {
+    setSavingServiceConfig(prev => ({ ...prev, [serviceName]: true }));
+    try {
+      const result = await (window as any).electronAPI.invoke('service-config:set-config', serviceName, mode, url);
+      if (result.success) {
+        // Reload configurations
+        await loadServiceConfigurations();
+        console.log(`✅ ${serviceName} configured as ${mode}${url ? ` with URL: ${url}` : ''}`);
+        
+        // Clear temp URL since it's now saved
+        setTempServiceUrls(prev => ({ ...prev, [serviceName]: '' }));
+        
+        // Show success feedback
+        setServiceTestResults(prev => ({ 
+          ...prev, 
+          [serviceName]: { 
+            success: true, 
+            message: 'Configuration saved successfully!',
+            timestamp: Date.now()
+          }
+        }));
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
+        }, 3000);
+      } else {
+        console.error(`Failed to configure ${serviceName}:`, result.error);
+        setServiceTestResults(prev => ({ 
+          ...prev, 
+          [serviceName]: { 
+            success: false, 
+            error: result.error || 'Failed to save configuration',
+            timestamp: Date.now()
+          }
+        }));
+      }
+    } catch (error) {
+      console.error(`Error configuring ${serviceName}:`, error);
+      setServiceTestResults(prev => ({ 
+        ...prev, 
+        [serviceName]: { 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: Date.now()
+        }
+      }));
+    } finally {
+      setSavingServiceConfig(prev => ({ ...prev, [serviceName]: false }));
+    }
+  };
+
+  // Save manual service URL
+  const saveManualServiceUrl = async (serviceName: string) => {
+    let url = tempServiceUrls[serviceName] || serviceConfigs[serviceName]?.url || '';
+    if (!url.trim()) {
+      setServiceTestResults(prev => ({ 
+        ...prev, 
+        [serviceName]: { 
+          success: false, 
+          error: 'Please enter a valid URL',
+          timestamp: Date.now()
+        }
+      }));
+      return;
+    }
+    
+    // Auto-detect and fix protocol for HTTPS URLs
+    url = url.trim();
+    if (url.includes('login.badboysm890.in') && !url.startsWith('https://')) {
+      // This domain requires HTTPS
+      url = url.replace(/^http:\/\//, 'https://');
+      if (!url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      console.log(`🔒 Auto-corrected URL to use HTTPS: ${url}`);
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      // Add http:// for localhost and other URLs without protocol
+      url = 'http://' + url;
+    }
+    
+    // Save the configuration
+    await updateServiceConfig(serviceName, 'manual', url);
+    
+    // Clear temp URL after successful save so saved URL shows in input
+    setTimeout(() => {
+      setTempServiceUrls(prev => ({ ...prev, [serviceName]: '' }));
+    }, 500);
+  };
+
+  // Test manual service connectivity
+  const testManualService = async (serviceName: string, inputUrl: string) => {
+    setTestingServices(prev => ({ ...prev, [serviceName]: true }));
+    setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
+
+    // Apply the same URL correction logic as save function
+    let url = inputUrl.trim();
+    if (url.includes('login.badboysm890.in') && !url.startsWith('https://')) {
+      // This domain requires HTTPS
+      url = url.replace(/^http:\/\//, 'https://');
+      if (!url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      console.log(`🔒 Auto-corrected URL for test to use HTTPS: ${url}`);
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      // Add http:// for localhost and other URLs without protocol
+      url = 'http://' + url;
+    }
+
+    try {
+      const result = await (window as any).electronAPI.invoke('service-config:test-manual-service', serviceName, url);
+      setServiceTestResults(prev => ({ ...prev, [serviceName]: result }));
+      
+      // Auto-save URL if test is successful
+      if (result.success) {
+        console.log(`✅ ${serviceName} connection test successful, auto-saving corrected URL: ${url}`);
+        await updateServiceConfig(serviceName, 'manual', url);
+        
+        // Clear temp URL since it's now saved
+        setTempServiceUrls(prev => ({ ...prev, [serviceName]: '' }));
+        
+        // Show success message with auto-save info
+        setServiceTestResults(prev => ({ 
+          ...prev, 
+          [serviceName]: { 
+            ...result,
+            message: 'Connection successful! Configuration auto-saved.',
+            timestamp: Date.now()
+          }
+        }));
+      }
+      
+      // Clear result after 5 seconds
+      setTimeout(() => {
+        setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
+      }, 5000);
+    } catch (error) {
+      console.error(`Failed to test ${serviceName}:`, error);
+      setServiceTestResults(prev => ({ 
+        ...prev, 
+        [serviceName]: { 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: Date.now()
+        }
+      }));
+    } finally {
+      setTestingServices(prev => ({ ...prev, [serviceName]: false }));
+    }
+  };
+
+  // Reset service configuration to defaults
+  const resetServiceConfig = async (serviceName: string) => {
+    try {
+      const result = await (window as any).electronAPI.invoke('service-config:reset-config', serviceName);
+      if (result.success) {
+        await loadServiceConfigurations();
+        console.log(`✅ ${serviceName} configuration reset to defaults`);
+      }
+    } catch (error) {
+      console.error(`Failed to reset ${serviceName} configuration:`, error);
+    }
+  };
+
   return (
     <>
       {/* Wallpaper */}
@@ -1850,476 +2071,677 @@ const Settings = () => {
           {/* Services Tab */}
           {activeTab === 'servers' && (
             <div className="space-y-6">
-              {/* Docker Services Status */}
+              {/* Service Management Header */}
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-6">
                   <Server className="w-6 h-6 text-blue-500" />
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Local Services
+                      Service Management
                     </h2>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Monitor and control your local development services
+                      Monitor and configure all ClaraVerse services
                     </p>
                   </div>
                 </div>
 
-                {/* Docker Services Status */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${dockerServices.dockerAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    Docker Services
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Docker Status */}
-                    <div className={`p-4 rounded-lg border ${dockerServices.dockerAvailable 
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
-                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${dockerServices.dockerAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <h4 className="font-medium text-gray-900 dark:text-white">Docker</h4>
-                      </div>
-                      <p className={`text-sm ${dockerServices.dockerAvailable 
-                        ? 'text-green-700 dark:text-green-300' 
-                        : 'text-red-700 dark:text-red-300'
-                      }`}>
-                        {dockerServices.dockerAvailable ? 'Available' : 'Not Available'}
-                      </p>
-                    </div>
-
-                    {/* N8N Status */}
-                    <div className={`p-4 rounded-lg border ${dockerServices.n8nAvailable 
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
-                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${dockerServices.n8nAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <h4 className="font-medium text-gray-900 dark:text-white">n8n Workflows</h4>
-                      </div>
-                      <p className={`text-sm ${dockerServices.n8nAvailable 
-                        ? 'text-green-700 dark:text-green-300' 
-                        : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        {dockerServices.n8nAvailable ? 'Running' : 'Stopped'}
-                      </p>
-                      {dockerServices.ports?.n8n && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Port: {dockerServices.ports.n8n}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Python API Status */}
-                    <div className={`p-4 rounded-lg border ${dockerServices.pythonAvailable 
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
-                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${dockerServices.pythonAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <h4 className="font-medium text-gray-900 dark:text-white">Python API</h4>
-                      </div>
-                      <p className={`text-sm ${dockerServices.pythonAvailable 
-                        ? 'text-green-700 dark:text-green-300' 
-                        : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        {dockerServices.pythonAvailable ? 'Running' : 'Stopped'}
-                      </p>
-                      {dockerServices.ports?.python && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Port: {dockerServices.ports.python}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* ComfyUI Status */}
-                    <div className={`p-4 rounded-lg border ${dockerServices.comfyuiAvailable 
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
-                      : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${dockerServices.comfyuiAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <h4 className="font-medium text-gray-900 dark:text-white">ComfyUI</h4>
-                      </div>
-                      <p className={`text-sm ${dockerServices.comfyuiAvailable 
-                        ? 'text-green-700 dark:text-green-300' 
-                        : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        {dockerServices.comfyuiAvailable ? 'Running' : 'Stopped'}
-                      </p>
-                      {dockerServices.ports?.comfyui && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Port: {dockerServices.ports.comfyui}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {dockerServices.message && (
-                    <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                      <p className="text-sm text-amber-700 dark:text-amber-300">
-                        {dockerServices.message}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-              </div>
-
-              {/* Python Backend Data Information */}
-              {pythonBackendInfo && (
-                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <HardDrive className="w-5 h-5 text-green-500" />
-                    Python Backend Data Storage
-                  </h4>
-                  
-                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm text-green-800 dark:text-green-200 mb-2">
-                          <strong>📁 Data Location:</strong> {pythonBackendInfo.dataPath}
-                        </p>
-                        <p className="text-sm text-green-700 dark:text-green-300">
-                          {pythonBackendInfo.description}
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                          Directory Structure:
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                          {Object.entries(pythonBackendInfo.structure || {}).map(([dir, desc]) => (
-                            <div key={dir} className="flex">
-                              <code className="text-green-700 dark:text-green-300 font-mono mr-2 flex-shrink-0">
-                                {dir}
-                              </code>
-                              <span className="text-green-600 dark:text-green-400">
-                                {String(desc)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                          ✅ Benefits:
-                        </p>
-                        <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                          {(pythonBackendInfo.benefits || []).map((benefit: string, index: number) => (
-                            <li key={index}>• {benefit}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          onClick={() => {
-                            if ((window as any).electron?.shell) {
-                              (window as any).electron.shell.openPath(pythonBackendInfo.dataPath);
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Open Folder
-                        </button>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(pythonBackendInfo.dataPath);
-                          }}
-                          className="px-3 py-1.5 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 transition-colors"
-                        >
-                          Copy Path
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Service Actions */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Wrench className="w-6 h-6 text-amber-500" />
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Service Controls
-                  </h3>
-                </div>
-                
-                {!dockerServices.dockerAvailable ? (
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-5 h-5 text-red-500" />
-                      <h4 className="font-medium text-red-800 dark:text-red-200">
-                        Docker Not Available
+                {/* Platform Info */}
+                <div className="bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <Monitor className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div>
+                      <h4 className="font-medium text-blue-900 dark:text-blue-100">
+                        Platform: {getPlatformName(currentPlatform)}
                       </h4>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        {currentPlatform === 'win32' 
+                          ? 'All services support both Docker and Manual deployment modes'
+                          : 'ComfyUI requires manual setup on macOS/Linux for optimal performance'
+                        }
+                      </p>
                     </div>
-                    <p className="text-sm text-red-700 dark:text-red-300 mb-3">
-                      Docker is not installed or not running. Please install Docker Desktop to manage Clara's services.
-                    </p>
-                    <button
-                      onClick={() => window.open('https://docs.docker.com/desktop/', '_blank')}
-                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Install Docker Desktop
-                    </button>
+                  </div>
+                </div>
+
+                                {loadingServiceConfigs ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* Docker Service Controls */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                      {/* n8n Workflow Service */}
-                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center justify-between mb-3">
+                    {/* Clara Core Service - Always running */}
+                    <div className="p-6 bg-gradient-to-r from-emerald-50/50 to-green-50/50 dark:from-emerald-900/20 dark:to-green-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/40 border-2 border-emerald-200 dark:border-emerald-700 rounded-xl flex items-center justify-center">
+                            <Bot className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+                          </div>
                           <div>
-                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${dockerServices.n8nAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                              n8n Workflows
-                            </h4>
+                            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              Clara Core
+                              <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
+                                Built-in
+                              </span>
+                            </h3>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                              Automation and workflow engine
+                              AI engine with local model management and llama.cpp
                             </p>
                           </div>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            dockerServices.n8nAvailable 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {dockerServices.n8nAvailable ? 'Running' : 'Stopped'}
-                          </span>
                         </div>
-                        
-                        <div className="flex gap-2">
-                          {dockerServices.n8nAvailable ? (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.stopDockerService) {
-                                      await (window.electron as any).stopDockerService('n8n');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to stop n8n:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
-                              >
-                                Stop
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.restartDockerService) {
-                                      await (window.electron as any).restartDockerService('n8n');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to restart n8n:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
-                              >
-                                Restart
-                              </button>
-                              {dockerServices.ports?.n8n && (
-                                <button
-                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.n8n}`, '_blank')}
-                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Open
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  if ((window.electron as any)?.startDockerService) {
-                                    await (window.electron as any).startDockerService('n8n');
-                                  }
-                                } catch (error) {
-                                  console.error('Failed to start n8n:', error);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
-                            >
-                              Start
-                            </button>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
+                            Always Running
+                          </span>
+                          <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
+                            Built-in
+                          </span>
                         </div>
                       </div>
-
-                      {/* Python API Service */}
-                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${dockerServices.pythonAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                              Python API
-                            </h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              Custom Python processing API
-                            </p>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                              Status: Running on <span className="font-mono text-xs">localhost:8091</span>
+                            </span>
                           </div>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            dockerServices.pythonAvailable 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {dockerServices.pythonAvailable ? 'Running' : 'Stopped'}
-                          </span>
+                          <button
+                            onClick={() => window.open('http://localhost:8091', '_blank')}
+                            className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600 transition-colors flex items-center gap-1"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Open
+                          </button>
                         </div>
                         
-                        <div className="flex gap-2">
-                          {dockerServices.pythonAvailable ? (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.stopDockerService) {
-                                      await (window.electron as any).stopDockerService('python');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to stop Python API:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
-                              >
-                                Stop
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.restartDockerService) {
-                                      await (window.electron as any).restartDockerService('python');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to restart Python API:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
-                              >
-                                Restart
-                              </button>
-                              {dockerServices.ports?.python && (
-                                <button
-                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.python}/docs`, '_blank')}
-                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  API Docs
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  if ((window.electron as any)?.startDockerService) {
-                                    await (window.electron as any).startDockerService('python');
-                                  }
-                                } catch (error) {
-                                  console.error('Failed to start Python API:', error);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
-                            >
-                              Start
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ComfyUI Service */}
-                      <div className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${dockerServices.comfyuiAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                              ComfyUI
-                            </h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              AI image generation interface
-                            </p>
+                        {/* Configuration Details */}
+                        <div className="pt-3 border-t border-emerald-200 dark:border-emerald-700">
+                          <div className="grid grid-cols-2 gap-4 text-xs">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
+                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">Native Binary</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Engine:</span>
+                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">llama.cpp</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Auto-Start:</span>
+                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">Yes</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
+                              <span className="ml-1 text-gray-500 dark:text-gray-400 font-medium">No</span>
+                            </div>
                           </div>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            dockerServices.comfyuiAvailable 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {dockerServices.comfyuiAvailable ? 'Running' : 'Stopped'}
-                          </span>
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          {dockerServices.comfyuiAvailable ? (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.stopDockerService) {
-                                      await (window.electron as any).stopDockerService('comfyui');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to stop ComfyUI:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
-                              >
-                                Stop
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    if ((window.electron as any)?.restartDockerService) {
-                                      await (window.electron as any).restartDockerService('comfyui');
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to restart ComfyUI:', error);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors"
-                              >
-                                Restart
-                              </button>
-                              {dockerServices.ports?.comfyui && (
-                                <button
-                                  onClick={() => window.open(`http://localhost:${dockerServices.ports!.comfyui}`, '_blank')}
-                                  className="px-3 py-1.5 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Open
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  if ((window.electron as any)?.startDockerService) {
-                                    await (window.electron as any).startDockerService('comfyui');
-                                  }
-                                } catch (error) {
-                                  console.error('Failed to start ComfyUI:', error);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600 transition-colors"
-                            >
-                              Start
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
 
+                    {/* Python Backend Service */}
+                    <div className={`p-6 rounded-xl border ${
+                      enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
+                        ? 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-700'
+                        : 'bg-gradient-to-r from-gray-50/50 to-gray-50/50 dark:from-gray-800/50 dark:to-gray-800/50 border-gray-200 dark:border-gray-700'
+                    }`}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-14 h-14 rounded-xl flex items-center justify-center border-2 ${
+                            enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable
+                              ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-200 dark:border-blue-700'
+                              : 'bg-gray-100 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
+                          }`}>
+                            <Code className={`w-7 h-7 ${
+                              enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
+                                ? 'text-blue-600 dark:text-blue-400' 
+                                : 'text-gray-500 dark:text-gray-400'
+                            }`} />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              Python Backend
+                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
+                                Critical
+                              </span>
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              RAG, TTS, STT, and document processing services
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                          }`}>
+                            {enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'Running' : 'Stopped'}
+                          </span>
+                          <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
+                            Docker
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${
+                              enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                              Status: {enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'Running' : 'Stopped'}
+                              {(enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable) && (
+                                <span className="ml-2 font-mono text-xs">
+                                  {enhancedServiceStatus?.['python-backend']?.serviceUrl || 'localhost:5001'}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          {(enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable) && (
+                            <button
+                              onClick={() => window.open(enhancedServiceStatus?.['python-backend']?.serviceUrl || 'http://localhost:5001', '_blank')}
+                              className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Open
+                            </button>
+                          )}
+                        </div>
+                        
+                        {/* Configuration Details */}
+                        <div className="pt-3 border-t border-blue-200 dark:border-blue-700">
+                          <div className="grid grid-cols-2 gap-4 text-xs">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
+                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">Docker Container</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Services:</span>
+                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">RAG, TTS, STT</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Auto-Start:</span>
+                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">Yes</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
+                              <span className="ml-1 text-gray-500 dark:text-gray-400 font-medium">No</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* All Configurable Services: N8N and ComfyUI */}
+                    {['n8n', 'comfyui'].map((serviceName) => {
+                      const config = serviceConfigs[serviceName] || { mode: 'docker', url: null };
+                      const compatibility = platformCompatibility[serviceName] || {};
+                      const status = enhancedServiceStatus[serviceName] || {};
+                      const testResult = serviceTestResults[serviceName];
+                      const isComfyUI = serviceName === 'comfyui';
+                      const isManualOnly = isComfyUI && currentPlatform !== 'win32';
+                      
+                      // Debug logging for each service
+                      console.log(`🔍 Service ${serviceName}:`, { status, config, serviceUrl: status.serviceUrl });
+
+                                                return (
+                        <div key={serviceName} className="p-6 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                          {/* Service Header */}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                                status.state === 'running' 
+                                  ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-200 dark:border-green-700'
+                                  : 'bg-gray-100 dark:bg-gray-700/50 border-2 border-gray-200 dark:border-gray-600'
+                              }`}>
+                                {isComfyUI ? (
+                                  <Image className={`w-6 h-6 ${status.state === 'running' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`} />
+                                ) : (
+                                  <Zap className={`w-6 h-6 ${status.state === 'running' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`} />
+                                )}
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-gray-900 dark:text-white">
+                                  {serviceName === 'comfyui' ? 'ComfyUI Image Generation' : 'N8N Workflow Automation'}
+                                </h3>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  {serviceName === 'comfyui' 
+                                    ? 'AI image generation with Stable Diffusion'
+                                    : 'Visual workflow builder and automation platform'
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                status.state === 'running' 
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                              }`}>
+                                {status.state === 'running' ? 'Running' : 'Stopped'}
+                              </span>
+                              {config.mode && (
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                  config.mode === 'docker' 
+                                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                    : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                                }`}>
+                                  {config.mode === 'docker' ? 'Docker' : 'Manual'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Platform Restriction Warning for ComfyUI */}
+                          {isManualOnly && (
+                            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                <p className="text-sm text-amber-700 dark:text-amber-300">
+                                  <strong>Platform Limitation:</strong> ComfyUI Docker mode is only supported on Windows. 
+                                  {currentPlatform === 'darwin' ? ' On macOS, please use manual setup.' : ' On Linux, please use manual setup.'}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Service Configuration */}
+                          <div className="space-y-4">
+                            {/* Deployment Mode Selection */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Deployment Mode
+                              </label>
+                              <div className="flex gap-3">
+                                {/* Docker Mode */}
+                                <button
+                                  onClick={() => {
+                                    if (!isManualOnly) {
+                                      // Docker mode can be saved immediately since it doesn't need a URL
+                                      updateServiceConfig(serviceName, 'docker');
+                                    }
+                                  }}
+                                  disabled={isManualOnly}
+                                  className={`flex-1 p-3 rounded-lg border transition-all ${
+                                    config.mode === 'docker'
+                                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                                      : isManualOnly
+                                        ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <HardDrive className="w-4 h-4" />
+                                    <span className="font-medium">Docker</span>
+                                  </div>
+                                  <p className="text-xs mt-1 text-left">
+                                    Managed containers with automatic setup
+                                  </p>
+                                </button>
+
+                                {/* Manual Mode */}
+                                <button
+                                  onClick={() => {
+                                    // Update local state to show manual mode UI and prefill existing URL
+                                    setServiceConfigs((prev: any) => ({
+                                      ...prev,
+                                      [serviceName]: { ...prev[serviceName], mode: 'manual' }
+                                    }));
+                                    
+                                    // Prefill temp URL with existing saved URL if it exists
+                                    if (config.url && !tempServiceUrls[serviceName]) {
+                                      setTempServiceUrls(prev => ({
+                                        ...prev,
+                                        [serviceName]: config.url
+                                      }));
+                                    }
+                                  }}
+                                  className={`flex-1 p-3 rounded-lg border transition-all ${
+                                    config.mode === 'manual'
+                                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
+                                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <ExternalLink className="w-4 h-4" />
+                                    <span className="font-medium">Manual</span>
+                                  </div>
+                                  <p className="text-xs mt-1 text-left">
+                                    External service with custom URL
+                                  </p>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Manual Service URL Configuration */}
+                            {config.mode === 'manual' && (
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  Service URL
+                                  {config.url ? (
+                                    <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">
+                                      ✓ Saved: <span className="font-mono">{config.url}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="ml-2 text-xs text-orange-600 dark:text-orange-400 font-normal">
+                                      (Required - Enter URL and click Save)
+                                    </span>
+                                  )}
+                                </label>
+                                
+                                {/* URL Input */}
+                                <div className="space-y-3">
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="url"
+                                      value={tempServiceUrls[serviceName] !== undefined && tempServiceUrls[serviceName] !== '' 
+                                        ? tempServiceUrls[serviceName] 
+                                        : config.url || ''
+                                      }
+                                      onChange={(e) => {
+                                        setTempServiceUrls(prev => ({
+                                          ...prev,
+                                          [serviceName]: e.target.value
+                                        }));
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          saveManualServiceUrl(serviceName);
+                                        }
+                                      }}
+                                      className="flex-1 px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-purple-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                                      placeholder={serviceName === 'comfyui' 
+                                        ? 'http://localhost:8188' 
+                                        : serviceName === 'n8n' 
+                                          ? 'http://localhost:5678'
+                                          : 'http://localhost:8080'
+                                      }
+                                    />
+                                    
+                                    {/* Save Button */}
+                                    <button
+                                      onClick={() => saveManualServiceUrl(serviceName)}
+                                      disabled={savingServiceConfig[serviceName] || 
+                                        !(tempServiceUrls[serviceName] !== undefined 
+                                          ? tempServiceUrls[serviceName].trim()
+                                          : config.url?.trim()
+                                        )
+                                      }
+                                      className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-medium ${
+                                        tempServiceUrls[serviceName] && tempServiceUrls[serviceName] !== config.url
+                                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-900/50'
+                                          : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/50'
+                                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    >
+                                      {savingServiceConfig[serviceName] ? (
+                                        <>
+                                          <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                          Saving...
+                                        </>
+                                      ) : tempServiceUrls[serviceName] && tempServiceUrls[serviceName] !== config.url ? (
+                                        <>
+                                          <Save className="w-4 h-4" />
+                                          Save Changes
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Save className="w-4 h-4" />
+                                          Save URL
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+
+                                  {/* Action Buttons */}
+                                  <div className="flex gap-2">
+                                    {/* Test Connection Button */}
+                                    {(config.url || tempServiceUrls[serviceName]) && (
+                                      <button
+                                        onClick={() => {
+                                          const urlToTest = tempServiceUrls[serviceName] || config.url;
+                                          testManualService(serviceName, urlToTest);
+                                        }}
+                                        disabled={testingServices[serviceName]}
+                                        className={`flex-1 px-3 py-2 rounded-lg transition-all flex items-center justify-center gap-2 font-medium ${
+                                          testResult?.success === true
+                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
+                                            : testResult?.success === false
+                                              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
+                                              : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700'
+                                        } disabled:opacity-50`}
+                                      >
+                                        {testingServices[serviceName] ? (
+                                          <>
+                                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                            Testing Connection...
+                                          </>
+                                        ) : testResult?.success === true ? (
+                                          <>
+                                            <Check className="w-4 h-4" />
+                                            Connection Successful
+                                          </>
+                                        ) : testResult?.success === false ? (
+                                          <>
+                                            <X className="w-4 h-4" />
+                                            Connection Failed
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Server className="w-4 h-4" />
+                                            Test Connection
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+
+                                    {/* Clear Button */}
+                                    {(tempServiceUrls[serviceName] || config.url) && (
+                                      <button
+                                        onClick={async () => {
+                                          // Clear both temp URL and saved configuration
+                                          setTempServiceUrls(prev => ({ ...prev, [serviceName]: '' }));
+                                          await updateServiceConfig(serviceName, 'manual', '');
+                                          
+                                          // Show feedback
+                                          setServiceTestResults(prev => ({ 
+                                            ...prev, 
+                                            [serviceName]: { 
+                                              success: true, 
+                                              message: 'URL cleared successfully',
+                                              timestamp: Date.now()
+                                            }
+                                          }));
+                                          
+                                          // Clear feedback after 3 seconds
+                                          setTimeout(() => {
+                                            setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
+                                          }, 3000);
+                                        }}
+                                        className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+                                      >
+                                        <X className="w-3 h-3" />
+                                        Clear
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Status Messages */}
+                                  {testResult && (
+                                    <div className={`p-2 rounded-lg text-sm ${
+                                      testResult.success === true
+                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
+                                        : testResult.success === false
+                                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
+                                          : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
+                                    }`}>
+                                      {testResult.success === true ? (
+                                        <div className="flex items-center gap-2">
+                                          <Check className="w-4 h-4" />
+                                          <span>{testResult.message || 'Service is accessible and responding correctly!'}</span>
+                                        </div>
+                                      ) : testResult.success === false ? (
+                                        <div className="flex items-center gap-2">
+                                          <X className="w-4 h-4" />
+                                          <span>Error: {testResult.error}</span>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )}
+
+                                  {/* URL Format Help */}
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    <p><strong>Expected format:</strong> http://localhost:port or https://your-domain.com</p>
+                                    <p><strong>Default ports:</strong> ComfyUI (8188), N8N (5678)</p>
+                                    <p><strong>Tip:</strong> Press Enter to save quickly</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Service Status and Controls */}
+                            {config.mode && (
+                              <div className="pt-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${status.state === 'running' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                                      Status: {status.state === 'running' ? 'Running' : 'Stopped'}
+                                      {(status.serviceUrl || (config.mode === 'manual' && config.url)) && (
+                                        <span className="ml-2 font-mono text-xs">
+                                          {status.serviceUrl || config.url}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    {status.serviceUrl && status.state === 'running' && (
+                                      <button
+                                        onClick={() => window.open(status.serviceUrl, '_blank')}
+                                        className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        Open
+                                      </button>
+                                    )}
+                                    {/* Restart Button for Restartable Services */}
+                                    {status.canRestart && (
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            setTestingServices(prev => ({ ...prev, [`${serviceName}_restart`]: true }));
+                                            
+                                            // Call restart service
+                                            const result = await (window as any).electron?.restartDockerService?.(
+                                              serviceName === 'comfyui' ? 'comfyui' : 
+                                              serviceName === 'n8n' ? 'n8n_workflowmanager' : serviceName
+                                            );
+                                            
+                                            if (result?.success) {
+                                              setServiceTestResults(prev => ({ 
+                                                ...prev, 
+                                                [serviceName]: { 
+                                                  success: true, 
+                                                  message: `${serviceName.toUpperCase()} restarted successfully!`,
+                                                  timestamp: Date.now()
+                                                }
+                                              }));
+                                              
+                                              // Reload service status after restart
+                                              setTimeout(() => {
+                                                loadServiceConfigurations();
+                                              }, 2000);
+                                            } else {
+                                              throw new Error(result?.error || 'Restart failed');
+                                            }
+                                          } catch (error) {
+                                            console.error(`Failed to restart ${serviceName}:`, error);
+                                            setServiceTestResults(prev => ({ 
+                                              ...prev, 
+                                              [serviceName]: { 
+                                                success: false, 
+                                                error: error instanceof Error ? error.message : String(error),
+                                                timestamp: Date.now()
+                                              }
+                                            }));
+                                          } finally {
+                                            setTestingServices(prev => ({ ...prev, [`${serviceName}_restart`]: false }));
+                                            
+                                            // Clear result after 5 seconds
+                                            setTimeout(() => {
+                                              setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
+                                            }, 5000);
+                                          }
+                                        }}
+                                        disabled={testingServices[`${serviceName}_restart`]}
+                                        className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-1 ${
+                                          status.state === 'running'
+                                            ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                      >
+                                        {testingServices[`${serviceName}_restart`] ? (
+                                          <>
+                                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            Restarting...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Power className="w-3 h-3" />
+                                            {status.state === 'running' ? 'Restart' : 'Start'}
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => resetServiceConfig(serviceName)}
+                                      className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center gap-1"
+                                    >
+                                      <RotateCcw className="w-3 h-3" />
+                                      Reset
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                {/* Configuration Details */}
+                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
+                                    <span className={`ml-1 font-medium ${
+                                      config.mode === 'docker' 
+                                        ? 'text-blue-700 dark:text-blue-300' 
+                                        : 'text-purple-700 dark:text-purple-300'
+                                    }`}>
+                                      {config.mode === 'docker' ? 'Docker Container' : 'Manual Setup'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">Service Type:</span>
+                                    <span className="ml-1 text-gray-700 dark:text-gray-300 font-medium">
+                                      {serviceName === 'comfyui' ? 'Image Generation' : 'Workflow Automation'}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">URL Source:</span>
+                                    <span className="ml-1 text-gray-700 dark:text-gray-300 font-medium">
+                                      {config.mode === 'docker' ? 'Auto-detected' : (config.url ? `Manual: ${config.url}` : 'Not set')}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
+                                    <span className="ml-1 text-green-700 dark:text-green-300 font-medium">Yes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+
+
             </div>
           )}
 

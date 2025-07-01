@@ -35,18 +35,18 @@ interface DownloadProgress {
   totalSize: number;
 }
 
-// Add interface for Docker services status
-interface DockerServicesStatus {
-  dockerAvailable: boolean;
-  n8nAvailable: boolean;
-  pythonAvailable: boolean;
-  comfyuiAvailable: boolean;
-  message?: string;
-  ports?: {
-    python: number;
-    n8n: number;
-    ollama: number;
-    comfyui: number;
+// Add interface for enhanced service status (matching Settings.tsx)
+interface EnhancedServiceStatus {
+  [serviceName: string]: {
+    state: 'running' | 'stopped' | 'starting' | 'error';
+    deploymentMode: 'docker' | 'manual';
+    restartAttempts: number;
+    lastHealthCheck: number | null;
+    uptime: number;
+    serviceUrl: string | null;
+    isManual: boolean;
+    canRestart: boolean;
+    supportedModes: string[];
   };
 }
 
@@ -70,12 +70,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeDownloads, setActiveDownloads] = useState<Record<string, DownloadProgress>>({});
   const [claraBackgroundActivity, setClaraBackgroundActivity] = useState(false);
-  const [dockerServices, setDockerServices] = useState<DockerServicesStatus>({
-    dockerAvailable: false,
-    n8nAvailable: false,
-    pythonAvailable: false,
-    comfyuiAvailable: false
-  });
+  const [enhancedServiceStatus, setEnhancedServiceStatus] = useState<EnhancedServiceStatus>({});
   const [featureConfig, setFeatureConfig] = useState<FeatureConfig>({
     comfyUI: true,
     n8n: true,
@@ -89,6 +84,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
       try {
         if ((window as any).featureConfig?.getFeatureConfig) {
           const config = await (window as any).featureConfig.getFeatureConfig();
+          console.log('🔍 Sidebar - Feature config:', config);
           if (config) {
             setFeatureConfig(config);
           }
@@ -111,48 +107,24 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     return () => window.removeEventListener('clara-background-activity', handleClaraActivity as EventListener);
   }, []);
 
-  // Check Docker services status
+  // Check enhanced service status (matching Settings.tsx approach)
   useEffect(() => {
-    const checkDockerServices = async () => {
+    const loadServiceStatus = async () => {
       try {
-        // Check general Docker services
-        if ((window.electron as any)?.checkDockerServices) {
-          const status = await (window.electron as any).checkDockerServices();
-          
-          // Check ComfyUI status specifically
-          let comfyuiAvailable = false;
-          if ((window as any).electronAPI?.getServicesStatus) {
-            try {
-              const servicesStatus = await (window as any).electronAPI.getServicesStatus();
-              if (servicesStatus.services?.comfyui) {
-                // Allow both 'healthy' and 'unknown' as available
-                comfyuiAvailable = ['healthy', 'unknown'].includes(servicesStatus.services.comfyui.status);
-              }
-            } catch (error) {
-              console.error('Failed to check ComfyUI status:', error);
-            }
-          }
-          
-          setDockerServices({
-            ...status,
-            comfyuiAvailable
-          });
+        if ((window as any).electronAPI?.invoke) {
+          const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+          console.log('🔍 Sidebar - Enhanced service status:', status);
+          setEnhancedServiceStatus(status || {});
         }
       } catch (error) {
-        console.error('Failed to check Docker services:', error);
-        setDockerServices({
-          dockerAvailable: false,
-          n8nAvailable: false,
-          pythonAvailable: false,
-          comfyuiAvailable: false,
-          message: 'Failed to check Docker services'
-        });
+        console.error('Failed to load enhanced service status:', error);
+        setEnhancedServiceStatus({});
       }
     };
 
-    checkDockerServices();
+    loadServiceStatus();
     // Check periodically every 30 seconds
-    const interval = setInterval(checkDockerServices, 30000);
+    const interval = setInterval(loadServiceStatus, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -265,13 +237,22 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
       icon: ImageIcon, 
       label: 'Image Gen', 
       id: 'image-gen',
-      status: dockerServices.comfyuiAvailable ? 'ready' as const : 'starting' as const
+      status: enhancedServiceStatus.comfyui?.state === 'running' ? 'ready' as const : 'starting' as const
     }] : []),
-    // Only show n8n if feature is enabled AND Docker services are available
-    ...(featureConfig.n8n && dockerServices.dockerAvailable && dockerServices.n8nAvailable 
+    // Only show n8n if feature is enabled AND service is running
+    ...(featureConfig.n8n && enhancedServiceStatus.n8n?.state === 'running'
       ? [{ icon: Network, label: 'Workflows', id: 'n8n' }] 
       : [])
   ];
+
+  // Debug logging for ComfyUI visibility
+  console.log('🔍 Sidebar Debug:', {
+    'featureConfig.comfyUI': featureConfig.comfyUI,
+    'enhancedServiceStatus.comfyui': enhancedServiceStatus.comfyui,
+    'comfyui state': enhancedServiceStatus.comfyui?.state,
+    'final menu items count': mainMenuItems.length,
+    'has image-gen': mainMenuItems.some(item => item.id === 'image-gen')
+  });
 
   const bottomMenuItems: MenuItem[] = [
     { icon: Settings, label: 'Settings', id: 'settings' },

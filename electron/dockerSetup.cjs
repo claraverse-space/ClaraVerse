@@ -1227,6 +1227,12 @@ class DockerSetup extends EventEmitter {
       // Check for updates for all containers in parallel
       const updateChecks = [];
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (name === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container update check on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         console.log(`📦 Adding update check for ${name}: ${config.image}`);
         updateChecks.push(
           this.checkForImageUpdates(config.image, statusCallback)
@@ -1741,6 +1747,12 @@ class DockerSetup extends EventEmitter {
       // Collect all volume names from all containers that specify them
       const volumesToCreate = [];
       for (const [serviceName, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (serviceName === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI volume creation on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         if (config.volumeNames) {
           for (const volumeName of config.volumeNames) {
             if (!existingVolumeNames.includes(volumeName)) {
@@ -2119,6 +2131,12 @@ class DockerSetup extends EventEmitter {
     try {
       // Stop any partially started containers
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (name === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container cleanup on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         try {
           const container = await this.docker.getContainer(config.name);
           const containerInfo = await container.inspect();
@@ -2218,8 +2236,12 @@ class DockerSetup extends EventEmitter {
             shouldEnable = selectedFeatures.n8n;
             break;
           case 'comfyui':
-            // ComfyUI only if user selected it
-            shouldEnable = selectedFeatures.comfyUI;
+            // ComfyUI only if user selected it AND platform supports it (Windows only)
+            shouldEnable = selectedFeatures.comfyUI && process.platform === 'win32';
+            if (selectedFeatures.comfyUI && process.platform !== 'win32') {
+              console.log(`⚠️ ComfyUI is not supported on ${process.platform} - requires Windows with NVIDIA GPU`);
+              statusCallback(`⚠️ ComfyUI is not supported on ${process.platform} - requires Windows with NVIDIA GPU`, 'warning');
+            }
             break;
           default:
             // Unknown services disabled by default
@@ -2294,6 +2316,12 @@ class DockerSetup extends EventEmitter {
       // Start containers in sequence
       console.log('🚀 Starting containers...');
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (name === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container startup on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         console.log(`🚀 Starting ${name} service...`);
         statusCallback(`Starting ${name} service...`);
         
@@ -2321,6 +2349,12 @@ class DockerSetup extends EventEmitter {
   async stop() {
     try {
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (name === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container stop on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         try {
           const container = await this.docker.getContainer(config.name);
           await container.stop();
@@ -2491,6 +2525,12 @@ class DockerSetup extends EventEmitter {
       const updateChecks = [];
       
       for (const [name, config] of Object.entries(this.containers)) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (name === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container update check on ${process.platform} (not supported)`);
+          continue;
+        }
+        
         updateChecks.push(
           this.checkForImageUpdates(config.image, statusCallback)
             .then(result => ({ ...result, containerName: name }))
@@ -2524,6 +2564,17 @@ class DockerSetup extends EventEmitter {
       const results = [];
 
       for (const containerName of containersToUpdate) {
+        // Skip ComfyUI container on macOS and Linux as it's not supported
+        if (containerName === 'comfyui' && (process.platform === 'darwin' || process.platform === 'linux')) {
+          console.log(`⏭️ Skipping ComfyUI container update on ${process.platform} (not supported)`);
+          results.push({
+            container: containerName,
+            success: false,
+            error: `ComfyUI is not supported on ${process.platform}`
+          });
+          continue;
+        }
+        
         const config = this.containers[containerName];
         if (!config) {
           results.push({

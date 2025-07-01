@@ -32,12 +32,88 @@ declare global {
   }
 }
 
+// Custom hook to get ComfyUI service configuration
+const useComfyUIServiceConfig = () => {
+  const [comfyuiUrl, setComfyuiUrl] = useState<string>('http://localhost:8188');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadServiceConfig = async () => {
+      try {
+        console.log('🔍 Loading ComfyUI service configuration...');
+        
+        // Check if electronAPI is available
+        if (!(window as any).electronAPI) {
+          console.error('❌ electronAPI not available');
+          return;
+        }
+        
+        // Get service configurations and status
+        console.log('📡 Calling service-config:get-all-configs...');
+        const configs = await (window as any).electronAPI.invoke('service-config:get-all-configs');
+        console.log('📡 Calling service-config:get-enhanced-status...');
+        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+        
+        console.log('✅ Service API calls completed');
+
+        const comfyuiConfig = configs?.comfyui || { mode: 'docker', url: null };
+        const comfyuiStatus = status?.comfyui || {};
+
+        let finalUrl = 'http://localhost:8188'; // Default fallback
+
+        if (comfyuiConfig.mode === 'manual' && comfyuiConfig.url) {
+          // Use manual configuration URL
+          finalUrl = comfyuiConfig.url;
+        } else if (comfyuiStatus.serviceUrl) {
+          // Use auto-detected URL from service status
+          finalUrl = comfyuiStatus.serviceUrl;
+        } else {
+          // Fallback: try to get from old API config
+          const apiConfig = await db.getAPIConfig();
+          if (apiConfig?.comfyui_base_url) {
+            finalUrl = apiConfig.comfyui_base_url.startsWith('http') 
+              ? apiConfig.comfyui_base_url 
+              : `http://${apiConfig.comfyui_base_url}`;
+          }
+        }
+
+        console.log('🎨 ComfyUI Service Config DEBUG:', {
+          configs: configs,
+          status: status,
+          comfyuiConfig: comfyuiConfig,
+          comfyuiStatus: comfyuiStatus,
+          mode: comfyuiConfig.mode,
+          configUrl: comfyuiConfig.url,
+          statusUrl: comfyuiStatus.serviceUrl,
+          finalUrl
+        });
+
+        setComfyuiUrl(finalUrl);
+      } catch (error) {
+        console.error('Failed to load ComfyUI service config:', error);
+        // Keep default URL
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadServiceConfig();
+
+    // Refresh configuration every 30 seconds
+    const interval = setInterval(loadServiceConfig, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { comfyuiUrl, loading };
+};
+
 // ComfyUI WebView Component
 const ComfyUIWebView: React.FC<{
   onLoad: () => void;
   onError: () => void;
   comfyUIKey: number;
-}> = ({ onLoad, onError, comfyUIKey }) => {
+  comfyuiUrl: string;
+}> = ({ onLoad, onError, comfyUIKey, comfyuiUrl }) => {
   const webviewRef = useRef<any>(null);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
 
@@ -81,7 +157,7 @@ const ComfyUIWebView: React.FC<{
     return (
       <iframe
         key={`comfyui-iframe-fallback-${comfyUIKey}`}
-        src="http://localhost:8188"
+        src={comfyuiUrl}
         className="w-full h-full border-0"
         title="ComfyUI Interface"
         onLoad={onLoad}
@@ -96,9 +172,9 @@ const ComfyUIWebView: React.FC<{
     <webview
       ref={webviewRef}
       key={`comfyui-webview-${comfyUIKey}`}
-      src="http://localhost:8188"
+      src={comfyuiUrl}
       className="w-full h-full border-0"
-      allowpopups="true"
+              allowpopups={true}
       webpreferences="nodeIntegration=false,contextIsolation=true,webSecurity=false"
       partition="persist:comfyui"
       style={{ width: '100%', height: '100%', display: 'flex' }}
@@ -404,6 +480,9 @@ const SystemCompatibilityModal: React.FC<{
 };
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
+  // Use ComfyUI service configuration
+  const { comfyuiUrl, loading: serviceConfigLoading } = useComfyUIServiceConfig();
+
   // UI state variables
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -795,49 +874,61 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     // Original ComfyUI connection logic here
     const fetchAndConnectClient = async () => {
       try {
-        // First, check if we have a bundled ComfyUI container
-        let comfyuiBaseUrl = '127.0.0.1:8188';
-        
+        // Use ComfyUI service configuration
+        console.log('🚀 COMFYUI CLIENT CREATION DEBUG:');
+        console.log('  📄 Raw comfyuiUrl from hook:', comfyuiUrl);
+        console.log('  📄 serviceConfigLoading:', serviceConfigLoading);
+
+        // Test basic connectivity first
         try {
-          // Check if Clara's ComfyUI container is available
-          const containers = await window.electronAPI?.getContainers();
-          const comfyuiContainer = containers?.find(c => c.name === 'clara_comfyui');
-          
-          if (comfyuiContainer) {
-            console.log('Found Clara ComfyUI container:', comfyuiContainer.state);
-            
-            // Start the container if it's not running
-            if (comfyuiContainer.state !== 'running') {
-              setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
-              console.log('Starting Clara ComfyUI container...');
-              await window.electronAPI?.containerAction(comfyuiContainer.id, 'start');
-              
-              // Wait for container to fully start
-              await new Promise(resolve => setTimeout(resolve, 10000));
+          console.log('🌐 Testing basic HTTP connectivity to:', comfyuiUrl);
+          const healthResponse = await fetch(`${comfyuiUrl}/`, { 
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+              'Accept': 'text/html,application/json,*/*'
             }
-            
-            comfyuiBaseUrl = '127.0.0.1:8188'; // Use bundled ComfyUI
-          } else {
-            // Fall back to user's configuration
-            const config = await db.getAPIConfig();
-            comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
+          });
+          console.log('  ✅ HTTP connectivity test result:', {
+            status: healthResponse.status,
+            statusText: healthResponse.statusText,
+            headers: Object.fromEntries(healthResponse.headers.entries())
+          });
+        } catch (fetchError) {
+          console.error('  ❌ HTTP connectivity test failed:', fetchError);
+          if (fetchError instanceof Error) {
+            if (fetchError.message.includes('CORS')) {
+              setConnectionError('CORS Error: The ComfyUI server at ' + comfyuiUrl + ' does not allow browser connections. This is common with external ComfyUI instances. Try using the "Open in New Tab" option instead.');
+              return;
+            } else if (fetchError.message.includes('Failed to fetch')) {
+              setConnectionError('Network Error: Cannot reach ComfyUI server at ' + comfyuiUrl + '. Please check if the server is running and accessible.');
+              return;
+            }
           }
-        } catch (error) {
-          console.warn('Could not check for bundled ComfyUI, using configuration:', error);
-          // Fall back to user's configuration
-          const config = await db.getAPIConfig();
-          comfyuiBaseUrl = config?.comfyui_base_url || '127.0.0.1:8188';
+          console.warn('  ⚠️ HTTP test failed, continuing with WebSocket attempt...');
         }
 
-        console.log('API Config:', { comfyui_base_url: comfyuiBaseUrl });
-
-        let url = comfyuiBaseUrl;
-        if (comfyuiBaseUrl.includes('http://') || comfyuiBaseUrl.includes('https://')) {
-          url = comfyuiBaseUrl.split('//')[1];
+        let url = comfyuiUrl;
+        if (comfyuiUrl.includes('http://') || comfyuiUrl.includes('https://')) {
+          url = comfyuiUrl.split('//')[1];
+          console.log('  🔗 Extracted host from URL:', url);
+        } else {
+          console.log('  🔗 Using URL as-is (no protocol):', url);
         }
-        console.log('ComfyUI base URL:', url);
-        const ssl_type = comfyuiBaseUrl.includes('https') ? true : false;
-        console.log('SSL Type:', ssl_type);
+        
+        const ssl_type = comfyuiUrl.includes('https') ? true : false;
+        console.log('  🔒 SSL Type:', ssl_type);
+        
+        // Enhanced debug logging for external domains
+        if (url.includes('login.badboysm890.in')) {
+          console.log('  🌍 External domain detected - additional checks:');
+          console.log('    📡 WebSocket URL will be:', ssl_type ? `wss://${url}/ws` : `ws://${url}/ws`);
+          console.log('    🔐 HTTPS detected, using secure WebSocket (WSS)');
+          console.log('    ⚠️  External domains often have CORS/security restrictions');
+        }
+        
+        console.log('  📡 Creating ComfyUI client with:', { api_host: url, ssl: ssl_type });
+        
         const client = new Client({ api_host: url, ssl: ssl_type });
         clientRef.current = client;
         client.connect();
@@ -984,8 +1075,20 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       }
     };
 
+    // Wait for service config to load
+    if (serviceConfigLoading || !comfyuiUrl) {
+      console.log('⏳ Waiting for ComfyUI service configuration to load...', {
+        serviceConfigLoading,
+        comfyuiUrl,
+        hasComfyuiUrl: !!comfyuiUrl
+      });
+      return;
+    }
+    
+    console.log('✅ Service config ready, proceeding with ComfyUI initialization');
+
     fetchAndConnectClient();
-  }, []);
+  }, [comfyuiUrl, serviceConfigLoading]);
 
   // Save the selected model to localStorage when it changes
   useEffect(() => {
@@ -1099,14 +1202,15 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     // Re-initialize the connection
     const fetchAndConnectClient = async () => {
       try {
-        const config = await db.getAPIConfig();
-        let comfyuiBaseUrl = config?.comfyui_base_url;
-        if (!comfyuiBaseUrl) {
-          console.warn('No comfyui_base_url found; using default 127.0.0.1:8188');
-          comfyuiBaseUrl = '127.0.0.1:8188';
-        }
+        console.log('Using ComfyUI service URL for retry:', comfyuiUrl);
 
-        const client = new Client({ api_host: comfyuiBaseUrl, ssl: true });
+        let url = comfyuiUrl;
+        if (comfyuiUrl.includes('http://') || comfyuiUrl.includes('https://')) {
+          url = comfyuiUrl.split('//')[1];
+        }
+        const ssl_type = comfyuiUrl.includes('https') ? true : false;
+
+        const client = new Client({ api_host: url, ssl: ssl_type });
         clientRef.current = client;
         client.connect();
         console.log('ComfyUI client connected');
@@ -1264,9 +1368,15 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             console.error("Error closing existing client:", e);
           }
         }
-        const config = await db.getAPIConfig();
-        const url = config?.comfyui_base_url || '127.0.0.1:8188';
-        client = new Client({ api_host: url, ssl: true });
+        console.log('Creating new ComfyUI client with service URL:', comfyuiUrl);
+        
+        let url = comfyuiUrl;
+        if (comfyuiUrl.includes('http://') || comfyuiUrl.includes('https://')) {
+          url = comfyuiUrl.split('//')[1];
+        }
+        const ssl_type = comfyuiUrl.includes('https') ? true : false;
+        
+        client = new Client({ api_host: url, ssl: ssl_type });
         client.connect();
         clientRef.current = client;
         console.log('handleGenerate - new client created:', client);
@@ -1866,7 +1976,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
 
   // Function to open ComfyUI in new tab as fallback
   const openComfyUIInNewTab = () => {
-    window.open('http://localhost:8188', '_blank');
+    window.open(comfyuiUrl, '_blank', 'noopener,noreferrer');
   };
 
   // Function to force refresh ComfyUI iframe (only when needed)
@@ -2012,6 +2122,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                  onLoad={handleComfyUILoad}
                  onError={handleComfyUIError}
                  comfyUIKey={comfyUIKey}
+                 comfyuiUrl={comfyuiUrl}
                />
              )}
 
