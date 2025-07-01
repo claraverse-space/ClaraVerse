@@ -545,13 +545,13 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, no
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPreviewMode('grid')}
-            className={`p-2 rounded ${previewMode === 'grid' ? 'bg-pink-100 text-pink-700' : 'text-gray-500'}`}
+            className={`p-2 rounded ${previewMode === 'grid' ? 'bg-pink-100 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             <Grid className="w-4 h-4" />
           </button>
           <button
             onClick={() => setPreviewMode('list')}
-            className={`p-2 rounded ${previewMode === 'list' ? 'bg-pink-100 text-pink-700' : 'text-gray-500'}`}
+            className={`p-2 rounded ${previewMode === 'list' ? 'bg-pink-100 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             <List className="w-4 h-4" />
           </button>
@@ -685,7 +685,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, no
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>

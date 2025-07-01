@@ -57,7 +57,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
   const [selectedLLMProvider, setSelectedLLMProvider] = useState('');
   const [selectedLLMModel, setSelectedLLMModel] = useState('');
   const [models, setModels] = useState<ClaraModel[]>([]);
-  const [useWorkspaceView, setUseWorkspaceView] = useState(true);
+  const [useWorkspaceView] = useState(true);
   
   // Get providers from context
   const { providers } = useProviders();
@@ -307,29 +307,7 @@ const NotebookDetails: React.FC<NotebookDetailsProps> = ({
                 </div>
               </div>
               
-              {/* View Toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                <button
-                  onClick={() => setUseWorkspaceView(true)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                    useWorkspaceView
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Workspace
-                </button>
-                <button
-                  onClick={() => setUseWorkspaceView(false)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                    !useWorkspaceView
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Classic
-                </button>
-              </div>
+
             </div>
           </div>
           

@@ -217,10 +217,10 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-              title="Back to Notebooks"
+              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
             >
               <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm font-medium">Back</span>
             </button>
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-purple-500" />
@@ -232,10 +232,10 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
             {/* Export Button */}
             <button
               onClick={handleOpenExportModal}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700"
-              title="Export Notebook"
+              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700"
             >
               <Download className="w-4 h-4" />
+              <span className="text-sm font-medium">Export</span>
             </button>
 
             {/* Right Panel Toggle */}
@@ -253,14 +253,16 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
                 }
                 setShowRightSidebar(!showRightSidebar);
               }}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                 showRightSidebar
                   ? 'bg-blue-500 text-white'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700'
               }`}
-              title={showRightSidebar ? "Hide Right Panel" : "Show Right Panel"}
             >
               <ChevronRight className="w-4 h-4" />
+              <span className="text-sm font-medium">
+                {showRightSidebar ? "Hide Panel" : "Show Panel"}
+              </span>
             </button>
           </div>
         </div>
@@ -295,10 +297,10 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
                 <h3 className="font-medium text-gray-900 dark:text-white">Tools & Chat</h3>
                 <button
                   onClick={() => setShowRightSidebar(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                  title="Hide Right Panel"
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                 >
                   <ChevronRight className="w-4 h-4" />
+                  <span className="text-sm font-medium">Close</span>
                 </button>
               </div>
               

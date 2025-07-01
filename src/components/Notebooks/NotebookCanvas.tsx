@@ -1079,20 +1079,20 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                 />
                 <button
                   onClick={createFolder}
-                  className="p-2.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-                  title="Create"
+                  className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
                 >
                   <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">Create</span>
                 </button>
                 <button
                   onClick={() => {
                     setIsCreatingFolder(false);
                     setNewFolderName('');
                   }}
-                  className="p-2.5 glassmorphic hover:bg-white/40 dark:hover:bg-gray-700/40 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all duration-200 hover:scale-105"
-                  title="Cancel"
+                  className="flex items-center gap-2 px-3 py-2.5 glassmorphic hover:bg-white/40 dark:hover:bg-gray-700/40 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all duration-200 hover:scale-105"
                 >
                   <X className="w-4 h-4" />
+                  <span className="text-sm font-medium">Cancel</span>
                 </button>
               </div>
             </div>
@@ -1295,10 +1295,12 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                 {/* Sidebar Toggle Button */}
                 <button
                   onClick={toggleSidebar}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-200 text-gray-700 dark:text-gray-300 hover:scale-105"
-                  title={`${isSidebarCollapsed ? "Show" : "Hide"} Sidebar (Ctrl+\\)`}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all duration-200 text-gray-700 dark:text-gray-300 hover:scale-105"
                 >
                   <PanelLeft className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    {isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+                  </span>
                 </button>
                 {isEditing ? (
                   <input
@@ -1347,7 +1349,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                             ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' 
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                         }`}
-                        title="Edit Mode"
+                        title="Editor Only"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -1375,13 +1377,7 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                     </button>
                     </div>
                     
-                    <button
-                      onClick={startEdit}
-                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-700 dark:text-gray-300"
-                      title="Edit Note"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+
                     <button
                       onClick={() => deleteNote(currentNote.id)}
                       className="p-2 hover:bg-red-100 dark:hover:bg-red-900 text-red-500 dark:text-red-400 rounded-lg transition-colors"

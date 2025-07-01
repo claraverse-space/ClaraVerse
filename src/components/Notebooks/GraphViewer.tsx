@@ -399,10 +399,12 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
               {/* Show/Hide Details */}
               <button
                 onClick={() => setShowNodeDetails(!showNodeDetails)}
-                className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                title={showNodeDetails ? "Hide Details" : "Show Details"}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
               >
                 {showNodeDetails ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <span className="text-sm font-medium">
+                  {showNodeDetails ? "Hide Details" : "Show Details"}
+                </span>
               </button>
 
               {/* Zoom Controls */}
@@ -427,10 +429,10 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
               {/* Reset Button */}
               <button
                 onClick={handleReset}
-                className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                title="Reset View"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
+                <span className="text-sm font-medium">Reset View</span>
               </button>
             </>
           )}
@@ -438,9 +440,10 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onClose }) => {
           {/* Close Button */}
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >
-            <X className="w-4 h-4 text-gray-500" />
+            <X className="w-4 h-4" />
+            <span className="text-sm font-medium">Close</span>
           </button>
         </div>
       </div>
