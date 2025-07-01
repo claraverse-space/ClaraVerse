@@ -618,11 +618,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     const connectAndFetch = async () => {
       try {
         setLoadingStatus(prev => ({ ...prev, connection: 'connecting' }));
-        const config = await db.getAPIConfig();
-        let url = config?.comfyui_base_url || '127.0.0.1:8188';
-        if (!url.startsWith('http')) url = 'http://' + url;
-        url = url.replace('http://', '').replace('https://', '');
-        const client = new ComfyUIApiClient({ api_host: url });
+        // Always use comfyuiUrl from useComfyUIServiceConfig
+        let url = comfyuiUrl;
+        if (!url) url = 'http://localhost:8188';
+        const isHttps = url.startsWith('https://');
+        url = url.replace(/^https?:\/\//, '');
+        const client = new ComfyUIApiClient({ api_host: url, ssl: isHttps });
         clientRef.current = client;
         await client.connect();
         setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
@@ -646,8 +647,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         setIsInitialSetupComplete(true);
       }
     };
-    connectAndFetch();
-  }, []);
+    if (!serviceConfigLoading) connectAndFetch();
+  }, [comfyuiUrl, serviceConfigLoading]);
 
   // Generation logic: Build and execute the workflow via WebSocket API
   const handleGenerate = async () => {
