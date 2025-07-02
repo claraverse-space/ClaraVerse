@@ -755,6 +755,120 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Get model embedding information with mmproj compatibility
+  ipcMain.handle('get-model-embedding-info', async (event, modelPath) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const embeddingInfo = await llamaSwapService.getModelEmbeddingInfo(modelPath);
+      return { success: true, ...embeddingInfo };
+    } catch (error) {
+      log.error('Error getting model embedding info:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Search Hugging Face for compatible mmproj files
+  ipcMain.handle('search-huggingface-mmproj', async (event, modelName, embeddingSize) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const results = await llamaSwapService.searchHuggingFaceForMmproj(modelName, embeddingSize);
+      return { success: true, results };
+    } catch (error) {
+      log.error('Error searching Hugging Face for mmproj files:', error);
+      return { success: false, error: error.message, results: [] };
+    }
+  });
+
+  // Save mmproj mappings to backend storage
+  ipcMain.handle('save-mmproj-mappings', async (event, mappings) => {
+    try {
+      log.info('🔍 save-mmproj-mappings handler called with mappings:', mappings);
+      
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      log.info('🔍 Calling llamaSwapService.saveMmprojMappings...');
+      const result = await llamaSwapService.saveMmprojMappings(mappings);
+      log.info('🔍 LlamaSwapService save result:', result);
+      
+      return { success: true, result };
+    } catch (error) {
+      log.error('❌ Error saving mmproj mappings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Load mmproj mappings from backend storage
+  ipcMain.handle('load-mmproj-mappings', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const mappings = await llamaSwapService.loadMmprojMappings();
+      return { success: true, mappings };
+    } catch (error) {
+      log.error('Error loading mmproj mappings:', error);
+      return { success: false, error: error.message, mappings: {} };
+    }
+  });
+
+  // Get available mmproj files from the file system
+  ipcMain.handle('get-available-mmproj-files', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.getAvailableMmprojFiles();
+      return result;
+    } catch (error) {
+      log.error('Error getting available mmproj files:', error);
+      return { success: false, error: error.message, mmprojFiles: [] };
+    }
+  });
+
+  // Restart llamaSwap service to apply configuration changes (e.g., mmproj mappings)
+  ipcMain.handle('restart-llamaswap', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      // Stop the current service
+      await llamaSwapService.stop();
+      
+      // Wait a moment for cleanup
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Regenerate config with updated mmproj mappings
+      try {
+        const configResult = await llamaSwapService.generateConfig();
+        log.info('Config regenerated successfully:', configResult);
+      } catch (configError) {
+        log.warn('Config regeneration had issues:', configError.message);
+      }
+      
+      // Start the service again
+      const result = await llamaSwapService.start();
+      return { 
+        success: result.success, 
+        message: result.message || 'Service restarted successfully',
+        error: result.error 
+      };
+    } catch (error) {
+      log.error('Error restarting llamaSwap service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('watchdog-start', async () => {
     try {
       if (!watchdogService) {

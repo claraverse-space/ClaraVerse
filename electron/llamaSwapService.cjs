@@ -700,7 +700,7 @@ models:
       }
       
       // Find matching mmproj model for this main model
-      const matchingMmproj = this.findMatchingMmproj(model, mmprojModels);
+      const matchingMmproj = await this.findMatchingMmproj(model, mmprojModels);
       
       // Use different port for embedding models
       const isEmbedding = this.isEmbeddingModel(model.file);
@@ -963,44 +963,121 @@ ${cmdLine}`;
   }
 
   // Helper method to find matching mmproj model for a main model
-  findMatchingMmproj(mainModel, mmprojModels) {
+  async findMatchingMmproj(mainModel, mmprojModels) {
     const mainModelName = mainModel.name.toLowerCase();
     const mainModelFile = mainModel.file.toLowerCase();
     
-    // Special handling for gemma3 models - always use the bundled mmproj model
-    if (mainModelName.includes('gemma3') || mainModelFile.includes('gemma')) {
-      const bundledMmprojPath = path.join(this.baseDir, 'models', 'mmproj-model-f16.gguf');
-      
-      // Check if the bundled mmproj file exists
-      if (fsSync.existsSync(bundledMmprojPath)) {
-        return {
-          name: 'mmproj-model-f16',
-          file: 'mmproj-model-f16.gguf',
-          path: bundledMmprojPath,
-          source: 'bundled'
-        };
+    log.info(`Looking for mmproj model for: ${mainModel.name}`);
+    
+    // Track whether we have any saved mappings system at all
+    let hasSavedMappingsSystem = false;
+    let foundValidSavedMapping = false;
+    
+    // FIRST: Check for saved mmproj mappings (highest priority)
+    try {
+      const mappingsResult = await this.loadMmprojMappings();
+      if (mappingsResult.success && mappingsResult.mappings) {
+        hasSavedMappingsSystem = true; // We have a mappings system
+        const mappingsCount = Object.keys(mappingsResult.mappings).length;
+        log.info(`🔍 Checking ${mappingsCount} saved mmproj mappings for model: ${mainModel.name}`);
+        
+        const savedMapping = mappingsResult.mappings[mainModel.path];
+        if (savedMapping && savedMapping.mmprojPath) {
+          log.info(`📌 Found saved mmproj mapping for ${mainModel.name}: ${savedMapping.mmprojPath}`);
+          
+          // Verify the mapped mmproj file still exists
+          if (fsSync.existsSync(savedMapping.mmprojPath)) {
+            log.info(`✅ Using saved mmproj mapping: ${savedMapping.mmprojName} for ${mainModel.name} (${savedMapping.isManual ? 'manual' : 'automatic'})`);
+            foundValidSavedMapping = true;
+            return {
+              name: savedMapping.mmprojName,
+              file: savedMapping.mmprojName,
+              path: savedMapping.mmprojPath,
+              source: savedMapping.isManual ? 'manual' : 'automatic',
+              isFromSavedMapping: true
+            };
+          } else {
+            log.warn(`⚠️ Saved mmproj mapping points to non-existent file: ${savedMapping.mmprojPath}`);
+            // Continue to automatic detection as fallback
+          }
+        } else {
+          log.info(`📝 No saved mapping found for model: ${mainModel.name} (${mainModel.path})`);
+        }
+      } else {
+        log.info(`📂 No mmproj mappings file found - will use automatic detection for ${mainModel.name}`);
       }
+    } catch (error) {
+      log.warn('Error loading saved mmproj mappings:', error.message);
+      // Continue to automatic detection as fallback
     }
     
-    // For other models, try to find mmproj model with similar name pattern
-    const mainModelBaseName = this.getModelBaseName(mainModel.file);
-    
-    for (const mmprojModel of mmprojModels) {
-      const mmprojBaseName = this.getModelBaseName(mmprojModel.file);
+    // SECOND: Try to find a specifically matching mmproj model by name (automatic detection)
+    // ONLY if no saved mappings system exists - this prevents overriding user's manual assignments
+    if (!hasSavedMappingsSystem) {
+      const mainModelBaseName = this.getModelBaseName(mainModel.file);
       
-      // Check if they share a common base name (e.g., "Qwen2.5-VL-7B")
-      if (this.modelsMatch(mainModelBaseName, mmprojBaseName)) {
-        return mmprojModel;
+      for (const mmprojModel of mmprojModels) {
+        const mmprojBaseName = this.getModelBaseName(mmprojModel.file);
+        
+        // Check if they share a common base name (e.g., "Qwen2.5-VL-7B")
+        if (this.modelsMatch(mainModelBaseName, mmprojBaseName)) {
+          log.info(`Found matching mmproj model: ${mmprojModel.file} for ${mainModel.name} (no saved mappings exist)`);
+          return mmprojModel;
+        }
       }
+    } else {
+      log.info(`🚫 Automatic name-based mmproj detection skipped for ${mainModel.name} - respecting user's saved mappings system`);
+    }
+    
+    // Special handling for gemma models - ONLY if no saved mappings system exists
+    // This prevents overriding user's manual mmproj assignments
+    if (!hasSavedMappingsSystem && (mainModelName.includes('gemma') || mainModelFile.includes('gemma'))) {
+      log.info(`Gemma model detected: ${mainModel.name}, no saved mappings exist - checking for compatible mmproj...`);
+      
+      // Check multiple possible locations for the mmproj file
+      const possiblePaths = [
+        path.join(this.baseDir, 'models', 'mmproj-model-f16.gguf'),
+        path.join(this.modelsDir, 'mmproj-model-f16.gguf'),
+        path.join(this.baseDir, 'mmproj-model-f16.gguf')
+      ];
+      
+      // Also check if there's already a mmproj model in the scanned models
+      const existingMmproj = mmprojModels.find(m => m.file === 'mmproj-model-f16.gguf');
+      if (existingMmproj) {
+        log.info(`Found existing generic mmproj model for Gemma: ${existingMmproj.path}`);
+        log.warn(`⚠️ Using generic mmproj - may cause embedding dimension mismatch. Consider downloading model-specific mmproj.`);
+        return existingMmproj;
+      }
+      
+      // Check each possible path
+      for (const bundledMmprojPath of possiblePaths) {
+        log.info(`Checking mmproj path: ${bundledMmprojPath}`);
+        if (fsSync.existsSync(bundledMmprojPath)) {
+          log.info(`Found bundled mmproj for Gemma model at: ${bundledMmprojPath}`);
+          log.warn(`⚠️ Using generic bundled mmproj - may cause embedding dimension mismatch. Consider downloading model-specific mmproj.`);
+          return {
+            name: 'mmproj-model-f16',
+            file: 'mmproj-model-f16.gguf',
+            path: bundledMmprojPath,
+            source: 'bundled'
+          };
+        }
+      }
+      
+      log.warn(`Gemma model detected but no compatible mmproj file found. Checked paths:`, possiblePaths);
+    } else if (hasSavedMappingsSystem && (mainModelName.includes('gemma') || mainModelFile.includes('gemma'))) {
+      log.info(`🚫 Gemma model detected but saved mappings system exists - respecting user's mmproj choices for ${mainModel.name}`);
     }
     
     // For vision/multimodal models that don't have a specific mmproj match,
     // check if this appears to be a vision model and use bundled mmproj as fallback
-    if (this.isVisionModel(mainModel.file)) {
+    // ONLY if no saved mappings system exists - this prevents overriding user's choices
+    if (!hasSavedMappingsSystem && this.isVisionModel(mainModel.file)) {
       const bundledMmprojPath = path.join(this.baseDir, 'models', 'mmproj-model-f16.gguf');
       
       if (fsSync.existsSync(bundledMmprojPath)) {
-        log.info(`Using bundled mmproj for vision model: ${mainModel.name}`);
+        log.info(`Using bundled mmproj for vision model: ${mainModel.name} (no saved mappings exist)`);
+        log.warn(`⚠️ Using generic bundled mmproj - may cause embedding dimension mismatch. Consider downloading model-specific mmproj.`);
         return {
           name: 'mmproj-model-f16',
           file: 'mmproj-model-f16.gguf',
@@ -1008,8 +1085,11 @@ ${cmdLine}`;
           source: 'bundled'
         };
       }
+    } else if (hasSavedMappingsSystem && this.isVisionModel(mainModel.file)) {
+      log.info(`🚫 Vision model detected but saved mappings system exists - respecting user's mmproj choices for ${mainModel.name}`);
     }
     
+    log.info(`ℹ️ No mmproj model found for ${mainModel.name} - model will run without multimodal capabilities`);
     return null;
   }
 
@@ -3128,6 +3208,436 @@ ${cmdLine}`;
       default:
         return false;
     }
+  }
+
+  /**
+   * Extract metadata from GGUF file including embedding dimensions
+   */
+  async extractGGUFMetadata(modelPath) {
+    try {
+      const fs = require('fs');
+      const buffer = Buffer.alloc(1024); // Read first 1KB to get header info
+      
+      const fd = fs.openSync(modelPath, 'r');
+      fs.readSync(fd, buffer, 0, 1024, 0);
+      fs.closeSync(fd);
+      
+      // GGUF magic number check
+      const magic = buffer.readUInt32LE(0);
+      if (magic !== 0x46554747) { // 'GGUF' in little endian
+        return null;
+      }
+      
+      // Read version
+      const version = buffer.readUInt32LE(4);
+      
+      // Skip tensor count and metadata count for now
+      let offset = 8;
+      const tensorCount = buffer.readBigUInt64LE(offset);
+      offset += 8;
+      const metadataCount = buffer.readBigUInt64LE(offset);
+      offset += 8;
+      
+      // For a more complete implementation, we would parse the full metadata
+      // For now, try to determine embedding size from common patterns
+      let embeddingSize = this.estimateEmbeddingSize(modelPath);
+      
+      return {
+        version,
+        tensorCount: Number(tensorCount),
+        metadataCount: Number(metadataCount),
+        embeddingSize
+      };
+    } catch (error) {
+      log.warn(`Failed to extract GGUF metadata from ${modelPath}:`, error.message);
+      return {
+        embeddingSize: this.estimateEmbeddingSize(modelPath)
+      };
+    }
+  }
+
+  /**
+   * Estimate embedding size based on model name patterns and known models
+   */
+  estimateEmbeddingSize(modelPath) {
+    const fileName = path.basename(modelPath).toLowerCase();
+    
+    // Known embedding dimensions for common models
+    const embeddingDimensionMap = {
+      // Text models (common dimensions)
+      'gemma': 2048,
+      'llama': 4096,
+      'qwen': 4096,
+      'mistral': 4096,
+      'phi': 2560,
+      'tinyllama': 2048,
+      'deepseek': 4096,
+      
+      // Embedding models
+      'nomic-embed': 768,
+      'mxbai': 1024,
+      'bge': 1024,
+      'e5': 1024,
+      'all-minilm': 384,
+      
+      // Vision models (projection dimensions)
+      'llava': 4096,
+      'moondream': 2048,
+      'vision': 4096,
+      'multimodal': 4096
+    };
+    
+    // Check for specific model patterns
+    for (const [pattern, dimension] of Object.entries(embeddingDimensionMap)) {
+      if (fileName.includes(pattern)) {
+        // Special case for e5-large-v2 which has higher dimensions
+        if (pattern === 'e5' && fileName.includes('large')) {
+          return 1024;
+        }
+        return dimension;
+      }
+    }
+    
+    // Fallback based on model size (rough estimation)
+    if (this.isEmbeddingModel(fileName)) {
+      return 768; // Default for embedding models
+    }
+    
+    // Default for text models
+    return 4096;
+  }
+
+  /**
+   * Find compatible mmproj files for a model based on embedding dimensions
+   */
+  async findCompatibleMmprojFiles(model, allMmprojModels) {
+    const compatibleFiles = [];
+    
+    try {
+      // Get the model's embedding dimensions
+      const modelMetadata = await this.extractGGUFMetadata(model.path);
+      const modelEmbeddingSize = modelMetadata?.embeddingSize || this.estimateEmbeddingSize(model.path);
+      
+      // Check each mmproj file for compatibility
+      for (const mmprojModel of allMmprojModels) {
+        try {
+          const mmprojMetadata = await this.extractGGUFMetadata(mmprojModel.path);
+          const mmprojEmbeddingSize = mmprojMetadata?.embeddingSize || this.estimateEmbeddingSize(mmprojModel.path);
+          
+          // Models are compatible if their embedding dimensions match
+          if (modelEmbeddingSize === mmprojEmbeddingSize) {
+            compatibleFiles.push({
+              ...mmprojModel,
+              embeddingSize: mmprojEmbeddingSize,
+              isCompatible: true,
+              compatibilityReason: `Matching embedding dimensions (${mmprojEmbeddingSize})`
+            });
+          } else {
+            // Include incompatible files with warning
+            compatibleFiles.push({
+              ...mmprojModel,
+              embeddingSize: mmprojEmbeddingSize,
+              isCompatible: false,
+              compatibilityReason: `Dimension mismatch: model=${modelEmbeddingSize}, mmproj=${mmprojEmbeddingSize}`
+            });
+          }
+        } catch (error) {
+          log.warn(`Error checking mmproj compatibility for ${mmprojModel.file}:`, error.message);
+          // Include with unknown compatibility
+          compatibleFiles.push({
+            ...mmprojModel,
+            embeddingSize: 'unknown',
+            isCompatible: false,
+            compatibilityReason: 'Unable to determine compatibility'
+          });
+        }
+      }
+      
+      // Sort compatible files first
+      compatibleFiles.sort((a, b) => {
+        if (a.isCompatible && !b.isCompatible) return -1;
+        if (!a.isCompatible && b.isCompatible) return 1;
+        return 0;
+      });
+      
+    } catch (error) {
+      log.error(`Error finding compatible mmproj files for ${model.file}:`, error.message);
+    }
+    
+    return compatibleFiles;
+  }
+
+  /**
+   * Get enhanced model information with embedding dimensions and mmproj compatibility
+   */
+  async getModelEmbeddingInfo(modelPath) {
+    try {
+      const metadata = await this.extractGGUFMetadata(modelPath);
+      const embeddingSize = metadata?.embeddingSize || this.estimateEmbeddingSize(modelPath);
+      const fileName = path.basename(modelPath);
+      
+      // Scan for available mmproj files
+      const allModels = await this.scanModels();
+      const mmprojModels = allModels.filter(model => this.isMmprojModel(model.file));
+      
+      // Find compatible mmproj files
+      const model = { path: modelPath, file: fileName };
+      const compatibleMmprojFiles = await this.findCompatibleMmprojFiles(model, mmprojModels);
+      
+      // Check if this is a vision model that needs mmproj
+      const isVision = this.isVisionModel(fileName);
+      const hasCompatibleMmproj = compatibleMmprojFiles.some(file => file.isCompatible);
+      
+      return {
+        embeddingSize,
+        isVisionModel: isVision,
+        needsMmproj: isVision,
+        compatibleMmprojFiles,
+        hasCompatibleMmproj,
+        compatibilityStatus: isVision ? 
+          (hasCompatibleMmproj ? 'compatible' : 'needs_mmproj') : 
+          'not_applicable'
+      };
+    } catch (error) {
+      log.error(`Error getting model embedding info for ${modelPath}:`, error.message);
+      return {
+        embeddingSize: 'unknown',
+        isVisionModel: false,
+        needsMmproj: false,
+        compatibleMmprojFiles: [],
+        hasCompatibleMmproj: false,
+        compatibilityStatus: 'unknown'
+      };
+    }
+  }
+
+  /**
+   * Search Hugging Face for compatible mmproj files for a given model
+   */
+  async searchHuggingFaceForMmproj(modelName, embeddingSize) {
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+      
+      // Extract base model name for searching
+      const baseModelName = modelName.toLowerCase()
+        .replace(/[-_.]?(q\d+_k_[ms]|f16|f32|gguf).*$/i, '') // Remove quantization suffixes
+        .replace(/[-_.]/g, '-');
+      
+      // Search for mmproj files related to this model
+      const searchQueries = [
+        `${baseModelName} mmproj`,
+        `${baseModelName} mm-proj`,
+        `${baseModelName} projection`,
+        `mmproj ${baseModelName}`
+      ];
+      
+      const results = [];
+      
+      for (const query of searchQueries) {
+        try {
+          const url = `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&limit=10`;
+          const response = await fetch(url);
+          
+          if (response.ok) {
+            const models = await response.json();
+            
+            for (const model of models) {
+              // Check if this model has mmproj files
+              const mmprojFiles = (model.siblings || []).filter(file => 
+                file.rfilename.toLowerCase().includes('mmproj') ||
+                file.rfilename.toLowerCase().includes('mm-proj') ||
+                file.rfilename.toLowerCase().includes('projection')
+              );
+              
+              if (mmprojFiles.length > 0) {
+                results.push({
+                  modelId: model.modelId || model.id,
+                  modelName: model.modelId || model.id,
+                  description: model.description || '',
+                  files: mmprojFiles,
+                  estimatedEmbeddingSize: this.estimateEmbeddingSize(mmprojFiles[0].rfilename),
+                  isLikelyCompatible: this.estimateEmbeddingSize(mmprojFiles[0].rfilename) === embeddingSize,
+                  downloads: model.downloads || 0,
+                  likes: model.likes || 0
+                });
+              }
+            }
+          }
+        } catch (searchError) {
+          log.warn(`Error searching for mmproj with query "${query}":`, searchError.message);
+        }
+      }
+      
+      // Remove duplicates and sort by compatibility and popularity
+      const uniqueResults = results.reduce((acc, current) => {
+        const existing = acc.find(item => item.modelId === current.modelId);
+        if (!existing) {
+          acc.push(current);
+        }
+        return acc;
+      }, []);
+      
+      uniqueResults.sort((a, b) => {
+        // Sort compatible first, then by downloads
+        if (a.isLikelyCompatible && !b.isLikelyCompatible) return -1;
+        if (!a.isLikelyCompatible && b.isLikelyCompatible) return 1;
+        return (b.downloads || 0) - (a.downloads || 0);
+      });
+      
+      return uniqueResults.slice(0, 5); // Return top 5 results
+    } catch (error) {
+      log.error(`Error searching Hugging Face for mmproj files:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Save mmproj mappings to persistent storage
+   */
+  async saveMmprojMappings(mappings) {
+    try {
+      log.info('🔍 saveMmprojMappings called with mappings:', mappings);
+      log.info('🔍 mappings type:', typeof mappings);
+      log.info('🔍 mappings length/keys:', Array.isArray(mappings) ? mappings.length : Object.keys(mappings).length);
+      
+      const settingsDir = path.join(os.homedir(), '.clara', 'settings');
+      log.info('🔍 Settings directory:', settingsDir);
+      
+      await fs.mkdir(settingsDir, { recursive: true });
+      log.info('🔍 Settings directory ensured');
+      
+      // Convert array format to object format for consistency
+      let mappingsToSave;
+      if (Array.isArray(mappings)) {
+        // Frontend sends array format - convert to object format
+        mappingsToSave = {};
+        mappings.forEach(mapping => {
+          if (mapping.modelPath) {
+            mappingsToSave[mapping.modelPath] = mapping;
+          }
+        });
+        log.info('🔍 Converted array format to object format for mmproj mappings');
+        log.info('🔍 Converted mappings:', mappingsToSave);
+      } else {
+        // Already in object format
+        mappingsToSave = mappings;
+        log.info('🔍 Using existing object format');
+      }
+      
+      const mappingsPath = path.join(settingsDir, 'mmproj-mappings.json');
+      log.info('🔍 Writing to file:', mappingsPath);
+      
+      const jsonContent = JSON.stringify(mappingsToSave, null, 2);
+      log.info('🔍 JSON content to write:', jsonContent);
+      
+      await fs.writeFile(mappingsPath, jsonContent, 'utf8');
+      log.info('🔍 File written successfully');
+      
+      // Verify the file was created
+      try {
+        const stats = await fs.stat(mappingsPath);
+        log.info('🔍 File verification - size:', stats.size, 'bytes');
+      } catch (statError) {
+        log.error('❌ File verification failed:', statError);
+      }
+      
+      log.info('✅ Mmproj mappings saved successfully:', mappingsPath);
+      log.info(`✅ Saved ${Object.keys(mappingsToSave).length} mappings to ${mappingsPath}`);
+      return { success: true, path: mappingsPath };
+    } catch (error) {
+      log.error('❌ Error saving mmproj mappings:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Load mmproj mappings from persistent storage
+   */
+  async loadMmprojMappings() {
+    try {
+      const mappingsPath = path.join(os.homedir(), '.clara', 'settings', 'mmproj-mappings.json');
+      
+      // Check if mappings file exists
+      try {
+        await fs.access(mappingsPath);
+      } catch (accessError) {
+        // File doesn't exist, return empty mappings
+        log.info('No saved mmproj mappings found, returning empty object');
+        return { success: true, mappings: {} };
+      }
+      
+      // Read and parse mappings file
+      const mappingsData = await fs.readFile(mappingsPath, 'utf8');
+      const storedData = JSON.parse(mappingsData);
+      
+      // The data is always stored in object format (modelPath -> mapping)
+      // Return as object for internal use (config generation)
+      const mappings = storedData;
+      
+      log.info('Mmproj mappings loaded successfully:', mappingsPath);
+      log.info(`Loaded ${Object.keys(mappings).length} mappings from ${mappingsPath}`);
+      return { success: true, mappings };
+    } catch (error) {
+      log.error('Error loading mmproj mappings:', error);
+      return { success: false, error: error.message, mappings: {} };
+    }
+  }
+
+  /**
+   * Get all available mmproj files from the file system
+   */
+  async getAvailableMmprojFiles() {
+    try {
+      const allModels = await this.scanModels();
+      const mmprojModels = allModels.filter(model => this.isMmprojModel(model.file));
+      
+      // Enhance mmproj files with metadata
+      const enhancedMmprojFiles = await Promise.all(
+        mmprojModels.map(async (mmprojModel) => {
+          try {
+            const metadata = await this.extractGGUFMetadata(mmprojModel.path);
+            return {
+              ...mmprojModel,
+              embeddingSize: metadata?.embeddingSize || this.estimateEmbeddingSize(mmprojModel.path),
+              fileSize: mmprojModel.size,
+              fileSizeFormatted: this.formatFileSize(mmprojModel.size)
+            };
+          } catch (error) {
+            log.warn(`Error getting metadata for mmproj file ${mmprojModel.file}:`, error.message);
+            return {
+              ...mmprojModel,
+              embeddingSize: 'unknown',
+              fileSize: mmprojModel.size,
+              fileSizeFormatted: this.formatFileSize(mmprojModel.size)
+            };
+          }
+        })
+      );
+      
+      return { success: true, mmprojFiles: enhancedMmprojFiles };
+    } catch (error) {
+      log.error('Error getting available mmproj files:', error);
+      return { success: false, error: error.message, mmprojFiles: [] };
+    }
+  }
+
+  /**
+   * Format file size for display
+   */
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }
 
