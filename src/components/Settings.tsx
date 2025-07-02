@@ -1298,7 +1298,7 @@ const Settings = () => {
         />
       )}
 
-      <div className="flex max-w-7xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
+      <div className="p-6 flex max-w-7xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
         {/* Sidebar with tabs */}
         <div className="w-64 shrink-0">
           <div className="glassmorphic rounded-xl p-4 space-y-2 sticky top-4">

@@ -7,8 +7,6 @@ import PopularModelsSection from './ModelManager/PopularModelsSection';
 import LocalModelsLibrary from './ModelManager/LocalModelsLibrary';
 import NotificationModal from './ModelManager/NotificationModal';
 import ConfirmationModal from './ModelManager/ConfirmationModal';
-import MmprojSelector from './ModelManager/MmprojSelector';
-import modelMmprojMappingService from '../services/modelMmprojMappingService';
 import { 
   LocalModel, 
   DownloadProgress, 
@@ -27,10 +25,6 @@ const ModelManager: React.FC = () => {
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [modelManagerTab, setModelManagerTab] = useState<ModelManagerTab>('discover');
-  
-  // mmproj Selector state
-  const [selectedModelForMmproj, setSelectedModelForMmproj] = useState<LocalModel | null>(null);
-  const [showMmprojSelector, setShowMmprojSelector] = useState(false);
   
   const { customModelPath } = useProviders();
 
@@ -52,15 +46,7 @@ const ModelManager: React.FC = () => {
   // Initial load of local models on mount
   useEffect(() => {
     // Add a small delay to ensure backend is ready and custom path is set
-    const timer = setTimeout(async () => {
-      // Initialize mmproj mapping service from backend
-      try {
-        await modelMmprojMappingService.loadFromBackend();
-      } catch (error) {
-        console.warn('Could not load mmproj mappings from backend on startup:', error);
-      }
-      
-      // Load local models
+    const timer = setTimeout(() => {
       loadLocalModels();
     }, 1000);
     
@@ -73,44 +59,7 @@ const ModelManager: React.FC = () => {
       try {
         const result = await window.modelManager.getLocalModels();
         if (result.success) {
-          // Enhance models with mmproj information
-          const enhancedModels = await Promise.all(
-            result.models.map(async (model) => {
-              try {
-                // Get mmproj mapping for this model
-                const mapping = modelMmprojMappingService.getMappingForModel(model.path);
-                
-                // Get embedding info if available
-                let embeddingInfo = null;
-                if (window.modelManager?.getModelEmbeddingInfo) {
-                  try {
-                    embeddingInfo = await window.modelManager.getModelEmbeddingInfo(model.path);
-                  } catch (embeddingError) {
-                    console.warn('Error getting embedding info for model:', model.file, embeddingError);
-                  }
-                }
-                
-                return {
-                  ...model,
-                  mmprojMapping: mapping,
-                  isVisionModel: embeddingInfo?.isVisionModel || false,
-                  hasAssignedMmproj: !!mapping,
-                  embeddingSize: embeddingInfo?.embeddingSize || 'unknown'
-                };
-              } catch (error) {
-                console.warn('Error enhancing model with mmproj info:', model.file, error);
-                return {
-                  ...model,
-                  mmprojMapping: null,
-                  isVisionModel: false,
-                  hasAssignedMmproj: false,
-                  embeddingSize: 'unknown'
-                };
-              }
-            })
-          );
-          
-          setLocalModels(enhancedModels);
+          setLocalModels(result.models);
         }
       } catch (error) {
         console.error('Error loading local models:', error);
@@ -193,51 +142,10 @@ const ModelManager: React.FC = () => {
       const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
-        
-        // Save mmproj mappings for downloaded models with dependencies
-        try {
-          if (result.downloadedFiles && Array.isArray(result.downloadedFiles)) {
-            const mainModelFile = result.downloadedFiles.find(file => 
-              file.endsWith('.gguf') && 
-              !file.toLowerCase().includes('mmproj') &&
-              !file.toLowerCase().includes('mm-proj') &&
-              !file.toLowerCase().includes('projection')
-            );
-            
-            const mmprojFile = result.downloadedFiles.find(file => 
-              file.endsWith('.gguf') && (
-                file.toLowerCase().includes('mmproj') ||
-                file.toLowerCase().includes('mm-proj') ||
-                file.toLowerCase().includes('projection')
-              )
-            );
-            
-            if (mainModelFile && mmprojFile) {
-              // Construct full paths - use downloadPath if provided, otherwise assume models are in default location
-              const basePath = downloadPath || '';
-              const mainModelPath = basePath ? `${basePath}/${mainModelFile}` : mainModelFile;
-              const mmprojPath = basePath ? `${basePath}/${mmprojFile}` : mmprojFile;
-              
-              // Save the mapping as automatic (not manual)
-              modelMmprojMappingService.setMapping(
-                mainModelPath, 
-                mainModelFile,
-                mmprojPath, 
-                mmprojFile,
-                false // isManual = false for automatic assignment
-              );
-              
-              console.log('Saved automatic mmproj mapping:', mainModelFile, '->', mmprojFile);
-            }
-          }
-        } catch (mappingError) {
-          console.warn('Failed to save mmproj mapping after download:', mappingError);
-        }
-        
         // Refresh local models
         const localResult = await window.modelManager.getLocalModels();
         if (localResult.success) {
-          await loadLocalModels(); // Use the enhanced loading function
+          setLocalModels(localResult.models);
         }
         
         // Show success notification with download location
@@ -318,18 +226,13 @@ const ModelManager: React.FC = () => {
       // Add to deleting set
       setDeleting(prev => new Set([...prev, filePath]));
       
-      // Clean up mmproj mappings before deleting the model
-      try {
-        modelMmprojMappingService.removeMapping(filePath);
-        console.log('Removed mmproj mapping for deleted model:', filePath);
-      } catch (mappingError) {
-        console.warn('Failed to remove mmproj mapping for deleted model:', mappingError);
-      }
-      
       const result = await window.modelManager.deleteLocalModel(filePath);
       if (result.success) {
-        // Refresh local models with enhanced data
-        await loadLocalModels();
+        // Refresh local models
+        const localResult = await window.modelManager.getLocalModels();
+        if (localResult.success) {
+          setLocalModels(localResult.models);
+        }
       } else {
         console.error('Delete failed:', result.error);
       }
@@ -353,68 +256,20 @@ const ModelManager: React.FC = () => {
 
   // Handle confirmation with proper callback cleanup
   const handleConfirmation = (confirmationData: Confirmation) => {
-    setConfirmation(confirmationData);
-  };
-
-  // Handle opening mmproj selector for a specific model
-  const handleManageMmproj = (model: LocalModel) => {
-    setSelectedModelForMmproj(model);
-    setShowMmprojSelector(true);
-  };
-
-  // Handle closing mmproj selector
-  const handleCloseMmprojSelector = () => {
-    setShowMmprojSelector(false);
-    setSelectedModelForMmproj(null);
-  };
-
-  // Handle mmproj assignment - automatically restart service and reload models
-  const handleMmprojAssigned = async () => {
-    handleCloseMmprojSelector();
-    
-    // Show a loading notification
-    setNotification({
-      type: 'info',
-      title: 'Applying mmproj Assignment',
-      message: 'Restarting AI service to apply new configuration...'
-    });
-
-    try {
-      // Automatically restart the llama-swap service to apply the new mmproj configuration
-      if (window.modelManager?.restartLlamaSwap) {
-        const result = await window.modelManager.restartLlamaSwap();
-        if (result.success) {
-          // Wait a moment then reload models to show updated status
-          setTimeout(async () => {
-            await loadLocalModels();
-            setNotification({
-              type: 'success',
-              title: 'mmproj Applied Successfully',
-              message: 'AI service restarted with new mmproj configuration.'
-            });
-          }, 2000);
-        } else {
-          throw new Error(result.error || 'Failed to restart service');
+    setConfirmation({
+      ...confirmationData,
+      onConfirm: async () => {
+        try {
+          await confirmationData.onConfirm();
+        } finally {
+          setConfirmation(null);
         }
-      } else {
-        // Fallback: just reload the models and show manual restart message
-        await loadLocalModels();
-        setNotification({
-          type: 'info',
-          title: 'mmproj Assigned',
-          message: 'mmproj assignment saved. Please restart the AI service manually to apply changes.'
-        });
+      },
+      onCancel: () => {
+        confirmationData.onCancel();
+        setConfirmation(null);
       }
-    } catch (error) {
-      console.error('Error applying mmproj assignment:', error);
-      setNotification({
-        type: 'error',
-        title: 'Restart Failed',
-        message: `Failed to restart AI service: ${error instanceof Error ? error.message : 'Unknown error'}. Please restart manually.`
-      });
-      // Still reload models to show the mapping was saved
-      await loadLocalModels();
-    }
+    });
   };
 
   return (
@@ -488,7 +343,6 @@ const ModelManager: React.FC = () => {
             onDeleteModel={deleteLocalModel}
             deleting={deleting}
             onModelManagerTabChange={setModelManagerTab}
-            onManageMmproj={handleManageMmproj}
           />
         )}
       </div>
@@ -501,19 +355,7 @@ const ModelManager: React.FC = () => {
       
       <ConfirmationModal 
         confirmation={confirmation}
-        onClose={() => setConfirmation(null)}
       />
-
-      {/* mmproj Selector Modal */}
-      {showMmprojSelector && selectedModelForMmproj && (
-        <MmprojSelector
-          modelPath={selectedModelForMmproj.path}
-          modelName={selectedModelForMmproj.name || selectedModelForMmproj.file}
-          currentMapping={selectedModelForMmproj.mmprojMapping}
-          onMappingChange={handleMmprojAssigned}
-          onClose={handleCloseMmprojSelector}
-        />
-      )}
     </div>
   );
 };

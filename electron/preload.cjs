@@ -182,7 +182,9 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   loadPerformanceSettings: () => ipcRenderer.invoke('load-performance-settings'),
   setCustomModelPath: (path) => ipcRenderer.invoke('set-custom-model-path', path),
   getCustomModelPaths: () => ipcRenderer.invoke('get-custom-model-paths'),
-  scanCustomPathModels: (path) => ipcRenderer.invoke('scan-custom-path-models', path)
+  scanCustomPathModels: (path) => ipcRenderer.invoke('scan-custom-path-models', path),
+  getModelEmbeddingInfo: (modelPath) => ipcRenderer.invoke('get-model-embedding-info', modelPath),
+  searchHuggingFaceMmproj: (modelName, embeddingSize) => ipcRenderer.invoke('search-huggingface-mmproj', modelName, embeddingSize)
 });
 
 // Add model management API
@@ -193,6 +195,14 @@ contextBridge.exposeInMainWorld('modelManager', {
   getLocalModels: () => ipcRenderer.invoke('get-local-models'),
   deleteLocalModel: (filePath) => ipcRenderer.invoke('delete-local-model', { filePath }),
   stopDownload: (fileName) => ipcRenderer.invoke('stop-download', { fileName }),
+  
+  // LlamaSwap service restart for applying mmproj configuration changes
+  restartLlamaSwap: () => ipcRenderer.invoke('restart-llamaswap'),
+  
+  // Mmproj mapping persistence
+  saveMmprojMappings: (mappings) => ipcRenderer.invoke('save-mmproj-mappings', mappings),
+  loadMmprojMappings: () => ipcRenderer.invoke('load-mmproj-mappings'),
+  getAvailableMmprojFiles: () => ipcRenderer.invoke('get-available-mmproj-files'),
   
   // Listen for download progress updates
   onDownloadProgress: (callback) => {

@@ -147,6 +147,21 @@ declare global {
       getCustomModelPaths: () => Promise<string[]>;
       scanCustomPathModels: (path: string) => Promise<{ success: boolean; models?: any[]; error?: string }>;
       downloadHuggingFaceModel: (modelId: string, fileName: string, downloadPath: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      getModelEmbeddingInfo: (modelPath: string) => Promise<{ 
+        success: boolean; 
+        embeddingSize?: number | string;
+        isVisionModel?: boolean;
+        needsMmproj?: boolean;
+        compatibleMmprojFiles?: any[];
+        hasCompatibleMmproj?: boolean;
+        compatibilityStatus?: string;
+        error?: string; 
+      }>;
+      searchHuggingFaceMmproj: (modelName: string, embeddingSize: number) => Promise<{ 
+        success: boolean; 
+        results?: any[];
+        error?: string; 
+      }>;
       downloadModelWithDependencies: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>, downloadPath: string) => Promise<{ success: boolean; results?: any[]; downloadedFiles?: string[]; error?: string }>;
     };
     modelManager: {
@@ -188,6 +203,21 @@ declare global {
       onComfyUILocalDownloadProgress: (callback: (data: { filename: string; progress: number; downloadedSize: number; totalSize: number; speed?: string; eta?: string }) => void) => () => void;
       onComfyUILocalDownloadComplete: (callback: (data: { filename: string; category: string; localPath: string; containerPath: string; size: number }) => void) => () => void;
       onComfyUILocalDownloadError: (callback: (data: { filename: string; error: string }) => void) => () => void;
+      
+      // Mmproj mapping management
+      getModelEmbeddingInfo: (modelPath: string) => Promise<{ 
+        success: boolean; 
+        embeddingSize?: number | string;
+        isVisionModel?: boolean;
+        needsMmproj?: boolean;
+        compatibleMmprojFiles?: any[];
+        hasCompatibleMmproj?: boolean;
+        compatibilityStatus?: string;
+        error?: string; 
+      }>;
+      saveMmprojMappings: (mappings: any[]) => Promise<{ success: boolean; error?: string }>;
+      loadMmprojMappings: () => Promise<{ success: boolean; mappings?: any[]; error?: string }>;
+      restartLlamaSwap: () => Promise<{ success: boolean; error?: string }>;
     };
     mcpService: {
       getServers: () => Promise<MCPServer[]>;
