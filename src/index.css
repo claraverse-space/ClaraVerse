@@ -5,12 +5,12 @@
 /* Import global scrollbar hiding first to ensure it takes precedence */
 @import './styles/scrollbar-global.css';
 
+/* Clara specific styles */
+@import './styles/claraSidebar.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Clara specific styles */
-@import './styles/claraSidebar.css';
 
 /* Custom CSS Variables */
 :root {

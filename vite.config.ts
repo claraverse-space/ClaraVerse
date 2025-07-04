@@ -120,6 +120,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      buffer: 'buffer',
     },
+  },
+  define: {
+    global: 'globalThis',
   },
 });

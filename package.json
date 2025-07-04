@@ -19,6 +19,7 @@
     "test:ui": "npx vitest --ui",
     "test:coverage": "npx vitest run --coverage",
     "test:ci": "npx vitest run --coverage --reporter=json --outputFile=./test-results.json",
+    "postinstall": "electron-builder install-app-deps",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:dev:hot": "cross-env NODE_ENV=development ELECTRON_HOT_RELOAD=true concurrently \"npm run dev\" \"electron .\"",
     "test:llama-swap": "node test-llama-swap.js",
@@ -47,6 +48,7 @@
     "electron:build-mac-test": "npm run build && electron-builder --mac --universal -c.mac.identity=null -c.mac.notarize=false --publish always",
     "electron:build-linux": "npm run build && electron-builder --linux",
     "electron:build-mac-permissions": "npm run build && electron-builder --mac --universal --config.mac.hardenedRuntime=true --config.mac.entitlements=build/entitlements.mac.plist --config.mac.entitlementsInherit=build/entitlements.mac.plist --publish always",
+    "clean:install": "rimraf node_modules package-lock.json && npm install",
     "start": "react-scripts start",
     "eject": "react-scripts eject"
   },
@@ -102,6 +104,8 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "adm-zip": "^0.5.16",
+    "axios": "^1.10.0",
+    "buffer": "^6.0.3",
     "chalk": "^5.3.0",
     "chart.js": "^4.4.9",
     "chokidar": "^3.5.0",
@@ -217,11 +221,13 @@
     "wait-on": "^8.0.3"
   },
   "overrides": {
-    "canvas": "^2.11.2"
+    "canvas": "npm:canvas-prebuilt@^2.11.2"
   },
   "build": {
     "appId": "com.clara-ai.app",
     "productName": "Clara",
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
     "files": [
       "dist/**/*",
       "electron/**/*",

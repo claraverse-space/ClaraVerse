@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Client, BasePipe, EfficientPipe, ComfyUIApiClient } from '@stable-canvas/comfyui-client';
+import { Client, BasePipe, EfficientPipe, } from '@stable-canvas/comfyui-client';
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
@@ -14,7 +14,6 @@ import SettingsDrawer, { Resolution } from './imagegen_components/SettingsDrawer
 import LoadingOverlay from './imagegen_components/LoadingOverlay';
 import InitialLoadingOverlay from './imagegen_components/InitialLoadingOverlay';
 import { Buffer } from 'buffer';
-import { ArrowLeftRight, RefreshCw } from 'lucide-react';
 
 // Add TypeScript declaration for webview
 declare global {
@@ -22,11 +21,14 @@ declare global {
     interface IntrinsicElements {
       webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
         src?: string;
-        allowpopups?: string;
+        allowpopups?: boolean;
         webpreferences?: string;
         partition?: string;
         useragent?: string;
         preload?: string;
+        nodeintegration?: boolean;
+        contextIsolation?: boolean;
+        webSecurity?: boolean;
       };
     }
   }
@@ -115,11 +117,31 @@ const ComfyUIWebView: React.FC<{
   comfyuiUrl: string;
 }> = ({ onLoad, onError, comfyUIKey, comfyuiUrl }) => {
   const webviewRef = useRef<any>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
+
+  // Check if we're in Electron environment
+  useEffect(() => {
+    const checkElectron = () => {
+      const isElectronEnv = !!(window as any).electronAPI || 
+                           typeof (window as any).require !== 'undefined' ||
+                           navigator.userAgent.toLowerCase().indexOf('electron') > -1;
+      setIsElectron(isElectronEnv);
+      
+      // If not in Electron, use iframe fallback immediately
+      if (!isElectronEnv) {
+        console.log('Not in Electron environment, using iframe fallback');
+        setUseIframeFallback(true);
+      }
+    };
+    
+    checkElectron();
+  }, []);
 
   useEffect(() => {
     const webview = webviewRef.current;
-    if (!webview || useIframeFallback) return;
+    if (!webview || useIframeFallback || !isElectron) return;
 
     const handleDomReady = () => {
       console.log('ComfyUI WebView DOM ready');
@@ -128,8 +150,8 @@ const ComfyUIWebView: React.FC<{
 
     const handleDidFailLoad = (event: any) => {
       console.error('ComfyUI WebView failed to load:', event);
-      // Try iframe fallback
       setUseIframeFallback(true);
+      onError();
     };
 
     const handleDidFinishLoad = () => {
@@ -137,34 +159,63 @@ const ComfyUIWebView: React.FC<{
       onLoad();
     };
 
-    // Add event listeners
-    webview.addEventListener('dom-ready', handleDomReady);
-    webview.addEventListener('did-fail-load', handleDidFailLoad);
-    webview.addEventListener('did-finish-load', handleDidFinishLoad);
+    // Add event listeners with minimal interference
+    try {
+      webview.addEventListener('dom-ready', handleDomReady);
+      webview.addEventListener('did-fail-load', handleDidFailLoad);
+      webview.addEventListener('did-finish-load', handleDidFinishLoad);
+    } catch (error) {
+      console.error('Failed to add webview event listeners:', error);
+      setUseIframeFallback(true);
+      onError();
+    }
 
     return () => {
       // Cleanup event listeners
       if (webview) {
-        webview.removeEventListener('dom-ready', handleDomReady);
-        webview.removeEventListener('did-fail-load', handleDidFailLoad);
-        webview.removeEventListener('did-finish-load', handleDidFinishLoad);
+        try {
+          webview.removeEventListener('dom-ready', handleDomReady);
+          webview.removeEventListener('did-fail-load', handleDidFailLoad);
+          webview.removeEventListener('did-finish-load', handleDidFinishLoad);
+        } catch (error) {
+          console.error('Failed to remove webview event listeners:', error);
+        }
       }
     };
-  }, [onLoad, onError, useIframeFallback]);
+  }, [onLoad, onError, useIframeFallback, isElectron]);
 
-  // Fallback to iframe if webview fails
-  if (useIframeFallback) {
+  // Always use iframe fallback if not in Electron or if webview failed
+  if (!isElectron || useIframeFallback) {
     return (
-      <iframe
-        key={`comfyui-iframe-fallback-${comfyUIKey}`}
-        src={comfyuiUrl}
-        className="w-full h-full border-0"
-        title="ComfyUI Interface"
-        onLoad={onLoad}
-        onError={onError}
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-        style={{ width: '100%', height: '100%' }}
-      />
+      <div className="w-full h-full relative">
+        <iframe
+          ref={iframeRef}
+          key={`comfyui-iframe-${comfyUIKey}`}
+          src={comfyuiUrl}
+          className="w-full h-full border-0"
+          title="ComfyUI Interface"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
+          style={{ 
+            width: '100%', 
+            height: '100%',
+            border: 'none',
+            outline: 'none'
+          }}
+          onLoad={() => {
+            console.log('ComfyUI iframe loaded');
+            onLoad();
+          }}
+          onError={() => {
+            console.error('ComfyUI iframe failed to load');
+            onError();
+          }}
+        />
+        {!isElectron && (
+          <div className="absolute top-2 left-2 bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs z-10">
+            Running in browser mode
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -174,10 +225,16 @@ const ComfyUIWebView: React.FC<{
       key={`comfyui-webview-${comfyUIKey}`}
       src={comfyuiUrl}
       className="w-full h-full border-0"
-              allowpopups={true}
-      webpreferences="nodeIntegration=false,contextIsolation=true,webSecurity=false"
+      allowpopups={true}
+      webpreferences="nodeIntegration=false,contextIsolation=true,webSecurity=false,allowRunningInsecureContent=true"
       partition="persist:comfyui"
-      style={{ width: '100%', height: '100%', display: 'flex' }}
+      style={{ 
+        width: '100%', 
+        height: '100%', 
+        display: 'flex',
+        border: 'none',
+        outline: 'none'
+      }}
     />
   );
 };
@@ -483,6 +540,30 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // Use ComfyUI service configuration
   const { comfyuiUrl, loading: serviceConfigLoading } = useComfyUIServiceConfig();
 
+  // Wait for the client's WebSocket connection to open before proceeding - with timeout
+  const waitForClientConnection = async (client: Client): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("WebSocket connection timeout - failed to connect after 15 seconds"));
+        setLoadingStatus(prev => ({ ...prev, connection: 'timeout' }));
+      }, 15000);
+      
+      if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+        clearTimeout(timeout);
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+            clearInterval(checkInterval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        }, 100);
+      }
+    });
+  };
+
+  // (1) Connect to ComfyUI and set up client event listeners
   // UI state variables
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -530,7 +611,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [wsStatus, setWsStatus] = useState<string>('Not Connected');
 
   // Reference to the ComfyUI client instance
-  const clientRef = useRef<ComfyUIApiClient | null>(null);
+  const clientRef = useRef<Client | null>(null);
   
   // Track the last used model to optimize memory management
   const lastUsedModelRef = useRef<string | null>(null);
@@ -623,7 +704,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         if (!url) url = 'http://localhost:8188';
         const isHttps = url.startsWith('https://');
         url = url.replace(/^https?:\/\//, '');
-        const client = new ComfyUIApiClient({ api_host: url, ssl: isHttps });
+        const client = new Client({ api_host: url, ssl: isHttps });
         clientRef.current = client;
         await client.connect();
         setLoadingStatus(prev => ({ ...prev, connection: 'connected' }));
@@ -655,10 +736,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setGenerationError(null);
     try {
       if (!selectedModel) {
+        // If no model is selected, attempt to use a stored or first available model
         const lastUsedModel = localStorage.getItem(LAST_USED_MODEL_KEY);
         if (lastUsedModel && sdModels.includes(lastUsedModel)) {
+          console.log('Using last used model:', lastUsedModel);
           setSelectedModel(lastUsedModel);
         } else if (sdModels.length > 0) {
+          console.log('Using first available model:', sdModels[0]);
           setSelectedModel(sdModels[0]);
         } else {
           setMustSelectModel(true);
@@ -668,25 +752,133 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       }
       setMustSelectModel(false);
       setIsGenerating(true);
+      
+      // Use existing client; do not reinitialize if already connected
+      let client = clientRef.current;
+      console.log('handleGenerate - client before check:', client);
+      
+      if (!client || client.socket?.readyState !== WebSocket.OPEN) {
+        console.log('Client not available or not connected, creating new client...');
+        if (client) {
+          try {
+            client.close();
+          } catch (e) {
+            console.error("Error closing existing client:", e);
+          }
+        }
+        const url = comfyuiUrl;
+        let processedUrl = url;
+        if (url.includes('http://') || url.includes('https://')) {
+          processedUrl = url.split('//')[1];
+        }
+        const ssl_type = url.includes('https') ? true : false;
+        client = new Client({ api_host: processedUrl, ssl: ssl_type });
+        client.connect();
+        clientRef.current = client;
+        console.log('handleGenerate - new client created:', client);
+      }
+      
+      try {
+        await waitForClientConnection(client);
+        console.log('Client connection is now open.');
+      } catch (connErr) {
+        console.error("Connection error:", connErr);
+        if ((connErr as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding after 15 seconds. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to establish WebSocket connection: ${(connErr as Error)?.message}`);
+        }
+        setIsGenerating(false);
+        return;
+      }
+
       let width = selectedResolution.width;
       let height = selectedResolution.height;
       if (selectedResolution.label === 'Custom') {
         width = customWidth;
         height = customHeight;
       }
-      // Build a simple workflow prompt
-      const prompt = {
-        // ...build your workflow JSON here based on selectedModel, prompt, negativeTags, etc...
-        // This is a placeholder. You should use your actual workflow structure.
-      };
-      const client = clientRef.current;
-      if (!client) throw new Error('ComfyUI client not connected');
-      const result = await client.enqueue(prompt, {
-        progress: ({ max, value }) => setProgress({ value, max }),
+
+      // Determine which pipeline to use and set it up
+      let pipeline: BasePipe | EfficientPipe;
+      
+      // Use EfficientPipe if we have ControlNet, LoRA, or uploaded image
+      // since these features are only supported in EfficientPipe
+      const shouldUseEfficientPipe = imageBuffer || selectedLora || selectedControlNet;
+
+      if (shouldUseEfficientPipe) {
+        const pipe = new EfficientPipe();
+        pipeline = pipe
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
+
+        // Add ControlNet if both image and controlnet model are selected
+        if (selectedControlNet && imageBuffer) {
+          console.log('Adding ControlNet to pipeline:', selectedControlNet, imageBuffer);
+          
+          const imageData = Buffer.from(arrayBufferToUint8Array(imageBuffer));
+          pipeline = pipe.cnet(selectedControlNet, imageData);
+        }
+
+        // Add input image if provided
+        if (imageBuffer) {
+          const imageData = arrayBufferToUint8Array(imageBuffer);
+          pipeline = pipe.image(Buffer.from(imageData));
+        }
+
+        // Add LoRA if selected
+        if (selectedLora) {
+          pipeline = pipe.lora(selectedLora, { strength: loraStrength });
+        }
+      } else {
+        // Use BasePipe for simple text-to-image generation
+        pipeline = new BasePipe()
+          .with(client)
+          .model(selectedModel)
+          .prompt(prompt)
+          .negative(negativeTags.join(', '))
+          .size(width, height)
+          .steps(steps)
+          .cfg(guidanceScale)
+          .denoise(denoise)
+          .sampler(sampler)
+          .scheduler(scheduler)
+          .seed();
+      }
+
+      setCurrentPipeline(pipeline);
+      console.log('Pipeline built:', pipeline);
+
+      // Execute pipeline with a 5-minute timeout
+      const pipelinePromise = pipeline.save().wait();
+      const result = await Promise.race([
+        pipelinePromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Generation timed out")), 5 * 60 * 1000)
+        )
+      ]) as { images: any[] };
+
+      console.log('Generated images:', result.images[0].data);
+      client.free(
+        {
+          free_memory: true,
+          unload_models: true
+        }
+      );
+      const base64Images = result.images.map((img) => {
+        const base64 = arrayBufferToBase64(img.data);
+        return `data:${img.mime};base64,${base64}`;
       });
-      // Assume result.images is an array of base64 strings or URLs
-      const base64Images = result.images || [];
-      setGeneratedImages((prev) => [...prev, ...base64Images]);
+      
       base64Images.forEach((dataUrl) => {
         try {
           db.addStorageItem({
@@ -701,12 +893,35 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           console.error('Error saving image to DB:', err);
         }
       });
+
+      setGeneratedImages((prev) => [...prev, ...base64Images]);
+      
+      const currentConfig: ModelConfig = {
+        denoise,
+        steps,
+        guidanceScale,
+        sampler,
+        scheduler,
+        negativeTags,
+      };
+      saveModelConfig(selectedModel, currentConfig);
     } catch (err) {
-      setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+      console.error('Error generating image:', err);
+      if (!generationError) {
+        if ((err as Error)?.message?.includes('timeout')) {
+          setGenerationError(`Connection timeout: ComfyUI is not responding. Please check if ComfyUI is running correctly.`);
+        } else {
+          setGenerationError(`Failed to generate image: ${(err as Error)?.message || 'Unknown error'}`);
+        }
+      }
     } finally {
       setProgress(null);
       setIsGenerating(false);
       setCurrentPipeline(null);
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
     }
   };
 
@@ -870,7 +1085,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   }, []);
   
   // Helper function to load models and data
-  const loadModelsAndData = async (client: ComfyUIApiClient) => {
+  const loadModelsAndData = async (client: Client) => {
     // Try to load SD Models
     try {
       setLoadingStatus(prev => ({ ...prev, sdModels: 'loading' }));
