@@ -33,6 +33,9 @@
     <strong>💬 LLM Chat • 🧠 AI Agents • 🔄 Automation • 🎨 Image Gen • 🧩 App Builder • 🧱 Widgets</strong><br/>
     <em>Powered by open-source, privacy-first, zero-cloud technology</em>
   </p>
+
+  💡 Heads up: ClaraVerse is in early development. Expect some rough edges while we build toward stability.
+
   
 </div>
 
