@@ -1214,7 +1214,8 @@ Please create a refined, conversational response that:
 - Keep the core facts and data accurate
 - Make it feel like a natural conversation
 
-Please provide your refined response:`;
+Please provide your refined response for following user question:
+"${originalUserQuestion}"`;
 
       // Track the refined content as it streams
       let refinedContent = '';
