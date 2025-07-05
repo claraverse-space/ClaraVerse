@@ -1302,7 +1302,7 @@ graph TD
                       <input
                         type="range"
                         min="1"
-                        max="10"
+                        max="50"
                         value={aiConfig.mcp?.maxToolCalls ?? 5}
                         onChange={(e) => handleMcpConfigChange('maxToolCalls', parseInt(e.target.value))}
                         className="w-full"
@@ -1484,7 +1484,7 @@ graph TD
                       <input
                         type="range"
                         min="1"
-                        max="20"
+                        max="50"
                         value={aiConfig?.autonomousAgent?.maxToolCalls || 10}
                         onChange={(e) => {
                           const currentAutonomousAgent = aiConfig?.autonomousAgent || {

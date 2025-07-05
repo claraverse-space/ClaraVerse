@@ -118,6 +118,46 @@ interface ToolsPlanResult {
   estimatedSteps: number;
 }
 
+// Add completion verification interfaces at the top of the file after other interfaces
+interface CompletionAnalysis {
+  originalRequest: string;
+  completedComponents: ComponentStatus[];
+  missingComponents: MissingItem[];
+  completionStatus: 'complete' | 'partial' | 'incomplete';
+  confidenceScore: number; // 0-100
+  nextActions: ActionItem[];
+  evidenceSummary: EvidenceMap;
+}
+
+interface ComponentStatus {
+  description: string;
+  status: 'completed' | 'verified' | 'attempted';
+  evidence: string[];
+  confidence: number;
+}
+
+interface MissingItem {
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  requiredTools: string[];
+  estimatedEffort: number;
+  blockedBy: string[];
+}
+
+interface ActionItem {
+  action: string;
+  toolsNeeded: string[];
+  expectedOutput: string;
+  dependencies: string[];
+}
+
+interface EvidenceMap {
+  filesCreated: string[];
+  dataRetrieved: string[];
+  operationsPerformed: string[];
+  verificationResults: string[];
+}
+
 export class ClaraApiService {
   private client: AssistantAPIClient | null = null;
   private currentProvider: ClaraProvider | null = null;
@@ -1315,8 +1355,8 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
     // Ensure we always make at least one call, even if maxSteps is 0
     // If tools are available, ensure at least 2 steps (initial call + follow-up after tools)
     const minStepsNeeded = tools.length > 0 ? 2 : 1;
-    const actualMaxSteps = Math.max(context.maxSteps, minStepsNeeded);
-    console.log(`🔧 Adjusted maxSteps from ${context.maxSteps} to ${actualMaxSteps} (min needed: ${minStepsNeeded} due to ${tools.length} tools available)`);
+    const actualMaxSteps = 25; // Hardcoded to 25 steps as requested
+    console.log(`🔧 Set maxSteps to ${actualMaxSteps} (hardcoded, originally ${context.maxSteps}, min needed: ${minStepsNeeded} due to ${tools.length} tools available)`);
 
     // STEP 2: Update system prompt with planning information
     const enhancedSystemPrompt = this.buildEnhancedSystemPrompt(
@@ -1651,6 +1691,9 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
 
           console.log(`🔄 Continuing to next step after tool execution...`);
           console.log(`📊 Current step: ${step}, actualMaxSteps: ${actualMaxSteps}, will continue: ${step + 1 < actualMaxSteps}`);
+          
+          // Removed per-step verification - now only runs once at the end
+          
           // Continue to next iteration for follow-up response
           continue;
         }
@@ -1759,6 +1802,238 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
 
     console.log(`🎯 Autonomous agent execution completed. Response content length: ${responseContent.length}, Tool results: ${allToolResults.length}`);
     console.log(`🔚 Loop ended at step ${context.currentStep + 1}/${actualMaxSteps}`);
+
+    // 🔍 POST-EXECUTION COMPLETION VERIFICATION - Check if task is actually complete
+    if (allToolResults.length > 0) {
+      try {
+        console.log(`🔍 ====== POST-EXECUTION VERIFICATION STARTING ======`);
+        console.log(`🔍 Total Steps: ${context.currentStep + 1}/${actualMaxSteps}`);
+        console.log(`🔍 Original Query: "${context.originalQuery}"`);
+        console.log(`🔍 Tool Results Count: ${allToolResults.length}`);
+        console.log(`🔍 Successful Tools: ${allToolResults.filter(r => r.success).length}`);
+        console.log(`🔍 Failed Tools: ${allToolResults.filter(r => !r.success).length}`);
+        
+        const completionAnalysis = await this.verifyTaskCompletion(
+          context.originalQuery,
+          allToolResults,
+          context,
+          context.currentStep,
+          modelId,
+          onContentChunk
+        );
+        
+        console.log(`🔍 ====== POST-EXECUTION VERIFICATION COMPLETED ======`);
+        console.log(`🔍 📊 Final completion analysis:`, {
+          status: completionAnalysis.completionStatus,
+          confidence: completionAnalysis.confidenceScore,
+          missingComponents: completionAnalysis.missingComponents.length,
+          nextActions: completionAnalysis.nextActions.length
+        });
+        
+        // Add verification results to UI
+        if (onContentChunk) {
+          if (completionAnalysis.completionStatus === 'complete') {
+            onContentChunk(`\n🎉 **Task verified as COMPLETE!** (${completionAnalysis.confidenceScore}% confidence)\n\n`);
+          } else if (completionAnalysis.completionStatus === 'partial') {
+            onContentChunk(`\n🔍 **Task partially complete** (${completionAnalysis.confidenceScore}% confidence)\n`);
+            if (completionAnalysis.missingComponents.length > 0) {
+              onContentChunk(`**Missing components**: ${completionAnalysis.missingComponents.map(m => m.description).join(', ')}\n`);
+            }
+          } else {
+            onContentChunk(`\n⚠️ **Task may be incomplete** (${completionAnalysis.confidenceScore}% confidence)\n`);
+            if (completionAnalysis.missingComponents.length > 0) {
+              onContentChunk(`**Missing components**: ${completionAnalysis.missingComponents.map(m => m.description).join(', ')}\n`);
+            }
+          }
+        }
+        
+        // 🎯 INTELLIGENT COMPLETION DECISION - Resume execution if task is incomplete
+        if (completionAnalysis.completionStatus === 'complete') {
+          console.log(`🔍 ✅ DECISION: Task verified as complete (${completionAnalysis.confidenceScore}% confidence) - finalizing response`);
+          responseContent += `\n\n**✅ Task Verification Complete** (${completionAnalysis.confidenceScore}% confidence)\n`;
+          
+        } else if ((completionAnalysis.completionStatus === 'partial' || completionAnalysis.completionStatus === 'incomplete') && 
+                   completionAnalysis.nextActions.length > 0 && 
+                   completionAnalysis.confidenceScore < 100 &&
+                   context.currentStep < (actualMaxSteps - 2)) {
+          
+          console.log(`🔍 🔄 DECISION: Task ${completionAnalysis.completionStatus} (${completionAnalysis.confidenceScore}% confidence) - RESUMING EXECUTION`);
+          console.log(`🔍 📋 Missing components: ${completionAnalysis.missingComponents.length}`);
+          console.log(`🔍 📋 Next actions: ${completionAnalysis.nextActions.length}`);
+          console.log(`🔍 📊 Current step: ${context.currentStep}, Max steps: ${actualMaxSteps}`);
+          
+          if (onContentChunk) {
+            onContentChunk(`\n🔄 **Task verification detected missing work - continuing execution...**\n`);
+            if (completionAnalysis.nextActions.length > 0) {
+              onContentChunk(`**Next actions**: ${completionAnalysis.nextActions.map(a => a.action).join(', ')}\n\n`);
+            }
+          }
+          
+          // Add specific guidance for continuation
+          const continuationPrompt = `\n\n**TASK CONTINUATION REQUIRED**
+
+Based on verification analysis, the task is only ${completionAnalysis.confidenceScore}% complete. Please continue execution to complete these remaining actions:
+
+${completionAnalysis.nextActions.map((action, i) => `${i + 1}. ${action.action} (using: ${action.toolsNeeded?.join(', ') || 'appropriate tools'})`).join('\n')}
+
+${completionAnalysis.missingComponents.length > 0 ? `\n**Missing components to complete:**\n${completionAnalysis.missingComponents.map(m => `• ${m.description} (priority: ${m.priority})`).join('\n')}` : ''}
+
+Continue with autonomous execution to complete these remaining tasks.`;
+          
+          conversationMessages.push({
+            role: 'system',
+            content: continuationPrompt
+          });
+          
+          // RESUME AUTONOMOUS EXECUTION for remaining steps
+          const remainingSteps = actualMaxSteps - context.currentStep - 1;
+          const continuationSteps = Math.min(remainingSteps, completionAnalysis.nextActions.length + 2);
+          
+          console.log(`🔍 🚀 RESUMING autonomous execution for ${continuationSteps} more steps...`);
+          
+          // Continue the autonomous loop for remaining actions
+          for (let contStep = 0; contStep < continuationSteps; contStep++) {
+            const totalStep = context.currentStep + 1 + contStep;
+            context.currentStep = totalStep;
+            
+            console.log(`🔍 🔄 Continuation step ${contStep + 1}/${continuationSteps} (total step ${totalStep + 1}/${actualMaxSteps})`);
+            
+            try {
+              if (onContentChunk) {
+                onContentChunk(`\n**Continuing execution - Step ${contStep + 1}**\n`);
+              }
+
+              // Make continuation call with proper streaming pattern
+              let contResponse: any;
+              if (config.features.enableStreaming) {
+                // Handle streaming with tool call collection (similar to main streaming logic)
+                const collectedToolCalls: any[] = [];
+                let stepContent = '';
+                
+                for await (const chunk of this.client!.streamChat(modelId, conversationMessages, options, tools)) {
+                  if (chunk.message?.content) {
+                    stepContent += chunk.message.content;
+                    if (onContentChunk) {
+                      onContentChunk(chunk.message.content);
+                    }
+                  }
+
+                  // Collect tool calls from chunks
+                  if (chunk.message?.tool_calls) {
+                    for (const toolCall of chunk.message.tool_calls) {
+                      if (!toolCall.id && !toolCall.function?.name) continue;
+                      
+                      let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
+                      if (!existingCall) {
+                        existingCall = {
+                          id: toolCall.id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                          type: toolCall.type || 'function',
+                          function: { name: '', arguments: '' }
+                        };
+                        collectedToolCalls.push(existingCall);
+                      }
+                      
+                      if (toolCall.function?.name) {
+                        existingCall.function.name = toolCall.function.name;
+                      }
+                      if (toolCall.function?.arguments) {
+                        existingCall.function.arguments += toolCall.function.arguments;
+                      }
+                    }
+                  }
+                }
+                
+                contResponse = {
+                  message: {
+                    content: stepContent,
+                    tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+                  }
+                };
+                responseContent += stepContent;
+              } else {
+                contResponse = await this.client!.sendChat(modelId, conversationMessages, options, tools);
+                const contContent = contResponse.message?.content || '';
+                responseContent += contContent;
+                if (onContentChunk && contContent) {
+                  onContentChunk(contContent);
+                }
+              }
+
+              // Handle any tool calls in continuation
+              if (contResponse.message?.tool_calls && contResponse.message.tool_calls.length > 0) {
+                console.log(`🔍 🔧 Processing ${contResponse.message.tool_calls.length} tool calls in continuation...`);
+                
+                conversationMessages.push({
+                  role: 'assistant',
+                  content: contResponse.message.content || '',
+                  tool_calls: contResponse.message.tool_calls
+                });
+
+                const contToolResults = await this.executeToolCallsWithRetry(
+                  contResponse.message.tool_calls, 
+                  context,
+                  onContentChunk
+                );
+
+                // Add tool results to conversation
+                for (const toolCall of contResponse.message.tool_calls) {
+                  const result = contToolResults.find(r => r.toolName === toolCall.function?.name);
+                  if (result) {
+                    const toolMessage = {
+                      role: 'tool' as const,
+                      content: typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+                      name: toolCall.function?.name || 'unknown_tool',
+                      tool_call_id: toolCall.id
+                    };
+                    conversationMessages.push(toolMessage);
+                  }
+                }
+
+                allToolResults.push(...contToolResults);
+              } else {
+                // No tool calls, we're done with continuation
+                console.log(`🔍 ✅ Continuation completed - no more tool calls needed`);
+                break;
+              }
+
+            } catch (contError) {
+              console.error(`🔍 ❌ Continuation step ${contStep + 1} failed:`, contError);
+              if (onContentChunk) {
+                onContentChunk(`\n❌ **Continuation step failed** - completing with current progress\n`);
+              }
+              break;
+            }
+          }
+          
+          console.log(`🔍 ✅ CONTINUATION COMPLETED - now finalizing response`);
+          if (onContentChunk) {
+            onContentChunk(`\n✅ **Continuation execution completed**\n\n`);
+          }
+          
+          responseContent += `\n\n**✅ Task Continuation Complete** - Additional actions executed to improve completion\n`;
+          
+        } else if (completionAnalysis.completionStatus === 'partial' || completionAnalysis.completionStatus === 'incomplete') {
+          console.log(`🔍 ⚠️ DECISION: Task ${completionAnalysis.completionStatus} (${completionAnalysis.confidenceScore}% confidence) but cannot continue (step limit or other constraints)`);
+          responseContent += `\n\n**🔍 Task Verification**: ${completionAnalysis.completionStatus === 'incomplete' ? 'Incomplete' : 'Partially complete'} (${completionAnalysis.confidenceScore}% confidence)\n`;
+          if (completionAnalysis.missingComponents.length > 0) {
+            responseContent += `**Missing components**: ${completionAnalysis.missingComponents.map(m => m.description).join(', ')}\n`;
+          }
+        } else {
+          console.log(`🔍 ⚠️ DECISION: Task status uncertain (${completionAnalysis.confidenceScore}% confidence)`);
+          responseContent += `\n\n**⚠️ Task Verification**: May be incomplete (${completionAnalysis.confidenceScore}% confidence)\n`;
+          if (completionAnalysis.missingComponents.length > 0) {
+            responseContent += `**Missing components**: ${completionAnalysis.missingComponents.map(m => m.description).join(', ')}\n`;
+          }
+        }
+        
+      } catch (verificationError) {
+        console.error(`🔍 ❌ POST-EXECUTION VERIFICATION FAILED:`, verificationError);
+        if (onContentChunk) {
+          onContentChunk(`\n⚠️ **Verification failed** - task completed but verification system encountered an error\n`);
+        }
+        responseContent += `\n\n**⚠️ Verification Note**: Task completed but verification system encountered an error\n`;
+      }
+    }
 
     // Create user-friendly summary of tool results
     let finalContent = responseContent;
@@ -2923,6 +3198,7 @@ IMPORTANT GUIDELINES:
 - For terminal/command tools (like iTerm MCP), plan to run a command AND then check the output
 - For file operations, plan to read/write AND then verify the result
 - For API calls, plan to make the call AND then process the response
+- For Browser you can do all sorta things since you are using users browser
 - Keep the summary concise but informative
 - The plan should be logical and sequential
 - Avoid repetitive tool calls - each step should build on the previous
@@ -2943,7 +3219,7 @@ RELEVANT_TOOLS:
 [Comma-separated list of tool names that will likely be used]
 
 ESTIMATED_STEPS:
-[Number between 1-10]`;
+[Number between 2-50]`;
 
       // ENHANCED: Include actual conversation history in planning messages
       const planningMessages: ChatMessage[] = [
@@ -3268,6 +3544,313 @@ ESTIMATED_STEPS:
   }
 
   /**
+   * Verify task completion using structured analysis
+   */
+  private async verifyTaskCompletion(
+    originalRequest: string,
+    toolResults: any[],
+    context: AgentExecutionContext,
+    currentStep: number,
+    modelId: string,
+    onContentChunk?: (content: string) => void
+  ): Promise<CompletionAnalysis> {
+    console.log(`🔍 ====== VERIFY TASK COMPLETION METHOD ENTERED ======`);
+    console.log(`🔍 Method Parameters:`);
+    console.log(`  - originalRequest: "${originalRequest}"`);
+    console.log(`  - toolResults length: ${toolResults?.length || 0}`);
+    console.log(`  - context:`, {
+      originalQuery: context?.originalQuery,
+      currentStep: context?.currentStep,
+      maxSteps: context?.maxSteps,
+      progressLog: context?.progressLog?.length || 0,
+      toolsSummary: context?.toolsSummary ? 'present' : 'missing',
+      executionPlan: context?.executionPlan ? 'present' : 'missing'
+    });
+    console.log(`  - currentStep: ${currentStep}`);
+    console.log(`  - modelId: "${modelId}"`);
+    console.log(`  - onContentChunk: ${!!onContentChunk}`);
+    
+    if (!this.client) {
+      console.error(`🔍 ❌ VERIFICATION FAILED: No API client configured`);
+      throw new Error('No API client configured');
+    }
+    
+    console.log(`🔍 ✅ API client is available`);
+
+    try {
+      console.log(`🔍 🚀 Starting verification process...`);
+      console.log(`🔍 Starting completion verification for: "${originalRequest}"`);
+      
+      if (onContentChunk) {
+        console.log(`🔍 📢 Sending verification start message to UI`);
+        onContentChunk('\n**🔍 VERIFYING TASK COMPLETION...**\n\n');
+      } else {
+        console.log(`🔍 ⚠️ No onContentChunk callback available for UI updates`);
+      }
+
+      // Format evidence for verification
+      console.log(`🔍 📝 Formatting evidence for verification...`);
+      const evidenceCollected = this.formatEvidenceForVerification(toolResults, context);
+      console.log(`🔍 📝 Evidence collected length: ${evidenceCollected?.length || 0} characters`);
+      console.log(`🔍 📝 Evidence preview:`, evidenceCollected?.substring(0, 200) + '...');
+      
+      console.log(`🔍 📋 Creating verification prompt...`);
+      const verificationPrompt = `You are Clara's task completion verifier. Analyze whether the user's request has been fully satisfied.
+
+**ORIGINAL USER REQUEST:**
+"${originalRequest}"
+
+**CURRENT EXECUTION STATUS:**
+- Step: ${currentStep + 1}
+- Tools executed: ${toolResults.length}
+- Successful tools: ${toolResults.filter(r => r.success).length}
+- Failed tools: ${toolResults.filter(r => !r.success).length}
+
+**EVIDENCE COLLECTED:**
+${evidenceCollected}
+
+**EXECUTION PLAN (if available):**
+${context.executionPlan || 'No plan generated'}
+
+**CRITICAL TASK:**
+Provide a thorough analysis in JSON format. Be CRITICAL and THOROUGH - only mark as "complete" if you have concrete evidence ALL parts of the request are done.
+
+**Response in this EXACT JSON format:**
+{
+  "originalRequest": "${originalRequest.replace(/"/g, '\\"')}",
+  "completedComponents": [
+    {
+      "description": "What was completed",
+      "status": "completed|verified|attempted", 
+      "evidence": ["concrete evidence pieces"],
+      "confidence": 95
+    }
+  ],
+  "missingComponents": [
+    {
+      "description": "What's still missing or incomplete",
+      "priority": "high|medium|low",
+      "requiredTools": ["tool1", "tool2"],
+      "estimatedEffort": 3,
+      "blockedBy": ["dependency issues"]
+    }
+  ],
+  "completionStatus": "complete|partial|incomplete",
+  "confidenceScore": 85,
+  "nextActions": [
+    {
+      "action": "Specific action needed",
+      "toolsNeeded": ["tool_name"],
+      "expectedOutput": "What this should produce",
+      "dependencies": ["what needs to happen first"]
+    }
+  ],
+  "evidenceSummary": {
+    "filesCreated": ["list"],
+    "dataRetrieved": ["list"], 
+    "operationsPerformed": ["list"],
+    "verificationResults": ["list"]
+  }
+}
+
+**GUIDELINES:**
+- Mark "complete" ONLY if you have solid evidence ALL parts are done
+- Be specific about evidence that proves completion
+- If anything is missing/uncertain, mark as "partial" or "incomplete"
+- Prioritize missing components by user impact
+- Provide actionable next steps with specific tools`;
+
+      // Use structured output with proper JSON schema
+      const verificationMessages: ChatMessage[] = [
+        {
+          role: 'system',
+          content: 'You are a thorough task completion verifier. Analyze evidence and provide structured completion analysis. Be critical and only mark tasks as complete when you have concrete proof.'
+        },
+        {
+          role: 'user',
+          content: verificationPrompt
+        }
+      ];
+
+      const verificationOptions = {
+        temperature: 0.1, // Low temperature for consistent analysis
+        max_tokens: 2000,
+        response_format: {
+          type: "json_object" as const
+        }
+      };
+
+      console.log(`🔍 📡 Sending completion verification request...`);
+      console.log(`🔍 📡 Model ID: ${modelId}`);
+      console.log(`🔍 📡 Messages count: ${verificationMessages.length}`);
+      console.log(`🔍 📡 Options:`, verificationOptions);
+      console.log(`🔍 📡 Verification messages:`, verificationMessages.map(m => ({ role: m.role, contentLength: m.content?.length })));
+      
+      const verificationStartTime = Date.now();
+      const response = await this.client.sendChat(modelId, verificationMessages, verificationOptions);
+      const verificationEndTime = Date.now();
+      const responseContent = response.message?.content || '{}';
+      
+      console.log(`🔍 📄 Verification API call completed in ${verificationEndTime - verificationStartTime}ms`);
+      console.log(`🔍 📄 Response status: ${response ? 'success' : 'failed'}`);
+      console.log(`🔍 📄 Response content length: ${responseContent?.length || 0} characters`);
+      console.log(`🔍 📄 Raw verification response:`, responseContent);
+      
+      try {
+        console.log(`🔍 🔧 Attempting to parse JSON response...`);
+        const analysis: CompletionAnalysis = JSON.parse(responseContent);
+        console.log(`🔍 ✅ JSON parsing successful`);
+        
+        console.log(`🔍 🔧 Parsed analysis object:`, {
+          originalRequest: analysis.originalRequest?.substring(0, 50) + '...',
+          completionStatus: analysis.completionStatus,
+          confidenceScore: analysis.confidenceScore,
+          completedComponents: analysis.completedComponents?.length || 0,
+          missingComponents: analysis.missingComponents?.length || 0,
+          nextActions: analysis.nextActions?.length || 0,
+          evidenceSummary: analysis.evidenceSummary ? 'present' : 'missing'
+        });
+        
+        // Validate the analysis structure
+        console.log(`🔍 🔧 Validating analysis structure...`);
+        if (!analysis.completionStatus || analysis.confidenceScore === undefined) {
+          console.warn(`🔍 ⚠️ Invalid completion analysis structure, using fallback`);
+          console.warn(`🔍 ⚠️ Missing: completionStatus=${!analysis.completionStatus}, confidenceScore=${analysis.confidenceScore === undefined}`);
+          return this.createFallbackCompletionAnalysis(originalRequest, toolResults, 'partial');
+        }
+        
+        console.log(`🔍 ✅ Analysis structure validation passed`);
+        console.log(`🔍 ✅ Completion verification complete:`, {
+          status: analysis.completionStatus,
+          confidence: analysis.confidenceScore,
+          completedComponents: analysis.completedComponents?.length || 0,
+          missingComponents: analysis.missingComponents?.length || 0,
+          nextActions: analysis.nextActions?.length || 0
+        });
+        
+        if (onContentChunk) {
+          onContentChunk(`✅ **Analysis Complete** - Status: ${analysis.completionStatus} (${analysis.confidenceScore}% confidence)\n\n`);
+        }
+        
+        return analysis;
+        
+      } catch (parseError) {
+        console.error(`🔍 ❌ Failed to parse completion analysis JSON:`, parseError);
+        console.error(`🔍 ❌ Parse error type:`, parseError instanceof Error ? parseError.name : typeof parseError);
+        console.error(`🔍 ❌ Parse error message:`, parseError instanceof Error ? parseError.message : String(parseError));
+        console.log(`🔍 📄 Problematic response content (first 500 chars):`, responseContent?.substring(0, 500));
+        console.log(`🔍 📄 Full problematic response:`, responseContent);
+        
+        // Fallback to basic analysis
+        console.log(`🔍 🔄 Using fallback analysis due to parse error`);
+        return this.createFallbackCompletionAnalysis(originalRequest, toolResults, 'partial');
+      }
+      
+    } catch (error) {
+      console.error(`🔍 ❌ Completion verification failed:`, error);
+      console.error(`🔍 ❌ Error type:`, error instanceof Error ? error.name : typeof error);
+      console.error(`🔍 ❌ Error message:`, error instanceof Error ? error.message : String(error));
+      console.error(`🔍 ❌ Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+      
+      // Return fallback analysis on error
+      console.log(`🔍 🔄 Using fallback analysis due to general error`);
+      return this.createFallbackCompletionAnalysis(originalRequest, toolResults, 'incomplete');
+    }
+  }
+
+  /**
+   * Format evidence for completion verification
+   */
+  private formatEvidenceForVerification(toolResults: any[], context: AgentExecutionContext): string {
+    if (toolResults.length === 0) {
+      return 'No tool results available for verification.';
+    }
+
+    let evidence = '';
+    
+    // Successful tool results
+    const successfulResults = toolResults.filter(r => r.success);
+    if (successfulResults.length > 0) {
+      evidence += `**SUCCESSFUL OPERATIONS (${successfulResults.length}):**\n`;
+      successfulResults.forEach((result, index) => {
+        evidence += `${index + 1}. **${result.toolName}**: `;
+        if (result.result && typeof result.result === 'string') {
+          const preview = result.result.length > 200 ? result.result.substring(0, 200) + '...' : result.result;
+          evidence += `${preview}\n`;
+        } else if (result.result && typeof result.result === 'object') {
+          evidence += `${JSON.stringify(result.result).substring(0, 200)}...\n`;
+        } else {
+          evidence += 'Executed successfully\n';
+        }
+      });
+      evidence += '\n';
+    }
+
+    // Failed tool results
+    const failedResults = toolResults.filter(r => !r.success);
+    if (failedResults.length > 0) {
+      evidence += `**FAILED OPERATIONS (${failedResults.length}):**\n`;
+      failedResults.forEach((result, index) => {
+        evidence += `${index + 1}. **${result.toolName}**: ${result.error || 'Unknown error'}\n`;
+      });
+      evidence += '\n';
+    }
+
+    // Execution context
+    evidence += `**EXECUTION CONTEXT:**\n`;
+    evidence += `- Current step: ${context.currentStep + 1}\n`;
+    evidence += `- Total attempts: ${context.attempts.length}\n`;
+    if (context.progressLog && context.progressLog.length > 0) {
+      evidence += `- Progress log: ${context.progressLog.join(', ')}\n`;
+    }
+
+    return evidence;
+  }
+
+  /**
+   * Create fallback completion analysis when structured analysis fails
+   */
+  private createFallbackCompletionAnalysis(
+    originalRequest: string, 
+    toolResults: any[], 
+    status: 'complete' | 'partial' | 'incomplete'
+  ): CompletionAnalysis {
+    const successfulTools = toolResults.filter(r => r.success);
+    const failedTools = toolResults.filter(r => !r.success);
+    
+    return {
+      originalRequest,
+      completedComponents: successfulTools.map(tool => ({
+        description: `${tool.toolName} executed successfully`,
+        status: 'completed' as const,
+        evidence: [tool.result ? String(tool.result).substring(0, 100) : 'Tool executed'],
+        confidence: 70
+      })),
+      missingComponents: status !== 'complete' ? [{
+        description: 'Unable to verify complete task fulfillment',
+        priority: 'high' as const,
+        requiredTools: ['verification_needed'],
+        estimatedEffort: 2,
+        blockedBy: ['unclear_requirements']
+      }] : [],
+      completionStatus: status,
+      confidenceScore: status === 'complete' ? 80 : (status === 'partial' ? 60 : 40),
+      nextActions: status !== 'complete' ? [{
+        action: 'Review task requirements and continue execution',
+        toolsNeeded: ['analysis'],
+        expectedOutput: 'Clarified next steps',
+        dependencies: ['task_analysis']
+      }] : [],
+      evidenceSummary: {
+        filesCreated: [],
+        dataRetrieved: [],
+        operationsPerformed: successfulTools.map(t => t.toolName),
+        verificationResults: [`${successfulTools.length} successful, ${failedTools.length} failed`]
+      }
+    };
+  }
+
+  /**
    * Create user-friendly summary of tool results (hides technical details)
    */
   private createToolResultSummary(toolResults: any[]): string {
@@ -3526,6 +4109,43 @@ ESTIMATED_STEPS:
     } catch (error) {
       // Silently handle preload errors since this is an optimization, not critical functionality
       console.log(`🔄 Model preload failed (non-critical): ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Clear incorrectly blacklisted tools for the current provider
+   * This is useful when tools were blacklisted due to system bugs rather than actual tool issues
+   */
+  public clearBlacklistedTools(): void {
+    if (this.currentProvider?.id) {
+      console.log(`🧹 Clearing blacklisted tools for provider: ${this.currentProvider.name} (${this.currentProvider.id})`);
+      
+      // Clear from the current client if available
+      if (this.client) {
+        const baseClient = this.client as any;
+        
+        // Try to access the problematic tools clearing methods
+        if (baseClient.clearProblematicToolsForProvider) {
+          baseClient.clearProblematicToolsForProvider(this.currentProvider.id);
+          console.log(`✅ Cleared blacklisted tools for provider ${this.currentProvider.id}`);
+        }
+        
+        if (baseClient.clearProblematicTools) {
+          baseClient.clearProblematicTools();
+          console.log(`✅ Cleared all globally blacklisted tools`);
+        }
+        
+        // Add notification about the fix
+        addInfoNotification(
+          'Tools Reset',
+          `Cleared incorrectly blacklisted tools for ${this.currentProvider.name}. Tools affected by the tool_call_id bug are now available again.`,
+          8000
+        );
+      } else {
+        console.warn('⚠️ No API client available to clear blacklisted tools');
+      }
+    } else {
+      console.warn('⚠️ No current provider to clear blacklisted tools for');
     }
   }
 }

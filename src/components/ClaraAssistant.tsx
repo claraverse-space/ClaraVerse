@@ -901,6 +901,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     const loadProvidersAndModels = async () => {
       setIsLoadingProviders(true);
       try {
+        // Clear incorrectly blacklisted tools (fixes tool_call_id bug)
+        console.log('🧹 Clearing blacklisted tools affected by tool_call_id bug...');
+        claraApiService.clearBlacklistedTools();
+        
         // Initialize MCP service
         try {
           await claraMCPService.initialize();
@@ -1131,6 +1135,15 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     };
 
     initializeTTS();
+    
+    // Make clearBlacklistedTools available globally for debugging
+    if (typeof window !== 'undefined') {
+      (window as any).clearBlacklistedTools = () => {
+        console.log('🧹 Manually clearing blacklisted tools...');
+        claraApiService.clearBlacklistedTools();
+      };
+      console.log('🔧 clearBlacklistedTools() is now available globally for debugging');
+    }
     
     // Cleanup TTS service on unmount
     return () => {
@@ -2907,6 +2920,62 @@ Console output:`;
       }, 3000);
     };
 
+    // Test completion verification system specifically
+    (window as any).testCompletionVerification = async () => {
+      console.log('🔍 ====== TESTING COMPLETION VERIFICATION SYSTEM ======');
+      
+      if (!sessionConfig.aiConfig?.autonomousAgent?.enabled) {
+        console.log('🔍 ⚠️ Autonomous agent is not enabled. Enable it first to test verification.');
+        console.log('🔍 💡 You can enable it in Advanced Options → Autonomous Agent → Enable');
+        return;
+      }
+      
+      if (!sessionConfig.aiConfig?.provider || !sessionConfig.aiConfig?.models?.text) {
+        console.log('🔍 ⚠️ No provider or text model configured. Please configure them first.');
+        return;
+      }
+      
+      console.log('🔍 ✅ Prerequisites met, testing completion verification...');
+      console.log('🔍 📊 Current config:', {
+        provider: sessionConfig.aiConfig.provider,
+        textModel: sessionConfig.aiConfig.models.text,
+        autonomousEnabled: sessionConfig.aiConfig.autonomousAgent.enabled
+      });
+      
+      // Send a simple test message to trigger autonomous mode with verification
+      const testMessage = "Please just say hello and tell me you're working correctly.";
+      console.log(`🔍 📤 Sending test message: "${testMessage}"`);
+      console.log('🔍 🔍 Watch the console for detailed verification logs marked with 🔍');
+      
+      try {
+        await handleSendMessage(testMessage);
+        console.log('🔍 ✅ Test message sent. Check the detailed logs above for verification system activity.');
+      } catch (error) {
+        console.error('🔍 ❌ Test message failed:', error);
+      }
+    };
+
+    // Quick verification system check
+    (window as any).debugVerificationSystem = () => {
+      console.log('🔍 ====== VERIFICATION SYSTEM DEBUG INFO ======');
+      console.log('🔍 📊 Current Clara Configuration:');
+      console.log('  - Provider:', sessionConfig.aiConfig?.provider || 'none');
+      console.log('  - Text Model:', sessionConfig.aiConfig?.models?.text || 'none');
+      console.log('  - Autonomous Enabled:', sessionConfig.aiConfig?.autonomousAgent?.enabled || false);
+      console.log('  - Tools Enabled:', sessionConfig.aiConfig?.features?.enableTools || false);
+      console.log('  - MCP Enabled:', sessionConfig.aiConfig?.features?.enableMCP || false);
+      console.log('  - Streaming Enabled:', sessionConfig.aiConfig?.features?.enableStreaming || false);
+      console.log('');
+      console.log('🔍 🔧 API Service Status:');
+      console.log('  - Current Provider:', claraApiService.getCurrentProvider()?.name || 'none');
+      console.log('  - Current Client:', claraApiService.getCurrentClient() ? 'available' : 'none');
+      console.log('');
+      console.log('🔍 💡 To test verification:');
+      console.log('  1. Enable Autonomous Agent in Advanced Options');
+      console.log('  2. Run: testCompletionVerification()');
+      console.log('  3. Look for 🔍 logs in console showing verification steps');
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -2925,6 +2994,8 @@ Console output:`;
       delete (window as any).testHealthCachePerformance;
       delete (window as any).debugProblematicTools;
       delete (window as any).debugClara;
+      delete (window as any).testCompletionVerification;
+      delete (window as any).debugVerificationSystem;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
       providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);

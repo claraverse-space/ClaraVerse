@@ -246,13 +246,13 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   ];
 
   // Debug logging for ComfyUI visibility
-  console.log('🔍 Sidebar Debug:', {
-    'featureConfig.comfyUI': featureConfig.comfyUI,
-    'enhancedServiceStatus.comfyui': enhancedServiceStatus.comfyui,
-    'comfyui state': enhancedServiceStatus.comfyui?.state,
-    'final menu items count': mainMenuItems.length,
-    'has image-gen': mainMenuItems.some(item => item.id === 'image-gen')
-  });
+  // console.log('🔍 Sidebar Debug:', {
+  //   'featureConfig.comfyUI': featureConfig.comfyUI,
+  //   'enhancedServiceStatus.comfyui': enhancedServiceStatus.comfyui,
+  //   'comfyui state': enhancedServiceStatus.comfyui?.state,
+  //   'final menu items count': mainMenuItems.length,
+  //   'has image-gen': mainMenuItems.some(item => item.id === 'image-gen')
+  // });
 
   const bottomMenuItems: MenuItem[] = [
     { icon: Settings, label: 'Settings', id: 'settings' },

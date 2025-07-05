@@ -793,7 +793,8 @@ export class APIClient {
             }
           }))
         ];
-        return { role: msg.role, content };
+        // CRITICAL FIX: Preserve ALL message properties (especially tool_call_id) when converting for images
+        return { ...msg, content };
       }
       return msg;
     });

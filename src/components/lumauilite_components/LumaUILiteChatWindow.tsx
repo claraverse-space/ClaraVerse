@@ -1279,8 +1279,8 @@ Now executing plan systematically...`,
       // STEP 2: Execute plan with auto tool calling
       let conversationIteration = 0;
       let totalToolCalls = 0;
-      const maxToolCalls = Math.min(20, Math.max(1, parameters.maxIterations));
-      const maxConversationTurns = Math.min(10, Math.max(3, Math.ceil(maxToolCalls / 2)));
+      const maxToolCalls = Math.min(50, Math.max(1, parameters.maxIterations));
+      const maxConversationTurns = Math.min(25, Math.max(3, Math.ceil(maxToolCalls / 2)));
 
       console.log('🎯 Auto mode limits:', {
         maxToolCalls,
