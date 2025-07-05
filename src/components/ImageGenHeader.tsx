@@ -11,6 +11,7 @@ interface ImageGenHeaderProps {
   onSwitchToComfyUI?: () => void;
   onRefreshComfyUI?: () => void;
   showComfyUIInterface?: boolean;
+  comfyuiMode?: string;
   // Pass system stats from ComfyUI
   systemStats?: any;
 }
@@ -23,9 +24,10 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
   onSwitchToComfyUI,
   onRefreshComfyUI,
   showComfyUIInterface,
+  comfyuiMode,
   systemStats
 }) => {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, setTheme } = useTheme();
 
   // Safely extract and format some system stats if available
   const pythonVersion = systemStats?.system?.python_version || 'N/A';
@@ -34,20 +36,43 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
   const ramFreeGB = (ramFree / 1_073_741_824).toFixed(2);  // Convert bytes to GB
   const ramTotalGB = (ramTotal / 1_073_741_824).toFixed(2);
 
+  // Format ComfyUI mode for display
+  const formatComfyUIMode = (mode: string | undefined) => {
+    switch (mode?.toLowerCase()) {
+      case 'docker':
+        return 'Docker';
+      case 'manual':
+        return 'Manual';
+      case 'auto':
+        return 'Auto';
+      default:
+        return mode || 'Unknown';
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme(isDark ? 'light' : 'dark');
+  };
+
   return (
     <div className="glassmorphic h-16 px-6 flex items-center justify-between">
       {/* Left side: System stats (if any) */}
       <div className="flex-1 flex items-center gap-6">
-        {systemStats && (
-          <div className="text-xs text-gray-700 dark:text-gray-300">
-            <span className="mr-4">
-              <strong>Python:</strong> {pythonVersion}
-            </span>
-            <span>
-              <strong>RAM:</strong> {ramFreeGB}/{ramTotalGB} GB
-            </span>
-          </div>
-        )}
+        <div className="text-xs text-gray-700 dark:text-gray-300">
+          <span className="mr-4">
+            <strong>ComfyUI:</strong> {formatComfyUIMode(comfyuiMode)}
+          </span>
+          {systemStats && (
+            <>
+              <span className="mr-4">
+                <strong>Python:</strong> {pythonVersion}
+              </span>
+              <span>
+                <strong>RAM:</strong> {ramFreeGB}/{ramTotalGB} GB
+              </span>
+            </>
+          )}
+        </div>
       </div>
       
       {/* Right side: Gallery, theme toggle, notifications, user info */}
@@ -60,23 +85,28 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
           <span className="text-sm text-gray-700 dark:text-gray-300">Gallery</span>
         </button>
 
-        <button
-          onClick={onModelManager}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
-          title="Model Manager"
-        >
-          <Download className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          <span className="text-sm text-gray-700 dark:text-gray-300">Models</span>
-        </button>
+        {/* Only show Models and ComfyUI buttons when NOT in manual mode */}
+        {comfyuiMode?.toLowerCase() !== 'manual' && (
+          <>
+            <button
+              onClick={onModelManager}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
+              title="Model Manager"
+            >
+              <Download className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Models</span>
+            </button>
 
-        <button
-          onClick={onComfyUIManager}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
-          title="ComfyUI Manager"
-        >
-          <Settings className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          <span className="text-sm text-gray-700 dark:text-gray-300">ComfyUI</span>
-        </button>
+            <button
+              onClick={onComfyUIManager}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"
+              title="ComfyUI Manager"
+            >
+              <Settings className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">ComfyUI</span>
+            </button>
+          </>
+        )}
 
         {/* ComfyUI Interface Button */}
         <button

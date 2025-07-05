@@ -16,11 +16,81 @@ interface ServicePorts {
   ollama: number;
 }
 
+// Custom hook to get N8N service configuration
+const useN8NServiceConfig = () => {
+  const [n8nUrl, setN8nUrl] = useState<string>('http://localhost:5678');
+  const [n8nMode, setN8nMode] = useState<string>('docker');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadServiceConfig = async () => {
+      try {
+        console.log('🔍 Loading N8N service configuration...');
+        
+        // Check if electronAPI is available
+        if (!(window as any).electronAPI) {
+          console.error('❌ electronAPI not available');
+          return;
+        }
+        
+        // Get service configurations and status
+        console.log('📡 Calling service-config:get-all-configs...');
+        const configs = await (window as any).electronAPI.invoke('service-config:get-all-configs');
+        console.log('📡 Calling service-config:get-enhanced-status...');
+        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+        
+        console.log('✅ Service API calls completed');
+
+        const n8nConfig = configs?.n8n || { mode: 'docker', url: null };
+        const n8nStatus = status?.n8n || {};
+
+        // Set the mode from the actual deployment mode in status, fallback to config mode
+        const actualMode = n8nStatus.deploymentMode || n8nConfig.mode || 'docker';
+        setN8nMode(actualMode);
+
+        let finalUrl = 'http://localhost:5678'; // Default fallback
+
+        if (n8nConfig.url) {
+          // Use configured URL
+          finalUrl = n8nConfig.url;
+        } else if (n8nStatus.serviceUrl) {
+          // Use auto-detected URL from service status
+          finalUrl = n8nStatus.serviceUrl;
+        }
+
+        console.log('🔗 N8N Service Config DEBUG:', {
+          configs: configs,
+          status: status,
+          n8nConfig: n8nConfig,
+          n8nStatus: n8nStatus,
+          configMode: n8nConfig.mode,
+          deploymentMode: n8nStatus.deploymentMode,
+          actualMode: actualMode,
+          configUrl: n8nConfig.url,
+          statusUrl: n8nStatus.serviceUrl,
+          finalUrl
+        });
+
+        setN8nUrl(finalUrl);
+      } catch (error) {
+        console.error('Failed to load N8N service config:', error);
+        // Keep default URL and mode
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadServiceConfig();
+
+    // Refresh configuration every 30 seconds
+    const interval = setInterval(loadServiceConfig, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { n8nUrl, n8nMode, loading };
+};
+
 declare global {
-  interface Window {
-    electron: ElectronAPI;
-  }
-  
   interface WebViewHTMLAttributes<T> extends React.HTMLAttributes<T> {
     src?: string;
     allowpopups?: string; 
@@ -43,12 +113,13 @@ interface N8NProps {
 }
 
 const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
+  // Use N8N service configuration
+  const { n8nUrl, n8nMode, loading: serviceConfigLoading } = useN8NServiceConfig();
+  
   const [isLoading, setIsLoading] = useState(true); 
   const [error, setError] = useState<string | null>(null);
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
-  const [n8nPort, setN8nPort] = useState<number | null>(null);
-  const [ports, setPorts] = useState<ServicePorts | null>(null);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const webviewRef = useRef<WebviewTag | null>(null);
   const [showWebhookTester, setShowWebhookTester] = useState(false);
@@ -66,6 +137,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [showStore, setShowStore] = useState(false);
   const [showNewFeatureTag, setShowNewFeatureTag] = useState(false);
   const [showMiniStore, setShowMiniStore] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   // Wallpaper state
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
@@ -109,25 +181,10 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   }, [showToolsList]);
 
   useEffect(() => {
-    const fetchPorts = async () => {
-      try {
-        if (!window.electron?.getServicePorts) {
-          throw new Error('Electron API not available');
-        }
-        const ports = await window.electron.getServicePorts();
-        setN8nPort(ports.n8n);
-        setPorts(ports);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to get service ports';
-        setError(errorMessage);
-        console.error(err);
-      }
-    };
-    fetchPorts();
-
+    // Setup terminal output listener
     let cleanup: (() => void) | null = null;
-    if (window.electron?.ipcRenderer) {
-      cleanup = window.electron.ipcRenderer.on('setup-status', (status) => {
+    if ((window as any).electronAPI?.ipcRenderer) {
+      cleanup = (window as any).electronAPI.ipcRenderer.on('setup-status', (status: any) => {
         if (typeof status === 'object' && status !== null) {
           const { type = 'info', message } = status as SetupStatus;
           setTerminalOutput(prev => [...prev, `${type}: ${message}`]);
@@ -164,16 +221,16 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   };
 
   const handleOpenExternal = () => {
-    if (n8nPort) {
-      window.open(`http://localhost:${n8nPort}`, '_blank');
+    if (n8nUrl) {
+      window.open(n8nUrl, '_blank');
     } else {
-      setError("Cannot open n8n externally: Port not determined.");
+      setError("Cannot open n8n externally: URL not determined.");
     }
   };
 
   useEffect(() => {
     const webview = webviewRef.current;
-    if (!webview || n8nPort === null) {
+    if (!webview || !n8nUrl || serviceConfigLoading) {
       return;
     }
 
@@ -226,9 +283,8 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
     webview.addEventListener('did-fail-load', handleDidFailLoad);
     webview.addEventListener('dom-ready', handleDomReady);
 
-    // Set initial URL
-    const n8nUrl = `http://localhost:${n8nPort}`;
-    console.log('Setting n8n URL:', n8nUrl);
+    // Set URL from service configuration
+    console.log('Setting n8n URL from service config:', n8nUrl);
     webview.src = n8nUrl;
 
     return () => {
@@ -237,27 +293,36 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       webview.removeEventListener('did-fail-load', handleDidFailLoad);
       webview.removeEventListener('dom-ready', handleDomReady);
     };
-  }, [n8nPort]);
+  }, [n8nUrl, serviceConfigLoading]);
 
   const handleTestWebhook = async () => {
-    setIsTestingWebhook(true);
-    setWebhookResponse(null);
+    if (!n8nUrl) {
+      setError("Cannot test webhook: n8n URL not available");
+      return;
+    }
+
     try {
-      const response = await fetch(webhookUrl, {
-        method: webhookMethod,
+      const response = await fetch(`${n8nUrl}/webhook-test/test`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: webhookMethod !== 'GET' ? webhookBody : undefined,
+        body: JSON.stringify({
+          message: 'Test webhook from ClaraVerse',
+          timestamp: new Date().toISOString(),
+        }),
       });
-      
-      const data = await response.json();
-      setWebhookResponse(JSON.stringify(data, null, 2));
-    } catch (err) {
-      setWebhookResponse(`Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`);
-    } finally {
-      setIsTestingWebhook(false);
+
+      if (response.ok) {
+        setTestResult('✅ Webhook test successful!');
+      } else {
+        setTestResult(`❌ Webhook test failed: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      setTestResult(`❌ Webhook test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+
+    setTimeout(() => setTestResult(null), 5000);
   };
 
   const handleCreateTool = async () => {
@@ -316,6 +381,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       setTools(toolsList);
     } catch (err) {
       console.error('Failed to load tools:', err);
+      setError('Failed to load tools');
     }
   };
 
@@ -407,6 +473,12 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
               </>
             )}
           </button>
+
+          {testResult && (
+            <div className="text-center text-lg font-semibold text-green-500 dark:text-green-400">
+              {testResult}
+            </div>
+          )}
 
           {webhookResponse && (
             <>
@@ -610,7 +682,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleRefresh}
-                    disabled={isLoading || !n8nPort}
+                    disabled={isLoading || !n8nUrl}
                     className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed group relative"
                     title="Refresh n8n View"
                   >
@@ -650,10 +722,21 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {n8nPort ? <span className="text-xs text-gray-500 dark:text-gray-400">n8n Port: {n8nPort}</span> : <span className="text-xs text-yellow-500">Fetching port...</span>}
+                  {n8nUrl ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">n8n URL: {n8nUrl}</span>
+                      {n8nMode && (
+                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
+                          {n8nMode}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-yellow-500">Fetching URL...</span>
+                  )}
                   <button
                     onClick={handleOpenExternal}
-                    disabled={!n8nPort}
+                    disabled={!n8nUrl}
                     className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed group relative"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -693,7 +776,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
 
               <div className="flex-1 flex flex-col overflow-hidden">
                 <div className={`flex-1 ${showTerminal ? 'h-2/3' : 'h-full'} transition-height duration-300 ease-in-out`}>
-                  {n8nPort !== null ? (
+                  {n8nUrl ? (
                     <webview
                       ref={webviewRef}
                       className="w-full h-full border-none"
@@ -701,7 +784,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-gray-500">
-                      {isLoading ? 'Loading...' : 'Determining n8n port...'}
+                      {isLoading ? 'Loading...' : 'Determining n8n URL...'}
                     </div>
                   )}
                 </div>

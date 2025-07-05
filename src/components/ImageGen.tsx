@@ -37,6 +37,7 @@ declare global {
 // Custom hook to get ComfyUI service configuration
 const useComfyUIServiceConfig = () => {
   const [comfyuiUrl, setComfyuiUrl] = useState<string>('http://localhost:8188');
+  const [comfyuiMode, setComfyuiMode] = useState<string>('docker');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +62,10 @@ const useComfyUIServiceConfig = () => {
         const comfyuiConfig = configs?.comfyui || { mode: 'docker', url: null };
         const comfyuiStatus = status?.comfyui || {};
 
+        // Set the mode from the actual deployment mode in status, fallback to config mode
+        const actualMode = comfyuiStatus.deploymentMode || comfyuiConfig.mode || 'docker';
+        setComfyuiMode(actualMode);
+
         let finalUrl = 'http://localhost:8188'; // Default fallback
 
         if (comfyuiConfig.mode === 'manual' && comfyuiConfig.url) {
@@ -84,7 +89,9 @@ const useComfyUIServiceConfig = () => {
           status: status,
           comfyuiConfig: comfyuiConfig,
           comfyuiStatus: comfyuiStatus,
-          mode: comfyuiConfig.mode,
+          configMode: comfyuiConfig.mode,
+          deploymentMode: comfyuiStatus.deploymentMode,
+          actualMode: actualMode,
           configUrl: comfyuiConfig.url,
           statusUrl: comfyuiStatus.serviceUrl,
           finalUrl
@@ -93,7 +100,7 @@ const useComfyUIServiceConfig = () => {
         setComfyuiUrl(finalUrl);
       } catch (error) {
         console.error('Failed to load ComfyUI service config:', error);
-        // Keep default URL
+        // Keep default URL and mode
       } finally {
         setLoading(false);
       }
@@ -106,7 +113,7 @@ const useComfyUIServiceConfig = () => {
     return () => clearInterval(interval);
   }, []);
 
-  return { comfyuiUrl, loading };
+  return { comfyuiUrl, comfyuiMode, loading };
 };
 
 // ComfyUI WebView Component
@@ -538,7 +545,7 @@ const SystemCompatibilityModal: React.FC<{
 
 const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // Use ComfyUI service configuration
-  const { comfyuiUrl, loading: serviceConfigLoading } = useComfyUIServiceConfig();
+  const { comfyuiUrl, comfyuiMode, loading: serviceConfigLoading } = useComfyUIServiceConfig();
 
   // Wait for the client's WebSocket connection to open before proceeding - with timeout
   const waitForClientConnection = async (client: Client): Promise<void> => {
@@ -1697,6 +1704,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           onSwitchToComfyUI={handleSwitchToComfyUI}
           onRefreshComfyUI={refreshComfyUI}
           showComfyUIInterface={showComfyUIInterface}
+          comfyuiMode={comfyuiMode}
         />
         
         {/* Conditional rendering: Show either Clara's interface or ComfyUI interface */}
