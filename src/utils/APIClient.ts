@@ -1,4 +1,6 @@
 import type { Tool } from '../db';
+import { TokenLimitRecoveryService } from '../services/tokenLimitRecoveryService';
+import { ToolSuccessRegistry } from '../services/toolSuccessRegistry';
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -76,6 +78,7 @@ export class APIClient {
   private abortController: AbortController | null = null;
   private config: APIConfig;
   private static problematicTools: Set<string> = new Set();
+  private recoveryService: TokenLimitRecoveryService;
 
   constructor(baseUrl: string, config?: Partial<APIConfig>) {
     this.config = {
@@ -83,6 +86,10 @@ export class APIClient {
       baseUrl: baseUrl,
       providerId: config?.providerId
     };
+    
+    // Initialize the recovery service and set this API client
+    this.recoveryService = TokenLimitRecoveryService.getInstance();
+    this.recoveryService.setApiClient(this);
   }
 
   /**
@@ -300,7 +307,29 @@ export class APIClient {
         errorData: error.errorData
       });
       
-      // Check if this is an OpenAI tool validation error
+      // CRITICAL: Check token limit errors FIRST before tool validation errors
+      const isTokenLimitError = this.isTokenLimitError(error);
+      console.log(`🔍 [DYNAMIC-TOOLS-DEBUG] Is token limit error:`, isTokenLimitError);
+      
+      if (isTokenLimitError) {
+        console.log("🔄 [TOKEN-LIMIT] Token limit error detected, initiating recovery...");
+        
+        // Parse token limit error details
+        const tokenLimitError = this.parseTokenLimitError(error);
+        
+        // Use recovery service to compress context and continue
+        const recoveredMessages = await this.recoveryService.handleTokenLimitError(
+          tokenLimitError,
+          messages,
+          `chat_${Date.now()}`
+        );
+        
+        // Retry with recovered messages
+        console.log("🔄 [TOKEN-LIMIT] Retrying with compressed context...");
+        return this.sendChatWithDynamicToolRemoval(model, recoveredMessages, options, tools, attempt + 1);
+      }
+      
+      // Check if this is an OpenAI tool validation error (after excluding token limit errors)
       const isToolValidationError = this.isOpenAIToolValidationError(error);
       console.log(`🔍 [DYNAMIC-TOOLS-DEBUG] Is tool validation error:`, isToolValidationError);
       
@@ -357,7 +386,7 @@ export class APIClient {
         console.warn(`⚠️ [DYNAMIC-TOOLS] Attempting once more without tools (attempt ${attempt + 1})`);
         return this.sendChatWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
       } else {
-        // Not a tool validation error, re-throw the error
+        // Not a tool validation error or token limit error, re-throw the error
         throw error;
       }
     }
@@ -612,6 +641,28 @@ export class APIClient {
         throw new Error('Operation was aborted by user');
       }
 
+      // CRITICAL: Check token limit errors FIRST in streaming
+      const isTokenLimitError = this.isTokenLimitError(error);
+      
+      if (isTokenLimitError) {
+        console.log("🔄 [TOKEN-LIMIT-STREAM] Token limit error detected during streaming, initiating recovery...");
+        
+        // Parse token limit error details
+        const tokenLimitError = this.parseTokenLimitError(error);
+        
+        // Use recovery service to compress context and continue
+        const recoveredMessages = await this.recoveryService.handleTokenLimitError(
+          tokenLimitError,
+          messages,
+          `stream_${Date.now()}`
+        );
+        
+        // Retry with recovered messages
+        console.log("🔄 [TOKEN-LIMIT-STREAM] Retrying streaming with compressed context...");
+        yield* this.streamChatWithDynamicToolRemoval(model, recoveredMessages, options, tools, attempt + 1);
+        return;
+      }
+      
       // Check if this is an OpenAI tool validation error that occurred during streaming
       const isToolValidationError = this.isOpenAIToolValidationError(error);
       
@@ -653,6 +704,47 @@ export class APIClient {
   }
 
   /**
+   * Check if the error is a token limit error
+   */
+  private isTokenLimitError(error: any): boolean {
+    const errorMessage = error.message || error.toString();
+    return errorMessage.includes('maximum context length') || 
+           errorMessage.includes('token') && errorMessage.includes('limit') ||
+           errorMessage.includes('context_length_exceeded') ||
+           errorMessage.includes('tokens') && (errorMessage.includes('exceed') || errorMessage.includes('maximum'));
+  }
+
+  /**
+   * Parse token limit error details from error message
+   */
+  private parseTokenLimitError(error: any): any {
+    const errorMessage = error.message || error.toString();
+    
+    // Pattern: "This model's maximum context length is 128000 tokens. However, you requested 130755 tokens (122755 in the messages, 8000 in the completion)."
+    const tokenPattern = /maximum context length is (\d+) tokens.*?you requested (\d+) tokens.*?\((\d+) in the messages(?:, (\d+) in the completion)?\)/;
+    const match = errorMessage.match(tokenPattern);
+    
+    if (match) {
+      return {
+        message: errorMessage,
+        maxTokens: parseInt(match[1]),
+        tokensRequested: parseInt(match[2]),
+        messagesTokens: parseInt(match[3]),
+        completionTokens: parseInt(match[4] || '0')
+      };
+    }
+    
+    // Fallback for other token limit error formats
+    return {
+      message: errorMessage,
+      maxTokens: 128000, // Default assumption
+      tokensRequested: 150000, // Estimated based on error
+      messagesTokens: 140000, // Estimated
+      completionTokens: 10000 // Estimated
+    };
+  }
+
+  /**
    * Check if an error is an OpenAI tool validation error
    */
   private isOpenAIToolValidationError(error: any): boolean {
@@ -668,6 +760,13 @@ export class APIClient {
       errorType: errorData?.error?.type,
       errorParam: errorData?.error?.param
     });
+    
+    // CRITICAL: Exclude token limit errors first
+    const isTokenLimitError = this.isTokenLimitError(error);
+    if (isTokenLimitError) {
+      console.log(`🔍 [ERROR-CHECK] This is a token limit error, not a tool validation error`);
+      return false;
+    }
     
     // Check for OpenAI function parameter validation errors
     const isValidationError = (
@@ -858,10 +957,30 @@ export class APIClient {
 
   /**
    * Store a problematic tool so it won't be loaded again for this specific provider
+   * Now checks if the tool is protected from blacklisting first
    */
   private storeProblematicTool(tool: Tool, errorMessage: string, providerId?: string): void {
-    // Create provider-specific key
     const providerPrefix = providerId || 'unknown';
+    
+    // Check if the tool is protected from blacklisting
+    const blacklistResult = ToolSuccessRegistry.attemptBlacklist(
+      tool.name,
+      tool.description,
+      providerPrefix,
+      errorMessage
+    );
+    
+    if (!blacklistResult.allowed) {
+      console.warn(`🛡️ [BLACKLIST-PROTECTION] Tool ${tool.name} protected from blacklisting`);
+      console.warn(`🛡️ [BLACKLIST-PROTECTION] Reason: ${blacklistResult.reason}`);
+      console.warn(`🛡️ [BLACKLIST-PROTECTION] Original error: ${errorMessage}`);
+      
+      // Add notification about protection
+      console.log(`🚫 [BLACKLIST-PREVENTED] False positive blacklist prevented for tool: ${tool.name}`);
+      return; // Don't blacklist the tool
+    }
+    
+    // Tool is not protected, proceed with blacklisting
     const toolKey = `${providerPrefix}:${tool.name}:${tool.description}`;
     APIClient.problematicTools.add(toolKey);
     
@@ -891,6 +1010,22 @@ export class APIClient {
     } catch (error) {
       console.warn('Failed to store problematic tool in localStorage:', error);
     }
+  }
+
+  /**
+   * Record a successful tool execution to prevent false positive blacklisting
+   */
+  public recordToolSuccess(toolName: string, toolDescription: string, toolCallId?: string): void {
+    const providerPrefix = this.config.providerId || 'unknown';
+    
+    ToolSuccessRegistry.recordSuccess(
+      toolName,
+      toolDescription,
+      providerPrefix,
+      toolCallId
+    );
+    
+    console.log(`✅ [TOOL-SUCCESS] Recorded successful execution of ${toolName} for provider ${providerPrefix}`);
   }
 
   /**

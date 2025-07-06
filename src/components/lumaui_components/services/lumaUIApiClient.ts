@@ -1,4 +1,5 @@
 import type { Tool } from '../../../db';
+import { ToolSuccessRegistry } from '../../../services/toolSuccessRegistry';
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -564,10 +565,30 @@ export class LumaUIAPIClient {
 
   /**
    * Store a problematic tool so it won't be loaded again for this specific provider
+   * Now checks if the tool is protected from blacklisting first
    */
   private storeProblematicTool(tool: Tool, errorMessage: string, providerId?: string): void {
-    // Create provider-specific key
     const providerPrefix = providerId || 'unknown';
+    
+    // Check if the tool is protected from blacklisting
+    const blacklistResult = ToolSuccessRegistry.attemptBlacklist(
+      tool.name,
+      tool.description,
+      providerPrefix,
+      errorMessage
+    );
+    
+    if (!blacklistResult.allowed) {
+      console.warn(`🛡️ [LUMAUI-BLACKLIST-PROTECTION] Tool ${tool.name} protected from blacklisting`);
+      console.warn(`🛡️ [LUMAUI-BLACKLIST-PROTECTION] Reason: ${blacklistResult.reason}`);
+      console.warn(`🛡️ [LUMAUI-BLACKLIST-PROTECTION] Original error: ${errorMessage}`);
+      
+      // Add notification about protection
+      console.log(`🚫 [LUMAUI-BLACKLIST-PREVENTED] False positive blacklist prevented for tool: ${tool.name}`);
+      return; // Don't blacklist the tool
+    }
+    
+    // Tool is not protected, proceed with blacklisting
     const toolKey = `lumaui:${providerPrefix}:${tool.name}:${tool.description}`;
     LumaUIAPIClient.problematicTools.add(toolKey);
     
@@ -597,6 +618,22 @@ export class LumaUIAPIClient {
     } catch (error) {
       console.warn('Failed to store problematic tool in localStorage:', error);
     }
+  }
+
+  /**
+   * Record a successful tool execution to prevent false positive blacklisting
+   */
+  public recordToolSuccess(toolName: string, toolDescription: string, toolCallId?: string): void {
+    const providerPrefix = this.config.providerId || 'unknown';
+    
+    ToolSuccessRegistry.recordSuccess(
+      toolName,
+      toolDescription,
+      providerPrefix,
+      toolCallId
+    );
+    
+    console.log(`✅ [LUMAUI-TOOL-SUCCESS] Recorded successful execution of ${toolName} for provider ${providerPrefix}`);
   }
 
   /**
