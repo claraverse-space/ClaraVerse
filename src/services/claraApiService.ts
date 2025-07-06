@@ -203,6 +203,9 @@ export class ClaraApiService {
   // Add execution storage properties
   private currentExecutionId: string | null = null;
   private executionSteps: ExecutionStep[] = [];
+  
+  // Add stop signal for autonomous execution
+  private shouldStopExecution: boolean = false;
 
   constructor() {
     // Initialize the recovery service
@@ -1389,9 +1392,13 @@ export class ClaraApiService {
   }
 
   /**
-   * Stop the current chat generation
+   * Stop the current chat generation and autonomous execution
    */
   public stop(): void {
+    // Set the stop flag to halt autonomous execution
+    this.shouldStopExecution = true;
+    console.log('🛑 Stop signal sent - autonomous execution will halt');
+    
     if (this.client) {
       // The client extends APIClient which has the abortStream method
       const apiClient = this.client as any;
@@ -1517,6 +1524,9 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
     // Initialize execution tracking
     const executionId = this.initializeExecutionTracking(context.originalQuery);
     
+    // Reset stop signal for new execution
+    this.shouldStopExecution = false;
+    
     // Progress tracking - use professional status instead of emoji messages
     if (onContentChunk && this.agentConfig.enableProgressTracking) {
       onContentChunk('**AGENT_STATUS:ACTIVATED**\n');
@@ -1588,6 +1598,18 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
 
     // STEP 3: Main agent execution loop
     for (let step = 0; step < actualMaxSteps; step++) {
+      // Check for stop signal at the beginning of each iteration
+      if (this.shouldStopExecution) {
+        console.log(`🛑 Stop signal detected - halting autonomous execution at step ${step + 1}`);
+        
+        if (onContentChunk) {
+          onContentChunk(`\n🛑 **Execution stopped by user at step ${step + 1}**\n\n`);
+        }
+        
+        responseContent += `\n\n🛑 **Execution stopped by user at step ${step + 1}**\n`;
+        break;
+      }
+      
       context.currentStep = step;
       
       console.log(`🔄 Autonomous agent step ${step + 1}/${actualMaxSteps} starting...`);
@@ -2031,6 +2053,18 @@ Remember: You are autonomous and intelligent. Chain tool results logically, avoi
       let currentCompletionAnalysis: CompletionAnalysis | null = null;
       
       while (verificationLoop < maxVerificationLoops) {
+        // Check for stop signal in verification loop
+        if (this.shouldStopExecution) {
+          console.log(`🛑 Stop signal detected - halting verification loop at iteration ${verificationLoop}`);
+          
+          if (onContentChunk) {
+            onContentChunk(`\n🛑 **Verification stopped by user**\n\n`);
+          }
+          
+          responseContent += `\n\n🛑 **Verification stopped by user**\n`;
+          break;
+        }
+        
         verificationLoop++;
         
         try {
@@ -2125,6 +2159,17 @@ Continue with autonomous execution to complete these remaining tasks. The goal i
             // Continue the autonomous loop for remaining actions
             let continuationExecuted = false;
             for (let contStep = 0; contStep < continuationSteps; contStep++) {
+              // Check for stop signal in continuation loop
+              if (this.shouldStopExecution) {
+                console.log(`🛑 Stop signal detected - halting continuation at step ${contStep + 1}`);
+                
+                if (onContentChunk) {
+                  onContentChunk(`\n🛑 **Continuation stopped by user**\n\n`);
+                }
+                
+                break;
+              }
+              
               const totalStep = context.currentStep + 1 + contStep;
               context.currentStep = totalStep;
               
