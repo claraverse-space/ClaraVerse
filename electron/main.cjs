@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, protocol, globalShortcut, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsSync = require('fs');
@@ -143,6 +143,10 @@ let centralServiceManager;
 
 // Track active downloads for stop functionality
 const activeDownloads = new Map();
+
+// Add tray-related variables at the top level
+let tray = null;
+let isQuitting = false;
 
 // Helper function to format bytes
 function formatBytes(bytes, decimals = 2) {
@@ -1975,6 +1979,12 @@ function registerHandlers() {
   registerMCPHandlers();
   registerServiceConfigurationHandlers(); // NEW: Add service configuration handlers
   
+  // Add new chat handler
+  ipcMain.handle('new-chat', async () => {
+    log.info('New chat requested via IPC');
+    return { success: true };
+  });
+  
   // Add dialog handler for folder picker
   ipcMain.handle('show-open-dialog', async (_event, options) => {
     console.log('[main] show-open-dialog handler called with options:', options);
@@ -2802,44 +2812,26 @@ function registerHandlers() {
   // Handle app close request
   ipcMain.on('app-close', async () => {
     log.info('App close requested from renderer');
-    
-    try {
-      // Stop watchdog service first
-      if (watchdogService) {
-        log.info('Stopping watchdog service...');
-        watchdogService.stop();
-      }
+    isQuitting = true;
+    app.quit();
+  });
 
-      // Save MCP server running state before stopping
-      if (mcpService) {
-        log.info('Saving MCP server running state...');
-        mcpService.saveRunningState();
-      }
-      
-      // Stop llama-swap service
-      if (llamaSwapService) {
-        log.info('Stopping llama-swap service...');
-        await llamaSwapService.stop();
-      }
-      
-      // Stop all MCP servers
-      if (mcpService) {
-        log.info('Stopping all MCP servers...');
-        await mcpService.stopAllServers();
-      }
-      
-      // Stop Docker containers
-      if (dockerSetup) {
-        log.info('Stopping Docker containers...');
-        await dockerSetup.stop();
-      }
+  // Add IPC handler for tray control
+  ipcMain.on('hide-to-tray', () => {
+    if (mainWindow) {
+      mainWindow.hide();
+    }
+  });
 
-      log.info('All services stopped, quitting app...');
-      app.quit();
-    } catch (error) {
-      log.error('Error during app cleanup:', error);
-      // Still quit even if cleanup fails
-      app.quit();
+  ipcMain.on('show-from-tray', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createMainWindow();
     }
   });
 
@@ -3995,6 +3987,49 @@ async function createMainWindow() {
     mainWindow.minimize();
   }
 
+  // Handle window minimize to tray
+  mainWindow.on('minimize', (event) => {
+    if (process.platform !== 'darwin') {
+      // On Windows/Linux, minimize to tray
+      event.preventDefault();
+      mainWindow.hide();
+      
+      // Show balloon notification if tray is available
+      if (tray && process.platform === 'win32') {
+        try {
+          tray.displayBalloon({
+            iconType: 'info',
+            title: 'ClaraVerse',
+            content: 'ClaraVerse is still running in the background. Click the tray icon to restore.'
+          });
+        } catch (error) {
+          log.warn('Failed to show balloon notification:', error);
+        }
+      }
+    }
+  });
+
+  // Handle window close to tray
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      
+      // Show balloon notification if tray is available
+      if (tray && process.platform === 'win32') {
+        try {
+          tray.displayBalloon({
+            iconType: 'info',
+            title: 'ClaraVerse',
+            content: 'ClaraVerse is still running in the background. Click the tray icon to restore.'
+          });
+        } catch (error) {
+          log.warn('Failed to show balloon notification:', error);
+        }
+      }
+    }
+  });
+
   // Create and set the application menu
   createAppMenu(mainWindow);
 
@@ -4115,57 +4150,88 @@ async function createMainWindow() {
 }
 
 // Initialize app when ready
-app.whenReady().then(initialize);
+app.whenReady().then(async () => {
+  await initialize();
+  
+  // Create system tray
+  createTray();
+  
+  // Register global shortcuts after app is ready
+  registerGlobalShortcuts();
+  
+  log.info('Application initialization complete with global shortcuts registered');
+});
 
 // Quit when all windows are closed
 app.on('window-all-closed', async () => {
-  // Stop watchdog service first
-  if (watchdogService) {
-    try {
-      log.info('Stopping watchdog service...');
-      watchdogService.stop();
-    } catch (error) {
-      log.error('Error stopping watchdog service:', error);
+  // If the app is quitting intentionally, proceed with cleanup
+  if (isQuitting) {
+    // Clean up tray
+    if (tray) {
+      tray.destroy();
+      tray = null;
     }
-  }
+    
+    // Unregister global shortcuts when app is quitting
+    globalShortcut.unregisterAll();
+    
+    // Stop watchdog service first
+    if (watchdogService) {
+      try {
+        log.info('Stopping watchdog service...');
+        watchdogService.stop();
+      } catch (error) {
+        log.error('Error stopping watchdog service:', error);
+      }
+    }
 
-  // Save MCP server running state before stopping
-  if (mcpService) {
-    try {
-      log.info('Saving MCP server running state...');
-      mcpService.saveRunningState();
-    } catch (error) {
-      log.error('Error saving MCP server running state:', error);
+    // Save MCP server running state before stopping
+    if (mcpService) {
+      try {
+        log.info('Saving MCP server running state...');
+        mcpService.saveRunningState();
+      } catch (error) {
+        log.error('Error saving MCP server running state:', error);
+      }
     }
-  }
-  
-  // Stop llama-swap service
-  if (llamaSwapService) {
-    try {
-      log.info('Stopping llama-swap service...');
-      await llamaSwapService.stop();
-    } catch (error) {
-      log.error('Error stopping llama-swap service:', error);
+    
+    // Stop llama-swap service
+    if (llamaSwapService) {
+      try {
+        log.info('Stopping llama-swap service...');
+        await llamaSwapService.stop();
+      } catch (error) {
+        log.error('Error stopping llama-swap service:', error);
+      }
     }
-  }
-  
-  // Stop all MCP servers
-  if (mcpService) {
-    try {
-      log.info('Stopping all MCP servers...');
-      await mcpService.stopAllServers();
-    } catch (error) {
-      log.error('Error stopping MCP servers:', error);
+    
+    // Stop all MCP servers
+    if (mcpService) {
+      try {
+        log.info('Stopping all MCP servers...');
+        await mcpService.stopAllServers();
+      } catch (error) {
+        log.error('Error stopping MCP servers:', error);
+      }
     }
-  }
-  
-  // Stop Docker containers
-  if (dockerSetup) {
-    await dockerSetup.stop();
-  }
-  
-  if (process.platform !== 'darwin') {
-    app.quit();
+    
+    // Stop Docker containers
+    if (dockerSetup) {
+      await dockerSetup.stop();
+    }
+    
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  } else {
+    // If not quitting intentionally, keep the app running in the tray
+    // On macOS, it's common to keep the app running when all windows are closed
+    if (process.platform === 'darwin') {
+      // Do nothing - keep app running
+    } else {
+      // On Windows/Linux, show a notification that the app is running in the tray
+      log.info('App minimized to system tray');
+    }
   }
 });
 
@@ -4176,10 +4242,10 @@ app.on('activate', async () => {
 });
 
 // Register startup settings handler
-ipcMain.on('set-startup-settings', async (event, settings) => {
+ipcMain.handle('set-startup-settings', async (event, settings) => {
   try {
     const userDataPath = app.getPath('userData');
-    const settingsPath = path.join(userDataPath, 'settings.json');
+    const settingsPath = path.join(userDataPath, 'clara-settings.json');
     
     // Read current settings
     let currentSettings = {};
@@ -4210,34 +4276,25 @@ ipcMain.on('set-startup-settings', async (event, settings) => {
       });
     }
     
-    log.info('Startup settings updated successfully');
+    log.info('Startup settings updated successfully:', settings);
+    return { success: true };
   } catch (error) {
     log.error('Error updating startup settings:', error);
+    return { success: false, error: error.message };
   }
 });
 
-// Register startup settings IPC handler
-ipcMain.on('set-startup-settings', (event, settings) => {
+ipcMain.handle('get-startup-settings', async () => {
   try {
     const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
-    let currentSettings = {};
-    
-    // Load existing settings if file exists
     if (fs.existsSync(settingsPath)) {
-      currentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return settings.startup || {};
     }
-    
-    // Update startup settings
-    currentSettings.startup = {
-      ...currentSettings.startup,
-      ...settings
-    };
-    
-    // Save updated settings
-    fs.writeFileSync(settingsPath, JSON.stringify(currentSettings, null, 2), 'utf8');
-    log.info('Startup settings saved:', settings);
+    return {};
   } catch (error) {
-    log.error('Error saving startup settings:', error);
+    log.error('Error reading startup settings:', error);
+    return {};
   }
 });
 
@@ -4297,20 +4354,6 @@ ipcMain.handle('reset-feature-config', async () => {
   } catch (error) {
     log.error('Error resetting feature configuration:', error);
     return false;
-  }
-});
-
-ipcMain.handle('get-startup-settings', async () => {
-  try {
-    const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
-    if (fs.existsSync(settingsPath)) {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      return settings.startup || {};
-    }
-    return {};
-  } catch (error) {
-    log.error('Error reading startup settings:', error);
-    return {};
   }
 });
 
@@ -5407,5 +5450,220 @@ async function checkContainerHealth(containerName) {
     return containerInfo.State.Running;
   } catch (error) {
     return false;
+  }
+}
+
+// Register global shortcuts for quick access
+function registerGlobalShortcuts() {
+  try {
+    // Clear any existing shortcuts to avoid conflicts
+    globalShortcut.unregisterAll();
+    
+    // Define shortcuts based on platform
+    const shortcuts = process.platform === 'darwin' 
+      ? ['Option+Ctrl+Space'] 
+      : ['Ctrl+Alt+Space'];
+    
+    // Debounce variables to prevent multiple rapid triggers
+    let lastTriggerTime = 0;
+    const debounceDelay = 500; // 500ms debounce
+    
+    shortcuts.forEach(shortcut => {
+      const ret = globalShortcut.register(shortcut, () => {
+        const now = Date.now();
+        
+        // Check if we're within the debounce period
+        if (now - lastTriggerTime < debounceDelay) {
+          log.info(`Global shortcut ${shortcut} debounced - too soon after last trigger`);
+          return;
+        }
+        
+        lastTriggerTime = now;
+        log.info(`Global shortcut ${shortcut} pressed - bringing Clara to foreground`);
+        
+        // Bring window to foreground
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+          }
+          
+          // Focus and show the window
+          mainWindow.focus();
+          mainWindow.show();
+          
+          // Send message to renderer to start new chat
+          mainWindow.webContents.send('trigger-new-chat');
+        } else {
+          log.warn('Main window not available for global shortcut');
+        }
+      });
+      
+      if (!ret) {
+        log.error(`Failed to register global shortcut: ${shortcut}`);
+      } else {
+        log.info(`Successfully registered global shortcut: ${shortcut}`);
+      }
+    });
+    
+    log.info(`Global shortcuts registered for platform: ${process.platform}`);
+  } catch (error) {
+    log.error('Error registering global shortcuts:', error);
+  }
+}
+
+// Add tray creation function
+function createTray() {
+  if (tray) return;
+  
+  try {
+    // Try to use the actual logo file first
+    const possibleLogoPaths = [
+      path.join(__dirname, 'assets', 'tray-icon.png'),
+      path.join(__dirname, '../public/logo.png'),
+      path.join(__dirname, '../src/assets/logo.png'),
+      path.join(__dirname, '../assets/icons/logo.png'),
+      path.join(__dirname, '../assets/icons/png/logo.png')
+    ];
+    
+    let trayIcon;
+    let logoFound = false;
+    
+    // Try to find and use the actual logo
+    for (const logoPath of possibleLogoPaths) {
+      if (fs.existsSync(logoPath)) {
+        try {
+          trayIcon = nativeImage.createFromPath(logoPath);
+          
+          // Resize for tray - different sizes for different platforms
+          if (process.platform === 'darwin') {
+            // macOS prefers 16x16 for tray icons
+            trayIcon = trayIcon.resize({ width: 16, height: 16 });
+            // Set as template image for proper macOS styling
+            trayIcon.setTemplateImage(true);
+          } else if (process.platform === 'win32') {
+            // Windows prefers 16x16 or 32x32
+            trayIcon = trayIcon.resize({ width: 16, height: 16 });
+          } else {
+            // Linux typically uses 22x22 or 24x24
+            trayIcon = trayIcon.resize({ width: 22, height: 22 });
+          }
+          
+          logoFound = true;
+          log.info(`Using logo from: ${logoPath}`);
+          break;
+        } catch (error) {
+          log.warn(`Failed to load logo from ${logoPath}:`, error);
+        }
+      }
+    }
+    
+    // Fallback to programmatic icon if logo not found
+    if (!logoFound) {
+      log.info('Logo file not found, creating programmatic icon');
+      const iconSize = process.platform === 'darwin' ? 16 : (process.platform === 'win32' ? 16 : 22);
+      
+      if (process.platform === 'darwin') {
+        // For macOS, create a simple template icon (must be black/transparent for template)
+        const canvas = `
+          <svg width="${iconSize}" height="${iconSize}" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="${iconSize/2}" cy="${iconSize/2}" r="${iconSize/2 - 2}" fill="black" stroke="black" stroke-width="1"/>
+            <text x="50%" y="50%" text-anchor="middle" dy="0.3em" fill="white" font-size="${iconSize-8}" font-family="Arial" font-weight="bold">C</text>
+          </svg>
+        `;
+        trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(canvas).toString('base64')}`);
+        trayIcon.setTemplateImage(true);
+      } else {
+        // For Windows/Linux, create a colored icon matching ClaraVerse brand colors
+        const canvas = `
+          <svg width="${iconSize}" height="${iconSize}" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#FF1B6B;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#3A3A5C;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <circle cx="${iconSize/2}" cy="${iconSize/2}" r="${iconSize/2 - 1}" fill="url(#grad1)" stroke="#FF1B6B" stroke-width="1"/>
+            <text x="50%" y="50%" text-anchor="middle" dy="0.3em" fill="white" font-size="${iconSize-8}" font-family="Arial" font-weight="bold">C</text>
+          </svg>
+        `;
+        trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(canvas).toString('base64')}`);
+      }
+    }
+    
+    // Create the tray
+    tray = new Tray(trayIcon);
+    
+    // Set tooltip
+    tray.setToolTip('ClaraVerse');
+    
+    // Create context menu
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Show ClaraVerse',
+        click: () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) {
+              mainWindow.restore();
+            }
+            mainWindow.show();
+            mainWindow.focus();
+          } else {
+            createMainWindow();
+          }
+        }
+      },
+      {
+        label: 'Hide ClaraVerse',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.hide();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+    
+    tray.setContextMenu(contextMenu);
+    
+    // Handle tray click
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+          }
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      } else {
+        createMainWindow();
+      }
+    });
+    
+    // Handle double-click on tray (Windows/Linux)
+    tray.on('double-click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+      } else {
+        createMainWindow();
+      }
+    });
+    
+    log.info('System tray created successfully');
+  } catch (error) {
+    log.error('Error creating system tray:', error);
   }
 }

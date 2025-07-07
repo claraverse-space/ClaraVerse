@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Topbar from './Topbar';
 import ClaraSidebar from './Clara_Components/ClaraSidebar';
 import ClaraAssistantInput from './Clara_Components/clara_assistant_input';
@@ -1953,14 +1953,65 @@ Would you like me to help with text-only responses for now?`,
     }
   }, [currentSession]);
 
+  // Ref to prevent multiple simultaneous new chat creations
+  const isCreatingNewChatRef = useRef(false);
+  const lastNewChatTimeRef = useRef(0);
+
   // Handle new chat creation
   const handleNewChat = useCallback(async () => {
-    const newSession = await createNewSession();
-    setCurrentSession(newSession);
-    setMessages([]);
-    // Reset autonomous agent status when starting new chat
-    autonomousAgentStatus.reset();
-  }, [createNewSession, autonomousAgentStatus]);
+    const now = Date.now();
+    const timeSinceLastCall = now - lastNewChatTimeRef.current;
+    
+    // If we're already processing or called too recently, ignore this call
+    if (isCreatingNewChatRef.current || timeSinceLastCall < 500) {
+      console.log('New chat request ignored - already processing or called too recently');
+      return;
+    }
+    
+    // Update last call time
+    lastNewChatTimeRef.current = now;
+    
+    // Check if current session is already empty (new chat)
+    if (currentSession && 
+        (currentSession.title === 'New Chat' || currentSession.title.trim() === '') && 
+        messages.length === 0) {
+      console.log('Already in empty chat session, not creating new one');
+      return;
+    }
+    
+    // Check if there's already an empty session in the sessions list
+    const existingEmptySession = sessions.find(session => 
+      (session.title === 'New Chat' || session.title.trim() === '') && 
+      session.messages.length === 0
+    );
+    
+    if (existingEmptySession) {
+      console.log('Found existing empty chat session, switching to it');
+      setCurrentSession(existingEmptySession);
+      setMessages([]);
+      // Reset autonomous agent status when switching to empty chat
+      autonomousAgentStatus.reset();
+      return;
+    }
+    
+    // Set processing flag
+    isCreatingNewChatRef.current = true;
+    
+    try {
+      // No empty session found, create a new one
+      console.log('Creating new chat session');
+      const newSession = await createNewSession();
+      setCurrentSession(newSession);
+      setMessages([]);
+      // Reset autonomous agent status when starting new chat
+      autonomousAgentStatus.reset();
+    } finally {
+      // Reset processing flag after a short delay
+      setTimeout(() => {
+        isCreatingNewChatRef.current = false;
+      }, 100);
+    }
+  }, [createNewSession, autonomousAgentStatus, currentSession, messages, sessions]);
 
   // Handle session actions
   const handleSessionAction = useCallback(async (sessionId: string, action: 'star' | 'archive' | 'delete') => {
@@ -3014,6 +3065,38 @@ Console output:`;
     
     initializeSession();
   }, [isLoadingSessions, sessions.length, currentSession, createNewSession]);
+
+  // Listen for global shortcut trigger for new chat
+  useEffect(() => {
+    let lastTriggerTime = 0;
+    const debounceDelay = 300; // 300ms debounce
+    
+    const handleGlobalNewChat = () => {
+      const now = Date.now();
+      
+      // Check if we're within the debounce period
+      if (now - lastTriggerTime < debounceDelay) {
+        console.log('Global shortcut debounced - too soon after last trigger');
+        return;
+      }
+      
+      lastTriggerTime = now;
+      console.log('Global shortcut triggered - creating new chat');
+      handleNewChat();
+    };
+
+    // Add listener for the trigger-new-chat event
+    if (window.electron && window.electron.receive) {
+      window.electron.receive('trigger-new-chat', handleGlobalNewChat);
+    }
+
+    // Cleanup listener on unmount
+    return () => {
+      if (window.electron && window.electron.removeListener) {
+        window.electron.removeListener('trigger-new-chat', handleGlobalNewChat);
+      }
+    };
+  }, [handleNewChat]);
 
   
 

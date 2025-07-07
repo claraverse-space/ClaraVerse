@@ -231,7 +231,7 @@ const Settings = () => {
       const newConfig = { ...startupConfig, ...updates };
       setStartupConfig(newConfig);
       
-      // Update personal info with new startup settings
+      // Update personal info with new startup settings (for database persistence)
       const currentPersonalInfo = await db.getPersonalInfo();
       const updatedPersonalInfo = {
         ...currentPersonalInfo,
@@ -244,6 +244,14 @@ const Settings = () => {
       };
       
       await db.updatePersonalInfo(updatedPersonalInfo);
+      
+      // Also update the electron main process settings
+      if ((window as any).electron?.setStartupSettings) {
+        const result = await (window as any).electron.setStartupSettings(newConfig);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update startup settings in electron');
+        }
+      }
       
     } catch (error) {
       console.error('Failed to update startup configuration:', error);

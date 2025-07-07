@@ -22,11 +22,7 @@ function getAppVersion() {
 // Valid channels for IPC communication
 const validChannels = [
   'app-ready',
-  'react-app-ready',
   'app-close',
-  'setup-status',
-  'backend-status',
-  'python-status',
   'update-available',
   'update-downloaded',
   'download-progress',
@@ -36,10 +32,12 @@ const validChannels = [
   'watchdog-service-failed',
   'watchdog-service-restarted',
   'docker-update-progress',
-  'set-startup-settings',
   'comfyui-model-download-progress',
   'comfyui-model-download-complete',
-  'model-download-progress'
+  'model-download-progress',
+  'trigger-new-chat',
+  'hide-to-tray',
+  'show-from-tray'
 ];
 
 // Add explicit logging for debugging
@@ -112,7 +110,15 @@ contextBridge.exposeInMainWorld('electron', {
   getWorkflowsPath: () => ipcRenderer.invoke('get-workflows-path'),
   dialog: {
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options)
-  }
+  },
+  
+  // Add tray functionality
+  hideToTray: () => ipcRenderer.send('hide-to-tray'),
+  showFromTray: () => ipcRenderer.send('show-from-tray'),
+  
+  // Update startup settings to use the new handle-based IPC
+  setStartupSettings: (settings) => ipcRenderer.invoke('set-startup-settings', settings),
+  getStartupSettings: () => ipcRenderer.invoke('get-startup-settings'),
 });
 
 // Add Docker container management API
@@ -353,12 +359,6 @@ contextBridge.exposeInMainWorld('windowManager', {
   setFullscreenStartupPreference: (enabled) => ipcRenderer.invoke('set-fullscreen-startup-preference', enabled),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   getFullscreenStatus: () => ipcRenderer.invoke('get-fullscreen-status')
-});
-
-// Add startup settings API
-contextBridge.exposeInMainWorld('startupSettings', {
-  setStartupSettings: (settings) => ipcRenderer.send('set-startup-settings', settings),
-  getStartupSettings: () => ipcRenderer.invoke('get-startup-settings')
 });
 
 // Add feature configuration API

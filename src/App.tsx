@@ -57,6 +57,38 @@ function App() {
     StartupService.getInstance().applyStartupSettings();
   }, []);
 
+  // Listen for global shortcut trigger to navigate to Clara chat
+  useEffect(() => {
+    let lastTriggerTime = 0;
+    const debounceDelay = 300; // 300ms debounce
+    
+    const handleGlobalClaraShortcut = () => {
+      const now = Date.now();
+      
+      // Check if we're within the debounce period
+      if (now - lastTriggerTime < debounceDelay) {
+        console.log('Global shortcut navigation debounced - too soon after last trigger');
+        return;
+      }
+      
+      lastTriggerTime = now;
+      console.log('Global shortcut triggered - navigating to Clara chat');
+      setActivePage('clara');
+    };
+
+    // Add listener for the trigger-new-chat event
+    if (window.electron && window.electron.receive) {
+      window.electron.receive('trigger-new-chat', handleGlobalClaraShortcut);
+    }
+
+    // Cleanup listener on unmount
+    return () => {
+      if (window.electron && window.electron.removeListener) {
+        window.electron.removeListener('trigger-new-chat', handleGlobalClaraShortcut);
+      }
+    };
+  }, []);
+
   const handleOnboardingComplete = async () => {
     setShowOnboarding(false);
     const info = await db.getPersonalInfo();
