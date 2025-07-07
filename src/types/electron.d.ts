@@ -165,7 +165,7 @@ declare global {
       downloadModelWithDependencies: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>, downloadPath: string) => Promise<{ success: boolean; results?: any[]; downloadedFiles?: string[]; error?: string }>;
     };
     modelManager: {
-      searchHuggingFaceModels: (query: string, limit?: number) => Promise<{ success: boolean; models: any[]; error?: string }>;
+      searchHuggingFaceModels: (query: string, limit?: number, sort?: string) => Promise<{ success: boolean; models: any[]; error?: string }>;
       downloadModel: (modelId: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       downloadModelWithDependencies: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => Promise<{ success: boolean; results?: any[]; downloadedFiles?: string[]; error?: string }>;
       getLocalModels: () => Promise<{ success: boolean; models: any[]; error?: string }>;

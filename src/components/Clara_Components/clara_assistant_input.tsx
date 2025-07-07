@@ -968,6 +968,15 @@ graph TD
     </button>
   );
 
+  // Add token formatting utility function
+  const formatTokens = (tokens: number): string => {
+    if (tokens <= 1000) {
+      return tokens.toString();
+    } else {
+      return `${(tokens / 1000).toFixed(1)}k`;
+    }
+  };
+
   return (
     <div className="mt-4 glassmorphic rounded-xl bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg">
       {/* Header */}
@@ -1138,7 +1147,7 @@ graph TD
               icon={<Wrench className="w-4 h-4 text-sakura-500" />}
               isExpanded={expandedSections.parameters}
               onToggle={() => toggleSection('parameters')}
-              badge={`T:${aiConfig.parameters.temperature} | Tokens:${aiConfig.parameters.maxTokens}`}
+              badge={`T:${aiConfig.parameters.temperature} | Tokens:${formatTokens(aiConfig.parameters.maxTokens)}`}
             />
             
             {expandedSections.parameters && (
@@ -1160,15 +1169,16 @@ graph TD
 
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Max Tokens
+                    Max Tokens: {formatTokens(aiConfig.parameters.maxTokens)}
                   </label>
                   <input
-                    type="number"
+                    type="range"
                     min="100"
-                    max="8000"
+                    max="128000"
+                    step="100"
                     value={aiConfig.parameters.maxTokens}
                     onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
-                    className="w-full px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded"
+                    className="w-full"
                   />
                 </div>
               </div>
@@ -2059,15 +2069,15 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       return;
     }
 
-    console.log('🔧 Setting up progress event listeners...');
+    // console.log('🔧 Setting up progress event listeners...');
 
     const handleProgressUpdate = (progressData: any) => {
-      console.log('📊 Progress Update Received:', progressData);
-      console.log('  Type:', progressData.type);
-      console.log('  Progress:', progressData.progress);
-      console.log('  Message:', progressData.message);
-      console.log('  Details:', progressData.details);
-      console.log('  Current isLoading:', isLoading);
+      // console.log('📊 Progress Update Received:', progressData);
+      // console.log('  Type:', progressData.type);
+      // console.log('  Progress:', progressData.progress);
+      // console.log('  Message:', progressData.message);
+      // console.log('  Details:', progressData.details);
+      // console.log('  Current isLoading:', isLoading);
       
       // **CRITICAL FIX: Only show progress UI when actively sending a message**
       // This prevents progress from showing during preloading or input focus
@@ -2084,7 +2094,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           message: progressData.message,
           details: progressData.details
         };
-        console.log('  Setting new progressState (message send active):', newState);
+        // console.log('  Setting new progressState (message send active):', newState);
         return newState;
       });
 
@@ -3115,6 +3125,15 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const handleVoiceToggle = useCallback(() => {
     setIsVoiceChatEnabled(!isVoiceChatEnabled);
   }, [isVoiceChatEnabled]);
+
+  // Add token formatting utility function
+  const formatTokens = (tokens: number): string => {
+    if (tokens <= 1000) {
+      return tokens.toString();
+    } else {
+      return `${(tokens / 1000).toFixed(1)}k`;
+    }
+  };
 
   return (
     <div 

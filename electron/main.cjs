@@ -1156,7 +1156,7 @@ function registerModelManagerHandlers() {
   }
 
   // Search models from Hugging Face
-  ipcMain.handle('search-huggingface-models', async (_event, { query, limit = 20 }) => {
+  ipcMain.handle('search-huggingface-models', async (_event, { query, limit = 20, sort = 'lastModified' }) => {
     try {
       // Use Node.js built-in fetch if available (Node 18+), otherwise try node-fetch
       let fetch;
@@ -1168,7 +1168,17 @@ function registerModelManagerHandlers() {
         fetch = nodeFetch.default || nodeFetch;
       }
       
-      const url = `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&limit=${limit}&sort=likes&full=true`;
+      // Support different sorting options for truly latest models
+      const sortOptions = {
+        'lastModified': 'lastModified',
+        'createdAt': 'createdAt', 
+        'trending': 'downloads',      // Map trending to downloads since HF API doesn't support trending
+        'downloads': 'downloads',
+        'likes': 'likes'
+      };
+      
+      const sortParam = sortOptions[sort] || 'lastModified';
+      const url = `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&limit=${limit}&sort=${sortParam}&full=true`;
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -1190,6 +1200,8 @@ function registerModelManagerHandlers() {
         tags: model.tags || [],
         description: model.description || '',
         author: model.author || model.modelId?.split('/')[0] || '',
+        createdAt: model.createdAt || null,
+        lastModified: model.lastModified || null,
         // Include ALL files, not just .gguf
         files: model.siblings || [],
         // Add flags for vision models and required mmproj files

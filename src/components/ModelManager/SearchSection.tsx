@@ -27,7 +27,8 @@ const SearchSection: React.FC<SearchSectionProps> = ({
     
     setIsSearching(true);
     try {
-      const result = await window.modelManager.searchHuggingFaceModels(searchQuery, 20);
+      // Use lastModified to show newest models first in search results
+      const result = await window.modelManager.searchHuggingFaceModels(searchQuery, 20, 'lastModified');
       if (result.success) {
         setSearchResults(result.models);
       } else {
@@ -47,7 +48,8 @@ const SearchSection: React.FC<SearchSectionProps> = ({
     setSearchQuery(tag);
     
     try {
-      const result = await window.modelManager.searchHuggingFaceModels(tag, 20);
+      // Use lastModified for tag searches too
+      const result = await window.modelManager.searchHuggingFaceModels(tag, 20, 'lastModified');
       if (result.success) {
         setSearchResults(result.models);
       }
@@ -64,7 +66,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({
   };
 
   return (
-    <div className="glassmorphic rounded-xl p-6">
+    <div className="glassmorphic rounded-xl p-6 m-2">
       <div className="flex items-center gap-3 mb-4">
         <Search className="w-5 h-5 text-sakura-500" />
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">

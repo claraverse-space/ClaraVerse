@@ -12,6 +12,8 @@ export interface HuggingFaceModel {
   modelId?: string;
   isVisionModel?: boolean;
   requiredMmprojFiles?: Array<{ rfilename: string; size?: number }>;
+  createdAt?: string | null;
+  lastModified?: string | null;
 }
 
 export interface LocalModel {
@@ -81,5 +83,5 @@ export interface Confirmation {
   onCancel: () => void;
 }
 
-export type TrendingFilter = 'all' | 'month' | 'week' | 'today';
+export type TrendingFilter = 'today' | 'week' | 'month' | 'all';
 export type ModelManagerTab = 'discover' | 'library'; 

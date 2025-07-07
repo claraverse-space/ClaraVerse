@@ -207,6 +207,9 @@ export class ClaraApiService {
   // Add stop signal for autonomous execution
   private shouldStopExecution: boolean = false;
 
+  private static readonly MAX_STORED_EXECUTIONS = 15; // Keep last 15 executions
+  private static readonly CLEANUP_THRESHOLD = 20; // Cleanup when we exceed this
+
   constructor() {
     // Initialize the recovery service
     this.recoveryService = TokenLimitRecoveryService.getInstance();
@@ -227,12 +230,17 @@ export class ClaraApiService {
       startTime: new Date()
     };
     
-    // Store in localStorage
+    // Store in localStorage with cleanup
     try {
       localStorage.setItem(`clara_execution_${this.currentExecutionId}`, JSON.stringify(executionHistory));
       console.log(`🔍 📝 EXECUTION TRACKING: Initialized ${this.currentExecutionId}`);
+      
+      // Check and cleanup old executions
+      this.cleanupOldExecutions();
     } catch (error) {
       console.warn('Failed to store execution history:', error);
+      // If localStorage is full, try to free up space
+      this.cleanupOldExecutions();
     }
     
     return this.currentExecutionId;
@@ -323,10 +331,26 @@ export class ClaraApiService {
         executionHistory.steps = this.executionSteps;
         
         localStorage.setItem(`clara_execution_${this.currentExecutionId}`, JSON.stringify(executionHistory));
+        
+        // Log storage statistics
+        const stats = this.getStorageStats();
+        const usagePercent = ((stats.used / stats.total) * 100).toFixed(1);
+        
         console.log(`🔍 📝 EXECUTION COMPLETE: ${this.currentExecutionId} - ${finalStatus} (${finalConfidence}%)`);
+        console.log(`📊 STORAGE: ${stats.executionCount} executions, ${(stats.used / 1024).toFixed(1)}KB used (${usagePercent}%)`);
+        
+        // Trigger cleanup if storage is getting full
+        if (stats.used / stats.total > 0.8) { // 80% threshold
+          console.log('🚨 STORAGE WARNING: localStorage is 80% full, triggering cleanup...');
+          this.cleanupOldExecutions();
+        }
       }
     } catch (error) {
       console.warn('Failed to finalize execution tracking:', error);
+      // If finalize fails due to storage issues, try emergency cleanup
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        this.emergencyCleanup();
+      }
     }
     
     // Reset tracking
@@ -2537,6 +2561,15 @@ Continue with autonomous execution to complete these remaining tasks. The goal i
                 };
                 success = true;
                 attemptRecord.success = true;
+                
+                // Record successful MCP tool execution to prevent false positive blacklisting
+                ToolSuccessRegistry.recordSuccess(
+                  functionName,
+                  'MCP tool',
+                  this.currentProvider?.id || 'unknown',
+                  toolCall.id
+                );
+                
                 console.log(`✅ MCP tool ${functionName} succeeded on attempt ${attempt}:`, result);
               } else {
                 lastError = mcpResult.error || 'MCP tool execution failed';
@@ -2562,6 +2595,15 @@ Continue with autonomous execution to complete these remaining tasks. The goal i
                 };
                 success = true;
                 attemptRecord.success = true;
+                
+                // Record successful Clara tool execution to prevent false positive blacklisting
+                ToolSuccessRegistry.recordSuccess(
+                  claraTool.name,
+                  claraTool.description,
+                  this.currentProvider?.id || 'unknown',
+                  toolCall.id
+                );
+                
                 console.log(`✅ Clara tool ${functionName} succeeded on attempt ${attempt}:`, result);
               } else {
                 lastError = toolResult.error || 'Tool execution failed';
@@ -2590,6 +2632,15 @@ Continue with autonomous execution to complete these remaining tasks. The goal i
                   };
                   success = true;
                   attemptRecord.success = true;
+                  
+                  // Record successful database tool execution to prevent false positive blacklisting
+                  ToolSuccessRegistry.recordSuccess(
+                    dbTool.name,
+                    dbTool.description,
+                    this.currentProvider?.id || 'unknown',
+                    toolCall.id
+                  );
+                  
                   console.log(`✅ Database tool ${functionName} succeeded on attempt ${attempt}:`, result);
                 } catch (dbError) {
                   lastError = dbError instanceof Error ? dbError.message : 'Database tool execution failed';
@@ -3622,11 +3673,34 @@ ESTIMATED_STEPS:
         console.log(`📋 Including ${recentHistory.length} conversation messages in planning context`);
       }
 
-      // Add the planning prompt as the final user message
-      planningMessages.push({
-        role: 'user',
-        content: planningPrompt
-      });
+      // Fix role alternation issue: Check if last message is from user
+      const lastMessage = planningMessages[planningMessages.length - 1];
+      const lastMessageIsUser = lastMessage && lastMessage.role === 'user';
+
+      if (lastMessageIsUser) {
+        // Combine the user's original query with the planning prompt to maintain role alternation
+        const combinedUserMessage = `${lastMessage.content}
+
+---
+
+${planningPrompt}`;
+
+        // Update the last message to include the planning prompt
+        planningMessages[planningMessages.length - 1] = {
+          ...lastMessage,
+          content: combinedUserMessage
+        };
+        
+        console.log(`📋 Combined user message with planning prompt to maintain role alternation`);
+      } else {
+        // Add the planning prompt as a separate user message (safe to do when last message is assistant)
+        planningMessages.push({
+          role: 'user',
+          content: planningPrompt
+        });
+        
+        console.log(`📋 Added planning prompt as separate user message`);
+      }
 
       console.log(`📋 Making planning request with ${tools.length} tools, ${planningMessages.length} messages, and full conversation context`);
       
@@ -4764,6 +4838,139 @@ Provide a thorough analysis in JSON format. Be CRITICAL and THOROUGH - only mark
     } else {
       return 'general_task';
     }
+  }
+
+  /**
+   * Clean up old execution histories to prevent localStorage overflow
+   */
+  private cleanupOldExecutions(): void {
+    try {
+      const executionKeys = this.getExecutionKeys();
+      
+      if (executionKeys.length <= ClaraApiService.MAX_STORED_EXECUTIONS) {
+        return; // No cleanup needed
+      }
+      
+      console.log(`🧹 CLEANUP: Found ${executionKeys.length} executions, cleaning up...`);
+      
+      // Sort by timestamp (embedded in key) to remove oldest first
+      const sortedKeys = executionKeys.sort((a, b) => {
+        const timestampA = this.extractTimestampFromKey(a);
+        const timestampB = this.extractTimestampFromKey(b);
+        return timestampA - timestampB;
+      });
+      
+      // Keep only the most recent MAX_STORED_EXECUTIONS
+      const keysToRemove = sortedKeys.slice(0, sortedKeys.length - ClaraApiService.MAX_STORED_EXECUTIONS);
+      
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
+      
+      console.log(`🧹 CLEANUP: Removed ${keysToRemove.length} old executions, keeping ${ClaraApiService.MAX_STORED_EXECUTIONS} most recent`);
+      
+    } catch (error) {
+      console.warn('Failed to cleanup old executions:', error);
+      // If cleanup fails, try emergency cleanup
+      this.emergencyCleanup();
+    }
+  }
+
+  /**
+   * Get all execution keys from localStorage
+   */
+  private getExecutionKeys(): string[] {
+    const keys: string[] = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clara_execution_')) {
+          keys.push(key);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to get execution keys:', error);
+    }
+    return keys;
+  }
+
+  /**
+   * Extract timestamp from execution key for sorting
+   */
+  private extractTimestampFromKey(key: string): number {
+    const match = key.match(/clara_execution_(\d+)_/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  /**
+   * Emergency cleanup when localStorage is critically full
+   */
+  private emergencyCleanup(): void {
+    try {
+      const executionKeys = this.getExecutionKeys();
+      
+      // Remove all but the most recent 5 executions
+      const sortedKeys = executionKeys.sort((a, b) => {
+        const timestampA = this.extractTimestampFromKey(a);
+        const timestampB = this.extractTimestampFromKey(b);
+        return timestampA - timestampB;
+      });
+      
+      const keysToRemove = sortedKeys.slice(0, Math.max(0, sortedKeys.length - 5));
+      
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
+      
+      console.log(`🚨 EMERGENCY CLEANUP: Removed ${keysToRemove.length} executions, keeping only 5 most recent`);
+      
+    } catch (error) {
+      console.error('Emergency cleanup failed:', error);
+    }
+  }
+
+  /**
+   * Get localStorage usage statistics
+   */
+  private getStorageStats(): { used: number; total: number; executionCount: number } {
+    try {
+      let used = 0;
+      let executionCount = 0;
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          const item = localStorage.getItem(key);
+          if (item) {
+            used += item.length;
+            if (key.startsWith('clara_execution_')) {
+              executionCount++;
+            }
+          }
+        }
+      }
+      
+      // Estimate total localStorage size (varies by browser, typically 5-10MB)
+      const total = 5 * 1024 * 1024; // 5MB estimate
+      
+      return { used, total, executionCount };
+    } catch (error) {
+      console.warn('Failed to get storage stats:', error);
+      return { used: 0, total: 0, executionCount: 0 };
+    }
+  }
+
+  /**
+   * Manually trigger cleanup of old execution histories
+   * Can be called externally if needed
+   */
+  public cleanupExecutionHistory(): void {
+    console.log('🧹 MANUAL CLEANUP: Cleaning up execution history...');
+    this.cleanupOldExecutions();
+    
+    const stats = this.getStorageStats();
+    const usagePercent = ((stats.used / stats.total) * 100).toFixed(1);
+    console.log(`📊 CLEANUP COMPLETE: ${stats.executionCount} executions remaining, ${(stats.used / 1024).toFixed(1)}KB used (${usagePercent}%)`);
   }
 }
 
