@@ -2429,6 +2429,8 @@ Continue with autonomous execution to complete these remaining tasks. The goal i
         toolsUsed: allToolResults.map(tc => tc.toolName),
         agentSteps: context.currentStep + 1,
         autonomousMode: true,
+        autonomousCompletion: true,  // Add this flag for UI detection
+        executionId: executionId,     // Add execution ID for details modal
         processedToolCallIds: Array.from(processedToolCallIds),
         toolResultsSummary: {
           total: allToolResults.length,

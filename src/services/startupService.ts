@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+
 
 export interface StartupSettings {
   startFullscreen: boolean;
@@ -31,7 +31,13 @@ export class StartupService {
 
   private async loadSettings() {
     try {
-      const settings = await window.startupSettings.getStartupSettings();
+      // Check if electron API is available
+      if (!(window as any).electron?.getStartupSettings) {
+        console.warn('Electron startup settings API not available');
+        return;
+      }
+      
+      const settings = await (window as any).electron.getStartupSettings();
       this.settings = { ...this.settings, ...settings };
     } catch (error) {
       console.error('Error loading startup settings:', error);
@@ -45,20 +51,31 @@ export class StartupService {
 
   public async updateStartupSettings(settings: Partial<StartupSettings>): Promise<void> {
     this.settings = { ...this.settings, ...settings };
-    await window.startupSettings.setStartupSettings(this.settings);
+    
+    try {
+      // Check if electron API is available
+      if (!(window as any).electron?.setStartupSettings) {
+        console.warn('Electron startup settings API not available');
+        return;
+      }
+      
+      await (window as any).electron.setStartupSettings(this.settings);
+    } catch (error) {
+      console.error('Error updating startup settings:', error);
+    }
   }
 
   public async applyStartupSettings(): Promise<void> {
-    await window.startupSettings.setStartupSettings(this.settings);
-  }
-}
-
-// Add type definitions for the window object
-declare global {
-  interface Window {
-    startupSettings: {
-      setStartupSettings: (settings: StartupSettings) => void;
-      getStartupSettings: () => Promise<StartupSettings>;
-    };
+    try {
+      // Check if electron API is available
+      if (!(window as any).electron?.setStartupSettings) {
+        console.warn('Electron startup settings API not available, skipping startup settings application');
+        return;
+      }
+      
+      await (window as any).electron.setStartupSettings(this.settings);
+    } catch (error) {
+      console.error('Error applying startup settings:', error);
+    }
   }
 } 

@@ -82,6 +82,15 @@ import { claraDB } from '../../db/claraDatabase';
 // Import API service
 import { claraApiService } from '../../services/claraApiService';
 
+// Import TTS service
+import { claraTTSService } from '../../services/claraTTSService';
+
+// Import notification service
+import { addErrorNotification, addInfoNotification } from '../../services/notificationService';
+
+// Import image generation widget
+import ChatImageGenWidget from './ChatImageGenWidget';
+
 /**
  * Custom Tooltip Component
  */
@@ -2039,6 +2048,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
+  // Image generation state
+  const [showImageGenWidget, setShowImageGenWidget] = useState(false);
+  const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
+  const [imageGenEnabled, setImageGenEnabled] = useState(false);
+
   // Provider health check state
   const [providerHealthStatus, setProviderHealthStatus] = useState<'unknown' | 'checking' | 'healthy' | 'unhealthy'>('unknown');
   const [showProviderOfflineModal, setShowProviderOfflineModal] = useState(false);
@@ -3135,6 +3149,351 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   };
 
+  // Check for provider health when switching modes
+  useEffect(() => {
+    if (sessionConfig?.aiConfig?.provider) {
+      checkProviderHealth();
+    }
+  }, [sessionConfig?.aiConfig?.provider, checkProviderHealth]);
+
+  // Load available image models for image generation
+  useEffect(() => {
+    const loadImageModels = async () => {
+      try {
+        // Check if ComfyUI is available
+        if (!(window as any).electronAPI) {
+          console.log('ComfyUI not available - electronAPI not found');
+          return;
+        }
+        
+        // Get ComfyUI service status
+        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+        const comfyuiStatus = status?.comfyui || {};
+        
+        console.log('🎨 ComfyUI Status Check:', comfyuiStatus);
+        
+        // Check if ComfyUI is running (state should be 'running')
+        if (comfyuiStatus.state === 'running') {
+          // Try to connect to ComfyUI and get models
+          try {
+            const { Client } = await import('@stable-canvas/comfyui-client');
+            const url = comfyuiStatus.serviceUrl || 'http://localhost:8188';
+            let processedUrl = url;
+            if (url.includes('http://') || url.includes('https://')) {
+              processedUrl = url.split('//')[1];
+            }
+            const ssl_type = url.includes('https') ? true : false;
+            
+            console.log('🔗 Connecting to ComfyUI at:', url);
+            const client = new Client({ api_host: processedUrl, ssl: ssl_type });
+            
+            // Try to connect and get models
+            client.connect();
+            
+            // Wait for connection with timeout
+            const waitForConnection = new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error('Connection timeout'));
+              }, 5000);
+              
+              const checkConnection = () => {
+                if (client.socket && client.socket.readyState === WebSocket.OPEN) {
+                  clearTimeout(timeout);
+                  resolve(true);
+                } else {
+                  setTimeout(checkConnection, 100);
+                }
+              };
+              
+              checkConnection();
+            });
+            
+            await waitForConnection;
+            
+            // Get models
+            const models = await client.getSDModels();
+            setAvailableImageModels(models);
+            setImageGenEnabled(models.length > 0);
+            console.log('✅ Loaded', models.length, 'image generation models');
+            
+            // Clean up client
+            client.close();
+            
+          } catch (error) {
+            console.log('❌ Failed to connect to ComfyUI:', error);
+            setImageGenEnabled(false);
+            setAvailableImageModels([]);
+          }
+        } else {
+          console.log('⚠️ ComfyUI service not running, state:', comfyuiStatus.state);
+          setImageGenEnabled(false);
+          setAvailableImageModels([]);
+        }
+      } catch (error) {
+        console.log('❌ Error loading image models:', error);
+        setImageGenEnabled(false);
+        setAvailableImageModels([]);
+      }
+    };
+
+    // Load models immediately
+    loadImageModels();
+    
+    // Set up periodic refresh every 30 seconds
+    const interval = setInterval(loadImageModels, 30000);
+    
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+  }, []);
+
+  // Debug function for troubleshooting image generation
+  useEffect(() => {
+    // Make debug functions available globally for troubleshooting
+    (window as any).debugImageGeneration = async () => {
+      console.log('=== Image Generation Debug Info ===');
+      console.log('imageGenEnabled:', imageGenEnabled);
+      console.log('availableImageModels:', availableImageModels);
+      
+      try {
+        if ((window as any).electronAPI) {
+          const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+          console.log('Service Status:', status);
+          console.log('ComfyUI Status:', status?.comfyui);
+        } else {
+          console.log('electronAPI not available');
+        }
+      } catch (error) {
+        console.error('Error getting service status:', error);
+      }
+    };
+    
+    (window as any).testImageGenConnection = async () => {
+      console.log('=== Testing Image Generation Connection ===');
+      try {
+        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+        const comfyuiStatus = status?.comfyui || {};
+        console.log('ComfyUI Status:', comfyuiStatus);
+        
+        if (comfyuiStatus.state === 'running') {
+          const { Client } = await import('@stable-canvas/comfyui-client');
+          const url = comfyuiStatus.serviceUrl || 'http://localhost:8188';
+          console.log('Testing connection to:', url);
+          
+          let processedUrl = url;
+          if (url.includes('http://') || url.includes('https://')) {
+            processedUrl = url.split('//')[1];
+          }
+          const ssl_type = url.includes('https') ? true : false;
+          
+          const client = new Client({ api_host: processedUrl, ssl: ssl_type });
+          client.connect();
+          
+          // Test connection
+          const models = await client.getSDModels();
+          console.log('✅ Connection successful! Found', models.length, 'models:', models);
+          client.close();
+        } else {
+          console.log('❌ ComfyUI not running, state:', comfyuiStatus.state);
+        }
+      } catch (error) {
+        console.error('❌ Connection test failed:', error);
+      }
+    };
+    
+    console.log('🔧 Image generation debug functions available:');
+    console.log('  - debugImageGeneration() - Show current status');
+    console.log('  - testImageGenConnection() - Test ComfyUI connection');
+    
+    // Cleanup
+    return () => {
+      delete (window as any).debugImageGeneration;
+      delete (window as any).testImageGenConnection;
+    };
+  }, [imageGenEnabled, availableImageModels]);
+
+  // Handle image generation
+  const handleImageGenerated = useCallback(async (imageDataUrl: string, prompt: string, settings: any) => {
+    try {
+      // Debug logging to understand the image data URL
+      console.log('🎨 handleImageGenerated called with:');
+      console.log('  - imageDataUrl length:', imageDataUrl?.length);
+      console.log('  - imageDataUrl starts with:', imageDataUrl?.substring(0, 50));
+      console.log('  - prompt:', prompt);
+      console.log('  - settings:', settings);
+      
+      // Validate imageDataUrl
+      if (!imageDataUrl || !imageDataUrl.startsWith('data:')) {
+        console.error('❌ Invalid imageDataUrl received:', imageDataUrl);
+        addErrorNotification(
+          'Invalid Image Data',
+          'The generated image data is invalid or corrupted.',
+          5000
+        );
+        return;
+      }
+      
+      // Additional validation for base64 data
+      if (!imageDataUrl.includes('base64,')) {
+        console.error('❌ ImageDataUrl missing base64 data:', imageDataUrl.substring(0, 50) + '...');
+        addErrorNotification(
+          'Invalid Image Format',
+          'The generated image is not in the expected base64 format.',
+          5000
+        );
+        return;
+      }
+      
+      // Test if the image data URL is actually valid by trying to create an image
+      const testImage = new Image();
+      const imageValidationPromise = new Promise<boolean>((resolve) => {
+        testImage.onload = () => {
+          console.log('✅ Image data URL validation successful');
+          resolve(true);
+        };
+        testImage.onerror = () => {
+          console.error('❌ Image data URL validation failed');
+          resolve(false);
+        };
+        testImage.src = imageDataUrl;
+      });
+      
+      const isValidImage = await imageValidationPromise;
+      if (!isValidImage) {
+        console.error('❌ Image data URL failed validation test');
+        addErrorNotification(
+          'Corrupted Image Data',
+          'The generated image data appears to be corrupted and cannot be displayed.',
+          5000
+        );
+        return;
+      }
+      
+      console.log('✅ Image data URL validation passed, proceeding with message creation');
+      
+      // Create attachment for the generated image
+      const imageAttachment: ClaraFileAttachment = {
+        id: `img-${Date.now()}`,
+        name: `generated-image-${Date.now()}.png`,
+        type: 'image',
+        size: imageDataUrl.length,
+        mimeType: 'image/png',
+        base64: imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl, // Extract base64 part if data URL
+        url: imageDataUrl, // Store the full data URL for display
+        processed: true,
+        processingResult: {
+          success: true,
+          imageAnalysis: {
+            description: prompt,
+            confidence: 1.0
+          }
+        }
+      };
+
+      // Create a user message with the prompt and image attachment
+      const userMessage: ClaraMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: prompt,
+        timestamp: new Date(),
+        attachments: [imageAttachment], // Store image as attachment on user message
+        metadata: {
+          imageGeneration: true
+        }
+      };
+      
+      // Create assistant message with simple text response (no image markdown)
+      const imageMessage: ClaraMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: `I've generated an image for you based on your prompt: "${prompt}". The image has been created successfully and is displayed above. You can right-click on it to save it or use it in your projects.`,
+        timestamp: new Date(),
+        metadata: {
+          imageGeneration: true,
+          model: 'ComfyUI',
+          settings: settings
+        }
+      };
+      
+      console.log('🎨 Created messages with image attachment on user message');
+      console.log('🎨 User message attachments:', userMessage.attachments?.length);
+      console.log('🎨 Assistant message content:', imageMessage.content);
+      
+      // Directly add messages to the chat without triggering AI processing
+      if (setMessages && currentSession) {
+        console.log('🎨 Adding messages to chat...');
+        
+        // Add both messages in a single state update to prevent race conditions
+        setMessages(prev => [...prev, userMessage, imageMessage]);
+        
+        console.log('🎨 Messages added to chat successfully');
+        
+        // Save messages to database
+        try {
+          await claraDB.addClaraMessage(currentSession.id, userMessage);
+          await claraDB.addClaraMessage(currentSession.id, imageMessage);
+          
+          // Update sessions list for real-time sidebar updates
+          if (setSessions) {
+            setSessions(prev => prev.map(s => 
+              s.id === currentSession.id 
+                ? { 
+                    ...s, 
+                    messageCount: (s.messageCount || s.messages?.length || 0) + 2, // +2 for both messages
+                    updatedAt: new Date()
+                  }
+                : s
+            ));
+          }
+          
+          console.log('🎨 Messages saved to database successfully');
+        } catch (error) {
+          console.error('Failed to save generated image messages:', error);
+        }
+      } else {
+        console.error('❌ Cannot add messages - setMessages or currentSession is missing');
+        console.log('  - setMessages:', !!setMessages);
+        console.log('  - currentSession:', !!currentSession);
+      }
+      
+      // Show success notification
+      addInfoNotification(
+        'Image Generated',
+        'Your image has been generated and added to the chat.',
+        3000
+      );
+      
+    } catch (error) {
+      console.error('Error handling generated image:', error);
+      addErrorNotification(
+        'Image Generation Error',
+        'Failed to add the generated image to the chat.',
+        5000
+      );
+    }
+  }, [setMessages, currentSession, setSessions]);
+
+  // Handle image generation button click
+  const handleImageGenClick = useCallback(() => {
+    console.log('🎨 Image generation button clicked');
+    console.log('🎨 imageGenEnabled:', imageGenEnabled);
+    console.log('🎨 availableImageModels:', availableImageModels);
+    
+    if (!imageGenEnabled) {
+      console.log('⚠️ Image generation disabled - showing notification');
+      addInfoNotification(
+        'Image Generation Unavailable',
+        availableImageModels.length === 0 
+          ? 'ComfyUI is not running or no image models are available. Please check your ComfyUI setup in Settings.'
+          : 'ComfyUI service is not ready. Please wait for it to start or check Settings.',
+        6000
+      );
+      return;
+    }
+    
+    console.log('✅ Opening image generation widget');
+    setShowImageGenWidget(true);
+  }, [imageGenEnabled, availableImageModels]);
+
   return (
     <div 
       ref={containerRef}
@@ -3298,6 +3657,20 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
                           disabled={isLoading}
                         >
                           <File className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      
+                      <Tooltip content={imageGenEnabled ? "Generate image" : "Image generation unavailable - ComfyUI not running"} position="top">
+                        <button
+                          onClick={handleImageGenClick}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            imageGenEnabled 
+                              ? 'hover:bg-white dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400' 
+                              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                          }`}
+                          disabled={isLoading || !imageGenEnabled}
+                        >
+                          <Palette className="w-4 h-4" />
                         </button>
                       </Tooltip>
                     </div>
@@ -3531,6 +3904,15 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           </div>
         </div>
       )}
+
+      {/* Image Generation Widget */}
+      <ChatImageGenWidget
+        isOpen={showImageGenWidget}
+        onClose={() => setShowImageGenWidget(false)}
+        onImageGenerated={handleImageGenerated}
+        initialPrompt={input}
+        availableModels={availableImageModels}
+      />
     </div>
   );
 };

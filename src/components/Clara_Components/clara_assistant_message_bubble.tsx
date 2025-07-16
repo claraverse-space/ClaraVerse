@@ -37,7 +37,8 @@ import {
   FileImage,
   Volume2,
   VolumeX,
-  Loader2
+  Loader2,
+  Activity
 } from 'lucide-react';
 
 // Import types and components
@@ -55,6 +56,9 @@ import { useSmoothScroll } from '../../hooks/useSmoothScroll';
 
 // Import TTS service
 import { claraTTSService } from '../../services/claraTTSService';
+
+// Import ExecutionDetailsModal
+import ExecutionDetailsModal from './ExecutionDetailsModal';
 
 /**
  * Thinking content parser and utilities
@@ -578,6 +582,8 @@ const MessageActions: React.FC<{
   isTTSPlaying?: boolean;
   isTTSLoading?: boolean;
   onTTSToggle?: () => void;
+  // Execution details props
+  onShowExecutionDetails?: () => void;
 }> = ({ 
   message, 
   isEditable = false, 
@@ -587,13 +593,21 @@ const MessageActions: React.FC<{
   isTTSHealthy = false,
   isTTSPlaying = false,
   isTTSLoading = false,
-  onTTSToggle
+  onTTSToggle,
+  onShowExecutionDetails
 }) => {
   const [copied, setCopied] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editContent, setEditContent] = useState('');
   const { copyToClipboard } = useCopyWithToast();
+
+  // Check if this is an autonomous agent message
+  const isAutonomousMessage = Boolean(
+    message.metadata?.autonomousCompletion ||
+    message.metadata?.toolsUsed ||
+    message.metadata?.executionSteps
+  );
 
   const handleCopy = async () => {
     await copyToClipboard(message.content);
@@ -636,65 +650,70 @@ const MessageActions: React.FC<{
   };
 
   return (
-    <>
-      <div 
-        className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
+    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Copy button */}
+      <button
+        onClick={handleCopy}
+        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        title="Copy message"
       >
-        {/* TTS button (for assistant messages) */}
-        {message.role === 'assistant' && isTTSHealthy && onTTSToggle && !message.metadata?.isStreaming && (
-          <button
-            onClick={onTTSToggle}
-            disabled={isTTSLoading}
-            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-            title={isTTSPlaying ? "Stop speaking" : "Read aloud"}
-          >
-            {isTTSLoading ? (
-              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-            ) : isTTSPlaying ? (
-              <VolumeX className="w-4 h-4 text-blue-500" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            )}
-          </button>
+        {copied ? (
+          <Check className="w-4 h-4 text-green-500" />
+        ) : (
+          <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
         )}
+      </button>
 
-        {/* Copy button */}
+      {/* Execution details button - only for autonomous agent messages */}
+      {isAutonomousMessage && onShowExecutionDetails && (
         <button
-          onClick={handleCopy}
-          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-          title="Copy message"
+          onClick={onShowExecutionDetails}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Show execution details"
         >
-          {copied ? (
-            <Check className="w-4 h-4 text-green-500" />
+          <Activity className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+        </button>
+      )}
+
+      {/* TTS button - only for assistant messages */}
+      {message.role === 'assistant' && isTTSHealthy && (
+        <button
+          onClick={onTTSToggle}
+          disabled={isTTSLoading}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+          title={isTTSPlaying ? "Stop playback" : "Read aloud"}
+        >
+          {isTTSLoading ? (
+            <Loader2 className="w-4 h-4 text-gray-500 dark:text-gray-400 animate-spin" />
+          ) : isTTSPlaying ? (
+            <VolumeX className="w-4 h-4 text-red-500 dark:text-red-400" />
           ) : (
-            <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           )}
         </button>
+      )}
 
-        {/* Edit button (for user messages) */}
-        {isEditable && onEdit && (
-          <button
-            onClick={handleEdit}
-            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-            title="Edit message"
-          >
-            <Edit3 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          </button>
-        )}
+      {/* Edit button */}
+      {isEditable && (
+        <button
+          onClick={handleEdit}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Edit message"
+        >
+          <Edit3 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        </button>
+      )}
 
-        {/* Retry button (for failed assistant messages) */}
-        {message.role === 'assistant' && onRetry && (
-          <button
-            onClick={handleRetry}
-            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-            title="Retry generation"
-          >
-            <RotateCcw className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          </button>
-        )}
-      </div>
+      {/* Retry button */}
+      {onRetry && (
+        <button
+          onClick={handleRetry}
+          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Retry message"
+        >
+          <RotateCcw className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        </button>
+      )}
 
       {/* Edit Modal */}
       {showEditModal && (
@@ -748,7 +767,7 @@ const MessageActions: React.FC<{
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };
 
@@ -851,6 +870,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   onEdit
 }) => {
   const [showFullMetadata, setShowFullMetadata] = useState(false);
+  const [showExecutionDetails, setShowExecutionDetails] = useState(false);
 
   const [selectedAttachment, setSelectedAttachment] = useState<{
     attachment: any;
@@ -875,6 +895,11 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isAssistant = message.role === 'assistant';
+
+  // Get execution ID from message metadata
+  const executionId = message.metadata?.executionId || 
+    (message.metadata?.autonomousCompletion && message.id) || 
+    null;
 
   // Check if we have detailed stats worth showing in the expandable panel
   const hasDetailedStats = Boolean(
@@ -952,8 +977,8 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     return unsubscribe;
   }, []);
 
-  // TTS functionality
-  const handleTTSToggle = useCallback(async () => {
+  // TTS toggle handler
+  const handleTTSToggle = async () => {
     if (!isAssistant || !responseContent.trim()) return;
     
     if (isTTSPlaying) {
@@ -999,16 +1024,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
       setIsTTSLoading(false);
       setIsTTSPlaying(false);
     }
-  }, [isAssistant, responseContent, isTTSPlaying]);
-
-  // Stop TTS when component unmounts or message changes
-  useEffect(() => {
-    return () => {
-      if (isTTSPlaying) {
-        claraTTSService.stopPlayback();
-      }
-    };
-  }, []);
+  };
 
   // Stop TTS when message content changes (for streaming)
   useEffect(() => {
@@ -1017,6 +1033,15 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
       setIsTTSPlaying(false);
     }
   }, [message.content, message.metadata?.isStreaming, isTTSPlaying]);
+
+  // Execution details handlers
+  const handleShowExecutionDetails = () => {
+    setShowExecutionDetails(true);
+  };
+
+  const handleCloseExecutionDetails = () => {
+    setShowExecutionDetails(false);
+  };
 
   // Improved auto-scroll effect for streaming messages with better responsiveness
   useEffect(() => {
@@ -1105,6 +1130,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
             isTTSPlaying={isTTSPlaying}
             isTTSLoading={isTTSLoading}
             onTTSToggle={handleTTSToggle}
+            onShowExecutionDetails={executionId ? handleShowExecutionDetails : undefined}
           />
         </div>
 
@@ -1225,6 +1251,16 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
           extractedContent={selectedAttachment.content}
           isOpen={!!selectedAttachment}
           onClose={() => setSelectedAttachment(null)}
+        />
+      )}
+
+      {/* Execution Details Modal */}
+      {executionId && (
+        <ExecutionDetailsModal
+          isOpen={showExecutionDetails}
+          onClose={handleCloseExecutionDetails}
+          executionId={executionId}
+          messageId={message.id}
         />
       )}
       {Toast}

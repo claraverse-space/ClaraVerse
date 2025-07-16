@@ -3407,6 +3407,10 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
             onModelChange={handleModelChange}
             onStop={handleStop}
             onNewChat={handleNewChat}
+            messages={messages}
+            setMessages={setMessages}
+            currentSession={currentSession}
+            setSessions={setSessions}
             autoTTSText={latestAIResponse}
             autoTTSTrigger={autoTTSTrigger}
             onPreloadModel={handlePreloadModel}

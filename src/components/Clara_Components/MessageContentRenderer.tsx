@@ -819,6 +819,85 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
 }) => {
   // Auto-detect dark mode if not explicitly provided
   const [darkMode, setDarkMode] = useState(isDark);
+  
+  // State to hold extracted images
+  const [extractedImages, setExtractedImages] = useState<Array<{
+    id: string;
+    src: string;
+    alt: string;
+  }>>([]);
+
+  // Debug logging to see what content is being processed
+  if (content.includes('![Generated Image](')) {
+    console.log('🖼️ MessageContentRenderer processing content with image:', {
+      contentLength: content.length,
+      imageMarkdown: content.match(/!\[Generated Image\]\(([^)]+)\)/)?.[1]?.substring(0, 50) + '...',
+      hasImageMarkdown: content.includes('![Generated Image]('),
+      fullContent: content
+    });
+  }
+
+  // Pre-process content to extract and replace image data URLs
+  const processedContent = useMemo(() => {
+    // Check if content contains image data URLs
+    const imageRegex = /!\[([^\]]*)\]\(data:image\/[^;]+;base64,[^)]+\)/g;
+    const matches = Array.from(content.matchAll(imageRegex));
+    
+    if (matches.length > 0) {
+      console.log('🖼️ Found image data URLs in content:', matches.length);
+      
+      const images: Array<{id: string; src: string; alt: string}> = [];
+      let processedContent = content;
+      
+      matches.forEach((match, index) => {
+        const fullMatch = match[0];
+        const alt = match[1] || 'Generated Image';
+        const dataUrlMatch = match[0].match(/data:image\/[^;]+;base64,[^)]+/);
+        
+        if (dataUrlMatch) {
+          const dataUrl = dataUrlMatch[0];
+          const imageId = `extracted-image-${index}`;
+          
+          console.log(`🖼️ Processing image ${index + 1}:`, {
+            alt,
+            dataUrlLength: dataUrl.length,
+            dataUrlStart: dataUrl.substring(0, 50) + '...',
+            fullMatchLength: fullMatch.length,
+            imageId
+          });
+          
+          // Validate the data URL
+          if (dataUrl.length > 50 && dataUrl.includes('base64,')) {
+            console.log(`✅ Image ${index + 1} data URL is valid, extracting...`);
+            
+            // Add to extracted images
+            images.push({
+              id: imageId,
+              src: dataUrl,
+              alt
+            });
+            
+            // Replace the full markdown image with a placeholder
+            processedContent = processedContent.replace(fullMatch, `\n\n**[IMAGE_PLACEHOLDER_${imageId}]**\n\n`);
+          } else {
+            console.error(`❌ Image ${index + 1} data URL is invalid:`, {
+              length: dataUrl.length,
+              hasBase64: dataUrl.includes('base64,')
+            });
+          }
+        }
+      });
+      
+      // Update extracted images state
+      setExtractedImages(images);
+      
+      return processedContent;
+    }
+    
+    // No images found, clear extracted images
+    setExtractedImages([]);
+    return content;
+  }, [content]);
 
   useEffect(() => {
     if (!isDark) {
@@ -854,97 +933,203 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
     }
   }, [isDark]);
 
-  // Render as Markdown with inline visual rendering
+  // Custom component to render extracted images
+  const ImagePlaceholder: React.FC<{ imageId: string }> = ({ imageId }) => {
+    const image = extractedImages.find(img => img.id === imageId);
+    
+    if (!image) {
+      console.error('🖼️ Image not found for placeholder:', imageId);
+      return (
+        <div className="my-4 flex flex-col items-center">
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-red-600 dark:text-red-400 text-sm">Image not found</p>
+          </div>
+        </div>
+      );
+    }
+    
+    console.log('🖼️ Rendering extracted image:', {
+      id: image.id,
+      alt: image.alt,
+      srcLength: image.src.length,
+      srcStart: image.src.substring(0, 50) + '...'
+    });
+    
+    return (
+      <div className="my-4 flex flex-col items-center">
+        <img
+          src={image.src}
+          alt={image.alt}
+          className="max-w-full h-auto rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow duration-300"
+          style={{ maxHeight: '500px' }}
+          onLoad={() => {
+            console.log('✅ Extracted image loaded successfully:', { id: image.id, alt: image.alt });
+          }}
+          onError={(e) => {
+            console.error('🖼️ Extracted image failed to load:', { id: image.id, alt: image.alt });
+          }}
+        />
+        {image.alt && image.alt !== 'Generated Image' && (
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center italic">
+            {image.alt}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Function to render content with image placeholders replaced
+  const renderContentWithImages = (content: string) => {
+    // Split content by image placeholders
+    const parts = content.split(/\*\*\[IMAGE_PLACEHOLDER_([^\]]+)\]\*\*/);
+    
+    const elements: React.ReactNode[] = [];
+    
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        // Regular content
+        if (parts[i].trim()) {
+          elements.push(
+            <ReactMarkdown
+              key={`content-${i}`}
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                // Custom code block renderer with inline visual rendering
+                code: ({ node, inline, className, children, ...props }: any) => {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const language = match ? match[1] : '';
+                  
+                  return (
+                    <CodeBlock
+                      language={language}
+                      className={className}
+                      isInline={inline}
+                      isDark={darkMode}
+                      isStreaming={isStreaming}
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </CodeBlock>
+                  );
+                },
+                
+                // Enhanced link renderer
+                a: ({ href, children, ...props }) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline decoration-blue-400 underline-offset-2"
+                    {...props}
+                  >
+                    {children}
+                  </a>
+                ),
+                
+                // Regular image renderer (for non-data URLs)
+                img: ({ src, alt, ...props }) => {
+                  // Only handle regular URLs, not data URLs
+                  if (!src || src.startsWith('data:')) {
+                    return (
+                      <div className="my-4 flex flex-col items-center">
+                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                          <p className="text-yellow-600 dark:text-yellow-400 text-sm">
+                            Data URL images are handled separately
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="my-4 flex flex-col items-center">
+                      <img
+                        src={src}
+                        alt={alt}
+                        className="max-w-full h-auto rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow duration-300"
+                        style={{ maxHeight: '500px' }}
+                        {...props}
+                      />
+                      {alt && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center italic">
+                          {alt}
+                        </p>
+                      )}
+                    </div>
+                  );
+                },
+                
+                // Enhanced table renderer
+                table: ({ children, ...props }) => (
+                  <div className="overflow-x-auto my-4">
+                    <table className="min-w-full border border-gray-200 dark:border-gray-700 rounded-lg" {...props}>
+                      {children}
+                    </table>
+                  </div>
+                ),
+                
+                // Enhanced blockquote renderer
+                blockquote: ({ children, ...props }) => (
+                  <blockquote 
+                    className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-blue-50 dark:bg-blue-900/20 rounded-r-lg italic text-gray-700 dark:text-gray-300"
+                    {...props}
+                  >
+                    {children}
+                  </blockquote>
+                ),
+
+                // Enhanced ordered list renderer
+                ol: ({ children, ...props }) => (
+                  <ol 
+                    className="list-decimal list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
+                    {...props}
+                  >
+                    {children}
+                  </ol>
+                ),
+
+                // Enhanced unordered list renderer
+                ul: ({ children, ...props }) => (
+                  <ul 
+                    className="list-disc list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
+                    {...props}
+                  >
+                    {children}
+                  </ul>
+                ),
+
+                // Enhanced list item renderer
+                li: ({ children, ...props }) => (
+                  <li 
+                    className="pl-2 leading-relaxed text-gray-800 dark:text-gray-200"
+                    {...props}
+                  >
+                    {children}
+                  </li>
+                ),
+              }}
+            >
+              {parts[i]}
+            </ReactMarkdown>
+          );
+        }
+      } else {
+        // Image placeholder
+        const imageId = parts[i];
+        elements.push(
+          <ImagePlaceholder key={`image-${imageId}`} imageId={imageId} />
+        );
+      }
+    }
+    
+    return elements;
+  };
+
+  // Render as Markdown with custom image handling
   return (
     <div className={`prose prose-base dark:prose-invert max-w-none ${className}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        components={{
-          // Custom code block renderer with inline visual rendering
-          code: ({ node, inline, className, children, ...props }: any) => {
-            const match = /language-(\w+)/.exec(className || '');
-            const language = match ? match[1] : '';
-            
-            return (
-              <CodeBlock
-                language={language}
-                className={className}
-                isInline={inline}
-                isDark={darkMode}
-                isStreaming={isStreaming}
-                {...props}
-              >
-                {String(children).replace(/\n$/, '')}
-              </CodeBlock>
-            );
-          },
-          
-          // Enhanced link renderer
-          a: ({ href, children, ...props }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline decoration-blue-400 underline-offset-2"
-              {...props}
-            >
-              {children}
-            </a>
-          ),
-          
-          // Enhanced table renderer
-          table: ({ children, ...props }) => (
-            <div className="overflow-x-auto my-4">
-              <table className="min-w-full border border-gray-200 dark:border-gray-700 rounded-lg" {...props}>
-                {children}
-              </table>
-            </div>
-          ),
-          
-          // Enhanced blockquote renderer
-          blockquote: ({ children, ...props }) => (
-            <blockquote 
-              className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-blue-50 dark:bg-blue-900/20 rounded-r-lg italic text-gray-700 dark:text-gray-300"
-              {...props}
-            >
-              {children}
-            </blockquote>
-          ),
-
-          // Enhanced ordered list renderer
-          ol: ({ children, ...props }) => (
-            <ol 
-              className="list-decimal list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
-              {...props}
-            >
-              {children}
-            </ol>
-          ),
-
-          // Enhanced unordered list renderer
-          ul: ({ children, ...props }) => (
-            <ul 
-              className="list-disc list-outside ml-6 mb-4 space-y-1 text-gray-800 dark:text-gray-200"
-              {...props}
-            >
-              {children}
-            </ul>
-          ),
-
-          // Enhanced list item renderer
-          li: ({ children, ...props }) => (
-            <li 
-              className="pl-2 leading-relaxed text-gray-800 dark:text-gray-200"
-              {...props}
-            >
-              {children}
-            </li>
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
+      {renderContentWithImages(processedContent)}
     </div>
   );
 });
