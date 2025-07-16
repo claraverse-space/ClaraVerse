@@ -1,0 +1,52 @@
+{
+  "categories": [
+    "getting-started",
+    "features",
+    "ai-features",
+    "troubleshooting"
+  ],
+  "files": {
+    "getting-started": {
+      "title": "Getting Started",
+      "description": "Quick start guide to set up ClaraVerse",
+      "category": "getting-started",
+      "order": 1,
+      "filePath": "getting-started/README.md"
+    },
+    "installation": {
+      "title": "Installation Guide",
+      "description": "Detailed installation instructions",
+      "category": "getting-started",
+      "order": 2,
+      "filePath": "getting-started/installation.md"
+    },
+    "lumaui": {
+      "title": "LumaUI Web Development",
+      "description": "AI-powered web development environment",
+      "category": "features",
+      "order": 3,
+      "filePath": "features/lumaui.md"
+    },
+    "clara-assistant": {
+      "title": "Clara Assistant",
+      "description": "Your AI coding companion",
+      "category": "features",
+      "order": 4,
+      "filePath": "features/clara-assistant.md"
+    },
+    "ai-features": {
+      "title": "AI Features",
+      "description": "Explore ClaraVerse AI capabilities",
+      "category": "ai-features",
+      "order": 5,
+      "filePath": "ai-features/README.md"
+    },
+    "troubleshooting": {
+      "title": "Troubleshooting",
+      "description": "Common issues and solutions",
+      "category": "troubleshooting",
+      "order": 6,
+      "filePath": "troubleshooting/README.md"
+    }
+  }
+} 
