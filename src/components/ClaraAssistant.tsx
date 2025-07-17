@@ -23,6 +23,7 @@ import { claraApiService } from '../services/claraApiService';
 import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
+import { claraMemoryService } from '../services/claraMemoryService';
 import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
 import { claraBackgroundService } from '../services/claraBackgroundService';
 
@@ -330,69 +331,30 @@ Create beautiful, interactive visual content with HTML:
 - User asks for interactive demonstrations
 
 **Remember**: Most questions are best answered with clear, focused text. Artifacts are for specific visualization needs!` : '';
+  
+const toolsGuidance =  `
+Always use tools when needed. 
+When using tools, be thorough and explain your actions clearly.
+
+when you are asked for something always resort to writing a python script and running it.
+`;
 
   switch (provider?.type) {
     case 'ollama':
-      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance}`;
+      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openai':
-      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance}`;
+      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openrouter':
-      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance}`;
+      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
       
     case 'claras-pocket':
-      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance}`;
+      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance} ${toolsGuidance}`;
       
     default:
-      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance}`;
+      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
   }
-};
-
-/**
- * Create sample artifacts for demonstration
- */
-const createSampleArtifacts = (content: string): ClaraArtifact[] => {
-  const artifacts: ClaraArtifact[] = [];
-
-  // Check if the content suggests code
-  if (content.toLowerCase().includes('code') || content.toLowerCase().includes('function')) {
-    artifacts.push({
-      id: generateId(),
-      type: 'code',
-      title: 'Generated Code Example',
-      content: `function greetUser(name) {
-  console.log(\`Hello, \${name}! Welcome to Clara!\`);
-  return \`Welcome, \${name}\`;
-}
-
-// Usage example
-const userName = "User";
-const greeting = greetUser(userName);
-console.log(greeting);`,
-      language: 'javascript',
-      createdAt: new Date(),
-      isExecutable: true
-    });
-  }
-
-  // Check if the content suggests data/table
-  if (content.toLowerCase().includes('table') || content.toLowerCase().includes('data')) {
-    artifacts.push({
-      id: generateId(),
-      type: 'table',
-      title: 'Sample Data Table',
-      content: JSON.stringify([
-        { id: 1, name: 'Clara Assistant', type: 'AI Assistant', status: 'Active' },
-        { id: 2, name: 'Document Analysis', type: 'Feature', status: 'Available' },
-        { id: 3, name: 'Image Recognition', type: 'Feature', status: 'Available' },
-        { id: 4, name: 'Code Generation', type: 'Feature', status: 'Active' }
-      ], null, 2),
-      createdAt: new Date()
-    });
-  }
-
-  return artifacts;
 };
 
 // Add a hook to detect if Clara is currently visible
@@ -554,7 +516,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableStreaming: true,          // **CHANGED**: Default to streaming mode
         enableVision: true,
         autoModelSelection: false,      // **CHANGED**: Default to manual model selection
-        enableMCP: false                // **CHANGED**: Default to false for streaming mode
+        enableMCP: false,               // **CHANGED**: Default to false for streaming mode
+        enableStructuredToolCalling: false // **NEW**: Default to false
       },
       artifacts: {
         enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1050,7 +1013,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enableStreaming: true,        // **CHANGED**: Default to streaming mode
                 enableVision: true,
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-                enableMCP: false              // **CHANGED**: Default to false for streaming mode
+                enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+                enableStructuredToolCalling: false // **NEW**: Default to false
               },
                           artifacts: {
               enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1200,7 +1164,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         }
       };
 
-      // Create refinement prompt
+      // Get memory context from the memory service
+      const memoryContext = claraMemoryService.generateMemoryContext();
+      console.log('🧠 Memory context for refinement:', memoryContext ? 'Available' : 'Empty');
+
+      // Create refinement prompt with memory context
       const refinementPrompt = `You are Clara, reviewing and refining an AI response to make it more user-friendly and resonant.
 
 **Original User Question:**
@@ -1211,21 +1179,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 ${rawUnfilteredResponse}
 ---------
 
+${memoryContext ? `**Memory Context:**
+${memoryContext}` : ''}
+
 **Your Task:**
 Please create a refined, conversational response that:
 1. Directly answers the user's original question
 2. Uses the key information from the raw response
-3. Removes technical artifacts, console outputs, and execution details
-4. Presents the information in a natural, helpful way
-5. Maintains accuracy while being more engaging
-6. Ends with a friendly offer to help further
-
-**Important Guidelines:**
-- Be conversational and warm, not robotic
-- Focus on what the user actually asked for
-- Remove any technical jargon or system messages
-- Keep the core facts and data accurate
-- Make it feel like a natural conversation
+3. Incorporates insights from the memory context (if available)
+4. Removes technical artifacts, console outputs, and execution details
+5. Presents the information in a natural, helpful way
+6. Maintains accuracy while being more engaging
+7. Ends with a friendly offer to help further
 
 Please provide your refined response for following user question:
 "${originalUserQuestion}"`;
@@ -2281,7 +2246,8 @@ Would you like me to help with text-only responses for now?`,
             enableStreaming: true,        // **CHANGED**: Default to streaming mode
             enableVision: true,
             autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-            enableMCP: false              // **CHANGED**: Default to false for streaming mode
+            enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+            enableStructuredToolCalling: false // **NEW**: Default to false
           },
           mcp: {
             enableTools: true,
@@ -3027,6 +2993,150 @@ Console output:`;
       console.log('  3. Look for 🔍 logs in console showing verification steps');
     };
 
+    // Add memory debugging functions
+    (window as any).debugMemory = () => {
+      console.log('🧠 === MEMORY DEBUG INFO ===');
+      claraMemoryService.debugMemory();
+    };
+
+    (window as any).testMemory = () => {
+      console.log('🧪 Testing memory system...');
+      
+      // Start a test session
+      claraMemoryService.startSession('test-session', 'test-user');
+      
+      // Store some test tool results
+      claraMemoryService.storeToolResult({
+        toolName: 'test_tool_1',
+        success: true,
+        result: 'This is a test result from tool 1',
+        metadata: { type: 'test' }
+      });
+      
+      claraMemoryService.storeToolResult({
+        toolName: 'test_tool_2',
+        success: false,
+        error: 'Test error from tool 2',
+        result: null,
+        metadata: { type: 'test' }
+      });
+      
+      // Generate memory context
+      const context = claraMemoryService.generateMemoryContext();
+      console.log('Generated memory context:', context);
+      
+      // Show stats
+      const stats = claraMemoryService.getMemoryStats();
+      console.log('Memory stats:', stats);
+      
+      // Clear test session
+      claraMemoryService.clearCurrentSession();
+      console.log('✅ Memory test completed');
+    };
+
+    (window as any).clearMemory = () => {
+      console.log('🧠 Clearing all memory...');
+      claraMemoryService.clearAllMemory();
+      console.log('✅ All memory cleared');
+    };
+
+    (window as any).memoryStats = () => {
+      console.log('🧠 Memory Statistics:');
+      const stats = claraMemoryService.getMemoryStats();
+      console.log(stats);
+    };
+
+    // Test the new structured tool calling system
+    (window as any).testStructuredToolCalling = async () => {
+      console.log('🧪 Testing structured tool calling system...');
+      
+      // Import the service
+      const { structuredToolCallService } = await import('../services/structuredToolCallService');
+      
+      // Test parsing a structured response
+      const testResponse = `I'll help you open the workspace folder.
+
+\`\`\`json
+{
+  "reasoning": "The user wants to open the workspace folder. I'll use the mcp_python-tools_open tool to accomplish this.",
+  "toolCalls": [
+    {
+      "toolName": "mcp_python-tools_open",
+      "arguments": {},
+      "reasoning": "This tool opens the workspace folder as requested"
+    }
+  ],
+  "needsToolExecution": true
+}
+\`\`\`
+
+Let me execute this for you.`;
+
+      console.log('📝 Test response:', testResponse);
+      
+      const parsed = structuredToolCallService.parseStructuredResponse(testResponse);
+      console.log('📊 Parsed result:', parsed);
+      
+      if (parsed.needsToolExecution && parsed.toolCalls.length > 0) {
+        console.log('🚀 Executing tool calls...');
+        const results = await structuredToolCallService.executeStructuredToolCalls(
+          parsed.toolCalls,
+          (msg) => console.log('📢 Progress:', msg)
+        );
+        console.log('✅ Tool execution results:', results);
+      }
+    };
+
+    // Test structured tool calling with current session
+    (window as any).testStructuredWithCurrentSession = async () => {
+      if (!sessionConfig.aiConfig?.features?.enableStructuredToolCalling) {
+        console.log('❌ Structured tool calling is not enabled. Enable it in Advanced Options first.');
+        return;
+      }
+      
+      console.log('🧪 Testing structured tool calling with current session...');
+      console.log('📊 Current config:', {
+        provider: sessionConfig.aiConfig.provider,
+        structuredEnabled: sessionConfig.aiConfig.features.enableStructuredToolCalling,
+        autonomousEnabled: sessionConfig.aiConfig.autonomousAgent?.enabled
+      });
+      
+      // Send a test message
+      const testMessage = "open the workspace folder please";
+      console.log(`📤 Sending test message: "${testMessage}"`);
+      
+      try {
+        await handleSendMessage(testMessage);
+        console.log('✅ Test message sent successfully');
+      } catch (error) {
+        console.error('❌ Test message failed:', error);
+      }
+    };
+
+    // Debug current structured tool calling status
+    (window as any).debugStructuredToolCalling = () => {
+      console.log('🔍 === STRUCTURED TOOL CALLING DEBUG INFO ===');
+      console.log('📊 Current Configuration:');
+      console.log('  - Provider:', sessionConfig.aiConfig?.provider);
+      console.log('  - Structured Tool Calling Enabled:', sessionConfig.aiConfig?.features?.enableStructuredToolCalling);
+      console.log('  - Autonomous Agent Enabled:', sessionConfig.aiConfig?.autonomousAgent?.enabled);
+      console.log('  - Tools Enabled:', sessionConfig.aiConfig?.features?.enableTools);
+      console.log('  - MCP Enabled:', sessionConfig.aiConfig?.features?.enableMCP);
+      console.log('  - Streaming Enabled:', sessionConfig.aiConfig?.features?.enableStreaming);
+      console.log('');
+      console.log('📋 Available Models:');
+      console.log('  - Text Model:', sessionConfig.aiConfig?.models?.text);
+      console.log('  - Vision Model:', sessionConfig.aiConfig?.models?.vision);
+      console.log('  - Code Model:', sessionConfig.aiConfig?.models?.code);
+      console.log('');
+      console.log('🛠️ Available Tools:', models.length, 'models loaded');
+      console.log('');
+      console.log('💡 To test structured tool calling:');
+      console.log('  1. Enable "Use Structured Tool Calling" in Advanced Options → Autonomous Agent');
+      console.log('  2. Enable "Enable Autonomous Agent" in Advanced Options → Autonomous Agent');
+      console.log('  3. Run: testStructuredWithCurrentSession()');
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -3047,6 +3157,13 @@ Console output:`;
       delete (window as any).debugClara;
       delete (window as any).testCompletionVerification;
       delete (window as any).debugVerificationSystem;
+      delete (window as any).debugMemory;
+      delete (window as any).testMemory;
+      delete (window as any).clearMemory;
+      delete (window as any).memoryStats;
+      delete (window as any).testStructuredToolCalling;
+      delete (window as any).testStructuredWithCurrentSession;
+      delete (window as any).debugStructuredToolCalling;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
       providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);
@@ -3348,7 +3465,8 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                         enableStreaming: newConfig.features?.enableStreaming ?? currentConfig.features.enableStreaming,
                         enableVision: newConfig.features?.enableVision ?? currentConfig.features.enableVision,
                         autoModelSelection: newConfig.features?.autoModelSelection ?? currentConfig.features.autoModelSelection,
-                        enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP
+                        enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP,
+                        enableStructuredToolCalling: newConfig.features?.enableStructuredToolCalling ?? currentConfig.features.enableStructuredToolCalling
                       },
                       mcp: newConfig.mcp ? {
                         enableTools: newConfig.mcp.enableTools ?? currentConfig.mcp?.enableTools ?? true,
