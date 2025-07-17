@@ -1458,6 +1458,63 @@ graph TD
                   </div>
                 )}
 
+                {/* Structured Tool Calling Option */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">Use Structured Tool Calling</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      For models without native tool support (uses JSON-based requests)
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiConfig?.features?.enableStructuredToolCalling || false}
+                      onChange={(e) => {
+                        const currentFeatures = aiConfig?.features || {
+                          enableTools: false,
+                          enableRAG: false,
+                          enableStreaming: true,
+                          enableVision: true,
+                          autoModelSelection: false,
+                          enableMCP: false,
+                          enableStructuredToolCalling: false
+                        };
+                        
+                        onConfigChange?.({
+                          features: {
+                            ...currentFeatures,
+                            enableStructuredToolCalling: e.target.checked
+                          }
+                        });
+                      }}
+                      className="sr-only"
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${
+                      aiConfig?.features?.enableStructuredToolCalling 
+                        ? 'bg-sakura-500' 
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    }`}>
+                      <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                        aiConfig?.features?.enableStructuredToolCalling ? 'translate-x-5' : 'translate-x-0'
+                      } mt-0.5 ml-0.5`} />
+                    </div>
+                  </label>
+                </div>
+
+                {/* Info about structured tool calling */}
+                {aiConfig?.features?.enableStructuredToolCalling && (
+                  <div className="flex items-start gap-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <svg className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-xs text-green-700 dark:text-green-300">
+                      <strong>Structured Tool Calling Active:</strong> Compatible with models that don't support native tool calling. 
+                      Uses JSON-formatted requests for better compatibility.
+                    </div>
+                  </div>
+                )}
+
                 {aiConfig?.autonomousAgent?.enabled && (
                   <div className="space-y-3 pl-4 border-l-2 border-sakura-200 dark:border-sakura-800">
                     {/* Max Retries */}
@@ -2262,7 +2319,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       enableStreaming: sessionConfig?.aiConfig?.features.enableStreaming ?? true,
       enableVision: sessionConfig?.aiConfig?.features.enableVision ?? true,
       autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true,
-      enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true
+      enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true,
+      enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false
     }
   };
 

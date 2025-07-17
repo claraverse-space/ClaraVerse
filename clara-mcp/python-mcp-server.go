@@ -13,10 +13,9 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 )
 
-// MCPRequest represents an incoming MCP request
+// Core types
 type MCPRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Method  string          `json:"method"`
@@ -24,7 +23,6 @@ type MCPRequest struct {
 	Params  json.RawMessage `json:"params"`
 }
 
-// MCPResponse represents an MCP response
 type MCPResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
 	ID      interface{} `json:"id"`
@@ -32,61 +30,74 @@ type MCPResponse struct {
 	Error   *MCPError   `json:"error,omitempty"`
 }
 
-// MCPError represents an error response
 type MCPError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
-// Tool represents an available tool
 type Tool struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	InputSchema map[string]interface{} `json:"inputSchema"`
 }
 
-// StandardResponse is the unified response format for all tools
-type StandardResponse struct {
-	Success bool   `json:"success"`
-	Result  string `json:"result"`
-	Error   string `json:"error,omitempty"`
-	Hint    string `json:"hint,omitempty"`
-}
-
-// PythonEnvironment represents an isolated Python environment
-type PythonEnvironment struct {
-	ID         string
-	Path       string
-	PythonPath string
-	PipPath    string
-	CreatedAt  time.Time
-	IsVirtual  bool
-	mu         sync.Mutex
-}
-
-// PythonMCPServer handles Python operations
+// PythonMCPServer with virtual environment support
 type PythonMCPServer struct {
-	pythonPath string // Single Python path for simplicity
-	workingDir string
-	mu         sync.RWMutex
+	systemPython string // System Python for creating venv
+	venvPath     string // Path to virtual environment
+	pythonPath   string // Python executable in venv
+	pipPath      string // Pip executable in venv
+	workspaceDir string // Workspace directory
+	mu           sync.RWMutex
 }
 
-// NewPythonMCPServer creates a new server instance
+// NewPythonMCPServer creates server with dedicated workspace and venv
 func NewPythonMCPServer() *PythonMCPServer {
-	server := &PythonMCPServer{
-		workingDir: ".",
+	// Create workspace directory with absolute path
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
 	}
-	server.pythonPath = server.findPython()
-	log.Printf("Python MCP Server started with Python: %s", server.pythonPath)
+
+	workspace := filepath.Join(cwd, "mcp_workspace")
+	if err := os.MkdirAll(workspace, 0755); err != nil {
+		log.Printf("Warning: Failed to create workspace: %v", err)
+		workspace = cwd
+	}
+
+	server := &PythonMCPServer{
+		workspaceDir: workspace,
+		venvPath:     filepath.Join(workspace, ".venv"),
+	}
+
+	// Find system Python first
+	server.systemPython = server.findSystemPython()
+	log.Printf("Found system Python: %s", server.systemPython)
+
+	// Initialize virtual environment
+	if err := server.initVirtualEnv(); err != nil {
+		log.Printf("WARNING: Failed to create virtual environment: %v", err)
+		log.Printf("Falling back to system Python")
+		server.pythonPath = server.systemPython
+		server.pipPath = server.systemPython
+	}
+
+	log.Printf("Python MCP Server started")
+	log.Printf("System Python: %s", server.systemPython)
+	log.Printf("Virtual env: %s", server.venvPath)
+	log.Printf("Active Python: %s", server.pythonPath)
+	log.Printf("Workspace: %s", server.workspaceDir)
+
+	// Create README file
+	server.createReadme()
+
 	return server
 }
 
-// findPython finds the best available Python installation
-func (s *PythonMCPServer) findPython() string {
-	// Try common Python commands
-	commands := []string{"python3", "python", "py"}
-
-	for _, cmd := range commands {
+// findSystemPython finds the system Python 3
+func (s *PythonMCPServer) findSystemPython() string {
+	// Try common commands
+	for _, cmd := range []string{"python3", "python", "py"} {
 		if path, err := exec.LookPath(cmd); err == nil {
 			// Verify it's Python 3
 			out, err := exec.Command(path, "--version").Output()
@@ -95,445 +106,439 @@ func (s *PythonMCPServer) findPython() string {
 			}
 		}
 	}
-
-	// Platform-specific fallbacks
-	if runtime.GOOS == "windows" {
-		// Check common Windows locations
-		paths := []string{
-			`C:\Python\Python313\python.exe`,
-			`C:\Python\Python312\python.exe`,
-			`C:\Python\Python311\python.exe`,
-			`C:\Python\Python310\python.exe`,
-			`C:\Python\Python39\python.exe`,
-			`C:\Program Files\Python313\python.exe`,
-			`C:\Program Files\Python312\python.exe`,
-			`C:\Program Files\Python311\python.exe`,
-		}
-
-		for _, path := range paths {
-			if _, err := os.Stat(path); err == nil {
-				return path
-			}
-		}
-	}
-
-	// Default fallback
-	return "python"
+	return "python" // fallback
 }
 
-// getTools returns available tools with optimized descriptions
-func (s *PythonMCPServer) getTools() []Tool {
-	// Determine shell description based on OS
-	shellDesc := "Run shell command"
-	shellExample := "shell command"
-
-	switch runtime.GOOS {
-	case "windows":
-		shellDesc = "Run PowerShell command"
-		shellExample = "PowerShell command (e.g. 'Get-ChildItem' or 'dir')"
-	case "darwin":
-		shellDesc = "Run macOS shell command"
-		shellExample = "bash command (e.g. 'ls -la' or 'brew list')"
-	case "linux":
-		shellDesc = "Run Linux shell command"
-		shellExample = "bash command (e.g. 'ls -la' or 'apt list')"
+// initVirtualEnv creates and activates a virtual environment
+func (s *PythonMCPServer) initVirtualEnv() error {
+	// Set paths based on OS
+	if runtime.GOOS == "windows" {
+		s.pythonPath = filepath.Join(s.venvPath, "Scripts", "python.exe")
+		s.pipPath = filepath.Join(s.venvPath, "Scripts", "pip.exe")
+	} else {
+		s.pythonPath = filepath.Join(s.venvPath, "bin", "python")
+		s.pipPath = filepath.Join(s.venvPath, "bin", "pip")
 	}
 
+	// Check if venv already exists
+	if _, err := os.Stat(s.pythonPath); err == nil {
+		log.Printf("Virtual environment already exists")
+		return nil
+	}
+
+	// Create virtual environment
+	log.Printf("Creating virtual environment...")
+	cmd := exec.Command(s.systemPython, "-m", "venv", s.venvPath)
+	cmd.Dir = s.workspaceDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create venv: %v\nOutput: %s", err, output)
+	}
+
+	// Verify venv was created
+	if _, err := os.Stat(s.pythonPath); err != nil {
+		return fmt.Errorf("venv created but Python not found at %s", s.pythonPath)
+	}
+
+	// Upgrade pip in the venv
+	log.Printf("Upgrading pip in virtual environment...")
+	upgradeCmd := exec.Command(s.pythonPath, "-m", "pip", "install", "--upgrade", "pip")
+	upgradeCmd.Dir = s.workspaceDir
+	if output, err := upgradeCmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: Failed to upgrade pip: %v\nOutput: %s", err, output)
+	}
+
+	log.Printf("Virtual environment created successfully")
+	return nil
+}
+
+// createReadme creates a README file in workspace
+func (s *PythonMCPServer) createReadme() {
+	readmePath := filepath.Join(s.workspaceDir, "README.txt")
+	if _, err := os.Stat(readmePath); os.IsNotExist(err) {
+		readme := `MCP Workspace Directory
+=====================
+
+This is your MCP workspace with an isolated Python environment.
+
+Features:
+- Isolated Python virtual environment in .venv/
+- All packages are installed in this environment only
+- Your system Python remains untouched
+- Files saved here can be accessed with 'load' command
+- Python scripts run in this isolated environment
+
+You can:
+- Place files here to access them with the 'load' command
+- Files saved with 'save' command will appear here
+- All Python packages are isolated to this workspace
+
+Use the 'open' command to open this folder in your file explorer.
+
+Virtual Environment Location: .venv/
+Python Version: Check with py(code="import sys; print(sys.version)")
+Installed Packages: Check with sh(cmd="pip list")
+`
+		ioutil.WriteFile(readmePath, []byte(readme), 0644)
+	}
+}
+
+// getTools returns simplified tool definitions
+func (s *PythonMCPServer) getTools() []Tool {
 	return []Tool{
 		{
-			Name:        "run",
+			Name:        "py",
 			Description: "Run Python code",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"code": map[string]interface{}{
 						"type":        "string",
-						"description": "Python code to execute",
+						"description": "Python code",
 					},
 				},
 				"required": []string{"code"},
 			},
 		},
 		{
-			Name:        "shell",
-			Description: shellDesc,
+			Name:        "sh",
+			Description: "Run shell command",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"command": map[string]interface{}{
+					"cmd": map[string]interface{}{
 						"type":        "string",
-						"description": shellExample,
+						"description": "Command to run",
 					},
 				},
-				"required": []string{"command"},
+				"required": []string{"cmd"},
 			},
 		},
 		{
-			Name:        "install",
-			Description: "Install Python package",
+			Name:        "pip",
+			Description: "Install package",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"package": map[string]interface{}{
+					"pkg": map[string]interface{}{
 						"type":        "string",
-						"description": "Package name (e.g. 'pillow' or 'numpy==1.21.0')",
+						"description": "Package name",
 					},
 				},
-				"required": []string{"package"},
-			},
-		},
-		{
-			Name:        "check",
-			Description: "Check if package exists",
-			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"package": map[string]interface{}{
-						"type":        "string",
-						"description": "Package name to check",
-					},
-				},
-				"required": []string{"package"},
+				"required": []string{"pkg"},
 			},
 		},
 		{
 			Name:        "save",
-			Description: "Save content to file",
+			Description: "Save file",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
+					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "File path",
+						"description": "Filename",
 					},
-					"content": map[string]interface{}{
+					"text": map[string]interface{}{
 						"type":        "string",
-						"description": "File content",
+						"description": "Content",
 					},
 				},
-				"required": []string{"path", "content"},
+				"required": []string{"name", "text"},
 			},
 		},
 		{
-			Name:        "read",
-			Description: "Read file content",
+			Name:        "load",
+			Description: "Read file",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
+					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "File path",
+						"description": "Filename",
 					},
 				},
-				"required": []string{"path"},
+				"required": []string{"name"},
 			},
 		},
 		{
-			Name:        "list",
-			Description: "List files in directory",
+			Name:        "ls",
+			Description: "List files",
 			InputSchema: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"path": map[string]interface{}{
-						"type":        "string",
-						"description": "Directory path (default: current)",
-						"default":     ".",
-					},
-				},
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "open",
+			Description: "Open workspace folder",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
 			},
 		},
 	}
 }
 
-// run executes Python code
-func (s *PythonMCPServer) run(params map[string]interface{}) StandardResponse {
+// Tool implementations
+
+func (s *PythonMCPServer) py(params map[string]interface{}) string {
 	code, ok := params["code"].(string)
 	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'code' parameter",
-			Hint:    "Provide Python code to execute",
-			Result:  "",
-		}
+		return "ERROR: Need 'code'"
 	}
 
-	// Check if the code ends with an expression (common pattern)
-	// If so, wrap it to print the last expression
+	// Auto-print last expression if it looks like one
 	lines := strings.Split(strings.TrimSpace(code), "\n")
 	if len(lines) > 0 {
-		lastLine := strings.TrimSpace(lines[len(lines)-1])
-		// Check if last line is likely an expression (not a statement)
-		if lastLine != "" && !strings.HasPrefix(lastLine, "print") &&
-			!strings.HasPrefix(lastLine, "return") &&
-			!strings.Contains(lastLine, "=") &&
-			!strings.HasPrefix(lastLine, "if") &&
-			!strings.HasPrefix(lastLine, "for") &&
-			!strings.HasPrefix(lastLine, "while") &&
-			!strings.HasPrefix(lastLine, "def") &&
-			!strings.HasPrefix(lastLine, "class") &&
-			!strings.HasPrefix(lastLine, "import") &&
-			!strings.HasPrefix(lastLine, "from") {
-			// Wrap the last line in a print statement
-			lines[len(lines)-1] = fmt.Sprintf("print(%s)", lastLine)
+		last := strings.TrimSpace(lines[len(lines)-1])
+		// Simple heuristic: if it doesn't look like a statement, print it
+		if last != "" && !strings.Contains(last, "=") && !strings.HasPrefix(last, "print") &&
+			!strings.HasPrefix(last, "if") && !strings.HasPrefix(last, "for") &&
+			!strings.HasPrefix(last, "while") && !strings.HasPrefix(last, "def") &&
+			!strings.HasPrefix(last, "class") && !strings.HasPrefix(last, "import") &&
+			!strings.HasPrefix(last, "from") && !strings.HasPrefix(last, "return") &&
+			!strings.HasPrefix(last, "try") && !strings.HasPrefix(last, "except") {
+			lines[len(lines)-1] = fmt.Sprintf("print(%s)", last)
 			code = strings.Join(lines, "\n")
 		}
 	}
 
-	// Create temporary Python file
-	tmpFile, err := ioutil.TempFile("", "code_*.py")
-	if err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   "Failed to create temporary file",
-			Hint:    "Check system permissions",
-			Result:  "",
-		}
-	}
-	defer os.Remove(tmpFile.Name())
+	// Execute Python directly with -c flag using venv Python
+	cmd := exec.Command(s.pythonPath, "-c", code)
+	cmd.Dir = s.workspaceDir
 
-	if _, err := tmpFile.WriteString(code); err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   "Failed to write code",
-			Hint:    "Check disk space",
-			Result:  "",
-		}
+	// Set environment to ensure venv is active
+	cmd.Env = os.Environ()
+	if runtime.GOOS == "windows" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("VIRTUAL_ENV=%s", s.venvPath))
 	}
-	tmpFile.Close()
 
-	// Execute Python code
-	cmd := exec.Command(s.pythonPath, tmpFile.Name())
-	cmd.Dir = s.workingDir
 	output, err := cmd.CombinedOutput()
 
-	// Always ensure Result has a value
-	outputStr := strings.TrimSpace(string(output))
-	if outputStr == "" && err == nil {
-		outputStr = "Code executed successfully (no output)"
-	}
-
+	result := strings.TrimSpace(string(output))
 	if err != nil {
-		return StandardResponse{
-			Success: false,
-			Result:  outputStr,
-			Error:   fmt.Sprintf("Execution failed: %v", err),
-			Hint:    "Check code syntax and imports",
+		if result == "" {
+			result = err.Error()
 		}
+		// Clean up common Python error formats
+		if strings.Contains(result, "Traceback") {
+			lines := strings.Split(result, "\n")
+			if len(lines) > 0 {
+				lastLine := lines[len(lines)-1]
+				if strings.Contains(lastLine, "Error:") {
+					result = lastLine
+				}
+			}
+		}
+		return fmt.Sprintf("ERROR: %s", result)
 	}
 
-	return StandardResponse{
-		Success: true,
-		Result:  outputStr,
-		Error:   "",
-		Hint:    "",
+	if result == "" {
+		result = "OK (no output)"
 	}
+	return result
 }
 
-// install installs a Python package
-func (s *PythonMCPServer) install(params map[string]interface{}) StandardResponse {
-	packageName, ok := params["package"].(string)
+func (s *PythonMCPServer) sh(params map[string]interface{}) string {
+	command, ok := params["cmd"].(string)
 	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'package' parameter",
-			Hint:    "Provide package name like 'pillow' or 'numpy==1.21.0'",
+		return "ERROR: Need 'cmd'"
+	}
+
+	var cmd *exec.Cmd
+
+	// Special handling for Python/pip commands to use venv
+	lowerCmd := strings.ToLower(command)
+	if strings.HasPrefix(lowerCmd, "python ") || lowerCmd == "python" {
+		// Replace python with venv python
+		args := strings.Split(command, " ")[1:]
+		cmd = exec.Command(s.pythonPath, args...)
+	} else if strings.HasPrefix(lowerCmd, "pip ") || lowerCmd == "pip" {
+		// Replace pip with venv pip
+		args := strings.Split(command, " ")[1:]
+		cmd = exec.Command(s.pipPath, args...)
+	} else {
+		// Regular shell command
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("powershell", "-Command", command)
+		default:
+			cmd = exec.Command("sh", "-c", command)
 		}
 	}
 
-	cmd := exec.Command(s.pythonPath, "-m", "pip", "install", packageName)
+	cmd.Dir = s.workspaceDir
+
+	// Set environment to include venv
+	cmd.Env = os.Environ()
+	if runtime.GOOS == "windows" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("VIRTUAL_ENV=%s", s.venvPath))
+		// Update PATH to include venv Scripts
+		for i, env := range cmd.Env {
+			if strings.HasPrefix(env, "PATH=") || strings.HasPrefix(env, "Path=") {
+				cmd.Env[i] = fmt.Sprintf("%s;%s", env, filepath.Join(s.venvPath, "Scripts"))
+				break
+			}
+		}
+	} else {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("VIRTUAL_ENV=%s", s.venvPath))
+		// Update PATH to include venv bin
+		for i, env := range cmd.Env {
+			if strings.HasPrefix(env, "PATH=") {
+				cmd.Env[i] = fmt.Sprintf("PATH=%s:%s", filepath.Join(s.venvPath, "bin"), strings.TrimPrefix(env, "PATH="))
+				break
+			}
+		}
+	}
+
+	output, err := cmd.CombinedOutput()
+
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		if result == "" {
+			result = err.Error()
+		}
+		return fmt.Sprintf("ERROR: %s", result)
+	}
+
+	if result == "" {
+		result = "OK"
+	}
+	return result
+}
+
+func (s *PythonMCPServer) pip(params map[string]interface{}) string {
+	pkg, ok := params["pkg"].(string)
+	if !ok {
+		return "ERROR: Need 'pkg'"
+	}
+
+	// Use venv pip
+	cmd := exec.Command(s.pipPath, "install", pkg)
+	cmd.Dir = s.workspaceDir
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		return StandardResponse{
-			Success: false,
-			Result:  string(output),
-			Error:   "Installation failed",
-			Hint:    fmt.Sprintf("Try 'pip install %s' manually", packageName),
-		}
+		return fmt.Sprintf("ERROR: %s", strings.TrimSpace(string(output)))
 	}
 
-	return StandardResponse{
-		Success: true,
-		Result:  fmt.Sprintf("Successfully installed %s", packageName),
-		Hint:    fmt.Sprintf("You can now import and use %s", packageName),
-	}
+	return fmt.Sprintf("Installed %s in virtual environment", pkg)
 }
 
-// check verifies if a package is installed
-func (s *PythonMCPServer) check(params map[string]interface{}) StandardResponse {
-	packageName, ok := params["package"].(string)
+func (s *PythonMCPServer) save(params map[string]interface{}) string {
+	name, ok := params["name"].(string)
 	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'package' parameter",
-			Hint:    "Provide package name to check",
-		}
+		return "ERROR: Need 'name'"
 	}
 
-	cmd := exec.Command(s.pythonPath, "-m", "pip", "show", packageName)
-	output, err := cmd.Output()
-
-	if err != nil {
-		return StandardResponse{
-			Success: true,
-			Result:  fmt.Sprintf("Package '%s' is NOT installed", packageName),
-			Hint:    fmt.Sprintf("Use install tool with package='%s' to install it", packageName),
-		}
+	text, ok := params["text"].(string)
+	if !ok {
+		return "ERROR: Need 'text'"
 	}
 
-	// Extract version from output
-	lines := strings.Split(string(output), "\n")
-	version := "unknown"
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Version:") {
-			version = strings.TrimSpace(strings.TrimPrefix(line, "Version:"))
-			break
-		}
+	// Force save to workspace
+	fullPath := filepath.Join(s.workspaceDir, filepath.Base(name))
+
+	if err := ioutil.WriteFile(fullPath, []byte(text), 0644); err != nil {
+		return fmt.Sprintf("ERROR: %v", err)
 	}
 
-	return StandardResponse{
-		Success: true,
-		Result:  fmt.Sprintf("Package '%s' version %s is installed", packageName, version),
-	}
+	return fmt.Sprintf("Saved %s (%d bytes)", filepath.Base(name), len(text))
 }
 
-// save creates or overwrites a file
-func (s *PythonMCPServer) save(params map[string]interface{}) StandardResponse {
-	path, ok := params["path"].(string)
+func (s *PythonMCPServer) load(params map[string]interface{}) string {
+	name, ok := params["name"].(string)
 	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'path' parameter",
-			Hint:    "Provide file path",
-		}
+		return "ERROR: Need 'name'"
 	}
 
-	content, ok := params["content"].(string)
-	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'content' parameter",
-			Hint:    "Provide file content",
-		}
-	}
-
-	// Clean path for safety
-	fullPath := filepath.Clean(filepath.Join(s.workingDir, path))
-
-	// Create directory if needed
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to create directory: %v", err),
-			Hint:    "Check directory permissions",
-		}
-	}
-
-	// Write file
-	if err := ioutil.WriteFile(fullPath, []byte(content), 0644); err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to write file: %v", err),
-			Hint:    "Check file permissions",
-		}
-	}
-
-	return StandardResponse{
-		Success: true,
-		Result:  fmt.Sprintf("Saved %d bytes to %s", len(content), path),
-	}
-}
-
-// read reads file content
-func (s *PythonMCPServer) read(params map[string]interface{}) StandardResponse {
-	path, ok := params["path"].(string)
-	if !ok {
-		return StandardResponse{
-			Success: false,
-			Error:   "Missing 'path' parameter",
-			Hint:    "Provide file path to read",
-		}
-	}
-
-	fullPath := filepath.Clean(filepath.Join(s.workingDir, path))
+	// Look in workspace
+	fullPath := filepath.Join(s.workspaceDir, filepath.Base(name))
 
 	content, err := ioutil.ReadFile(fullPath)
 	if err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to read file: %v", err),
-			Hint:    "Check if file exists and is readable",
-		}
+		return fmt.Sprintf("ERROR: %v", err)
 	}
 
-	return StandardResponse{
-		Success: true,
-		Result:  string(content),
-	}
+	return string(content)
 }
 
-// list lists files in a directory
-func (s *PythonMCPServer) list(params map[string]interface{}) StandardResponse {
-	path := "."
-	if p, ok := params["path"].(string); ok {
-		path = p
-	}
-
-	fullPath := filepath.Clean(filepath.Join(s.workingDir, path))
-
-	files, err := ioutil.ReadDir(fullPath)
+func (s *PythonMCPServer) ls(params map[string]interface{}) string {
+	files, err := ioutil.ReadDir(s.workspaceDir)
 	if err != nil {
-		return StandardResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to read directory: %v", err),
-			Hint:    "Check if directory exists",
-		}
+		return fmt.Sprintf("ERROR: %v", err)
 	}
 
-	// Format file list simply
+	if len(files) == 0 {
+		return "No files in workspace"
+	}
+
 	var items []string
-	for _, file := range files {
-		if file.IsDir() {
-			items = append(items, fmt.Sprintf("[DIR] %s", file.Name()))
+	for _, f := range files {
+		// Skip .venv directory in listing
+		if f.Name() == ".venv" {
+			continue
+		}
+
+		if f.IsDir() {
+			items = append(items, fmt.Sprintf("[DIR] %s", f.Name()))
 		} else {
-			items = append(items, fmt.Sprintf("%s (%d bytes)", file.Name(), file.Size()))
+			size := f.Size()
+			unit := "B"
+			if size > 1024*1024 {
+				size = size / (1024 * 1024)
+				unit = "MB"
+			} else if size > 1024 {
+				size = size / 1024
+				unit = "KB"
+			}
+			items = append(items, fmt.Sprintf("%s (%d%s)", f.Name(), size, unit))
 		}
 	}
 
-	return StandardResponse{
-		Success: true,
-		Result:  strings.Join(items, "\n"),
-		Hint:    fmt.Sprintf("Found %d items in %s", len(items), path),
+	if len(items) == 0 {
+		return "No files in workspace (excluding .venv)"
 	}
+
+	return strings.Join(items, "\n")
 }
 
-// formatResponse converts StandardResponse to MCP format
-func formatResponse(resp StandardResponse) map[string]interface{} {
-	// Convert to JSON for consistent format
-	jsonData, err := json.Marshal(resp)
-	if err != nil {
-		// Fallback to a simple error message if JSON marshaling fails
-		jsonData = []byte(`{"success":false,"error":"Failed to format response"}`)
+func (s *PythonMCPServer) open(params map[string]interface{}) string {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", s.workspaceDir)
+	case "darwin":
+		cmd = exec.Command("open", s.workspaceDir)
+	case "linux":
+		if _, err := exec.LookPath("xdg-open"); err == nil {
+			cmd = exec.Command("xdg-open", s.workspaceDir)
+		} else if _, err := exec.LookPath("nautilus"); err == nil {
+			cmd = exec.Command("nautilus", s.workspaceDir)
+		} else if _, err := exec.LookPath("dolphin"); err == nil {
+			cmd = exec.Command("dolphin", s.workspaceDir)
+		} else if _, err := exec.LookPath("thunar"); err == nil {
+			cmd = exec.Command("thunar", s.workspaceDir)
+		} else {
+			return "ERROR: No file manager found. Workspace at: " + s.workspaceDir
+		}
+	default:
+		return "ERROR: Unsupported OS. Workspace at: " + s.workspaceDir
 	}
 
-	// Ensure we always have non-null content
-	content := string(jsonData)
-	if content == "" {
-		content = `{"success":true,"result":"Operation completed"}`
+	if err := cmd.Start(); err != nil {
+		return fmt.Sprintf("ERROR: Failed to open folder: %v\nWorkspace at: %s", err, s.workspaceDir)
 	}
 
-	return map[string]interface{}{
-		"content": []map[string]interface{}{
-			{
-				"type": "text",
-				"text": content,
-			},
-		},
-	}
+	go func() {
+		cmd.Wait()
+	}()
+
+	return fmt.Sprintf("Opened workspace folder: %s", s.workspaceDir)
 }
 
-// handleRequest processes an MCP request
+// handleRequest processes requests
 func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 	resp := MCPResponse{
 		JSONRPC: "2.0",
@@ -545,8 +550,8 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 		resp.Result = map[string]interface{}{
 			"protocolVersion": "2024-11-05",
 			"serverInfo": map[string]interface{}{
-				"name":    "python-tools",
-				"version": "3.0.0",
+				"name":    "python-mcp",
+				"version": "5.0.0",
 			},
 			"capabilities": map[string]interface{}{
 				"tools": map[string]interface{}{},
@@ -569,27 +574,35 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 			return resp
 		}
 
-		var result StandardResponse
-
+		var result string
 		switch params.Name {
-		case "run":
-			result = s.run(params.Arguments)
-		case "install":
-			result = s.install(params.Arguments)
-		case "check":
-			result = s.check(params.Arguments)
+		case "py":
+			result = s.py(params.Arguments)
+		case "sh":
+			result = s.sh(params.Arguments)
+		case "pip":
+			result = s.pip(params.Arguments)
 		case "save":
 			result = s.save(params.Arguments)
-		case "read":
-			result = s.read(params.Arguments)
-		case "list":
-			result = s.list(params.Arguments)
+		case "load":
+			result = s.load(params.Arguments)
+		case "ls":
+			result = s.ls(params.Arguments)
+		case "open":
+			result = s.open(params.Arguments)
 		default:
-			resp.Error = &MCPError{Code: -32603, Message: fmt.Sprintf("Unknown tool: %s", params.Name)}
+			resp.Error = &MCPError{Code: -32603, Message: "Unknown tool"}
 			return resp
 		}
 
-		resp.Result = formatResponse(result)
+		resp.Result = map[string]interface{}{
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": result,
+				},
+			},
+		}
 
 	default:
 		resp.Error = &MCPError{Code: -32601, Message: "Method not found"}
@@ -598,30 +611,21 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 	return resp
 }
 
-// runServer starts the MCP server main loop
+// runServer main loop
 func (s *PythonMCPServer) runServer() {
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
 
-	log.Printf("Python Tools MCP Server v3.0")
-	log.Printf("Python: %s", s.pythonPath)
-	log.Printf("Working directory: %s", s.workingDir)
-	log.Printf("OS: %s", runtime.GOOS)
-	log.Printf("Tools: run, shell, install, check, save, read, list")
-
 	for scanner.Scan() {
-		line := scanner.Text()
-
 		var req MCPRequest
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			log.Printf("Failed to parse request: %v", err)
+		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+			log.Printf("Parse error: %v", err)
 			continue
 		}
 
 		resp := s.handleRequest(req)
-
 		if err := encoder.Encode(resp); err != nil {
-			log.Printf("Failed to encode response: %v", err)
+			log.Printf("Encode error: %v", err)
 		}
 	}
 
@@ -631,9 +635,7 @@ func (s *PythonMCPServer) runServer() {
 }
 
 func main() {
-	// Set up logging to stderr
 	log.SetOutput(os.Stderr)
-
 	server := NewPythonMCPServer()
 	server.runServer()
 }

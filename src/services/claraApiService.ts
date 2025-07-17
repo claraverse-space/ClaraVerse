@@ -27,6 +27,7 @@ import { claraMemoryService } from './claraMemoryService';
 import { addCompletionNotification, addErrorNotification, addInfoNotification } from './notificationService';
 import { TokenLimitRecoveryService } from './tokenLimitRecoveryService';
 import { ToolSuccessRegistry } from './toolSuccessRegistry';
+import { structuredToolCallService } from './structuredToolCallService';
 
 /**
  * Chat request payload for Clara backend
@@ -409,13 +410,13 @@ export class ClaraApiService {
           'Clara is now operating in autonomous mode.',
           3000
         );
-        
+
         // Execute autonomous agent workflow
         const result = await this.executeAutonomousAgent(
           modelId, 
           message,
           tools, 
-          config,
+          config, 
           processedAttachments,
           systemPrompt,
           conversationHistory,
@@ -435,19 +436,19 @@ export class ClaraApiService {
         return result;
       }
 
-      // Execute standard chat workflow
-      const result = await this.executeStandardChat(
-        modelId, 
+        // Execute standard chat workflow
+        const result = await this.executeStandardChat(
+          modelId, 
         message,
-        tools, 
-        config,
+          tools, 
+          config,
         processedAttachments,
         systemPrompt,
         conversationHistory,
-        onContentChunk
-      );
+          onContentChunk
+        );
 
-      return result;
+        return result;
 
     } catch (error) {
       console.error('Chat execution failed:', error);
@@ -491,9 +492,343 @@ export class ClaraApiService {
   }
 
   /**
+   * Helper method to build conversation messages
+   */
+  private buildConversationMessages(
+    systemPrompt: string,
+    userMessage: string,
+    attachments: ClaraFileAttachment[],
+    conversationHistory?: ClaraMessage[]
+  ): ChatMessage[] {
+    const messages: ChatMessage[] = [];
+    
+    // Add system prompt
+    messages.push({
+      role: 'system',
+      content: systemPrompt
+    });
+
+    // Add conversation history if provided
+    if (conversationHistory && conversationHistory.length > 0) {
+      const historyMessages = conversationHistory.slice(0, -1);
+      for (const historyMessage of historyMessages) {
+        const chatMessage: ChatMessage = {
+          role: historyMessage.role,
+          content: historyMessage.content
+        };
+
+        if (historyMessage.attachments) {
+          const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
+          if (imageAttachments.length > 0) {
+            chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+          }
+        }
+
+        messages.push(chatMessage);
+      }
+    }
+
+    // Add the current user message
+    const userChatMessage: ChatMessage = {
+      role: 'user',
+      content: userMessage
+    };
+
+    // Add images if any attachments are images
+    const imageAttachments = attachments.filter(att => att.type === 'image');
+    if (imageAttachments.length > 0) {
+      userChatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+    }
+
+    messages.push(userChatMessage);
+
+    return messages;
+  }
+
+  /**
+   * NEW: Execute autonomous agent workflow with structured tool calling
+   */
+  private async executeAutonomousAgentWithStructuredCalling(
+    modelId: string,
+    message: string,
+    tools: Tool[],
+    config: ClaraAIConfig,
+    attachments: ClaraFileAttachment[],
+    systemPrompt?: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void
+  ): Promise<ClaraMessage> {
+    // Reset stop flag
+    this.stopExecution = false;
+    
+    // Start memory session for this autonomous execution
+    const sessionId = `structured-autonomous-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    claraMemoryService.startSession(sessionId, 'structured-autonomous-agent');
+    
+    // Default autonomous configuration
+    const autonomousConfig: AutonomousConfig = {
+      maxIterations: config.autonomousAgent?.maxToolCalls || 3,
+      enableToolChaining: config.autonomousAgent?.enableToolGuidance !== false,
+      enableProgressTracking: config.autonomousAgent?.enableProgressTracking !== false
+    };
+
+    console.log(`🤖 Starting structured autonomous agent with config:`, autonomousConfig);
+
+    // Progress tracking
+    if (autonomousConfig.enableProgressTracking && onContentChunk) {
+      onContentChunk('**Clara is now operating in structured autonomous mode.**\n\n');
+      onContentChunk('ℹ️ **Using structured tool calling for better compatibility**\n\n');
+    }
+
+    let totalTokens = 0;
+    let allToolResults: any[] = [];
+    let finalResponse = '';
+    let currentIterationCount = 0;
+
+    try {
+      // Main structured autonomous loop
+      for (let iteration = 0; iteration < autonomousConfig.maxIterations; iteration++) {
+        currentIterationCount = iteration + 1;
+        
+        // Check for stop signal
+        if (this.stopExecution) {
+          console.log(`🛑 Structured autonomous execution stopped at iteration ${currentIterationCount}`);
+          if (onContentChunk) {
+            onContentChunk(`\n🛑 **Execution stopped by user**\n\n`);
+          }
+          break;
+        }
+
+        console.log(`🔄 Structured autonomous iteration ${currentIterationCount}/${autonomousConfig.maxIterations}`);
+        
+        if (autonomousConfig.enableProgressTracking && onContentChunk && iteration > 0) {
+          onContentChunk(`\n**Step ${currentIterationCount}:**\n`);
+        }
+
+        try {
+          // Generate structured tool calling prompt
+          const structuredPrompt = structuredToolCallService.generateStructuredToolPrompt(
+            message,
+            tools,
+            config,
+            conversationHistory
+          );
+
+          // Build conversation messages
+          const messages = this.buildConversationMessages(
+            structuredPrompt,
+            message,
+            attachments,
+            conversationHistory
+          );
+
+          const options = {
+            temperature: config.parameters.temperature,
+            max_tokens: config.parameters.maxTokens,
+            top_p: config.parameters.topP
+          };
+
+          // Execute structured call
+          const apiResponse = await this.client!.sendChat(modelId, messages, options);
+          const response = apiResponse.message?.content || '';
+          
+          if (onContentChunk && response) {
+            onContentChunk(response);
+          }
+
+          // Parse structured response
+          const structuredResponse = structuredToolCallService.parseStructuredResponse(response);
+          
+          console.log(`📊 Structured response parsed:`, {
+            hasContent: !!structuredResponse.content,
+            needsToolExecution: structuredResponse.needsToolExecution,
+            toolCallsCount: structuredResponse.toolCalls.length,
+            reasoning: structuredResponse.reasoning
+          });
+          
+          // Add to final response
+          finalResponse += structuredResponse.content;
+          totalTokens += apiResponse.usage?.total_tokens || 0;
+
+          // Check if tools need to be executed
+          if (structuredResponse.needsToolExecution && structuredResponse.toolCalls.length > 0) {
+            if (onContentChunk) {
+              onContentChunk(`\n🔧 **Executing ${structuredResponse.toolCalls.length} structured tool calls...**\n\n`);
+            }
+
+            console.log(`🚀 Starting execution of ${structuredResponse.toolCalls.length} tool calls:`, 
+              structuredResponse.toolCalls.map(tc => tc.toolName));
+
+            // Execute structured tool calls
+            const toolResults = await structuredToolCallService.executeStructuredToolCalls(
+              structuredResponse.toolCalls,
+              onContentChunk ? (msg: string) => onContentChunk(`${msg}\n`) : undefined
+            );
+
+            console.log(`📋 Tool execution results:`, toolResults.map(tr => ({
+              toolName: tr.toolName,
+              success: tr.success,
+              hasResult: !!tr.result,
+              error: tr.error
+            })));
+
+            // Store tool results in memory
+            for (const toolResult of toolResults) {
+              claraMemoryService.storeToolResult({
+                toolName: toolResult.toolName,
+                success: toolResult.success,
+                result: toolResult.result,
+                error: toolResult.error,
+                metadata: { reasoning: toolResult.reasoning }
+              });
+            }
+
+            allToolResults.push(...toolResults);
+
+            // Generate follow-up prompt with tool results
+            const followUpPrompt = structuredToolCallService.generateFollowUpPrompt(
+              message,
+              toolResults,
+              structuredResponse.reasoning
+            );
+
+            console.log(`📝 Generated follow-up prompt length: ${followUpPrompt.length} chars`);
+
+            // Build follow-up messages
+            const followUpMessages = this.buildConversationMessages(
+              followUpPrompt,
+              message,
+              attachments,
+              conversationHistory
+            );
+
+            // Execute follow-up call
+            const followUpResponse = await this.client!.sendChat(modelId, followUpMessages, options);
+            const followUpContent = followUpResponse.message?.content || '';
+            
+            console.log(`📤 Follow-up response length: ${followUpContent.length} chars`);
+            
+            if (followUpContent) {
+              if (onContentChunk) {
+                onContentChunk('\n\n**Final Analysis:**\n');
+                onContentChunk(followUpContent);
+              }
+              finalResponse += '\n\n' + followUpContent;
+              totalTokens += followUpResponse.usage?.total_tokens || 0;
+            }
+
+            // Check if we need another iteration
+            if (currentIterationCount >= autonomousConfig.maxIterations - 1) {
+              if (onContentChunk) {
+                onContentChunk(`\n✅ **Task completed (max iterations reached)**\n\n`);
+              }
+              break;
+            }
+          } else {
+            // No tools needed, task complete
+            console.log(`✅ No tools needed or tool execution disabled - task complete`);
+            if (onContentChunk) {
+              onContentChunk(`\n✅ **Task completed**\n\n`);
+            }
+            break;
+          }
+
+        } catch (error) {
+          console.error(`❌ Structured autonomous iteration ${currentIterationCount} failed:`, error);
+          if (onContentChunk) {
+            onContentChunk(`\n❌ **Error in step ${currentIterationCount}**: ${error instanceof Error ? error.message : 'Unknown error'}\n\n`);
+          }
+          break;
+        }
+      }
+
+      // Generate memory context for final response
+      const memoryContext = claraMemoryService.generateMemoryContext();
+      
+      // If we have memory context, append it to the final response
+      if (memoryContext) {
+        console.log('🧠 Appending memory context to final response');
+        finalResponse += memoryContext;
+      }
+
+      // Create final Clara message
+      const claraMessage: ClaraMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: finalResponse || 'I completed the structured autonomous agent execution.',
+        timestamp: new Date(),
+        metadata: {
+          model: `${config.provider}:${modelId}`,
+          tokens: totalTokens,
+          temperature: config.parameters.temperature,
+          toolsUsed: allToolResults.map(tc => tc.toolName),
+          agentSteps: currentIterationCount,
+          autonomousMode: true,
+          structuredToolCalling: true,
+          memorySessionId: sessionId
+        }
+      };
+
+      // Add artifacts if any were generated from tool calls
+      if (allToolResults.length > 0) {
+        claraMessage.artifacts = this.parseToolResultsToArtifacts(allToolResults);
+      }
+
+      return claraMessage;
+
+    } finally {
+      // Clear memory session after completion
+      claraMemoryService.clearCurrentSession();
+      console.log('🧠 Memory session cleared after structured autonomous execution');
+    }
+  }
+
+  /**
    * NEW: Execute autonomous agent workflow
    */
   private async executeAutonomousAgent(
+    modelId: string,
+    message: string,
+    tools: Tool[],
+    config: ClaraAIConfig,
+    attachments: ClaraFileAttachment[],
+    systemPrompt?: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void
+  ): Promise<ClaraMessage> {
+    // Check if structured tool calling is enabled
+    if (config.features.enableStructuredToolCalling) {
+      console.log('🔄 Using structured tool calling for autonomous agent');
+      return this.executeAutonomousAgentWithStructuredCalling(
+        modelId,
+        message,
+        tools,
+        config,
+        attachments,
+        systemPrompt,
+        conversationHistory,
+        onContentChunk
+      );
+    }
+
+    // Use standard tool calling (existing implementation)
+    console.log('🔄 Using standard tool calling for autonomous agent');
+    return this.executeAutonomousAgentWithStandardToolCalling(
+      modelId,
+      message,
+      tools,
+      config,
+      attachments,
+      systemPrompt,
+      conversationHistory,
+      onContentChunk
+    );
+  }
+
+  /**
+   * Execute autonomous agent workflow with standard tool calling
+   */
+  private async executeAutonomousAgentWithStandardToolCalling(
     modelId: string,
     message: string,
     tools: Tool[],
@@ -573,7 +908,7 @@ export class ClaraApiService {
 
     // Progress tracking
     if (autonomousConfig.enableProgressTracking && onContentChunk) {
-      onContentChunk('🤖 **Autonomous agent started**\n\n');
+      onContentChunk('**Clara is now operating in autonomous mode.**\n\n');
     }
 
     try {
@@ -752,10 +1087,31 @@ export class ClaraApiService {
           const successCount = toolResults.filter(r => r.success).length;
           const failCount = toolResults.filter(r => !r.success).length;
           if (failCount === 0) {
-            onContentChunk(`✅ **Tools completed successfully**\n\n`);
+            onContentChunk(`[✔] Tools completed successfully\n\n`);
           } else {
-            onContentChunk(`✅ **Tools completed** (${successCount} successful, ${failCount} failed)\n\n`);
+            onContentChunk(`[✔] Tools completed (${successCount} successful, ${failCount} failed)\n\n`);
           }
+
+          // Stream each tool result
+          toolResults.forEach((result) => {
+            let msg = `[Tool]: ${result.toolName}\n`;
+            if (result.success && result.result !== undefined && result.result !== null) {
+              if (typeof result.result === 'string') {
+                msg += `Result: ${result.result}\n`;
+              } else {
+                try {
+                  msg += `Result: ${JSON.stringify(result.result, null, 2)}\n`;
+                } catch {
+                  msg += `Result: [object]\n`;
+                }
+              }
+            } else if (!result.success && result.error) {
+              msg += `[Error]: ${result.error}\n`;
+            } else {
+              msg += `No result returned.\n`;
+            }
+            onContentChunk(msg + '\n');
+          });
         }
       }
 
@@ -786,8 +1142,8 @@ export class ClaraApiService {
    * Build enhanced system prompt for autonomous mode
    */
   private buildAutonomousSystemPrompt(
-    originalPrompt: string | undefined,
-    tools: Tool[],
+    originalPrompt: string | undefined, 
+    tools: Tool[], 
     config: AutonomousConfig
   ): string {
     const toolsList = tools.map(tool => {
@@ -967,17 +1323,17 @@ Work autonomously to fulfill the user's request using the available tools.`;
     try {
       let response;
 
-      // Try streaming first if enabled
-      if (config.features.enableStreaming) {
-        // Check if we should disable streaming for this provider when tools are present
-        const shouldDisableStreamingForTools = this.shouldDisableStreamingForTools(tools);
-        
-        if (shouldDisableStreamingForTools) {
-          console.log(`🔄 Disabling streaming for ${this.currentProvider?.type} provider with tools present`);
-          if (onContentChunk) {
-            onContentChunk('⚠️ Switching to non-streaming mode for better tool support with this provider...\n\n');
-          }
-          // Use non-streaming mode
+        // Try streaming first if enabled
+        if (config.features.enableStreaming) {
+          // Check if we should disable streaming for this provider when tools are present
+          const shouldDisableStreamingForTools = this.shouldDisableStreamingForTools(tools);
+          
+          if (shouldDisableStreamingForTools) {
+            console.log(`🔄 Disabling streaming for ${this.currentProvider?.type} provider with tools present`);
+            if (onContentChunk) {
+              onContentChunk('⚠️ Switching to non-streaming mode for better tool support with this provider...\n\n');
+            }
+            // Use non-streaming mode
           response = await this.client!.sendChat(modelId, messages, options, tools);
           responseContent = response.message?.content || '';
           totalTokens = response.usage?.total_tokens || 0;
@@ -987,93 +1343,93 @@ Work autonomously to fulfill the user's request using the available tools.`;
           if (onContentChunk && responseContent) {
             onContentChunk(responseContent);
           }
-        } else {
-          // Use streaming mode
-          try {
-            const collectedToolCalls: any[] = [];
+          } else {
+            // Use streaming mode
+            try {
+              const collectedToolCalls: any[] = [];
             let streamContent = '';
 
             for await (const chunk of this.client!.streamChat(modelId, messages, options, tools)) {
-              if (chunk.message?.content) {
+                if (chunk.message?.content) {
                 streamContent += chunk.message.content;
                 responseContent += chunk.message.content;
-                if (onContentChunk) {
-                  onContentChunk(chunk.message.content);
-                }
-              }
-
-              // Collect tool calls
-              if (chunk.message?.tool_calls) {
-                for (const toolCall of chunk.message.tool_calls) {
-                  if (!toolCall.id && !toolCall.function?.name) {
-                    continue;
-                  }
-                  
-                  let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
-                  if (!existingCall) {
-                    existingCall = {
-                      id: toolCall.id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                      type: toolCall.type || 'function',
-                      function: { name: '', arguments: '' }
-                    };
-                    collectedToolCalls.push(existingCall);
-                  }
-                  
-                  if (toolCall.function?.name) {
-                    existingCall.function.name = toolCall.function.name;
-                  }
-                  
-                  if (toolCall.function?.arguments) {
-                    existingCall.function.arguments += toolCall.function.arguments;
+                  if (onContentChunk) {
+                    onContentChunk(chunk.message.content);
                   }
                 }
-              }
 
-              if (chunk.usage?.total_tokens) {
-                totalTokens = chunk.usage.total_tokens;
-                finalUsage = chunk.usage;
+                // Collect tool calls
+                if (chunk.message?.tool_calls) {
+                  for (const toolCall of chunk.message.tool_calls) {
+                    if (!toolCall.id && !toolCall.function?.name) {
+                      continue;
+                    }
+                    
+                    let existingCall = collectedToolCalls.find(c => c.id === toolCall.id);
+                    if (!existingCall) {
+                      existingCall = {
+                        id: toolCall.id || `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        type: toolCall.type || 'function',
+                        function: { name: '', arguments: '' }
+                      };
+                      collectedToolCalls.push(existingCall);
+                    }
+                    
+                    if (toolCall.function?.name) {
+                      existingCall.function.name = toolCall.function.name;
+                    }
+                    
+                    if (toolCall.function?.arguments) {
+                      existingCall.function.arguments += toolCall.function.arguments;
+                    }
+                  }
+                }
+
+                if (chunk.usage?.total_tokens) {
+                  totalTokens = chunk.usage.total_tokens;
+                  finalUsage = chunk.usage;
+                }
+                if (chunk.timings) {
+                  finalTimings = chunk.timings;
+                }
               }
-              if (chunk.timings) {
-                finalTimings = chunk.timings;
-              }
-            }
 
             response = {
-              message: {
+                message: {
                 content: streamContent,
-                tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
-              },
-              usage: { total_tokens: totalTokens }
-            };
+                  tool_calls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined
+                },
+                usage: { total_tokens: totalTokens }
+              };
 
-            // Filter out incomplete tool calls
+              // Filter out incomplete tool calls
             if (response.message?.tool_calls) {
               response.message.tool_calls = response.message.tool_calls.filter(toolCall => {
-                if (!toolCall.function?.name || toolCall.function.name.trim() === '') {
-                  return false;
-                }
+                  if (!toolCall.function?.name || toolCall.function.name.trim() === '') {
+                    return false;
+                  }
+                  
+                  if (typeof toolCall.function.arguments !== 'string') {
+                    return false;
+                  }
+                  
+                  try {
+                    JSON.parse(toolCall.function.arguments || '{}');
+                    return true;
+                  } catch (parseError) {
+                    return false;
+                  }
+                });
                 
-                if (typeof toolCall.function.arguments !== 'string') {
-                  return false;
-                }
-                
-                try {
-                  JSON.parse(toolCall.function.arguments || '{}');
-                  return true;
-                } catch (parseError) {
-                  return false;
-                }
-              });
-              
               if (response.message.tool_calls.length === 0) {
                 response.message.tool_calls = undefined;
+                }
               }
-            }
 
-          } catch (streamError: any) {
-            const errorMessage = streamError.message?.toLowerCase() || '';
-            if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
-              if (onContentChunk) {
+            } catch (streamError: any) {
+              const errorMessage = streamError.message?.toLowerCase() || '';
+              if (errorMessage.includes('stream') && errorMessage.includes('tool') && tools.length > 0) {
+                if (onContentChunk) {
                 onContentChunk('\n⚠️ Switching to non-streaming mode for tool support...\n\n');
               }
               response = await this.client!.sendChat(modelId, messages, options, tools);
@@ -1085,13 +1441,13 @@ Work autonomously to fulfill the user's request using the available tools.`;
               if (onContentChunk && responseContent) {
                 onContentChunk(responseContent);
               }
-            } else {
-              throw streamError;
+              } else {
+                throw streamError;
+              }
             }
           }
-        }
-      } else {
-        // Non-streaming mode
+        } else {
+          // Non-streaming mode
         response = await this.client!.sendChat(modelId, messages, options, tools);
         responseContent = response.message?.content || '';
         totalTokens = response.usage?.total_tokens || 0;
@@ -1105,7 +1461,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
 
       // Handle tool calls if any
       if (response.message?.tool_calls && response.message.tool_calls.length > 0) {
-        if (onContentChunk) {
+          if (onContentChunk) {
           onContentChunk('\n\n🔧 **Executing tools...**\n\n');
         }
 
@@ -1131,18 +1487,18 @@ Work autonomously to fulfill the user's request using the available tools.`;
             const result = toolResults.find(r => r.toolName === toolCall.function?.name);
             
             if (result) {
-              let content: string;
-              if (result.success && result.result !== undefined && result.result !== null) {
-                content = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
-              } else {
-                content = result.error || `Tool ${result.toolName} execution failed`;
-              }
-              
+                let content: string;
+                if (result.success && result.result !== undefined && result.result !== null) {
+                  content = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+                } else {
+                  content = result.error || `Tool ${result.toolName} execution failed`;
+                }
+                
               followUpMessages.push({
                 role: 'tool',
-                content: content,
-                name: result.toolName,
-                tool_call_id: toolCall.id
+                  content: content,
+                  name: result.toolName,
+                  tool_call_id: toolCall.id
               });
             } else {
               followUpMessages.push({
@@ -1163,7 +1519,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
               responseContent += followUpContent;
               totalTokens += followUpResponse.usage?.total_tokens || 0;
               
-              if (onContentChunk) {
+          if (onContentChunk) {
                 onContentChunk(followUpContent);
               }
             }
@@ -1176,7 +1532,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
         }
       }
 
-    } catch (error) {
+                      } catch (error) {
       console.error('Standard chat execution failed:', error);
       responseContent = 'I apologize, but I encountered an error while processing your request. Please try again.';
     }
@@ -1214,42 +1570,42 @@ Work autonomously to fulfill the user's request using the available tools.`;
 
     for (const toolCall of toolCalls) {
       try {
-        const functionName = toolCall.function?.name;
-        
+      const functionName = toolCall.function?.name;
+      
         // Safely parse arguments
-        let args = {};
-        try {
-          if (typeof toolCall.function?.arguments === 'string') {
-            const argsString = toolCall.function.arguments.trim();
-            if (argsString === '' || argsString === 'null' || argsString === 'undefined') {
-              args = {};
-            } else {
-              args = JSON.parse(argsString);
-            }
-          } else if (toolCall.function?.arguments && typeof toolCall.function.arguments === 'object') {
-            args = toolCall.function.arguments;
-          } else {
+      let args = {};
+      try {
+        if (typeof toolCall.function?.arguments === 'string') {
+          const argsString = toolCall.function.arguments.trim();
+          if (argsString === '' || argsString === 'null' || argsString === 'undefined') {
             args = {};
+          } else {
+            args = JSON.parse(argsString);
           }
-        } catch (parseError) {
-          console.warn(`⚠️ Failed to parse tool arguments for ${functionName}:`, parseError);
+        } else if (toolCall.function?.arguments && typeof toolCall.function.arguments === 'object') {
+          args = toolCall.function.arguments;
+        } else {
+          args = {};
+        }
+      } catch (parseError) {
+        console.warn(`⚠️ Failed to parse tool arguments for ${functionName}:`, parseError);
           args = {};
         }
 
         if (!functionName || functionName.trim() === '') {
           console.warn('⚠️ Skipping malformed tool call with empty function name:', toolCall);
-          results.push({
+        results.push({
             toolName: 'unknown',
-            success: false,
+          success: false,
             error: 'Tool call has empty or missing function name'
-          });
-          continue;
-        }
+        });
+        continue;
+      }
 
         console.log(`🔧 Executing tool: ${functionName} with args:`, args);
 
-        // Check if this is an MCP tool call
-        if (functionName?.startsWith('mcp_')) {
+          // Check if this is an MCP tool call
+          if (functionName?.startsWith('mcp_')) {
           console.log(`🔧 Processing MCP tool call: ${functionName}`);
           try {
             const mcpToolCalls = claraMCPService.parseOpenAIToolCalls([toolCall]);
@@ -1258,24 +1614,24 @@ Work autonomously to fulfill the user's request using the available tools.`;
               const mcpResult = await claraMCPService.executeToolCall(mcpToolCalls[0]);
               
               // Process the MCP result
-              const processedResult = this.processMCPToolResult(mcpResult, functionName);
-              
+                const processedResult = this.processMCPToolResult(mcpResult, functionName);
+                
               const result = {
-                toolName: functionName,
+                  toolName: functionName,
                 success: mcpResult.success,
-                result: processedResult.result,
+                  result: processedResult.result,
                 error: mcpResult.error,
-                artifacts: processedResult.artifacts,
-                images: processedResult.images,
-                toolMessage: processedResult.toolMessage,
-                metadata: {
-                  type: 'mcp',
-                  server: mcpToolCalls[0].server,
-                  toolName: mcpToolCalls[0].name,
-                  ...mcpResult.metadata
-                }
-              };
-
+                  artifacts: processedResult.artifacts,
+                  images: processedResult.images,
+                  toolMessage: processedResult.toolMessage,
+                  metadata: {
+                    type: 'mcp',
+                    server: mcpToolCalls[0].server,
+                    toolName: mcpToolCalls[0].name,
+                    ...mcpResult.metadata
+                  }
+                };
+                
               if (result.success) {
                 ToolSuccessRegistry.recordSuccess(
                   functionName,
@@ -1284,9 +1640,9 @@ Work autonomously to fulfill the user's request using the available tools.`;
                   toolCall.id
                 );
               }
-              
+                
               results.push(result);
-            } else {
+              } else {
               results.push({
                 toolName: functionName,
                 success: false,
@@ -1305,18 +1661,18 @@ Work autonomously to fulfill the user's request using the available tools.`;
         }
 
         // Try to execute with Clara tools first
-        const claraTool = defaultTools.find(tool => tool.name === functionName || tool.id === functionName);
-        
-        if (claraTool) {
+            const claraTool = defaultTools.find(tool => tool.name === functionName || tool.id === functionName);
+            
+            if (claraTool) {
           const result = await executeTool(claraTool.id, args);
           
           if (result.success) {
-            ToolSuccessRegistry.recordSuccess(
-              claraTool.name,
-              claraTool.description,
-              this.currentProvider?.id || 'unknown',
-              toolCall.id
-            );
+                ToolSuccessRegistry.recordSuccess(
+                  claraTool.name,
+                  claraTool.description,
+                  this.currentProvider?.id || 'unknown',
+                  toolCall.id
+                );
           }
           
           results.push({
@@ -1325,43 +1681,43 @@ Work autonomously to fulfill the user's request using the available tools.`;
             result: result.result,
             error: result.error
           });
-        } else {
+              } else {
           // Try database tools as fallback
-          const dbTools = await db.getEnabledTools();
-          const dbTool = dbTools.find(tool => tool.name === functionName);
-          
-          if (dbTool) {
-            try {
-              const funcBody = `return (async () => {
-                ${dbTool.implementation}
-                return await implementation(args);
-              })();`;
-              const testFunc = new Function('args', funcBody);
+              const dbTools = await db.getEnabledTools();
+              const dbTool = dbTools.find(tool => tool.name === functionName);
+              
+              if (dbTool) {
+                try {
+                  const funcBody = `return (async () => {
+                    ${dbTool.implementation}
+                    return await implementation(args);
+                  })();`;
+                  const testFunc = new Function('args', funcBody);
               const result = await testFunc(args);
               
-              ToolSuccessRegistry.recordSuccess(
-                dbTool.name,
-                dbTool.description,
-                this.currentProvider?.id || 'unknown',
-                toolCall.id
-              );
-              
+                  ToolSuccessRegistry.recordSuccess(
+                    dbTool.name,
+                    dbTool.description,
+                    this.currentProvider?.id || 'unknown',
+                    toolCall.id
+                  );
+                  
               results.push({
                 toolName: functionName,
                 success: true,
                 result: result
               });
-            } catch (error) {
+        } catch (error) {
               results.push({
-                toolName: functionName,
-                success: false,
+            toolName: functionName,
+            success: false,
                 error: error instanceof Error ? error.message : 'Tool execution failed'
               });
             }
-          } else {
+      } else {
             results.push({
-              toolName: functionName,
-              success: false,
+          toolName: functionName,
+          success: false,
               error: `Tool '${functionName}' not found`
             });
           }
@@ -1609,7 +1965,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
    * Check if model supports vision
    */
   private supportsVision(modelName: string): boolean {
-    return true;
+        return true;
   }
 
   /**
@@ -1637,7 +1993,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
     try {
       const dbProvider = await db.getPrimaryProvider();
       if (!dbProvider) return null;
-
+      
       return {
         id: dbProvider.id,
         name: dbProvider.name,
@@ -1794,7 +2150,7 @@ Work autonomously to fulfill the user's request using the available tools.`;
     if (!config.features.autoModelSelection) {
       return config.models.text || 'llama2';
     }
-
+    
     // Check for images in current attachments
     const hasCurrentImages = attachments.some(att => att.type === 'image');
     
@@ -1921,4 +2277,4 @@ Work autonomously to fulfill the user's request using the available tools.`;
 }
 
 // Export singleton instance
-export const claraApiService = new ClaraApiService();
+export const claraApiService = new ClaraApiService(); 

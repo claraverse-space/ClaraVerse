@@ -555,7 +555,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableStreaming: true,          // **CHANGED**: Default to streaming mode
         enableVision: true,
         autoModelSelection: false,      // **CHANGED**: Default to manual model selection
-        enableMCP: false                // **CHANGED**: Default to false for streaming mode
+        enableMCP: false,               // **CHANGED**: Default to false for streaming mode
+        enableStructuredToolCalling: false // **NEW**: Default to false
       },
       artifacts: {
         enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1051,7 +1052,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enableStreaming: true,        // **CHANGED**: Default to streaming mode
                 enableVision: true,
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-                enableMCP: false              // **CHANGED**: Default to false for streaming mode
+                enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+                enableStructuredToolCalling: false // **NEW**: Default to false
               },
                           artifacts: {
               enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1236,6 +1238,8 @@ Please create a refined, conversational response that:
 - Keep the core facts and data accurate
 - Make it feel like a natural conversation
 - If memory context shows tool results, summarize what was accomplished
+- Very important: **Do NOT start your response with phrases like 'Sure! Here's a refined response:' or similar. Start directly with the answer.**
+- **If helpful, use headings or sections (e.g., '## Answer', '## Context') to make the output clear and structured.**
 
 Please provide your refined response for following user question:
 "${originalUserQuestion}"`;
@@ -2291,7 +2295,8 @@ Would you like me to help with text-only responses for now?`,
             enableStreaming: true,        // **CHANGED**: Default to streaming mode
             enableVision: true,
             autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-            enableMCP: false              // **CHANGED**: Default to false for streaming mode
+            enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+            enableStructuredToolCalling: false // **NEW**: Default to false
           },
           mcp: {
             enableTools: true,
@@ -3090,6 +3095,97 @@ Console output:`;
       console.log(stats);
     };
 
+    // Test the new structured tool calling system
+    (window as any).testStructuredToolCalling = async () => {
+      console.log('🧪 Testing structured tool calling system...');
+      
+      // Import the service
+      const { structuredToolCallService } = await import('../services/structuredToolCallService');
+      
+      // Test parsing a structured response
+      const testResponse = `I'll help you open the workspace folder.
+
+\`\`\`json
+{
+  "reasoning": "The user wants to open the workspace folder. I'll use the mcp_python-tools_open tool to accomplish this.",
+  "toolCalls": [
+    {
+      "toolName": "mcp_python-tools_open",
+      "arguments": {},
+      "reasoning": "This tool opens the workspace folder as requested"
+    }
+  ],
+  "needsToolExecution": true
+}
+\`\`\`
+
+Let me execute this for you.`;
+
+      console.log('📝 Test response:', testResponse);
+      
+      const parsed = structuredToolCallService.parseStructuredResponse(testResponse);
+      console.log('📊 Parsed result:', parsed);
+      
+      if (parsed.needsToolExecution && parsed.toolCalls.length > 0) {
+        console.log('🚀 Executing tool calls...');
+        const results = await structuredToolCallService.executeStructuredToolCalls(
+          parsed.toolCalls,
+          (msg) => console.log('📢 Progress:', msg)
+        );
+        console.log('✅ Tool execution results:', results);
+      }
+    };
+
+    // Test structured tool calling with current session
+    (window as any).testStructuredWithCurrentSession = async () => {
+      if (!sessionConfig.aiConfig?.features?.enableStructuredToolCalling) {
+        console.log('❌ Structured tool calling is not enabled. Enable it in Advanced Options first.');
+        return;
+      }
+      
+      console.log('🧪 Testing structured tool calling with current session...');
+      console.log('📊 Current config:', {
+        provider: sessionConfig.aiConfig.provider,
+        structuredEnabled: sessionConfig.aiConfig.features.enableStructuredToolCalling,
+        autonomousEnabled: sessionConfig.aiConfig.autonomousAgent?.enabled
+      });
+      
+      // Send a test message
+      const testMessage = "open the workspace folder please";
+      console.log(`📤 Sending test message: "${testMessage}"`);
+      
+      try {
+        await handleSendMessage(testMessage);
+        console.log('✅ Test message sent successfully');
+      } catch (error) {
+        console.error('❌ Test message failed:', error);
+      }
+    };
+
+    // Debug current structured tool calling status
+    (window as any).debugStructuredToolCalling = () => {
+      console.log('🔍 === STRUCTURED TOOL CALLING DEBUG INFO ===');
+      console.log('📊 Current Configuration:');
+      console.log('  - Provider:', sessionConfig.aiConfig?.provider);
+      console.log('  - Structured Tool Calling Enabled:', sessionConfig.aiConfig?.features?.enableStructuredToolCalling);
+      console.log('  - Autonomous Agent Enabled:', sessionConfig.aiConfig?.autonomousAgent?.enabled);
+      console.log('  - Tools Enabled:', sessionConfig.aiConfig?.features?.enableTools);
+      console.log('  - MCP Enabled:', sessionConfig.aiConfig?.features?.enableMCP);
+      console.log('  - Streaming Enabled:', sessionConfig.aiConfig?.features?.enableStreaming);
+      console.log('');
+      console.log('📋 Available Models:');
+      console.log('  - Text Model:', sessionConfig.aiConfig?.models?.text);
+      console.log('  - Vision Model:', sessionConfig.aiConfig?.models?.vision);
+      console.log('  - Code Model:', sessionConfig.aiConfig?.models?.code);
+      console.log('');
+      console.log('🛠️ Available Tools:', models.length, 'models loaded');
+      console.log('');
+      console.log('💡 To test structured tool calling:');
+      console.log('  1. Enable "Use Structured Tool Calling" in Advanced Options → Autonomous Agent');
+      console.log('  2. Enable "Enable Autonomous Agent" in Advanced Options → Autonomous Agent');
+      console.log('  3. Run: testStructuredWithCurrentSession()');
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -3114,6 +3210,9 @@ Console output:`;
       delete (window as any).testMemory;
       delete (window as any).clearMemory;
       delete (window as any).memoryStats;
+      delete (window as any).testStructuredToolCalling;
+      delete (window as any).testStructuredWithCurrentSession;
+      delete (window as any).debugStructuredToolCalling;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
       providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);
@@ -3415,7 +3514,8 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                         enableStreaming: newConfig.features?.enableStreaming ?? currentConfig.features.enableStreaming,
                         enableVision: newConfig.features?.enableVision ?? currentConfig.features.enableVision,
                         autoModelSelection: newConfig.features?.autoModelSelection ?? currentConfig.features.autoModelSelection,
-                        enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP
+                        enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP,
+                        enableStructuredToolCalling: newConfig.features?.enableStructuredToolCalling ?? currentConfig.features.enableStructuredToolCalling
                       },
                       mcp: newConfig.mcp ? {
                         enableTools: newConfig.mcp.enableTools ?? currentConfig.mcp?.enableTools ?? true,

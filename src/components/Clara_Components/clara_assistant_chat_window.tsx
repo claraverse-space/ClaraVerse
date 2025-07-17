@@ -215,19 +215,44 @@ const VirtualizedMessageList: React.FC<{
 }) => {
   const [measuredHeights, setMeasuredHeights] = useState<Map<string, number>>(new Map());
   const measurementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const lastMeasurements = useRef<Map<string, number>>(new Map());
+
+  // Debounce state updates to prevent rapid updates
+  const debouncedSetHeights = useCallback(
+    (newHeights: Map<string, number>) => {
+      // Only update if heights have actually changed
+      const hasChanges = Array.from(newHeights.entries()).some(([id, height]) => {
+        const lastHeight = lastMeasurements.current.get(id);
+        return lastHeight === undefined || lastHeight !== height;
+      });
+
+      if (hasChanges) {
+        setMeasuredHeights(newHeights);
+        // Update last measurements
+        lastMeasurements.current = new Map(newHeights);
+      }
+    },
+    []
+  );
 
   // Measure message heights for more accurate virtualization
   const measureMessage = useCallback((messageId: string, element: HTMLDivElement | null) => {
     if (element) {
       measurementRefs.current.set(messageId, element);
       const height = element.offsetHeight;
-      setMeasuredHeights(prev => {
-        const newMap = new Map(prev);
-        newMap.set(messageId, height);
-        return newMap;
-      });
+      
+      // Only update state if height has changed significantly
+      const lastHeight = lastMeasurements.current.get(messageId);
+      const heightDiff = lastHeight ? Math.abs(height - lastHeight) : Infinity;
+      
+      // Only update if height has changed by more than 2 pixels
+      if (heightDiff > 2) {
+        const newHeights = new Map(measuredHeights);
+        newHeights.set(messageId, height);
+        debouncedSetHeights(newHeights);
+      }
     }
-  }, []);
+  }, [measuredHeights, debouncedSetHeights]);
 
   // Calculate virtual items with actual measured heights when available
   const virtualItems = useMemo((): VirtualMessageItem[] => {
