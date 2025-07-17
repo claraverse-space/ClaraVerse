@@ -23,6 +23,7 @@ import { claraApiService } from '../services/claraApiService';
 import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs } from '../utils/providerConfigStorage';
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
+import { claraMemoryService } from '../services/claraMemoryService';
 import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
 import { claraBackgroundService } from '../services/claraBackgroundService';
 
@@ -1200,7 +1201,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         }
       };
 
-      // Create refinement prompt
+      // Get memory context from the memory service
+      const memoryContext = claraMemoryService.generateMemoryContext();
+      console.log('🧠 Memory context for refinement:', memoryContext ? 'Available' : 'Empty');
+
+      // Create refinement prompt with memory context
       const refinementPrompt = `You are Clara, reviewing and refining an AI response to make it more user-friendly and resonant.
 
 **Original User Question:**
@@ -1211,14 +1216,18 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 ${rawUnfilteredResponse}
 ---------
 
+${memoryContext ? `**Memory Context:**
+${memoryContext}` : ''}
+
 **Your Task:**
 Please create a refined, conversational response that:
 1. Directly answers the user's original question
 2. Uses the key information from the raw response
-3. Removes technical artifacts, console outputs, and execution details
-4. Presents the information in a natural, helpful way
-5. Maintains accuracy while being more engaging
-6. Ends with a friendly offer to help further
+3. Incorporates insights from the memory context (if available)
+4. Removes technical artifacts, console outputs, and execution details
+5. Presents the information in a natural, helpful way
+6. Maintains accuracy while being more engaging
+7. Ends with a friendly offer to help further
 
 **Important Guidelines:**
 - Be conversational and warm, not robotic
@@ -1226,6 +1235,7 @@ Please create a refined, conversational response that:
 - Remove any technical jargon or system messages
 - Keep the core facts and data accurate
 - Make it feel like a natural conversation
+- If memory context shows tool results, summarize what was accomplished
 
 Please provide your refined response for following user question:
 "${originalUserQuestion}"`;
@@ -3027,6 +3037,59 @@ Console output:`;
       console.log('  3. Look for 🔍 logs in console showing verification steps');
     };
 
+    // Add memory debugging functions
+    (window as any).debugMemory = () => {
+      console.log('🧠 === MEMORY DEBUG INFO ===');
+      claraMemoryService.debugMemory();
+    };
+
+    (window as any).testMemory = () => {
+      console.log('🧪 Testing memory system...');
+      
+      // Start a test session
+      claraMemoryService.startSession('test-session', 'test-user');
+      
+      // Store some test tool results
+      claraMemoryService.storeToolResult({
+        toolName: 'test_tool_1',
+        success: true,
+        result: 'This is a test result from tool 1',
+        metadata: { type: 'test' }
+      });
+      
+      claraMemoryService.storeToolResult({
+        toolName: 'test_tool_2',
+        success: false,
+        error: 'Test error from tool 2',
+        result: null,
+        metadata: { type: 'test' }
+      });
+      
+      // Generate memory context
+      const context = claraMemoryService.generateMemoryContext();
+      console.log('Generated memory context:', context);
+      
+      // Show stats
+      const stats = claraMemoryService.getMemoryStats();
+      console.log('Memory stats:', stats);
+      
+      // Clear test session
+      claraMemoryService.clearCurrentSession();
+      console.log('✅ Memory test completed');
+    };
+
+    (window as any).clearMemory = () => {
+      console.log('🧠 Clearing all memory...');
+      claraMemoryService.clearAllMemory();
+      console.log('✅ All memory cleared');
+    };
+
+    (window as any).memoryStats = () => {
+      console.log('🧠 Memory Statistics:');
+      const stats = claraMemoryService.getMemoryStats();
+      console.log(stats);
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;
@@ -3047,6 +3110,10 @@ Console output:`;
       delete (window as any).debugClara;
       delete (window as any).testCompletionVerification;
       delete (window as any).debugVerificationSystem;
+      delete (window as any).debugMemory;
+      delete (window as any).testMemory;
+      delete (window as any).clearMemory;
+      delete (window as any).memoryStats;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
       providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);
