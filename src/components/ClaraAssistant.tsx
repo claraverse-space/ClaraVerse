@@ -331,69 +331,30 @@ Create beautiful, interactive visual content with HTML:
 - User asks for interactive demonstrations
 
 **Remember**: Most questions are best answered with clear, focused text. Artifacts are for specific visualization needs!` : '';
+  
+const toolsGuidance =  `
+Always use tools when needed. 
+When using tools, be thorough and explain your actions clearly.
+
+when you are asked for something always resort to writing a python script and running it.
+`;
 
   switch (provider?.type) {
     case 'ollama':
-      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance}`;
+      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openai':
-      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance}`;
+      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openrouter':
-      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance}`;
+      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
       
     case 'claras-pocket':
-      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance}`;
+      return `You are Clara, a privacy-focused AI assistant running locally on the user's device. You prioritize user privacy and provide helpful assistance without requiring external connectivity. You are efficient, knowledgeable, and respect the user's privacy preferences.${artifactGuidance} ${toolsGuidance}`;
       
     default:
-      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance}`;
+      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
   }
-};
-
-/**
- * Create sample artifacts for demonstration
- */
-const createSampleArtifacts = (content: string): ClaraArtifact[] => {
-  const artifacts: ClaraArtifact[] = [];
-
-  // Check if the content suggests code
-  if (content.toLowerCase().includes('code') || content.toLowerCase().includes('function')) {
-    artifacts.push({
-      id: generateId(),
-      type: 'code',
-      title: 'Generated Code Example',
-      content: `function greetUser(name) {
-  console.log(\`Hello, \${name}! Welcome to Clara!\`);
-  return \`Welcome, \${name}\`;
-}
-
-// Usage example
-const userName = "User";
-const greeting = greetUser(userName);
-console.log(greeting);`,
-      language: 'javascript',
-      createdAt: new Date(),
-      isExecutable: true
-    });
-  }
-
-  // Check if the content suggests data/table
-  if (content.toLowerCase().includes('table') || content.toLowerCase().includes('data')) {
-    artifacts.push({
-      id: generateId(),
-      type: 'table',
-      title: 'Sample Data Table',
-      content: JSON.stringify([
-        { id: 1, name: 'Clara Assistant', type: 'AI Assistant', status: 'Active' },
-        { id: 2, name: 'Document Analysis', type: 'Feature', status: 'Available' },
-        { id: 3, name: 'Image Recognition', type: 'Feature', status: 'Available' },
-        { id: 4, name: 'Code Generation', type: 'Feature', status: 'Active' }
-      ], null, 2),
-      createdAt: new Date()
-    });
-  }
-
-  return artifacts;
 };
 
 // Add a hook to detect if Clara is currently visible
@@ -1230,16 +1191,6 @@ Please create a refined, conversational response that:
 5. Presents the information in a natural, helpful way
 6. Maintains accuracy while being more engaging
 7. Ends with a friendly offer to help further
-
-**Important Guidelines:**
-- Be conversational and warm, not robotic
-- Focus on what the user actually asked for
-- Remove any technical jargon or system messages
-- Keep the core facts and data accurate
-- Make it feel like a natural conversation
-- If memory context shows tool results, summarize what was accomplished
-- Very important: **Do NOT start your response with phrases like 'Sure! Here's a refined response:' or similar. Start directly with the answer.**
-- **If helpful, use headings or sections (e.g., '## Answer', '## Context') to make the output clear and structured.**
 
 Please provide your refined response for following user question:
 "${originalUserQuestion}"`;

@@ -679,51 +679,85 @@ export class ClaraApiService {
                 success: toolResult.success,
                 result: toolResult.result,
                 error: toolResult.error,
-                metadata: { reasoning: toolResult.reasoning }
+                metadata: { 
+                  reasoning: toolResult.reasoning,
+                  iteration: currentIterationCount,
+                  timestamp: Date.now()
+                }
               });
             }
 
             allToolResults.push(...toolResults);
 
-            // Generate follow-up prompt with tool results
-            const followUpPrompt = structuredToolCallService.generateFollowUpPrompt(
+            // Build proper conversation history with tool results
+            const conversationWithResults = structuredToolCallService.buildConversationHistory(
               message,
+              structuredResponse,
               toolResults,
-              structuredResponse.reasoning
-            );
-
-            console.log(`📝 Generated follow-up prompt length: ${followUpPrompt.length} chars`);
-
-            // Build follow-up messages
-            const followUpMessages = this.buildConversationMessages(
-              followUpPrompt,
-              message,
-              attachments,
               conversationHistory
             );
 
+            console.log(`📝 Built conversation history with ${conversationWithResults.length} messages`);
+
+            // Convert Clara messages to ChatMessage format for API call
+            const chatMessages: ChatMessage[] = [];
+            
+            // Add system prompt
+            chatMessages.push({
+              role: 'system',
+              content: systemPrompt || 'You are Clara, a helpful AI assistant.'
+            });
+            
+            // Add conversation messages
+            for (const msg of conversationWithResults) {
+              chatMessages.push({
+                role: msg.role,
+                content: msg.content
+              });
+            }
+            
+            // Add final instruction as user message
+            chatMessages.push({
+              role: 'user',
+              content: `Please provide a comprehensive and natural response to my original request based on the tool execution results above. Present the information in a user-friendly way without mentioning technical details.`
+            });
+
             // Execute follow-up call
-            const followUpResponse = await this.client!.sendChat(modelId, followUpMessages, options);
+            const followUpResponse = await this.client!.sendChat(modelId, chatMessages, options);
             const followUpContent = followUpResponse.message?.content || '';
             
             console.log(`📤 Follow-up response length: ${followUpContent.length} chars`);
             
+            // Store follow-up response in memory
             if (followUpContent) {
+              claraMemoryService.storeToolResult({
+                toolName: 'follow_up_response',
+                success: true,
+                result: followUpContent,
+                metadata: { 
+                  type: 'follow_up_response',
+                  iteration: currentIterationCount,
+                  timestamp: Date.now(),
+                  tokens: followUpResponse.usage?.total_tokens || 0
+                }
+              });
+              
               if (onContentChunk) {
-                onContentChunk('\n\n**Final Analysis:**\n');
+                onContentChunk('\n\n**Final Response:**\n');
                 onContentChunk(followUpContent);
               }
               finalResponse += '\n\n' + followUpContent;
               totalTokens += followUpResponse.usage?.total_tokens || 0;
             }
 
-            // Check if we need another iteration
-            if (currentIterationCount >= autonomousConfig.maxIterations - 1) {
-              if (onContentChunk) {
-                onContentChunk(`\n✅ **Task completed (max iterations reached)**\n\n`);
-              }
-              break;
+            // IMPORTANT: After tool execution and follow-up, task is complete
+            // Don't continue iterating for simple requests like "list files"
+            console.log(`✅ Task completed after tool execution and follow-up response`);
+            if (onContentChunk) {
+              onContentChunk(`\n✅ **Task completed**\n\n`);
             }
+            break;
+
           } else {
             // No tools needed, task complete
             console.log(`✅ No tools needed or tool execution disabled - task complete`);

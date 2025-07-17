@@ -317,6 +317,94 @@ class ClaraMemoryService {
       })));
     }
   }
+
+  /**
+   * Check if a tool was recently executed successfully
+   */
+  public hasRecentSuccessfulExecution(toolName: string, withinMinutes: number = 5): boolean {
+    const toolResults = this.getSessionToolResults();
+    const cutoffTime = Date.now() - (withinMinutes * 60 * 1000);
+    
+    const recentSuccessfulExecution = toolResults.find(result => 
+      result.toolName === toolName && 
+      result.success && 
+      result.timestamp > cutoffTime
+    );
+    
+    if (recentSuccessfulExecution) {
+      console.log(`🔍 Found recent successful execution of ${toolName} at ${new Date(recentSuccessfulExecution.timestamp).toLocaleTimeString()}`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Get the last successful result for a specific tool
+   */
+  public getLastSuccessfulResult(toolName: string): MemoryToolResult | null {
+    const toolResults = this.getSessionToolResults();
+    
+    // Find the most recent successful execution of this tool
+    const successfulResults = toolResults
+      .filter(result => result.toolName === toolName && result.success)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    return successfulResults.length > 0 ? successfulResults[0] : null;
+  }
+
+  /**
+   * Check if the current request appears to be a duplicate based on recent tool executions
+   */
+  public isDuplicateRequest(userMessage: string): { isDuplicate: boolean; lastResult?: MemoryToolResult } {
+    const toolResults = this.getSessionToolResults();
+    const recentTime = Date.now() - (5 * 60 * 1000); // 5 minutes
+    
+    // Check for recent successful tool executions
+    const recentSuccessfulTools = toolResults.filter(result => 
+      result.success && 
+      result.timestamp > recentTime &&
+      result.toolName !== 'user_message' &&
+      result.toolName !== 'model_response' &&
+      result.toolName !== 'follow_up_response'
+    );
+    
+    if (recentSuccessfulTools.length === 0) {
+      return { isDuplicate: false };
+    }
+    
+    // Check if the user message matches patterns that were recently fulfilled
+    const fileListingPatterns = [
+      'list the files',
+      'show me the files',
+      'what files are',
+      'directory contents',
+      'folder contents',
+      'ls',
+      'dir'
+    ];
+    
+    const isFileListingRequest = fileListingPatterns.some(pattern => 
+      userMessage.toLowerCase().includes(pattern.toLowerCase())
+    );
+    
+    if (isFileListingRequest) {
+      const recentFileListingTool = recentSuccessfulTools.find(result => 
+        result.toolName === 'mcp_python-tools_sh' || 
+        result.toolName === 'mcp_python-tools_ls'
+      );
+      
+      if (recentFileListingTool) {
+        console.log(`🔍 Detected duplicate file listing request - tool ${recentFileListingTool.toolName} executed at ${new Date(recentFileListingTool.timestamp).toLocaleTimeString()}`);
+        return { 
+          isDuplicate: true, 
+          lastResult: recentFileListingTool 
+        };
+      }
+    }
+    
+    return { isDuplicate: false };
+  }
 }
 
 // Export singleton instance

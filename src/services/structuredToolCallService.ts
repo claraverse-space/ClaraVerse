@@ -64,11 +64,15 @@ export class StructuredToolCallService {
     userMessage: string,
     tools: Tool[],
     config: ClaraAIConfig,
-    conversationHistory?: ClaraMessage[]
+    conversationHistory?: ClaraMessage[],
+    memoryContext?: string
   ): string {
     const toolsDescription = this.formatToolsForPrompt(tools);
     
-    const systemPrompt = `You are Clara, an AI assistant with structured tool calling capabilities.
+    // Check if the task appears to be already completed based on memory context
+    const hasCompletedTask = this.isTaskAlreadyCompleted(userMessage, memoryContext);
+    
+    let systemPrompt = `You are Clara, an AI assistant with structured tool calling capabilities.
 
 **STRUCTURED TOOL CALLING MODE**
 
@@ -101,17 +105,62 @@ ${toolsDescription}
 4. If no tools are needed, respond normally without the JSON structure
 5. After tool execution, I will provide you with the results to incorporate into your final response
 6. **CRITICAL**: Use the exact parameter names and types shown in the tool descriptions
-7. If a tool has no required parameters, use an empty object {} for arguments
+7. If a tool has no required parameters, use an empty object {} for arguments`;
+
+    // Add specific instruction if task appears completed
+    if (hasCompletedTask) {
+      systemPrompt += `
+8. **TASK COMPLETION CHECK**: Based on the memory context, it appears this request has already been fulfilled. Do NOT execute the same tools again. Instead, provide a natural response based on the previous results.`;
+    }
+
+    systemPrompt += `
 
 **CONVERSATION CONTEXT:**
 ${this.formatConversationHistory(conversationHistory)}
+
+${memoryContext ? `**MEMORY CONTEXT:**\n${memoryContext}\n` : ''}
 
 **USER REQUEST:**
 ${userMessage}
 
 Please analyze the request and respond appropriately. If tools are needed, use the structured format above.`;
 
+    // Add additional guidance if task is completed
+    if (hasCompletedTask) {
+      systemPrompt += `
+
+**IMPORTANT**: The memory context shows this request has already been processed successfully. Do not execute tools again - simply provide a helpful response based on the previous results.`;
+    }
+
     return systemPrompt;
+  }
+
+  /**
+   * Check if a task appears to be already completed based on memory context
+   */
+  private isTaskAlreadyCompleted(userMessage: string, memoryContext?: string): boolean {
+    if (!memoryContext) {
+      return false;
+    }
+
+    // Check if memory context contains successful tool execution and follow-up response
+    const hasSuccessfulToolExecution = memoryContext.includes('✅ Success') && 
+                                     memoryContext.includes('follow_up_response');
+    
+    // Check if the user message appears to be asking for the same thing that was already done
+    const commonCompletionPatterns = [
+      'list the files',
+      'show me the files',
+      'what files are',
+      'directory contents',
+      'folder contents'
+    ];
+    
+    const requestLooksComplete = commonCompletionPatterns.some(pattern => 
+      userMessage.toLowerCase().includes(pattern.toLowerCase())
+    ) && hasSuccessfulToolExecution;
+
+    return requestLooksComplete;
   }
 
   /**
