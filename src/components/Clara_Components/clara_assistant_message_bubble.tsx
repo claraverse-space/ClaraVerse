@@ -1199,6 +1199,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
             <MessageContentRenderer
               content={responseContent}
               isStreaming={message.metadata?.isStreaming}
+              attachments={message.attachments}
             />
           )}
 

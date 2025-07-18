@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Image, Settings, Download, Loader2, Zap, Palette, Sliders, Monitor, AlertCircle, CheckCircle, WifiOff } from 'lucide-react';
-import { Client, BasePipe, EfficientPipe } from '@stable-canvas/comfyui-client';
-import { ClaraMessage, ClaraFileAttachment } from '../../types/clara_assistant_types';
+import { X, Image, Settings, Loader2, Zap, AlertCircle, CheckCircle, WifiOff } from 'lucide-react';
+import { Client, BasePipe } from '@stable-canvas/comfyui-client';
+// import { ClaraMessage, ClaraFileAttachment } from '../../types/clara_assistant_types';
 import { db } from '../../db';
 
 // Resolution options for image generation
@@ -12,7 +12,7 @@ interface Resolution {
 }
 
 const RESOLUTIONS: Resolution[] = [
-  { label: 'Square (1:1)', width: 1024, height: 1024 },
+  { label: 'Square (1:1)', width: 512, height: 512 },
   { label: 'Portrait (2:3)', width: 832, height: 1216 },
   { label: 'Landscape (3:2)', width: 1216, height: 832 },
   { label: 'Wide (16:9)', width: 1280, height: 720 },

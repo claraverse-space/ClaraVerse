@@ -15,8 +15,9 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Eye, EyeOff, ExternalLink, Code2, Loader2, BarChart3, GitBranch, Maximize2 } from 'lucide-react';
+import { Copy, Eye, EyeOff, ExternalLink, Code2, Loader2, BarChart3, GitBranch, Maximize2, Download } from 'lucide-react';
 import { copyToClipboard } from '../../utils/clipboard';
+import { ClaraFileAttachment } from '../../types/clara_assistant_types';
 
 // Import Chart.js components
 import {
@@ -51,6 +52,7 @@ interface MessageContentRendererProps {
   className?: string;
   isDark?: boolean;
   isStreaming?: boolean;
+  attachments?: ClaraFileAttachment[]; // Add attachments prop
 }
 
 /**
@@ -815,7 +817,8 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
   content, 
   className = '',
   isDark = false,
-  isStreaming = false
+  isStreaming = false,
+  attachments = [] // Default to empty array
 }) => {
   // Auto-detect dark mode if not explicitly provided
   const [darkMode, setDarkMode] = useState(isDark);
@@ -827,29 +830,21 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
     alt: string;
   }>>([]);
 
-  // Debug logging to see what content is being processed
-  if (content.includes('![Generated Image](')) {
-    console.log('🖼️ MessageContentRenderer processing content with image:', {
-      contentLength: content.length,
-      imageMarkdown: content.match(/!\[Generated Image\]\(([^)]+)\)/)?.[1]?.substring(0, 50) + '...',
-      hasImageMarkdown: content.includes('![Generated Image]('),
-      fullContent: content
-    });
-  }
-
-  // Pre-process content to extract and replace image data URLs
+  // Pre-process content to extract and replace image data URLs and attachment references
   const processedContent = useMemo(() => {
-    // Check if content contains image data URLs
-    const imageRegex = /!\[([^\]]*)\]\(data:image\/[^;]+;base64,[^)]+\)/g;
-    const matches = Array.from(content.matchAll(imageRegex));
+    // Check for both data URLs and attachment ID references
+    const imageDataUrlRegex = /!\[([^\]]*)\]\(data:image\/[^;]+;base64,[^)]+\)/g;
+    const attachmentIdRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     
-    if (matches.length > 0) {
-      console.log('🖼️ Found image data URLs in content:', matches.length);
-      
-      const images: Array<{id: string; src: string; alt: string}> = [];
-      let processedContent = content;
-      
-      matches.forEach((match, index) => {
+    const dataUrlMatches = Array.from(content.matchAll(imageDataUrlRegex));
+    const attachmentMatches = Array.from(content.matchAll(attachmentIdRegex));
+    
+    const images: Array<{id: string; src: string; alt: string}> = [];
+    let processedContent = content;
+    
+    // Process data URL images (existing logic)
+    if (dataUrlMatches.length > 0) {
+      dataUrlMatches.forEach((match, index) => {
         const fullMatch = match[0];
         const alt = match[1] || 'Generated Image';
         const dataUrlMatch = match[0].match(/data:image\/[^;]+;base64,[^)]+/);
@@ -858,18 +853,8 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
           const dataUrl = dataUrlMatch[0];
           const imageId = `extracted-image-${index}`;
           
-          console.log(`🖼️ Processing image ${index + 1}:`, {
-            alt,
-            dataUrlLength: dataUrl.length,
-            dataUrlStart: dataUrl.substring(0, 50) + '...',
-            fullMatchLength: fullMatch.length,
-            imageId
-          });
-          
           // Validate the data URL
           if (dataUrl.length > 50 && dataUrl.includes('base64,')) {
-            console.log(`✅ Image ${index + 1} data URL is valid, extracting...`);
-            
             // Add to extracted images
             images.push({
               id: imageId,
@@ -879,25 +864,70 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
             
             // Replace the full markdown image with a placeholder
             processedContent = processedContent.replace(fullMatch, `\n\n**[IMAGE_PLACEHOLDER_${imageId}]**\n\n`);
-          } else {
-            console.error(`❌ Image ${index + 1} data URL is invalid:`, {
-              length: dataUrl.length,
-              hasBase64: dataUrl.includes('base64,')
-            });
           }
         }
       });
-      
-      // Update extracted images state
-      setExtractedImages(images);
-      
-      return processedContent;
     }
     
-    // No images found, clear extracted images
-    setExtractedImages([]);
-    return content;
-  }, [content]);
+    // Process attachment ID references (new logic)
+    if (attachmentMatches.length > 0) {
+      attachmentMatches.forEach((match, index) => {
+        const fullMatch = match[0];
+        const alt = match[1] || 'Generated Image';
+        const attachmentIdOrUrl = match[2];
+        
+        // Skip if this is already a data URL (handled above)
+        if (attachmentIdOrUrl.startsWith('data:')) {
+          return;
+        }
+        
+        // Look for attachment with this ID
+        const attachment = attachments.find(att => att.id === attachmentIdOrUrl);
+        
+        if (attachment && attachment.type === 'image') {
+          // Get the image source from the attachment - properly construct data URL
+          let imageSrc = null;
+          
+          if (attachment.url && attachment.url.startsWith('data:')) {
+            // Already a proper data URL
+            imageSrc = attachment.url;
+          } else if (attachment.base64) {
+            // Construct proper data URL from base64
+            const mimeType = attachment.mimeType || 'image/png';
+            imageSrc = `data:${mimeType};base64,${attachment.base64}`;
+          } else if (attachment.url) {
+            // Use URL as-is (for external URLs)
+            imageSrc = attachment.url;
+          }
+          
+          if (imageSrc) {
+            const imageId = `attachment-image-${attachmentIdOrUrl}`;
+            
+            // Add to extracted images
+            images.push({
+              id: imageId,
+              src: imageSrc,
+              alt: alt || attachment.name || 'Generated Image'
+            });
+            
+            // Replace the full markdown image with a placeholder
+            processedContent = processedContent.replace(fullMatch, `\n\n**[IMAGE_PLACEHOLDER_${imageId}]**\n\n`);
+          }
+        }
+      });
+    }
+    
+    // Return both processed content and images
+    return {
+      content: processedContent,
+      images: images
+    };
+  }, [content, JSON.stringify(attachments)]); // Stabilize attachments dependency
+
+  // Update extracted images when processedContent changes
+  useEffect(() => {
+    setExtractedImages(processedContent.images);
+  }, [processedContent]);
 
   useEffect(() => {
     if (!isDark) {
@@ -955,20 +985,56 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
       srcStart: image.src.substring(0, 50) + '...'
     });
     
+    const handleDownload = () => {
+      try {
+        // Create a temporary link element
+        const link = document.createElement('a');
+        link.href = image.src;
+        
+        // Generate filename from alt text or use default
+        const filename = image.alt && image.alt !== 'Generated Image' 
+          ? `${image.alt.replace(/[^a-zA-Z0-9]/g, '_')}.png`
+          : `generated_image_${Date.now()}.png`;
+        
+        link.download = filename;
+        
+        // Append to body, click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('📥 Downloaded image:', filename);
+      } catch (error) {
+        console.error('❌ Failed to download image:', error);
+      }
+    };
+    
     return (
-      <div className="my-4 flex flex-col items-center">
-        <img
-          src={image.src}
-          alt={image.alt}
-          className="max-w-full h-auto rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow duration-300"
-          style={{ maxHeight: '500px' }}
-          onLoad={() => {
-            console.log('✅ Extracted image loaded successfully:', { id: image.id, alt: image.alt });
-          }}
-          onError={(e) => {
-            console.error('🖼️ Extracted image failed to load:', { id: image.id, alt: image.alt });
-          }}
-        />
+      <div className="my-4 flex flex-col items-center group">
+        <div className="relative">
+          <img
+            src={image.src}
+            alt={image.alt}
+            className="max-w-full h-auto rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-shadow duration-300"
+            style={{ maxHeight: '500px' }}
+            onLoad={() => {
+              console.log('✅ Extracted image loaded successfully:', { id: image.id, alt: image.alt });
+            }}
+            onError={(e) => {
+              console.error('🖼️ Extracted image failed to load:', { id: image.id, alt: image.alt });
+            }}
+          />
+          
+          {/* Download button - appears on hover */}
+          <button
+            onClick={handleDownload}
+            className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 backdrop-blur-sm"
+            title="Download image"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+        </div>
+        
         {image.alt && image.alt !== 'Generated Image' && (
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center italic">
             {image.alt}
@@ -1129,7 +1195,7 @@ const MessageContentRenderer: React.FC<MessageContentRendererProps> = React.memo
   // Render as Markdown with custom image handling
   return (
     <div className={`prose prose-base dark:prose-invert max-w-none ${className}`}>
-      {renderContentWithImages(processedContent)}
+      {renderContentWithImages(processedContent.content)}
     </div>
   );
 });

@@ -414,6 +414,17 @@ export class ClaraDatabaseService {
   private async recordToMessage(record: ClaraMessageRecord): Promise<ClaraMessage> {
     const attachments = await this.getMessageFiles(record.id);
     
+    console.log('📦 Loading message from database:', {
+      messageId: record.id,
+      role: record.role,
+      contentLength: record.content.length,
+      attachmentsCount: attachments.length,
+      attachmentIds: attachments.map(att => att.id),
+      attachmentTypes: attachments.map(att => att.type),
+      hasImageAttachments: attachments.some(att => att.type === 'image'),
+      contentPreview: record.content.substring(0, 100) + (record.content.length > 100 ? '...' : '')
+    });
+    
     return {
       ...record,
       timestamp: new Date(record.timestamp),
@@ -422,17 +433,53 @@ export class ClaraDatabaseService {
   }
 
   private recordToFileAttachment(record: ClaraFileRecord): ClaraFileAttachment {
-    return {
+    console.log('📎 Converting file record to attachment:', {
+      id: record.id,
+      name: record.name,
+      type: record.type,
+      mimeType: record.mimeType,
+      contentLength: record.content.length,
+      contentIsDataUrl: record.content.startsWith('data:'),
+      contentPrefix: record.content.substring(0, 50) + (record.content.length > 50 ? '...' : '')
+    });
+    
+    let base64 = undefined;
+    let url = undefined;
+    
+    if (record.content.startsWith('data:')) {
+      // This is a data URL, extract the base64 part and keep the full URL
+      url = record.content;
+      const base64Match = record.content.match(/^data:[^;]+;base64,(.+)$/);
+      if (base64Match) {
+        base64 = base64Match[1];
+      }
+    } else {
+      // This is raw base64 data, construct the data URL
+      base64 = record.content;
+      url = `data:${record.mimeType};base64,${record.content}`;
+    }
+    
+    const attachment: ClaraFileAttachment = {
       id: record.id,
       name: record.name,
       type: record.type as any,
       size: record.size,
       mimeType: record.mimeType,
-      base64: record.content.startsWith('data:') ? record.content : undefined,
-      url: !record.content.startsWith('data:') ? record.content : undefined,
+      base64,
+      url,
       thumbnail: record.thumbnail,
       processed: record.processed
     };
+    
+    console.log('📎 Converted attachment:', {
+      id: attachment.id,
+      hasBase64: !!attachment.base64,
+      hasUrl: !!attachment.url,
+      urlPrefix: attachment.url?.substring(0, 50) + (attachment.url && attachment.url.length > 50 ? '...' : ''),
+      base64Length: attachment.base64?.length
+    });
+    
+    return attachment;
   }
 }
 

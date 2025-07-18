@@ -248,7 +248,7 @@ const ComfyUIWebView: React.FC<{
 
 // Resolutions constant
 const RESOLUTIONS: Resolution[] = [
-  { label: 'Square (1:1)', width: 1024, height: 1024 },
+  { label: 'Square (1:1)', width: 512, height: 512 },
   { label: 'Portrait (2:3)', width: 832, height: 1216 },
   { label: 'Landscape (3:2)', width: 1216, height: 832 },
   { label: 'Wide (16:9)', width: 1280, height: 720 },

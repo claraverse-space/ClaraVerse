@@ -3437,7 +3437,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       
       console.log('✅ Image data URL validation passed, proceeding with message creation');
       
-      // Create attachment for the generated image
+      // Create attachment for the generated image (for user message)
       const imageAttachment: ClaraFileAttachment = {
         id: `img-${Date.now()}`,
         name: `generated-image-${Date.now()}.png`,
@@ -3468,12 +3468,38 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         }
       };
       
-      // Create assistant message with simple text response (no image markdown)
+      // Create a separate attachment for the assistant message (for efficient storage)
+      const assistantImageAttachment: ClaraFileAttachment = {
+        id: `img-assistant-${Date.now()}`,
+        name: `generated-image-result-${Date.now()}.png`,
+        type: 'image',
+        size: imageDataUrl.length,
+        mimeType: 'image/png',
+        base64: imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl,
+        url: imageDataUrl,
+        processed: true,
+        processingResult: {
+          success: true,
+          imageAnalysis: {
+            description: `Generated image result for: ${prompt}`,
+            confidence: 1.0
+          }
+        }
+      };
+      
+      // Create assistant message with image reference instead of embedding the large data URL
+      const assistantContent = `I've generated an image based on your prompt: "${prompt}". Here's the result:
+
+![Generated Image](${assistantImageAttachment.id})
+
+You can right-click on the image to save it or use it in your projects.`;
+      
       const imageMessage: ClaraMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: `I've generated an image for you based on your prompt: "${prompt}". The image has been created successfully and is displayed above. You can right-click on it to save it or use it in your projects.`,
+        content: assistantContent,
         timestamp: new Date(),
+        attachments: [assistantImageAttachment], // Store image as attachment to avoid large content
         metadata: {
           imageGeneration: true,
           model: 'ComfyUI',
@@ -3481,9 +3507,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         }
       };
       
-      console.log('🎨 Created messages with image attachment on user message');
+      console.log('🎨 Created messages with image attachments on both user and assistant messages');
       console.log('🎨 User message attachments:', userMessage.attachments?.length);
-      console.log('🎨 Assistant message content:', imageMessage.content);
+      console.log('🎨 Assistant message attachments:', imageMessage.attachments?.length);
+      console.log('🎨 Assistant message content uses attachment ID:', assistantContent.includes(assistantImageAttachment.id));
       
       // Directly add messages to the chat without triggering AI processing
       if (setMessages && currentSession) {
