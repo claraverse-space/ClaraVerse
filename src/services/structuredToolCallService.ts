@@ -48,13 +48,385 @@ interface StructuredToolResponse {
 export class StructuredToolCallService {
   private static instance: StructuredToolCallService;
   
+  // Configuration flag to control structured output behavior
+  // DEFAULT: Use native JSON Schema for structured outputs
+  private forcePromptBasedStructuredOutputs: boolean = false;
+  
   private constructor() {}
+
+  /**
+   * Helper method to safely serialize tool results to avoid [object Object] issues
+   */
+  private serializeToolResult(result: any): string {
+    if (result === undefined || result === null) {
+      return 'Tool executed successfully (no result returned)';
+    }
+    
+    if (typeof result === 'string') {
+      return result;
+    }
+    
+    if (typeof result === 'object') {
+      try {
+        return JSON.stringify(result, null, 2);
+      } catch (error) {
+        return '[Object - could not serialize]';
+      }
+    }
+    
+    return String(result);
+  }
   
   public static getInstance(): StructuredToolCallService {
     if (!StructuredToolCallService.instance) {
       StructuredToolCallService.instance = new StructuredToolCallService();
     }
     return StructuredToolCallService.instance;
+  }
+
+  /**
+   * Generate JSON Schema for structured tool calling (OpenAI native format)
+   */
+  public generateToolCallSchema(tools: Tool[]): any {
+    // Create enum of available tool names
+    const toolNames = tools.map(tool => tool.name);
+    
+    // Create dynamic properties for tool arguments based on available tools
+    const toolArgumentsSchema = {
+      type: "object",
+      properties: {} as Record<string, any>,
+      additionalProperties: true // Allow any additional properties for flexibility
+    };
+
+    // Add properties for each tool's parameters
+    tools.forEach(tool => {
+      tool.parameters.forEach(param => {
+        if (!toolArgumentsSchema.properties[param.name]) {
+          toolArgumentsSchema.properties[param.name] = {
+            type: param.type.toLowerCase(),
+            description: param.description
+          };
+        }
+      });
+    });
+
+    return {
+      name: "structured_tool_calls",
+      description: "Structured tool calling response with reasoning and tool execution details",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: {
+          reasoning: {
+            type: "string",
+            description: "Brief explanation of your approach and reasoning"
+          },
+          toolCalls: {
+            type: "array",
+            description: "Array of tool calls to execute",
+            items: {
+              type: "object",
+              properties: {
+                toolName: {
+                  type: "string",
+                  description: "The exact name of the tool to call",
+                  enum: toolNames
+                },
+                arguments: {
+                  type: "object",
+                  description: "Arguments to pass to the tool",
+                  additionalProperties: true // Allow flexible arguments
+                },
+                reasoning: {
+                  type: "string",
+                  description: "Explanation of why this specific tool is being used"
+                }
+              },
+              required: ["toolName", "arguments", "reasoning"],
+              additionalProperties: false
+            }
+          },
+          needsToolExecution: {
+            type: "boolean",
+            description: "Whether the tool calls should be executed"
+          }
+        },
+        required: ["reasoning", "toolCalls", "needsToolExecution"],
+        additionalProperties: false
+      }
+    };
+  }
+
+  /**
+   * Check if provider supports native JSON Schema structured outputs
+   * DEFAULT: Use native JSON Schema for most providers
+   */
+  public supportsNativeStructuredOutputs(providerId?: string): boolean {
+    // Check configuration flag first
+    if (this.forcePromptBasedStructuredOutputs) {
+      return false;
+    }
+    
+    // DEFAULT: Use native JSON Schema for most providers
+    // Only exclude providers that definitely don't support it
+    const unsupportedProviders = ['ollama-local', 'llamacpp'];
+    
+    // If no provider specified, assume supported
+    if (!providerId) {
+      return true;
+    }
+    
+    // Check if provider is explicitly unsupported
+    if (unsupportedProviders.includes(providerId.toLowerCase())) {
+      return false;
+    }
+    
+    // Default to supporting native JSON Schema
+    return true;
+  }
+
+  /**
+   * Control structured output mode (native JSON Schema is default)
+   */
+  public setForcePromptBasedMode(force: boolean): void {
+    this.forcePromptBasedStructuredOutputs = force;
+    console.log(`🔄 Structured tool calling mode: ${force ? 'Prompt-based (forced)' : 'Native JSON Schema (default)'}`);
+  }
+
+  /**
+   * Get current structured output mode
+   */
+  public getStructuredOutputMode(): 'forced-prompt' | 'native-json-schema' {
+    return this.forcePromptBasedStructuredOutputs ? 'forced-prompt' : 'native-json-schema';
+  }
+
+  /**
+   * Enhanced structured tool calling with native JSON Schema support
+   */
+  public async executeStructuredToolCallingWithSchema(
+    client: any,
+    modelId: string,
+    message: string,
+    tools: Tool[],
+    config: ClaraAIConfig,
+    attachments: ClaraFileAttachment[],
+    systemPrompt?: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void,
+    currentProviderId?: string
+  ): Promise<{ response: string; toolCalls: StructuredToolCall[]; needsToolExecution: boolean; reasoning: string }> {
+    
+    const supportsNativeSchema = this.supportsNativeStructuredOutputs(currentProviderId);
+    
+    if (supportsNativeSchema) {
+      console.log('🔄 Using native JSON Schema structured outputs (default)');
+      return this.executeWithNativeSchema(
+        client, modelId, message, tools, config, attachments, 
+        systemPrompt, conversationHistory, onContentChunk
+      );
+    } else {
+      console.log('🔄 Falling back to prompt-based structured outputs');
+      return this.executeWithPromptEngineering(
+        client, modelId, message, tools, config, attachments,
+        systemPrompt, conversationHistory, onContentChunk
+      );
+    }
+  }
+
+  /**
+   * Execute structured tool calling using native JSON Schema
+   */
+  private async executeWithNativeSchema(
+    client: any,
+    modelId: string, 
+    message: string,
+    tools: Tool[],
+    config: ClaraAIConfig,
+    attachments: ClaraFileAttachment[],
+    systemPrompt?: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void
+  ): Promise<{ response: string; toolCalls: StructuredToolCall[]; needsToolExecution: boolean; reasoning: string }> {
+    
+    // Generate the JSON schema
+    const jsonSchema = this.generateToolCallSchema(tools);
+    
+    // Build enhanced system prompt for native structured outputs
+    const enhancedSystemPrompt = this.buildNativeStructuredPrompt(tools, systemPrompt);
+    
+    // Build conversation messages
+    const messages = this.buildConversationMessages(
+      enhancedSystemPrompt,
+      message,
+      attachments,
+      conversationHistory
+    );
+
+    const options = {
+      temperature: config.parameters.temperature,
+      max_tokens: config.parameters.maxTokens,
+      top_p: config.parameters.topP,
+      response_format: {
+        type: "json_schema",
+        json_schema: jsonSchema
+      }
+    };
+
+    try {
+      // Execute API call with native structured output
+      const apiResponse = await client.sendChat(modelId, messages, options);
+      const rawResponse = apiResponse.message?.content || '';
+      
+      if (onContentChunk && rawResponse) {
+        onContentChunk(rawResponse);
+      }
+
+      // Parse the structured JSON response
+      let structuredData;
+      try {
+        structuredData = JSON.parse(rawResponse);
+      } catch (parseError) {
+        console.error('Failed to parse native structured output:', parseError);
+        throw new Error(`Invalid JSON response from structured output: ${rawResponse}`);
+      }
+
+      return {
+        response: structuredData.reasoning || rawResponse,
+        toolCalls: structuredData.toolCalls || [],
+        needsToolExecution: structuredData.needsToolExecution || false,
+        reasoning: structuredData.reasoning || ''
+      };
+
+    } catch (error) {
+      console.error('Native structured output failed, falling back to prompt engineering:', error);
+      // Fallback to prompt engineering if native fails
+      return this.executeWithPromptEngineering(
+        client, modelId, message, tools, config, attachments,
+        systemPrompt, conversationHistory, onContentChunk
+      );
+    }
+  }
+
+  /**
+   * Execute structured tool calling using prompt engineering (fallback)
+   */
+  private async executeWithPromptEngineering(
+    client: any,
+    modelId: string,
+    message: string, 
+    tools: Tool[],
+    config: ClaraAIConfig,
+    attachments: ClaraFileAttachment[],
+    systemPrompt?: string,
+    conversationHistory?: ClaraMessage[],
+    onContentChunk?: (content: string) => void
+  ): Promise<{ response: string; toolCalls: StructuredToolCall[]; needsToolExecution: boolean; reasoning: string }> {
+    
+    // Use existing prompt engineering approach
+    const structuredPrompt = this.generateStructuredToolPrompt(
+      message, tools, config, conversationHistory
+    );
+    
+    const messages = this.buildConversationMessages(
+      structuredPrompt, message, attachments, conversationHistory
+    );
+
+    const options = {
+      temperature: config.parameters.temperature,
+      max_tokens: config.parameters.maxTokens,
+      top_p: config.parameters.topP
+    };
+
+    const apiResponse = await client.sendChat(modelId, messages, options);
+    const response = apiResponse.message?.content || '';
+    
+    if (onContentChunk && response) {
+      onContentChunk(response);
+    }
+
+    // Parse using existing method
+    const structuredResponse = this.parseStructuredResponse(response);
+    
+    return {
+      response: structuredResponse.content,
+      toolCalls: structuredResponse.toolCalls,
+      needsToolExecution: structuredResponse.needsToolExecution,
+      reasoning: structuredResponse.reasoning
+    };
+  }
+
+  /**
+   * Build system prompt optimized for native structured outputs
+   */
+  private buildNativeStructuredPrompt(tools: Tool[], originalSystemPrompt?: string): string {
+    const toolsDescription = this.formatToolsForPrompt(tools);
+    
+    return `You are Clara, an autonomous AI agent. Your task is to accomplish user requests using available tools.
+
+${originalSystemPrompt || ''}
+
+AVAILABLE TOOLS:
+${toolsDescription}
+
+INSTRUCTIONS:
+- Analyze the user's request carefully
+- Determine which tools (if any) are needed to accomplish the task
+- Provide clear reasoning for your approach
+- If tools are needed, specify exactly which tools to use and why
+- If no tools are needed, explain why and provide a direct response
+
+RESPONSE FORMAT:
+You must respond with a JSON object containing:
+- reasoning: Your analysis and approach
+- toolCalls: Array of tools to execute (empty if no tools needed)
+- needsToolExecution: true if tools should be executed, false otherwise
+
+Be thorough, accurate, and helpful in your responses.`;
+  }
+
+  /**
+   * Build conversation messages for API call
+   */
+  private buildConversationMessages(
+    systemPrompt: string,
+    message: string,
+    attachments: ClaraFileAttachment[],
+    conversationHistory?: ClaraMessage[]
+  ): any[] {
+    const messages: any[] = [];
+    
+    // Add system prompt
+    messages.push({
+      role: 'system',
+      content: systemPrompt
+    });
+
+    // Add conversation history if provided
+    if (conversationHistory && conversationHistory.length > 0) {
+      const historyMessages = conversationHistory.slice(-10); // Last 10 messages
+      for (const historyMessage of historyMessages) {
+        messages.push({
+          role: historyMessage.role,
+          content: historyMessage.content
+        });
+      }
+    }
+
+    // Add current user message
+    const userMessage: any = {
+      role: 'user',
+      content: message
+    };
+
+    // Add images if any attachments are images
+    const imageAttachments = attachments.filter(att => att.type === 'image');
+    if (imageAttachments.length > 0) {
+      userMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+    }
+
+    messages.push(userMessage);
+    
+    return messages;
   }
 
   /**
@@ -373,9 +745,12 @@ EXECUTION RULES:
   ): string {
     const resultsText = toolResults.map(result => {
       if (result.success) {
-        const resultText = typeof result.result === 'string' 
-          ? result.result 
-          : JSON.stringify(result.result, null, 2);
+        let resultText = '';
+        if (result.result !== undefined && result.result !== null) {
+          resultText = this.serializeToolResult(result.result);
+        } else {
+          resultText = 'Tool executed successfully (no result returned)';
+        }
         return `✅ ${result.toolName}: ${resultText}`;
       } else {
         return `❌ ${result.toolName}: ${result.error || 'Failed'}`;

@@ -15,7 +15,30 @@ import { claraToolService } from './claraToolService';
 
 export class ClaraChatService {
   /**
-   * Execute standard chat workflow
+   * Helper method to safely serialize tool results to avoid [object Object] issues
+   */
+  private serializeToolResult(result: any): string {
+    if (result === undefined || result === null) {
+      return 'No result returned';
+    }
+    
+    if (typeof result === 'string') {
+      return result;
+    }
+    
+    if (typeof result === 'object') {
+      try {
+        return JSON.stringify(result, null, 2);
+      } catch (error) {
+        return '[Object - could not serialize]';
+      }
+    }
+    
+    return String(result);
+  }
+
+  /**
+   * Execute standard chat workflow without autonomous agent mode
    */
   public async executeStandardChat(
     client: AssistantAPIClient,
@@ -219,7 +242,7 @@ export class ClaraChatService {
             if (result) {
               let content: string;
               if (result.success && result.result !== undefined && result.result !== null) {
-                content = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
+                content = this.serializeToolResult(result.result);
               } else {
                 content = result.error || `Tool ${result.toolName} execution failed`;
               }

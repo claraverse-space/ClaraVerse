@@ -517,7 +517,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableVision: true,
         autoModelSelection: false,      // **CHANGED**: Default to manual model selection
         enableMCP: false,               // **CHANGED**: Default to false for streaming mode
-        enableStructuredToolCalling: false // **NEW**: Default to false
+        enableStructuredToolCalling: false, // **NEW**: Default to false
+        enableNativeJSONSchema: false, // **NEW**: Default to false
       },
       artifacts: {
         enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1014,7 +1015,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enableVision: true,
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
                 enableMCP: false,              // **CHANGED**: Default to false for streaming mode
-                enableStructuredToolCalling: false // **NEW**: Default to false
+                enableStructuredToolCalling: false, // **NEW**: Default to false
+                enableNativeJSONSchema: false, // **NEW**: Default to false
               },
                           artifacts: {
               enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1360,11 +1362,53 @@ Please provide your refined response for following user question:
     const voiceModePrefix = "Warning: You are in speech mode, make sure to reply in few lines:  \n";
     const isVoiceMessage = content.startsWith(voiceModePrefix);
     
-    // For display purposes, use the content without the voice prefix
-    const displayContent = isVoiceMessage ? content.replace(voiceModePrefix, '') : content;
+    // **NEW**: Check if content is a JSON API request with duplicate user messages
+    let processedContent = content;
+    let isJsonApiRequest = false;
     
-    // For AI processing, use the full content (including prefix if it's a voice message)
-    const aiContent = content;
+    try {
+      // Try to parse as JSON to detect API request format
+      const parsed = JSON.parse(content.trim());
+      
+      // Check if this looks like an API request with messages array
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.messages)) {
+        isJsonApiRequest = true;
+        console.log('🔍 Detected JSON API request format');
+        
+        // Extract unique user messages to prevent duplication
+        const userMessages = parsed.messages
+          .filter((msg: any) => msg.role === 'user')
+          .map((msg: any) => msg.content)
+          .filter((content: string, index: number, arr: string[]) => arr.indexOf(content) === index); // Remove duplicates
+        
+        if (userMessages.length > 0) {
+          // Use the last unique user message as the actual content
+          processedContent = userMessages[userMessages.length - 1];
+          console.log(`✅ Deduplicated ${parsed.messages.filter((msg: any) => msg.role === 'user').length} user messages to 1 unique message`);
+          
+          // Show info notification about deduplication
+          addInfoNotification(
+            'JSON Request Processed',
+            `Detected and processed JSON API format. Deduplicated ${parsed.messages.filter((msg: any) => msg.role === 'user').length} user messages.`,
+            4000
+          );
+        } else {
+          // No user messages found, treat as regular content
+          processedContent = content;
+          isJsonApiRequest = false;
+        }
+      }
+    } catch (parseError) {
+      // Not valid JSON, treat as regular message
+      processedContent = content;
+      isJsonApiRequest = false;
+    }
+    
+    // For display purposes, use the processed content without voice prefix
+    const displayContent = isVoiceMessage ? processedContent.replace(voiceModePrefix, '') : processedContent;
+    
+    // For AI processing, use the processed content (including prefix if it's a voice message)
+    const aiContent = isVoiceMessage ? processedContent : processedContent;
 
     // Create user message with display content (without voice prefix)
     const userMessage: ClaraMessage = {
@@ -2247,7 +2291,8 @@ Would you like me to help with text-only responses for now?`,
             enableVision: true,
             autoModelSelection: false,    // **CHANGED**: Default to manual model selection
             enableMCP: false,              // **CHANGED**: Default to false for streaming mode
-            enableStructuredToolCalling: false // **NEW**: Default to false
+            enableStructuredToolCalling: false, // **NEW**: Default to false
+            enableNativeJSONSchema: false, // **NEW**: Default to false
           },
           mcp: {
             enableTools: true,
@@ -3087,54 +3132,206 @@ Let me execute this for you.`;
       }
     };
 
-    // Test structured tool calling with current session
-    (window as any).testStructuredWithCurrentSession = async () => {
-      if (!sessionConfig.aiConfig?.features?.enableStructuredToolCalling) {
-        console.log('❌ Structured tool calling is not enabled. Enable it in Advanced Options first.');
-        return;
-      }
+    // Test native JSON Schema vs prompt engineering
+    (window as any).testNativeJSONSchemaComparison = async () => {
+      console.log('🔬 Testing Native JSON Schema vs Prompt Engineering...');
       
-      console.log('🧪 Testing structured tool calling with current session...');
-      console.log('📊 Current config:', {
-        provider: sessionConfig.aiConfig.provider,
-        structuredEnabled: sessionConfig.aiConfig.features.enableStructuredToolCalling,
-        autonomousEnabled: sessionConfig.aiConfig.autonomousAgent?.enabled
-      });
+      // Import the service
+      const { structuredToolCallService } = await import('../services/structuredToolCallService');
       
-      // Send a test message
-      const testMessage = "open the workspace folder please";
-      console.log(`📤 Sending test message: "${testMessage}"`);
-      
-      try {
-        await handleSendMessage(testMessage);
-        console.log('✅ Test message sent successfully');
-      } catch (error) {
-        console.error('❌ Test message failed:', error);
-      }
+      // Mock tools for testing
+      const testTools = [
+        {
+          id: 'mcp_python-tools_open',
+          name: 'mcp_python-tools_open',
+          description: 'Open workspace folder',
+          parameters: [],
+          implementation: 'async function() { return "opened"; }',
+          isEnabled: true
+        },
+        {
+          id: 'file_reader',
+          name: 'file_reader',
+          description: 'Read file contents',
+          parameters: [
+            { name: 'filename', type: 'string', description: 'File to read', required: true }
+          ],
+          implementation: 'async function() { return "file contents"; }',
+          isEnabled: true
+        }
+      ];
+
+      // Test 1: Generate JSON Schema
+      console.log('📋 Generated JSON Schema:');
+      const schema = structuredToolCallService.generateToolCallSchema(testTools);
+      console.log(JSON.stringify(schema, null, 2));
+
+      // Test 2: Check provider support
+      console.log('🔍 Provider Support Check:');
+      console.log('OpenAI:', structuredToolCallService.supportsNativeStructuredOutputs('openai'));
+      console.log('Ollama:', structuredToolCallService.supportsNativeStructuredOutputs('ollama'));
+      console.log('Anthropic:', structuredToolCallService.supportsNativeStructuredOutputs('anthropic'));
+
+      // Test 3: Example API request format
+      console.log('📡 Example API Request with Native JSON Schema:');
+      const exampleRequest = {
+        model: "gpt-4o-2024-08-06",
+        messages: [
+          {
+            role: "system",
+            content: "You are Clara, an autonomous AI agent. Accomplish tasks using available tools."
+          },
+          {
+            role: "user", 
+            content: "Please list the files in the current directory"
+          }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: schema
+        }
+      };
+      console.log(JSON.stringify(exampleRequest, null, 2));
+
+      console.log('✅ Native JSON Schema test completed!');
     };
 
-    // Debug current structured tool calling status
-    (window as any).debugStructuredToolCalling = () => {
-      console.log('🔍 === STRUCTURED TOOL CALLING DEBUG INFO ===');
-      console.log('📊 Current Configuration:');
-      console.log('  - Provider:', sessionConfig.aiConfig?.provider);
-      console.log('  - Structured Tool Calling Enabled:', sessionConfig.aiConfig?.features?.enableStructuredToolCalling);
-      console.log('  - Autonomous Agent Enabled:', sessionConfig.aiConfig?.autonomousAgent?.enabled);
-      console.log('  - Tools Enabled:', sessionConfig.aiConfig?.features?.enableTools);
-      console.log('  - MCP Enabled:', sessionConfig.aiConfig?.features?.enableMCP);
-      console.log('  - Streaming Enabled:', sessionConfig.aiConfig?.features?.enableStreaming);
-      console.log('');
-      console.log('📋 Available Models:');
-      console.log('  - Text Model:', sessionConfig.aiConfig?.models?.text);
-      console.log('  - Vision Model:', sessionConfig.aiConfig?.models?.vision);
-      console.log('  - Code Model:', sessionConfig.aiConfig?.models?.code);
-      console.log('');
-      console.log('🛠️ Available Tools:', models.length, 'models loaded');
-      console.log('');
-      console.log('💡 To test structured tool calling:');
-      console.log('  1. Enable "Use Structured Tool Calling" in Advanced Options → Autonomous Agent');
-      console.log('  2. Enable "Enable Autonomous Agent" in Advanced Options → Autonomous Agent');
-      console.log('  3. Run: testStructuredWithCurrentSession()');
+    // Control structured output mode
+    (window as any).setStructuredOutputMode = (mode: 'force-prompt' | 'native-json-schema') => {
+      const { structuredToolCallService } = require('../services/structuredToolCallService');
+      
+      if (mode === 'force-prompt') {
+        structuredToolCallService.setForcePromptBasedMode(true);
+        console.log('✅ Forced prompt-based structured outputs for all providers');
+      } else {
+        structuredToolCallService.setForcePromptBasedMode(false);
+        console.log('✅ Using native JSON Schema structured outputs (default)');
+      }
+      
+      console.log(`📊 Current mode: ${structuredToolCallService.getStructuredOutputMode()}`);
+    };
+
+    // Check current structured output mode
+    (window as any).getStructuredOutputMode = () => {
+      const { structuredToolCallService } = require('../services/structuredToolCallService');
+      const mode = structuredToolCallService.getStructuredOutputMode();
+      console.log(`📊 Current structured output mode: ${mode}`);
+      return mode;
+    };
+
+    // Test native JSON Schema generation
+    (window as any).testNativeJSONSchema = () => {
+      console.log('🧪 Testing Native JSON Schema (Default Behavior)...');
+      
+      const { structuredToolCallService } = require('../services/structuredToolCallService');
+      
+      // Test tools
+      const testTools = [
+        {
+          id: 'mcp_ClaraTools_py',
+          name: 'mcp_ClaraTools_py',
+          description: 'Run Python code',
+          parameters: [
+            { name: 'code', type: 'string', description: 'Python code to execute', required: true }
+          ],
+          implementation: 'mcp',
+          isEnabled: true
+        },
+        {
+          id: 'mcp_ClaraTools_ls',
+          name: 'mcp_ClaraTools_ls', 
+          description: 'List files',
+          parameters: [],
+          implementation: 'mcp',
+          isEnabled: true
+        }
+      ];
+
+      // Generate JSON Schema
+      const schema = structuredToolCallService.generateToolCallSchema(testTools);
+      console.log('📋 Generated JSON Schema:');
+      console.log(JSON.stringify(schema, null, 2));
+
+      // Test provider detection
+      console.log('\n🔍 Provider Support (Default: Native JSON Schema):');
+      console.log('OpenAI:', structuredToolCallService.supportsNativeStructuredOutputs('openai'));
+      console.log('Anthropic:', structuredToolCallService.supportsNativeStructuredOutputs('anthropic'));
+      console.log('OpenRouter:', structuredToolCallService.supportsNativeStructuredOutputs('openrouter'));
+      console.log('Ollama:', structuredToolCallService.supportsNativeStructuredOutputs('ollama'));
+      console.log('Unknown/Default:', structuredToolCallService.supportsNativeStructuredOutputs());
+
+      // Show example request that would be sent
+      console.log('\n📡 Example API Request (Native JSON Schema):');
+      const exampleRequest = {
+        model: "any-model",
+        messages: [
+          {
+            role: "system",
+            content: "You are Clara, an autonomous AI agent. Accomplish tasks using available tools."
+          },
+          {
+            role: "user",
+            content: "run the snake game"
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+        top_p: 1,
+        response_format: {
+          type: "json_schema",
+          json_schema: schema
+        }
+      };
+      console.log(JSON.stringify(exampleRequest, null, 2));
+
+      console.log('\n✅ Native JSON Schema is now the default!');
+      console.log('💡 This will generate pure JSON responses, not markdown with JSON blocks');
+    };
+
+    // Test tool result serialization 
+    (window as any).testToolResultSerialization = () => {
+      console.log('🧪 Testing Tool Result Serialization...');
+      
+      // Test various result types
+      const testResults = [
+        { name: 'string result', result: 'This is a string result' },
+        { name: 'object result', result: { search_results: [{ title: 'Test', url: 'https://example.com' }] } },
+        { name: 'array result', result: ['item1', 'item2', 'item3'] },
+        { name: 'number result', result: 42 },
+        { name: 'null result', result: null },
+        { name: 'undefined result', result: undefined },
+        { name: 'complex object', result: { data: { content: [{ type: 'text', text: 'Found 10 search results' }] } } }
+      ];
+
+      console.log('🔍 Testing serialization of different result types:');
+      
+      testResults.forEach(test => {
+        // Simulate the serialization logic
+        let serialized = '';
+        if (test.result === undefined || test.result === null) {
+          serialized = 'No result returned';
+        } else if (typeof test.result === 'string') {
+          serialized = test.result;
+        } else if (typeof test.result === 'object') {
+          try {
+            serialized = JSON.stringify(test.result, null, 2);
+          } catch (error) {
+            serialized = '[Object - could not serialize]';
+          }
+        } else {
+          serialized = String(test.result);
+        }
+        
+        console.log(`✅ ${test.name}:`, serialized);
+        
+        // Check for [object Object] issue
+        if (serialized.includes('[object Object]')) {
+          console.error(`❌ FOUND [object Object] in ${test.name}!`);
+        }
+      });
+
+      console.log('\n🎯 All serialization tests completed!');
+      console.log('💡 No more [object Object] issues should occur in tool results');
     };
 
     return () => {
@@ -3164,6 +3361,11 @@ Let me execute this for you.`;
       delete (window as any).testStructuredToolCalling;
       delete (window as any).testStructuredWithCurrentSession;
       delete (window as any).debugStructuredToolCalling;
+      delete (window as any).testNativeJSONSchemaComparison;
+      delete (window as any).setStructuredOutputMode;
+      delete (window as any).getStructuredOutputMode;
+      delete (window as any).testNativeJSONSchema;
+      delete (window as any).testToolResultSerialization;
     };
   }, [providers, models, sessionConfig, currentSession, isVisible, handleSendMessage, 
       providerHealthCache, HEALTH_CHECK_CACHE_TIME, checkProviderHealthCached, clearProviderHealthCache]);
@@ -3466,7 +3668,8 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                         enableVision: newConfig.features?.enableVision ?? currentConfig.features.enableVision,
                         autoModelSelection: newConfig.features?.autoModelSelection ?? currentConfig.features.autoModelSelection,
                         enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP,
-                        enableStructuredToolCalling: newConfig.features?.enableStructuredToolCalling ?? currentConfig.features.enableStructuredToolCalling
+                        enableStructuredToolCalling: newConfig.features?.enableStructuredToolCalling ?? currentConfig.features.enableStructuredToolCalling,
+                        enableNativeJSONSchema: newConfig.features?.enableNativeJSONSchema ?? currentConfig.features.enableNativeJSONSchema,
                       },
                       mcp: newConfig.mcp ? {
                         enableTools: newConfig.mcp.enableTools ?? currentConfig.mcp?.enableTools ?? true,

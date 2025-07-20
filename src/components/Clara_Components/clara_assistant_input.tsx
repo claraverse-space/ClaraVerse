@@ -1487,7 +1487,8 @@ when you are asked for something always resort to writing a python script and ru
                           enableVision: true,
                           autoModelSelection: false,
                           enableMCP: false,
-                          enableStructuredToolCalling: false
+                          enableStructuredToolCalling: false,
+                          enableNativeJSONSchema: false,
                         };
                         
                         onConfigChange?.({
@@ -2329,7 +2330,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       enableVision: sessionConfig?.aiConfig?.features.enableVision ?? true,
       autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true,
       enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true,
-      enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false
+      enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false,
+      enableNativeJSONSchema: sessionConfig?.aiConfig?.features.enableNativeJSONSchema ?? false,
     }
   };
 
