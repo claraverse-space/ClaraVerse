@@ -57,6 +57,8 @@ This comprehensive guide covers all installation methods for ClaraVerse across d
 - **Installation fails**: Run installer as administrator
 - **App won't start**: Check Windows Event Viewer for detailed errors
 
+---
+
 ### macOS Installation
 
 **System Requirements:**
@@ -92,6 +94,8 @@ This comprehensive guide covers all installation methods for ClaraVerse across d
 - **"Cannot be opened" error**: Use right-click → Open instead of double-click
 - **Gatekeeper blocking**: System Preferences → Security → Allow anyway
 - **Permission issues**: System Preferences → Privacy → Grant required permissions
+
+---
 
 ### Linux Installation
 
