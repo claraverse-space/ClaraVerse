@@ -495,28 +495,51 @@ export class ClaraMCPService {
     try {
       console.log(`🔧 [MCP] Starting tool execution:`, toolCall);
       
-      const tool = this.tools.get(`${toolCall.server}:${toolCall.name}`);
+      const exactToolKey = `${toolCall.server}:${toolCall.name}`;
+      let tool = this.tools.get(exactToolKey);
+      let usedFuzzyMatch = false;
+      let actualToolKey = exactToolKey;
+      
       if (!tool) {
-        console.error(`❌ [MCP] Tool not found: ${toolCall.server}:${toolCall.name}`);
+        console.warn(`❌ [MCP] Exact tool match not found: ${exactToolKey}`);
         console.log(`🔍 [MCP] Available tools:`, Array.from(this.tools.keys()));
-        return {
-          callId: toolCall.callId,
-          success: false,
-          error: `Tool ${toolCall.name} not found on server ${toolCall.server}`
-        };
+        
+        // Try fuzzy matching as failsafe
+        const fuzzyMatch = this.findBestToolMatch(toolCall.server, toolCall.name);
+        if (fuzzyMatch) {
+          tool = fuzzyMatch.tool;
+          actualToolKey = fuzzyMatch.toolKey;
+          usedFuzzyMatch = true;
+          console.log(`✅ [MCP-FUZZY] Found fuzzy match: ${exactToolKey} → ${actualToolKey} (confidence: ${fuzzyMatch.confidence.toFixed(3)})`);
+        } else {
+          console.error(`❌ [MCP] No suitable tool match found for: ${exactToolKey}`);
+          const availableTools = Array.from(this.tools.keys()).join(', ');
+          return {
+            callId: toolCall.callId,
+            success: false,
+            error: `Tool ${toolCall.name} not found on server ${toolCall.server}. Available tools: ${availableTools}`
+          };
+        }
+      } else {
+        console.log(`✅ [MCP] Exact tool match found:`, exactToolKey);
       }
 
-      console.log(`✅ [MCP] Tool found:`, tool);
+      console.log(`✅ [MCP] Using tool:`, tool);
+      if (usedFuzzyMatch) {
+        console.log(`🎯 [MCP-FUZZY] Fuzzy match applied: ${exactToolKey} → ${actualToolKey}`);
+      }
 
-      const server = this.servers.get(toolCall.server);
+      // Use the matched tool's server name for validation (important for fuzzy matching)
+      const serverNameToCheck = usedFuzzyMatch ? tool.server : toolCall.server;
+      const server = this.servers.get(serverNameToCheck);
       if (!server || !server.isRunning) {
-        console.error(`❌ [MCP] Server not running: ${toolCall.server}`);
+        console.error(`❌ [MCP] Server not running: ${serverNameToCheck}`);
         console.log(`🔍 [MCP] Server status:`, server);
         console.log(`🔍 [MCP] Available servers:`, Array.from(this.servers.keys()));
         return {
           callId: toolCall.callId,
           success: false,
-          error: `Server ${toolCall.server} is not running`
+          error: `Server ${serverNameToCheck} is not running`
         };
       }
 
@@ -528,8 +551,15 @@ export class ClaraMCPService {
       
       if (window.mcpService?.executeToolCall) {
         try {
-          console.log(`📡 [MCP] Calling backend MCP service with:`, toolCall);
-          const result = await window.mcpService.executeToolCall(toolCall);
+          // Create corrected tool call object for fuzzy matches
+          const correctedToolCall = usedFuzzyMatch ? {
+            ...toolCall,
+            server: tool.server,
+            name: tool.name
+          } : toolCall;
+          
+          console.log(`📡 [MCP] Calling backend MCP service with:`, correctedToolCall);
+          const result = await window.mcpService.executeToolCall(correctedToolCall);
           console.log(`📥 [MCP] Backend result:`, result);
           return result;
         } catch (error) {
@@ -541,8 +571,14 @@ export class ClaraMCPService {
       }
 
       // Fallback to simulation if backend is not available
-      console.log(`🎭 [MCP] Using simulation for tool:`, toolCall);
-      const result = await this.simulateToolExecution(toolCall, tool);
+      const correctedToolCall = usedFuzzyMatch ? {
+        ...toolCall,
+        server: tool.server,
+        name: tool.name
+      } : toolCall;
+      
+      console.log(`🎭 [MCP] Using simulation for tool:`, correctedToolCall);
+      const result = await this.simulateToolExecution(correctedToolCall, tool);
       
       return {
         callId: toolCall.callId,
@@ -1565,6 +1601,291 @@ export class ClaraMCPService {
         }
       }
     }
+  }
+
+  /**
+   * Find the best matching tool using fuzzy matching algorithms
+   * Uses multiple similarity measures for robust matching
+   */
+  private findBestToolMatch(targetServer: string, targetToolName: string): {
+    tool: ClaraMCPTool;
+    toolKey: string;
+    confidence: number;
+  } | null {
+    console.log(`🎯 [MCP-FUZZY] Starting fuzzy match for: ${targetServer}:${targetToolName}`);
+    
+    const availableTools = Array.from(this.tools.entries());
+    const candidates: Array<{
+      toolKey: string;
+      tool: ClaraMCPTool;
+      confidence: number;
+      reasons: string[];
+    }> = [];
+
+    const targetFullName = `${targetServer}:${targetToolName}`;
+    
+    for (const [toolKey, tool] of availableTools) {
+      const confidence = this.calculateToolSimilarity(targetFullName, toolKey, targetServer, targetToolName);
+      
+      if (confidence.total > 0.5) { // Only consider matches with >50% confidence
+        candidates.push({
+          toolKey,
+          tool,
+          confidence: confidence.total,
+          reasons: confidence.reasons
+        });
+      }
+    }
+
+    if (candidates.length === 0) {
+      console.log(`🎯 [MCP-FUZZY] No suitable fuzzy matches found (all below 50% confidence)`);
+      return null;
+    }
+
+    // Sort by confidence (highest first)
+    candidates.sort((a, b) => b.confidence - a.confidence);
+    
+    const bestMatch = candidates[0];
+    
+    // Only use matches with high confidence (>70%) to avoid false positives
+    if (bestMatch.confidence < 0.7) {
+      console.log(`🎯 [MCP-FUZZY] Best match confidence too low: ${bestMatch.confidence.toFixed(3)} < 0.7`);
+      console.log(`🎯 [MCP-FUZZY] Top candidates:`, candidates.slice(0, 3).map(c => ({
+        key: c.toolKey,
+        confidence: c.confidence.toFixed(3),
+        reasons: c.reasons
+      })));
+      return null;
+    }
+
+    console.log(`🎯 [MCP-FUZZY] Selected best match: ${bestMatch.toolKey} (confidence: ${bestMatch.confidence.toFixed(3)})`);
+    console.log(`🎯 [MCP-FUZZY] Match reasons:`, bestMatch.reasons);
+    
+    return {
+      tool: bestMatch.tool,
+      toolKey: bestMatch.toolKey,
+      confidence: bestMatch.confidence
+    };
+  }
+
+  /**
+   * Calculate similarity between target tool and candidate using multiple algorithms
+   */
+  private calculateToolSimilarity(
+    targetFullName: string,
+    candidateKey: string,
+    targetServer: string,
+    targetToolName: string
+  ): { total: number; reasons: string[] } {
+    const reasons: string[] = [];
+    let totalScore = 0;
+    let weightSum = 0;
+
+    // Parse candidate key
+    const [candidateServer, candidateToolName] = candidateKey.split(':', 2);
+    const candidateFullName = candidateKey;
+
+    // 1. Exact server name match (high weight)
+    const serverWeight = 0.4;
+    if (targetServer === candidateServer) {
+      totalScore += serverWeight * 1.0;
+      reasons.push(`exact_server_match`);
+    } else {
+      const serverSimilarity = this.calculateStringSimilarity(targetServer, candidateServer);
+      if (serverSimilarity > 0.8) {
+        totalScore += serverWeight * serverSimilarity;
+        reasons.push(`server_similarity_${serverSimilarity.toFixed(2)}`);
+      }
+    }
+    weightSum += serverWeight;
+
+    // 2. Tool name similarity (high weight)
+    const toolNameWeight = 0.4;
+    if (targetToolName === candidateToolName) {
+      totalScore += toolNameWeight * 1.0;
+      reasons.push(`exact_tool_match`);
+    } else {
+      const toolSimilarity = this.calculateStringSimilarity(targetToolName, candidateToolName);
+      if (toolSimilarity > 0.6) {
+        totalScore += toolNameWeight * toolSimilarity;
+        reasons.push(`tool_similarity_${toolSimilarity.toFixed(2)}`);
+      }
+    }
+    weightSum += toolNameWeight;
+
+    // 3. Full name similarity (medium weight)
+    const fullNameWeight = 0.2;
+    const fullNameSimilarity = this.calculateStringSimilarity(targetFullName, candidateFullName);
+    if (fullNameSimilarity > 0.5) {
+      totalScore += fullNameWeight * fullNameSimilarity;
+      reasons.push(`full_name_similarity_${fullNameSimilarity.toFixed(2)}`);
+    }
+    weightSum += fullNameWeight;
+
+    // 4. Handle common naming pattern mismatches
+    const patternBonus = this.calculatePatternBonus(targetServer, targetToolName, candidateServer, candidateToolName);
+    if (patternBonus > 0) {
+      totalScore += patternBonus;
+      reasons.push(`pattern_bonus_${patternBonus.toFixed(2)}`);
+    }
+
+    const normalizedScore = weightSum > 0 ? totalScore / weightSum : 0;
+    
+    return {
+      total: Math.min(1.0, normalizedScore + patternBonus), // Cap at 1.0
+      reasons
+    };
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance and other metrics
+   */
+  private calculateStringSimilarity(str1: string, str2: string): number {
+    if (str1 === str2) return 1.0;
+    if (!str1 || !str2) return 0;
+
+    // Normalize strings (lowercase, remove underscores/hyphens for comparison)
+    const norm1 = str1.toLowerCase().replace(/[_-]/g, '');
+    const norm2 = str2.toLowerCase().replace(/[_-]/g, '');
+    
+    if (norm1 === norm2) return 0.95; // Very high but not perfect due to formatting difference
+
+    // Levenshtein distance-based similarity
+    const levenshteinSim = this.levenshteinSimilarity(norm1, norm2);
+    
+    // Substring containment bonus
+    const containmentBonus = this.calculateContainmentBonus(norm1, norm2);
+    
+    // Common prefix/suffix bonus
+    const affixBonus = this.calculateAffixBonus(norm1, norm2);
+
+    return Math.min(1.0, levenshteinSim + containmentBonus + affixBonus);
+  }
+
+  /**
+   * Calculate Levenshtein distance-based similarity
+   */
+  private levenshteinSimilarity(str1: string, str2: string): number {
+    const distance = this.levenshteinDistance(str1, str2);
+    const maxLength = Math.max(str1.length, str2.length);
+    return maxLength === 0 ? 1 : 1 - distance / maxLength;
+  }
+
+  /**
+   * Calculate Levenshtein distance between two strings
+   */
+  private levenshteinDistance(str1: string, str2: string): number {
+    const matrix = Array(str2.length + 1).fill(null).map(() =>
+      Array(str1.length + 1).fill(null)
+    );
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const substitutionCost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,         // deletion
+          matrix[j - 1][i] + 1,         // insertion
+          matrix[j - 1][i - 1] + substitutionCost // substitution
+        );
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  }
+
+  /**
+   * Calculate containment bonus (one string contains the other)
+   */
+  private calculateContainmentBonus(str1: string, str2: string): number {
+    if (str1.includes(str2) || str2.includes(str1)) {
+      const minLength = Math.min(str1.length, str2.length);
+      const maxLength = Math.max(str1.length, str2.length);
+      return 0.3 * (minLength / maxLength); // Bonus proportional to containment ratio
+    }
+    return 0;
+  }
+
+  /**
+   * Calculate bonus for common prefix/suffix
+   */
+  private calculateAffixBonus(str1: string, str2: string): number {
+    let prefixLength = 0;
+    let suffixLength = 0;
+    
+    // Calculate common prefix length
+    const minLength = Math.min(str1.length, str2.length);
+    for (let i = 0; i < minLength; i++) {
+      if (str1[i] === str2[i]) {
+        prefixLength++;
+      } else {
+        break;
+      }
+    }
+    
+    // Calculate common suffix length
+    for (let i = 1; i <= minLength - prefixLength; i++) {
+      if (str1[str1.length - i] === str2[str2.length - i]) {
+        suffixLength++;
+      } else {
+        break;
+      }
+    }
+    
+    const totalCommon = prefixLength + suffixLength;
+    const maxLength = Math.max(str1.length, str2.length);
+    
+    return totalCommon > 0 ? 0.2 * (totalCommon / maxLength) : 0;
+  }
+
+  /**
+   * Calculate bonus for handling common naming pattern mismatches
+   */
+  private calculatePatternBonus(
+    targetServer: string,
+    targetToolName: string,
+    candidateServer: string,
+    candidateToolName: string
+  ): number {
+    let bonus = 0;
+
+    // Handle MCP/MCP_DOCKER server name patterns
+    if ((targetServer === 'MCP' && candidateServer === 'MCP_DOCKER') ||
+        (targetServer === 'MCP_DOCKER' && candidateServer === 'MCP')) {
+      // Check if tool names are complementary
+      if (targetToolName.includes('DOCKER') || candidateToolName.includes('search') ||
+          targetToolName === 'DOCKER_search' && candidateToolName === 'search') {
+        bonus += 0.3;
+      }
+    }
+
+    // Handle underscore vs. no underscore in server names
+    const normalizedTarget = targetServer.replace(/[_-]/g, '');
+    const normalizedCandidate = candidateServer.replace(/[_-]/g, '');
+    if (normalizedTarget === normalizedCandidate && normalizedTarget !== targetServer) {
+      bonus += 0.2;
+    }
+
+    // Handle tool name pattern variations (e.g., DOCKER_search vs search)
+    if (targetToolName.includes('_') || candidateToolName.includes('_')) {
+      const targetParts = targetToolName.split('_');
+      const candidateParts = candidateToolName.split('_');
+      
+      // Check if one is a subset of the other
+      const targetSet = new Set(targetParts.map(p => p.toLowerCase()));
+      const candidateSet = new Set(candidateParts.map(p => p.toLowerCase()));
+      
+      const intersection = new Set([...targetSet].filter(x => candidateSet.has(x)));
+      const union = new Set([...targetSet, ...candidateSet]);
+      
+      if (intersection.size > 0) {
+        bonus += 0.1 * (intersection.size / union.size);
+      }
+    }
+
+    return Math.min(0.4, bonus); // Cap pattern bonus at 0.4
   }
 }
 

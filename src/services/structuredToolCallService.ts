@@ -637,13 +637,20 @@ EXECUTION RULES:
           console.log(`🔧 Using dummy parameters for ${toolName}:`, processedArgs);
         }
 
+        console.log(`🔍 [STRUCTURED-MCP] Parsing tool name: ${toolName}`);
+        console.log(`🔍 [STRUCTURED-MCP] Name parts after removing 'mcp_': ${toolName.substring(4).split('_')}`);
+        
+        // Enhanced parsing with multiple patterns
+        const parsedTool = this.parseStructuredMCPToolName(toolName);
+        
         const mcpToolCall = {
           callId: `structured_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          server: toolName.split('_')[1],
-          name: toolName.split('_').slice(2).join('_'),
+          server: parsedTool.server,
+          name: parsedTool.name,
           arguments: processedArgs
         };
 
+        console.log(`🔍 [STRUCTURED-MCP] Parsed server: ${parsedTool.server}, tool: ${parsedTool.name}`);
         console.log(`📡 Sending MCP tool call:`, mcpToolCall);
         const mcpResult = await claraMCPService.executeToolCall(mcpToolCall);
         console.log(`📥 MCP tool result:`, mcpResult);
@@ -868,6 +875,56 @@ This is ideal for local models, older models, or specialized models that don't h
     }
 
     return { supported, unsupported, warnings };
+  }
+
+  /**
+   * Parse structured MCP tool name with improved pattern matching
+   */
+  private parseStructuredMCPToolName(toolName: string): { server: string; name: string } {
+    if (!toolName.startsWith('mcp_')) {
+      throw new Error(`Invalid MCP tool name format: ${toolName}`);
+    }
+
+    const withoutPrefix = toolName.substring(4); // Remove 'mcp_'
+    const parts = withoutPrefix.split('_');
+    
+    console.log(`🔍 [STRUCTURED-MCP] Parsing parts: ${JSON.stringify(parts)}`);
+
+    // Pattern 1: Standard format mcp_SERVER_TOOL (e.g., mcp_github_search)
+    if (parts.length >= 2) {
+      const server = parts[0];
+      const name = parts.slice(1).join('_');
+      
+      // Check if this looks like a valid pattern
+      if (server && name) {
+        console.log(`🔍 [STRUCTURED-MCP] Pattern 1 - Server: '${server}', Tool: '${name}'`);
+        return { server, name };
+      }
+    }
+
+    // Pattern 2: Compound server names (e.g., mcp_MCP_DOCKER_search)
+    if (parts.length >= 3) {
+      // Try different server/tool combinations
+      const combinations = [
+        // Most specific first
+        { server: parts.slice(0, 2).join('_'), name: parts.slice(2).join('_') }, // MCP_DOCKER:search
+        { server: parts[0], name: parts.slice(1).join('_') }, // MCP:DOCKER_search
+      ];
+
+      for (const combo of combinations) {
+        if (combo.server && combo.name) {
+          console.log(`🔍 [STRUCTURED-MCP] Pattern 2 - Trying Server: '${combo.server}', Tool: '${combo.name}'`);
+          return combo;
+        }
+      }
+    }
+
+    // Fallback: Use original simple parsing
+    console.log(`🔍 [STRUCTURED-MCP] Using fallback parsing for: ${toolName}`);
+    return {
+      server: parts[0] || 'unknown',
+      name: parts.slice(1).join('_') || 'unknown'
+    };
   }
 }
 
