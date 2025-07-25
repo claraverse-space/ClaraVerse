@@ -506,9 +506,16 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       provider: '',
       parameters: {
         temperature: 0.7,
-        maxTokens: 8000,
+        maxTokens: 4000,
         topP: 1.0,
-        topK: 40
+        topK: 40,
+        frequencyPenalty: 0.0,
+        presencePenalty: 0.0,
+        repetitionPenalty: 1.0,
+        minP: 0.0,
+        typicalP: 1.0,
+        seed: null,
+        stop: []
       },
       features: {
         enableTools: false,             // **CHANGED**: Default to false for streaming mode
@@ -1006,7 +1013,14 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 temperature: 0.7,
                 maxTokens: 4000,
                 topP: 1.0,
-                topK: 40
+                topK: 40,
+                frequencyPenalty: 0.0,
+                presencePenalty: 0.0,
+                repetitionPenalty: 1.0,
+                minP: 0.0,
+                typicalP: 1.0,
+                seed: null,
+                stop: []
               },
               features: {
                 enableTools: false,           // **CHANGED**: Default to false for streaming mode
@@ -2282,7 +2296,14 @@ Would you like me to help with text-only responses for now?`,
             temperature: 0.7,
             maxTokens: 4000,
             topP: 1.0,
-            topK: 40
+            topK: 40,
+            frequencyPenalty: 0.0,
+            presencePenalty: 0.0,
+            repetitionPenalty: 1.0,
+            minP: 0.0,
+            typicalP: 1.0,
+            seed: null,
+            stop: []
           },
           features: {
             enableTools: false,           // **CHANGED**: Default to false for streaming mode
@@ -3659,7 +3680,14 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                         temperature: newConfig.parameters?.temperature ?? currentConfig.parameters.temperature,
                         maxTokens: newConfig.parameters?.maxTokens ?? currentConfig.parameters.maxTokens,
                         topP: newConfig.parameters?.topP ?? currentConfig.parameters.topP,
-                        topK: newConfig.parameters?.topK ?? currentConfig.parameters.topK
+                        topK: newConfig.parameters?.topK ?? currentConfig.parameters.topK,
+                        frequencyPenalty: 0.0,
+                        presencePenalty: 0.0,
+                        repetitionPenalty: 1.0,
+                        minP: 0.0,
+                        typicalP: 1.0,
+                        seed: null,
+                        stop: []
                       },
                       features: {
                         enableTools: newConfig.features?.enableTools ?? currentConfig.features.enableTools,
