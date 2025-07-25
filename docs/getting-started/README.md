@@ -65,8 +65,13 @@ cd claraverse
 # Install dependencies
 npm install
 
+# Run one of the following:
+
 # Start development server
 npm run dev
+
+# To live reload the app when you pull the latest code
+npm run electron:dev:hot
 
 # Or build for production
 npm run build
