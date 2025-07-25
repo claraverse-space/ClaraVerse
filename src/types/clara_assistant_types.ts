@@ -396,6 +396,13 @@ export interface ClaraAIConfig {
     maxTokens: number;
     topP: number;
     topK: number;
+    frequencyPenalty: number;
+    presencePenalty: number;
+    repetitionPenalty: number;
+    minP: number;
+    typicalP: number;
+    seed: number | null;
+    stop: string[];
   };
   
   /** Feature flags */
@@ -407,6 +414,7 @@ export interface ClaraAIConfig {
     autoModelSelection: boolean;
     enableMCP: boolean;
     enableStructuredToolCalling: boolean;
+    enableNativeJSONSchema: boolean;
   };
 
   /** Artifact generation configuration */

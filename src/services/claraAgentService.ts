@@ -41,6 +41,29 @@ export class ClaraAgentService {
   private stopExecution: boolean = false;
 
   /**
+   * Helper method to safely serialize tool results to avoid [object Object] issues
+   */
+  private serializeToolResult(result: any): string {
+    if (result === undefined || result === null) {
+      return 'No result returned';
+    }
+    
+    if (typeof result === 'string') {
+      return result;
+    }
+    
+    if (typeof result === 'object') {
+      try {
+        return JSON.stringify(result, null, 2);
+      } catch (error) {
+        return '[Object - could not serialize]';
+      }
+    }
+    
+    return String(result);
+  }
+
+  /**
    * Execute autonomous agent workflow
    */
   public async executeAutonomousAgent(
@@ -122,7 +145,7 @@ export class ClaraAgentService {
     // Progress tracking
     if (autonomousConfig.enableProgressTracking && onContentChunk) {
       onContentChunk('**Clara is now operating in structured autonomous mode.**\n\n');
-      onContentChunk('ℹ️ **Using structured tool calling for better compatibility**\n\n');
+      onContentChunk('ℹ️ **Using native JSON Schema structured outputs (default)**\n\n');
     }
 
     let totalTokens = 0;
@@ -151,62 +174,43 @@ export class ClaraAgentService {
         }
 
         try {
-          // Generate structured tool calling prompt
-          const structuredPrompt = structuredToolCallService.generateStructuredToolPrompt(
+          // Use enhanced structured tool calling with native JSON Schema support
+          const structuredResult = await structuredToolCallService.executeStructuredToolCallingWithSchema(
+            client,
+            modelId,
             message,
             tools,
             config,
-            conversationHistory
-          );
-
-          // Build conversation messages
-          const messages = this.buildConversationMessages(
-            structuredPrompt,
-            message,
             attachments,
-            conversationHistory
+            systemPrompt,
+            conversationHistory,
+            onContentChunk,
+            currentProviderId
           );
-
-          const options = {
-            temperature: config.parameters.temperature,
-            max_tokens: config.parameters.maxTokens,
-            top_p: config.parameters.topP
-          };
-
-          // Execute structured call
-          const apiResponse = await client.sendChat(modelId, messages, options);
-          const response = apiResponse.message?.content || '';
           
-          if (onContentChunk && response) {
-            onContentChunk(response);
-          }
-
-          // Parse structured response
-          const structuredResponse = structuredToolCallService.parseStructuredResponse(response);
-          
-          console.log(`📊 Structured response parsed:`, {
-            hasContent: !!structuredResponse.content,
-            needsToolExecution: structuredResponse.needsToolExecution,
-            toolCallsCount: structuredResponse.toolCalls.length,
-            reasoning: structuredResponse.reasoning
+          console.log(`📊 Structured response result:`, {
+            hasResponse: !!structuredResult.response,
+            needsToolExecution: structuredResult.needsToolExecution,
+            toolCallsCount: structuredResult.toolCalls.length,
+            reasoning: structuredResult.reasoning
           });
           
           // Add to final response
-          finalResponse += structuredResponse.content;
-          totalTokens += apiResponse.usage?.total_tokens || 0;
-
+          finalResponse += structuredResult.response;
+          // Note: totalTokens tracking would need to be enhanced in the new method
+          
           // Check if tools need to be executed
-          if (structuredResponse.needsToolExecution && structuredResponse.toolCalls.length > 0) {
+          if (structuredResult.needsToolExecution && structuredResult.toolCalls.length > 0) {
             if (onContentChunk) {
-              onContentChunk(`\n🔧 **Executing ${structuredResponse.toolCalls.length} structured tool calls...**\n\n`);
+              onContentChunk(`\n🔧 **Executing ${structuredResult.toolCalls.length} structured tool calls...**\n\n`);
             }
 
-            console.log(`🚀 Starting execution of ${structuredResponse.toolCalls.length} tool calls:`, 
-              structuredResponse.toolCalls.map(tc => tc.toolName));
+            console.log(`🚀 Starting execution of ${structuredResult.toolCalls.length} tool calls:`, 
+              structuredResult.toolCalls.map(tc => tc.toolName));
 
             // Execute structured tool calls
             const toolResults = await structuredToolCallService.executeStructuredToolCalls(
-              structuredResponse.toolCalls,
+              structuredResult.toolCalls,
               onContentChunk ? (msg: string) => onContentChunk(`${msg}\n`) : undefined
             );
 
@@ -255,20 +259,28 @@ export class ClaraAgentService {
             conversationWithResults.push({
               id: `assistant-${Date.now()}`,
               role: 'assistant', 
-              content: structuredResponse.content,
+              content: structuredResult.response,
               timestamp: new Date(),
               metadata: {
-                toolCalls: structuredResponse.toolCalls,
-                reasoning: structuredResponse.reasoning
+                toolCalls: structuredResult.toolCalls,
+                reasoning: structuredResult.reasoning
               }
             });
             
             // Add tool results
             for (const toolResult of toolResults) {
+              // Properly serialize the result to avoid [object Object]
+              let resultContent = '';
+              if (toolResult.success) {
+                resultContent = this.serializeToolResult(toolResult.result);
+              } else {
+                resultContent = toolResult.error || 'Tool execution failed';
+              }
+              
               conversationWithResults.push({
                 id: `tool-${Date.now()}-${toolResult.toolName}`,
                 role: 'assistant',
-                content: `Tool ${toolResult.toolName} executed: ${toolResult.success ? 'Success' : 'Failed'}. ${toolResult.result || toolResult.error || ''}`,
+                content: `Tool ${toolResult.toolName} executed: ${toolResult.success ? 'Success' : 'Failed'}. ${resultContent}`,
                 timestamp: new Date(),
                 metadata: {
                   toolExecution: true,
@@ -302,6 +314,13 @@ export class ClaraAgentService {
               role: 'user',
               content: `Please provide a comprehensive and natural response to my original request based on the tool execution results above. Present the information in a user-friendly way without mentioning technical details.`
             });
+
+            // Define options for follow-up call
+            const options = {
+              temperature: config.parameters.temperature,
+              max_tokens: config.parameters.maxTokens,
+              top_p: config.parameters.topP
+            };
 
             // Execute follow-up call
             const followUpResponse = await client.sendChat(modelId, chatMessages, options);
@@ -546,7 +565,7 @@ export class ClaraAgentService {
             if (toolResult) {
               let content: string;
               if (toolResult.success && toolResult.result !== undefined && toolResult.result !== null) {
-                content = typeof toolResult.result === 'string' ? toolResult.result : JSON.stringify(toolResult.result);
+                content = this.serializeToolResult(toolResult.result);
               } else {
                 content = toolResult.error || `Tool ${toolResult.toolName} execution failed`;
               }

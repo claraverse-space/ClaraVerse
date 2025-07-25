@@ -47,7 +47,11 @@ import {
   Workflow,
   Globe,
   FileText,
-  GitBranch
+  GitBranch,
+  Brain,
+  Shield,
+  StopCircle,
+  Search
 } from 'lucide-react';
 
 // Import types
@@ -427,8 +431,10 @@ const ModelSelector: React.FC<{
   isLoading?: boolean;
 }> = ({ models, selectedModel, onModelChange, modelType = 'text', currentProvider, isLoading }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
-  // Filter models by provider first, then by type and capability
+  // Filter models by provider first, then by type and capability, then by search term
   const filteredModels = models.filter(model => {
     // First filter by current provider
     if (currentProvider && model.provider !== currentProvider) {
@@ -436,12 +442,44 @@ const ModelSelector: React.FC<{
     }
     
     // Then filter by capability
-    if (modelType === 'vision') return model.supportsVision;
-    if (modelType === 'code') return model.supportsCode;
-    return model.type === 'text' || model.type === 'multimodal';
+    if (modelType === 'vision') {
+      if (!model.supportsVision) return false;
+    } else if (modelType === 'code') {
+      if (!model.supportsCode) return false;
+    } else {
+      if (!(model.type === 'text' || model.type === 'multimodal')) return false;
+    }
+    
+    // Finally filter by search term
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        model.name.toLowerCase().includes(searchLower) ||
+        model.provider.toLowerCase().includes(searchLower) ||
+        model.id.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return true;
   });
 
-  const selectedModelObj = filteredModels.find(m => m.id === selectedModel);
+  const selectedModelObj = filteredModels.find(m => m.id === selectedModel) || models.find(m => m.id === selectedModel);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
+  // Clear search when dropdown closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('');
+    }
+  }, [isOpen]);
 
   const getModelTypeIcon = (type: string) => {
     switch (type) {
@@ -478,7 +516,7 @@ const ModelSelector: React.FC<{
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        disabled={isLoading || filteredModels.length === 0}
+        disabled={isLoading || models.length === 0}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 w-full max-w-[220px] min-w-[180px]"
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -495,7 +533,7 @@ const ModelSelector: React.FC<{
             <>
               <Bot className="w-4 h-4 flex-shrink-0 text-gray-400" />
               <span className="text-gray-500 dark:text-gray-400 truncate">
-                {filteredModels.length === 0 ? 'No models' : 'Select model'}
+                {models.length === 0 ? 'No models' : 'Select model'}
               </span>
             </>
           )}
@@ -503,36 +541,62 @@ const ModelSelector: React.FC<{
         <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {isOpen && filteredModels.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-0 w-full min-w-[280px] max-w-[400px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-          {filteredModels.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => {
-                onModelChange(model.id);
-                setIsOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                model.id === selectedModel ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
-              }`}
-              title={model.name} // Show full name on hover
-            >
-              {React.createElement(getModelTypeIcon(modelType), {
-                className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(model)}`
-              })}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {model.name}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <span className="truncate">{model.provider}</span>
-                  {model.supportsVision && <span className="flex-shrink-0">• Vision</span>}
-                  {model.supportsCode && <span className="flex-shrink-0">• Code</span>}
-                  {model.supportsTools && <span className="flex-shrink-0">• Tools</span>}
-                </div>
+      {isOpen && models.length > 0 && (
+        <div className="absolute bottom-full mb-2 left-0 w-full min-w-[320px] max-w-[480px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-80 flex flex-col">
+          {/* Search Input */}
+          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search models..."
+                className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-sakura-500 dark:focus:ring-sakura-400 focus:border-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+          
+          {/* Models List */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredModels.length > 0 ? (
+              filteredModels.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => {
+                    onModelChange(model.id);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                    model.id === selectedModel ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
+                  }`}
+                  title={model.name} // Show full name on hover
+                >
+                  {React.createElement(getModelTypeIcon(modelType), {
+                    className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(model)}`
+                  })}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {model.name}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 truncate">
+                      <span className="truncate">{model.provider}</span>
+                      {model.supportsVision && <span className="flex-shrink-0">• Vision</span>}
+                      {model.supportsCode && <span className="flex-shrink-0">• Code</span>}
+                      {model.supportsTools && <span className="flex-shrink-0">• Tools</span>}
+                    </div>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                {searchTerm ? 'No models match your search' : 'No models available'}
               </div>
-            </button>
-          ))}
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -556,15 +620,18 @@ const AdvancedOptions: React.FC<{
   
   // State for collapsible sections
   const [expandedSections, setExpandedSections] = useState({
-    provider: true,
+    provider: false,
     systemPrompt: false,
-    models: true,
+    models: false,
     parameters: false,
     features: false,
     mcp: false,
     autonomous: false,
-    artifacts: true  // Changed from false to true to expand by default
+    artifacts: false
   });
+
+  // State for advanced parameters visibility
+  const [showAdvancedParameters, setShowAdvancedParameters] = useState(false);
 
   // Load MCP servers when component mounts or when MCP is enabled
   useEffect(() => {
@@ -1165,39 +1232,317 @@ when you are asked for something always resort to writing a python script and ru
               icon={<Wrench className="w-4 h-4 text-sakura-500" />}
               isExpanded={expandedSections.parameters}
               onToggle={() => toggleSection('parameters')}
-              badge={`T:${aiConfig.parameters.temperature} | Tokens:${formatTokens(aiConfig.parameters.maxTokens)}`}
+              badge={showAdvancedParameters 
+                ? `T:${aiConfig.parameters.temperature} | P:${aiConfig.parameters.topP} | K:${aiConfig.parameters.topK} | ${formatTokens(aiConfig.parameters.maxTokens)}`
+                : `T:${aiConfig.parameters.temperature} | P:${aiConfig.parameters.topP} | ${formatTokens(aiConfig.parameters.maxTokens)}`
+              }
             />
             
             {expandedSections.parameters && (
-              <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Temperature: {aiConfig.parameters.temperature}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={aiConfig.parameters.temperature}
-                    onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
-                    className="w-full"
-                  />
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-4">
+                {/* Core Parameters */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Temperature: {aiConfig.parameters.temperature}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={aiConfig.parameters.temperature}
+                      onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Controls randomness (0=deterministic, 2=very creative)
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Max Tokens: {formatTokens(aiConfig.parameters.maxTokens)}
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="128000"
+                      step="100"
+                      value={aiConfig.parameters.maxTokens}
+                      onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Maximum response length
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Max Tokens: {formatTokens(aiConfig.parameters.maxTokens)}
-                  </label>
-                  <input
-                    type="range"
-                    min="100"
-                    max="128000"
-                    step="100"
-                    value={aiConfig.parameters.maxTokens}
-                    onChange={(e) => handleParameterChange('maxTokens', parseInt(e.target.value))}
-                    className="w-full"
-                  />
+                {/* Essential Sampling Parameter */}
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Top P: {aiConfig.parameters.topP}
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={aiConfig.parameters.topP}
+                      onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Nucleus sampling (1.0=off, 0.9=recommended)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Advanced Parameters Toggle */}
+                <div className="border-t border-gray-200/30 dark:border-gray-700/50 pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <Settings className="w-4 h-4 text-sakura-500" />
+                      Advanced Parameters
+                    </span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showAdvancedParameters}
+                        onChange={(e) => setShowAdvancedParameters(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-11 h-6 rounded-full transition-colors ${
+                        showAdvancedParameters 
+                          ? 'bg-sakura-500' 
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      }`}>
+                        <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                          showAdvancedParameters ? 'translate-x-5' : 'translate-x-0'
+                        } mt-0.5 ml-0.5`} />
+                      </div>
+                    </label>
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Show additional sampling, penalty, and control parameters
+                  </div>
+                </div>
+
+                {/* Advanced Parameters (only shown when enabled) */}
+                {showAdvancedParameters && (
+                  <>
+                    {/* Additional Sampling Parameters */}
+                    <div className="border-t border-gray-200/30 dark:border-gray-700/50 pt-3">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-sakura-500" />
+                        Additional Sampling Parameters
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Top K: {aiConfig.parameters.topK}
+                          </label>
+                          <input
+                            type="range"
+                            min="1"
+                            max="100"
+                            step="1"
+                            value={aiConfig.parameters.topK}
+                            onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Top-K sampling (40=default, 1=greedy)
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Min P: {aiConfig.parameters.minP}
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="0.5"
+                            step="0.01"
+                            value={aiConfig.parameters.minP}
+                            onChange={(e) => handleParameterChange('minP', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Minimum probability threshold
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Typical P: {aiConfig.parameters.typicalP}
+                          </label>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1"
+                            step="0.05"
+                            value={aiConfig.parameters.typicalP}
+                            onChange={(e) => handleParameterChange('typicalP', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Typical sampling (1.0=off, 0.95=recommended)
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Penalty Parameters */}
+                    <div className="border-t border-gray-200/30 dark:border-gray-700/50 pt-3">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-sakura-500" />
+                        Penalty Parameters
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Frequency Penalty: {aiConfig.parameters.frequencyPenalty}
+                          </label>
+                          <input
+                            type="range"
+                            min="-2"
+                            max="2"
+                            step="0.1"
+                            value={aiConfig.parameters.frequencyPenalty}
+                            onChange={(e) => handleParameterChange('frequencyPenalty', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Reduces repetition based on frequency
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Presence Penalty: {aiConfig.parameters.presencePenalty}
+                          </label>
+                          <input
+                            type="range"
+                            min="-2"
+                            max="2"
+                            step="0.1"
+                            value={aiConfig.parameters.presencePenalty}
+                            onChange={(e) => handleParameterChange('presencePenalty', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Encourages new topics and ideas
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Repetition Penalty: {aiConfig.parameters.repetitionPenalty}
+                          </label>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="2"
+                            step="0.05"
+                            value={aiConfig.parameters.repetitionPenalty}
+                            onChange={(e) => handleParameterChange('repetitionPenalty', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Penalizes repeated tokens (1.0=off, 1.1=recommended)
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Control Parameters */}
+                    <div className="border-t border-gray-200/30 dark:border-gray-700/50 pt-3">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <StopCircle className="w-4 h-4 text-sakura-500" />
+                        Control Parameters
+                      </h4>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Seed: {aiConfig.parameters.seed || 'Random'}
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="2147483647"
+                              value={aiConfig.parameters.seed || ''}
+                              onChange={(e) => handleParameterChange('seed', e.target.value ? parseInt(e.target.value) : null)}
+                              placeholder="Random"
+                              className="flex-1 text-xs p-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                            />
+                            <button
+                              onClick={() => handleParameterChange('seed', Math.floor(Math.random() * 2147483647))}
+                              className="px-2 py-1 text-xs bg-sakura-500 text-white rounded hover:bg-sakura-600 transition-colors"
+                            >
+                              Random
+                            </button>
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            For reproducible outputs (empty=random)
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Stop Sequences
+                          </label>
+                          <textarea
+                            value={aiConfig.parameters.stop.join('\n')}
+                            onChange={(e) => handleParameterChange('stop', e.target.value.split('\n').filter(s => s.trim()))}
+                            placeholder="Enter stop sequences (one per line)&#10;Example:&#10;\n&#10;###&#10;END"
+                            className="w-full text-xs p-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-sakura-500 resize-none"
+                            rows={3}
+                          />
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Text sequences where the model will stop generating (one per line)
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Reset Button */}
+                <div className="border-t border-gray-200/30 dark:border-gray-700/50 pt-3 flex justify-between items-center">
+                  {showAdvancedParameters && (
+                    <button
+                      onClick={() => setShowAdvancedParameters(false)}
+                      className="px-3 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 transition-colors"
+                    >
+                      Hide Advanced
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const defaultParams = {
+                        temperature: 0.7,
+                        maxTokens: 4000,
+                        topP: 1.0,
+                        topK: 40,
+                        frequencyPenalty: 0.0,
+                        presencePenalty: 0.0,
+                        repetitionPenalty: 1.0,
+                        minP: 0.0,
+                        typicalP: 1.0,
+                        seed: null,
+                        stop: []
+                      };
+                      onConfigChange?.({ parameters: defaultParams });
+                    }}
+                    className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors ml-auto"
+                  >
+                    Reset to Defaults
+                  </button>
                 </div>
               </div>
             )}
@@ -1487,7 +1832,8 @@ when you are asked for something always resort to writing a python script and ru
                           enableVision: true,
                           autoModelSelection: false,
                           enableMCP: false,
-                          enableStructuredToolCalling: false
+                          enableStructuredToolCalling: false,
+                          enableNativeJSONSchema: false,
                         };
                         
                         onConfigChange?.({
@@ -2320,7 +2666,14 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       temperature: sessionConfig?.aiConfig?.parameters.temperature || sessionConfig?.temperature || 0.7,
       maxTokens: sessionConfig?.aiConfig?.parameters.maxTokens || sessionConfig?.maxTokens || 1000,
       topP: sessionConfig?.aiConfig?.parameters.topP || 1.0,
-      topK: sessionConfig?.aiConfig?.parameters.topK || 40
+      topK: sessionConfig?.aiConfig?.parameters.topK || 40,
+      frequencyPenalty: sessionConfig?.aiConfig?.parameters.frequencyPenalty || 0.0,
+      presencePenalty: sessionConfig?.aiConfig?.parameters.presencePenalty || 0.0,
+      repetitionPenalty: sessionConfig?.aiConfig?.parameters.repetitionPenalty || 1.0,
+      minP: sessionConfig?.aiConfig?.parameters.minP || 0.0,
+      typicalP: sessionConfig?.aiConfig?.parameters.typicalP || 1.0,
+      seed: sessionConfig?.aiConfig?.parameters.seed || null,
+      stop: sessionConfig?.aiConfig?.parameters.stop || []
     },
     features: {
       enableTools: sessionConfig?.aiConfig?.features.enableTools ?? sessionConfig?.enableTools ?? true,
@@ -2329,7 +2682,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       enableVision: sessionConfig?.aiConfig?.features.enableVision ?? true,
       autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true,
       enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true,
-      enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false
+      enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false,
+      enableNativeJSONSchema: sessionConfig?.aiConfig?.features.enableNativeJSONSchema ?? false,
     }
   };
 
