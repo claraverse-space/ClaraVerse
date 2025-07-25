@@ -16,6 +16,7 @@ import { claraMemoryService } from './claraMemoryService';
 import { addCompletionNotification, addInfoNotification } from './notificationService';
 import { structuredToolCallService } from './structuredToolCallService';
 import { claraToolService } from './claraToolService';
+import { claraImageExtractionService } from './claraImageExtractionService';
 
 /**
  * Simple autonomous agent configuration
@@ -405,6 +406,28 @@ export class ClaraAgentService {
       // Add artifacts if any were generated from tool calls
       if (allToolResults.length > 0) {
         claraMessage.artifacts = claraToolService.parseToolResultsToArtifacts(allToolResults);
+        
+        // **NEW: Extract images from tool results and store separately**
+        try {
+          const extractedImages = claraImageExtractionService.extractImagesFromToolResults(
+            allToolResults,
+            claraMessage.id
+          );
+          
+          if (extractedImages.length > 0) {
+            // Add extracted images to metadata (not chat history)
+            if (!claraMessage.metadata) {
+              claraMessage.metadata = {};
+            }
+            claraMessage.metadata.extractedImages = extractedImages;
+            
+            console.log(`📷 [Autonomous] Extracted ${extractedImages.length} images from tool results:`, 
+              extractedImages.map(img => `${img.toolName}:${img.description}`));
+          }
+        } catch (error) {
+          console.error('Error extracting images from autonomous tool results:', error);
+          // Don't fail the message if image extraction fails
+        }
       }
 
       return claraMessage;
@@ -626,6 +649,28 @@ export class ClaraAgentService {
       // Add artifacts if any were generated from tool calls
       if (allToolResults.length > 0) {
         claraMessage.artifacts = claraToolService.parseToolResultsToArtifacts(allToolResults);
+        
+        // **NEW: Extract images from tool results and store separately**
+        try {
+          const extractedImages = claraImageExtractionService.extractImagesFromToolResults(
+            allToolResults,
+            claraMessage.id
+          );
+          
+          if (extractedImages.length > 0) {
+            // Add extracted images to metadata (not chat history)
+            if (!claraMessage.metadata) {
+              claraMessage.metadata = {};
+            }
+            claraMessage.metadata.extractedImages = extractedImages;
+            
+            console.log(`📷 [Autonomous Standard] Extracted ${extractedImages.length} images from tool results:`, 
+              extractedImages.map(img => `${img.toolName}:${img.description}`));
+          }
+        } catch (error) {
+          console.error('Error extracting images from autonomous standard tool results:', error);
+          // Don't fail the message if image extraction fails
+        }
       }
 
       return claraMessage;

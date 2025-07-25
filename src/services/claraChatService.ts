@@ -1,6 +1,8 @@
 /**
  * Clara Chat Service
- * Handles basic chat functionality, streaming, and message building
+ * 
+ * This service handles standard chat interactions with AI models.
+ * It manages conversation flow, tool execution, and response processing.
  */
 
 import { AssistantAPIClient } from '../utils/AssistantAPIClient';
@@ -12,6 +14,9 @@ import {
 } from '../types/clara_assistant_types';
 import type { Tool } from '../db';
 import { claraToolService } from './claraToolService';
+import { TokenLimitRecoveryService } from './tokenLimitRecoveryService';
+import { addErrorNotification } from './notificationService';
+import { claraImageExtractionService } from './claraImageExtractionService';
 
 export class ClaraChatService {
   /**
@@ -310,6 +315,28 @@ export class ClaraChatService {
     // Add artifacts if any were generated from tool calls
     if (toolResults.length > 0) {
       claraMessage.artifacts = claraToolService.parseToolResultsToArtifacts(toolResults);
+      
+      // **NEW: Extract images from tool results and store separately**
+      try {
+        const extractedImages = claraImageExtractionService.extractImagesFromToolResults(
+          toolResults,
+          claraMessage.id
+        );
+        
+        if (extractedImages.length > 0) {
+          // Add extracted images to metadata (not chat history)
+          if (!claraMessage.metadata) {
+            claraMessage.metadata = {};
+          }
+          claraMessage.metadata.extractedImages = extractedImages;
+          
+          console.log(`📷 Extracted ${extractedImages.length} images from tool results:`, 
+            extractedImages.map(img => `${img.toolName}:${img.description}`));
+        }
+      } catch (error) {
+        console.error('Error extracting images from tool results:', error);
+        // Don't fail the message if image extraction fails
+      }
     }
 
     return claraMessage;
