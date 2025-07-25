@@ -3355,6 +3355,133 @@ Let me execute this for you.`;
       console.log('💡 No more [object Object] issues should occur in tool results');
     };
 
+    // **NEW: Test image extraction system**
+    (window as any).testImageExtraction = () => {
+      console.log('🧪 Testing Image Extraction System...');
+      
+      const { claraImageExtractionService } = require('../services/claraImageExtractionService');
+      
+      // Test with mock tool results containing images
+      const mockToolResults = [
+        {
+          toolName: 'puppeteer_screenshot',
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: "Screenshot 'test_screenshot' taken at 800x600"
+              },
+              {
+                type: 'image',
+                data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+                mimeType: 'image/png',
+                description: 'Test screenshot'
+              }
+            ]
+          }
+        }
+      ];
+      
+      const testMessageId = 'test-message-' + Date.now();
+      
+      try {
+        const extractedImages = claraImageExtractionService.extractImagesFromToolResults(
+          mockToolResults,
+          testMessageId
+        );
+        
+        console.log('✅ Successfully extracted images:', extractedImages);
+        console.log('📊 Storage stats:', claraImageExtractionService.getStorageStats());
+        
+        // Test retrieval
+        if (extractedImages.length > 0) {
+          const retrievedImage = claraImageExtractionService.getImage(extractedImages[0].id);
+          console.log('✅ Successfully retrieved image:', retrievedImage?.id);
+          
+          const messageImages = claraImageExtractionService.getImagesForMessage(testMessageId);
+          console.log('✅ Images for message:', messageImages.length);
+        }
+        
+        console.log('🎉 Image extraction test completed successfully!');
+      } catch (error) {
+        console.error('❌ Image extraction test failed:', error);
+      }
+    };
+
+    // **NEW: Test image cleanup**
+    (window as any).testImageCleanup = () => {
+      console.log('🧹 Testing Image Cleanup...');
+      
+      const { claraImageExtractionService } = require('../services/claraImageExtractionService');
+      
+      console.log('📊 Before cleanup:', claraImageExtractionService.getStorageStats());
+      
+      // Clean images older than 1 second (for testing)
+      claraImageExtractionService.cleanupOldImages(1000);
+      
+      console.log('📊 After cleanup:', claraImageExtractionService.getStorageStats());
+      console.log('✅ Image cleanup test completed!');
+    };
+
+    // **NEW: Test image extraction with real tool result format**
+    (window as any).testRealImageExtraction = () => {
+      console.log('🧪 Testing Real Image Extraction Format...');
+      
+      const { claraImageExtractionService } = require('../services/claraImageExtractionService');
+      
+      // Test with the actual format from your example
+      const realToolResult = {
+        toolName: 'mcp_puppeteer_screenshot',
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: "Screenshot 'claravise.com_screenshot' taken at 800x600"
+            },
+            {
+              type: 'image',
+              data: 'iVBORw0KGgoAAAANSUhEUgAAAyAAAAJYCAIAAAAVFBUnAAAAAXNSR0IArs4c6QAAAANzQklUCAgI2+FP4AAACqpJREFUeJzt1sEJACAQwDB1/53PJQqCJBP02T0zCwCAznkdAADwG4MFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAMYMFABAzWAAAsQsBZAetNNHThQAAAABJRU5ErkJggg==',
+              mimeType: 'image/png'
+            }
+          ]
+        }
+      };
+      
+      const testMessageId = 'real-test-' + Date.now();
+      
+      try {
+        const extractedImages = claraImageExtractionService.extractImagesFromToolResults(
+          [realToolResult],
+          testMessageId
+        );
+        
+        console.log('✅ Extracted from real format:', extractedImages);
+        
+        if (extractedImages.length > 0) {
+          const img = extractedImages[0];
+          console.log('📷 Image details:', {
+            id: img.id,
+            toolName: img.toolName,
+            mimeType: img.mimeType,
+            fileSize: img.fileSize,
+            description: img.description,
+            storagePath: img.storagePath
+          });
+          
+          // Test if the data URL is valid
+          if (img.data.startsWith('data:image/')) {
+            console.log('✅ Valid data URL format');
+          } else {
+            console.warn('⚠️ Invalid data URL format');
+          }
+        }
+        
+        console.log('🎉 Real image extraction test completed!');
+      } catch (error) {
+        console.error('❌ Real image extraction test failed:', error);
+      }
+    };
+
     return () => {
       delete (window as any).debugClaraProviders;
       delete (window as any).clearProviderConfigs;

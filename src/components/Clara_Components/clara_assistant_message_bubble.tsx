@@ -60,6 +60,9 @@ import { claraTTSService } from '../../services/claraTTSService';
 // Import ExecutionDetailsModal
 import ExecutionDetailsModal from './ExecutionDetailsModal';
 
+// Import ExtractedImagesRenderer
+import ExtractedImagesRenderer from './ExtractedImagesRenderer';
+
 /**
  * Thinking content parser and utilities
  */
@@ -1201,6 +1204,18 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
               isStreaming={message.metadata?.isStreaming}
               attachments={message.attachments}
             />
+          )}
+
+          {/* **NEW: Display extracted images from tool results** */}
+          {message.metadata?.extractedImages && message.metadata.extractedImages.length > 0 && (
+            <div className="mt-4">
+              <ExtractedImagesRenderer
+                images={message.metadata.extractedImages}
+                compact={false}
+                maxVisible={3}
+                className="extracted-images-in-message"
+              />
+            </div>
           )}
 
           {/* Error display */}
