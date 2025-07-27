@@ -1,0 +1,252 @@
+{
+  "format": "clara-sdk",
+  "version": "1.0.0",
+  "flow": {
+    "id": "1753607449754-7hbvo17ai",
+    "name": "Testing SDK",
+    "nodes": [
+      {
+        "id": "1753607451076-xzng2gkp3",
+        "type": "input",
+        "name": "Input",
+        "position": {
+          "x": 318,
+          "y": 173
+        },
+        "data": {
+          "label": "Input",
+          "inputs": [],
+          "outputs": [
+            {
+              "id": "output",
+              "name": "Value",
+              "type": "output",
+              "dataType": "any",
+              "description": "Input value"
+            }
+          ],
+          "value": "hi"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "output",
+            "name": "Value",
+            "type": "output",
+            "dataType": "any",
+            "description": "Input value"
+          }
+        ],
+        "metadata": {
+          "tags": [
+            "input",
+            "basic",
+            "source"
+          ],
+          "documentation": "Provides input values to start or feed the workflow. Supports text, numbers, and JSON objects."
+        }
+      },
+      {
+        "id": "1753607458142-x9d2g86hn",
+        "type": "llm",
+        "name": "LLM Chat",
+        "position": {
+          "x": 875.7728191546553,
+          "y": 120.03118228080609
+        },
+        "data": {
+          "label": "LLM Chat",
+          "inputs": [
+            {
+              "id": "system",
+              "name": "System Message",
+              "type": "input",
+              "dataType": "string",
+              "required": false,
+              "description": "System prompt for the LLM"
+            },
+            {
+              "id": "user",
+              "name": "User Message",
+              "type": "input",
+              "dataType": "string",
+              "required": true,
+              "description": "User message/prompt"
+            },
+            {
+              "id": "context",
+              "name": "Pre-context",
+              "type": "input",
+              "dataType": "string",
+              "required": false,
+              "description": "Additional context to prepend"
+            },
+            {
+              "id": "memory",
+              "name": "Memory",
+              "type": "input",
+              "dataType": "array",
+              "required": false,
+              "description": "Conversation history array (messages with role and content)"
+            },
+            {
+              "id": "image",
+              "name": "Image",
+              "type": "input",
+              "dataType": "string",
+              "required": false,
+              "description": "Base64 encoded image data"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "response",
+              "name": "Response",
+              "type": "output",
+              "dataType": "string",
+              "description": "LLM response text"
+            },
+            {
+              "id": "usage",
+              "name": "Usage Stats",
+              "type": "output",
+              "dataType": "object",
+              "description": "Token usage and cost information"
+            }
+          ],
+          "apiBaseUrl": "http://127.0.0.1:8091/v1",
+          "apiKey": "s",
+          "model": "gemma3:4b",
+          "temperature": 0.7,
+          "maxTokens": 1000
+        },
+        "inputs": [
+          {
+            "id": "system",
+            "name": "System Message",
+            "type": "input",
+            "dataType": "string",
+            "required": false,
+            "description": "System prompt for the LLM"
+          },
+          {
+            "id": "user",
+            "name": "User Message",
+            "type": "input",
+            "dataType": "string",
+            "required": true,
+            "description": "User message/prompt"
+          },
+          {
+            "id": "context",
+            "name": "Pre-context",
+            "type": "input",
+            "dataType": "string",
+            "required": false,
+            "description": "Additional context to prepend"
+          },
+          {
+            "id": "memory",
+            "name": "Memory",
+            "type": "input",
+            "dataType": "array",
+            "required": false,
+            "description": "Conversation history array (messages with role and content)"
+          },
+          {
+            "id": "image",
+            "name": "Image",
+            "type": "input",
+            "dataType": "string",
+            "required": false,
+            "description": "Base64 encoded image data"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "response",
+            "name": "Response",
+            "type": "output",
+            "dataType": "string",
+            "description": "LLM response text"
+          },
+          {
+            "id": "usage",
+            "name": "Usage Stats",
+            "type": "output",
+            "dataType": "object",
+            "description": "Token usage and cost information"
+          }
+        ],
+        "metadata": {
+          "tags": [
+            "ai",
+            "llm",
+            "chat",
+            "openai"
+          ],
+          "documentation": "Interfaces with OpenAI-compatible APIs for text and vision tasks."
+        }
+      },
+      {
+        "id": "1753607502081-eoh6gq0xr",
+        "type": "output",
+        "name": "Output",
+        "position": {
+          "x": 1555.735748497656,
+          "y": 160.06979244755382
+        },
+        "data": {},
+        "inputs": [
+          {
+            "id": "input",
+            "name": "Value",
+            "type": "input",
+            "dataType": "any",
+            "required": true,
+            "description": "Value to output"
+          }
+        ],
+        "outputs": [],
+        "metadata": {
+          "tags": [
+            "output",
+            "basic",
+            "sink"
+          ],
+          "documentation": "Displays the final result with various formatting options."
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "1753607461873-q1mc9w3m5",
+        "sourceNodeId": "1753607451076-xzng2gkp3",
+        "sourcePortId": "output",
+        "targetNodeId": "1753607458142-x9d2g86hn",
+        "targetPortId": "user"
+      },
+      {
+        "id": "1753607505953-ohyltjm3o",
+        "sourceNodeId": "1753607458142-x9d2g86hn",
+        "sourcePortId": "response",
+        "targetNodeId": "1753607502081-eoh6gq0xr",
+        "targetPortId": "input"
+      }
+    ],
+    "variables": [],
+    "settings": {
+      "name": "Testing SDK",
+      "version": "1.0.0"
+    },
+    "createdAt": "2025-07-27T09:11:07.114Z",
+    "updatedAt": "2025-07-27T09:12:09.197Z",
+    "version": "1.0.0"
+  },
+  "customNodes": [],
+  "metadata": {
+    "exportedAt": "2025-07-27T09:12:16.635Z",
+    "exportedBy": "Clara Agent Studio",
+    "hasCustomNodes": false
+  }
+}

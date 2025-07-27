@@ -2,6 +2,7 @@
   "categories": [
     "getting-started",
     "features",
+    "agents",
     "ai-features",
     "troubleshooting"
   ],
@@ -34,18 +35,60 @@
       "order": 4,
       "filePath": "features/clara-assistant.md"
     },
+    "agent-studio": {
+      "title": "Agent Studio Overview",
+      "description": "Visual workflow builder for AI agents",
+      "category": "agents",
+      "order": 5,
+      "filePath": "agents/README.md"
+    },
+    "building-agents": {
+      "title": "Building Your First Agent",
+      "description": "Step-by-step guide to creating AI workflows",
+      "category": "agents",
+      "order": 6,
+      "filePath": "agents/building-agents.md"
+    },
+    "node-library": {
+      "title": "Node Library Reference",
+      "description": "Complete guide to all available nodes",
+      "category": "agents",
+      "order": 7,
+      "filePath": "agents/node-library.md"
+    },
+    "custom-nodes": {
+      "title": "Creating Custom Nodes",
+      "description": "Build your own workflow components",
+      "category": "agents",
+      "order": 8,
+      "filePath": "agents/custom-nodes.md"
+    },
+    "deployment": {
+      "title": "Deploying Agents",
+      "description": "Export and deploy your agents as APIs",
+      "category": "agents",
+      "order": 9,
+      "filePath": "agents/deployment.md"
+    },
+    "sdk-usage": {
+      "title": "SDK Integration",
+      "description": "Use agents in your applications",
+      "category": "agents",
+      "order": 10,
+      "filePath": "agents/sdk-usage.md"
+    },
     "ai-features": {
       "title": "AI Features",
       "description": "Explore ClaraVerse AI capabilities",
       "category": "ai-features",
-      "order": 5,
+      "order": 11,
       "filePath": "ai-features/README.md"
     },
     "troubleshooting": {
       "title": "Troubleshooting",
       "description": "Common issues and solutions",
       "category": "troubleshooting",
-      "order": 6,
+      "order": 12,
       "filePath": "troubleshooting/README.md"
     }
   }

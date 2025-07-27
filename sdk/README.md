@@ -1,337 +1,347 @@
-# Clara Flow SDK
+# Clara Flow SDK v2.0 🚀
 
-Lightweight JavaScript SDK for running Clara agent flows with comprehensive node support including AI, data processing, API operations, file handling, and audio transcription.
+**Modern JavaScript SDK for executing Clara AI agent workflows with zero configuration**
 
-## Features
+[![npm version](https://badge.fury.io/js/clara-flow-sdk.svg)](https://www.npmjs.com/package/clara-flow-sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- 🚀 **Production-Ready**: Enterprise-grade execution engine with error handling and retry logic
-- 🧠 **AI Integration**: Support for LLM nodes with OpenAI-compatible APIs
-- 📊 **Structured Data**: Generate JSON outputs with schema validation
-- 🌐 **API Operations**: Full-featured HTTP client with authentication and retries
-- 📄 **PDF Processing**: Extract text from PDF documents with formatting preservation
-- 📁 **File Handling**: Universal file upload with multiple output formats and validation
-- 🎙️ **Audio Transcription**: OpenAI Whisper integration for speech-to-text
-- 📝 **Text Processing**: Advanced text combination and manipulation tools
-- ⚡ **High Performance**: Optimized for fast execution and low memory usage
-- 🔧 **Extensible**: Support for custom nodes and validation rules
+## ✨ Features
 
-## Installation
+- 🎯 **Zero Configuration** - Works out of the box
+- 🧠 **AI-Ready** - Built-in LLM and AI node support
+- 🔗 **Universal** - Node.js, Browser, and CDN compatible
+- ⚡ **Fast** - Lightweight and optimized execution engine
+- 🛡️ **Type Safe** - Full TypeScript support
+- 🎨 **Custom Nodes** - Create your own node types
+- 📦 **Clara Studio Compatible** - Import workflows directly
 
-### Node.js / npm
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
 npm install clara-flow-sdk
 ```
 
-### CDN / Browser
-
-```html
-<!-- Latest version -->
-<script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.js"></script>
-
-<!-- Minified version -->
-<script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.min.js"></script>
-
-<!-- Specific version -->
-<script src="https://unpkg.com/clara-flow-sdk@1.4.0/dist/clara-flow-sdk.umd.js"></script>
-```
-
-## Quick Start
-
-### Node.js / ES Modules
+### Basic Usage (5 lines of code!)
 
 ```javascript
 import { ClaraFlowRunner } from 'clara-flow-sdk';
 
-const runner = new ClaraFlowRunner({
-  enableLogging: true,
-  timeout: 30000
-});
-
-// Execute a flow exported from Clara Studio
-const result = await runner.executeFlow(flowData, {
-  inputValue: "Hello, World!"
-});
-
-console.log('Flow result:', result);
+const runner = new ClaraFlowRunner();
+const result = await runner.execute(workflow, { input: 'Hello World!' });
+console.log(result);
 ```
 
-### Browser / CDN
+## 📖 Complete Examples
+
+### 1. Simple Text Processing
+
+```javascript
+import { ClaraFlowRunner } from 'clara-flow-sdk';
+
+// Create a simple workflow
+const textWorkflow = {
+  nodes: [
+    {
+      id: 'input-1',
+      type: 'input',
+      name: 'User Input',
+      data: { value: 'Hello' },
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'process-1',
+      type: 'static-text',
+      name: 'Add Greeting',
+      data: { text: 'Welcome: ' },
+      inputs: [{ id: 'input', name: 'Input' }],
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'combine-1',
+      type: 'combine-text',
+      name: 'Combine',
+      data: { separator: '' },
+      inputs: [
+        { id: 'text1', name: 'Text1' },
+        { id: 'text2', name: 'Text2' }
+      ],
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'output-1',
+      type: 'output',
+      name: 'Final Result',
+      inputs: [{ id: 'input', name: 'Input' }]
+    }
+  ],
+  connections: [
+    { sourceNodeId: 'process-1', sourcePortId: 'output', targetNodeId: 'combine-1', targetPortId: 'text1' },
+    { sourceNodeId: 'input-1', sourcePortId: 'output', targetNodeId: 'combine-1', targetPortId: 'text2' },
+    { sourceNodeId: 'combine-1', sourcePortId: 'output', targetNodeId: 'output-1', targetPortId: 'input' }
+  ]
+};
+
+// Execute workflow
+const runner = new ClaraFlowRunner();
+const result = await runner.execute(textWorkflow, { 'input-1': 'Clara!' });
+console.log(result); // { "output-1": { "output": "Welcome: Clara!" } }
+```
+
+### 2. JSON Data Processing
+
+```javascript
+const jsonWorkflow = {
+  nodes: [
+    {
+      id: 'data-input',
+      type: 'input',
+      name: 'JSON Data',
+      data: { value: '{"user": {"name": "Alice", "profile": {"age": 30, "city": "NYC"}}}' },
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'parse-name',
+      type: 'json-parse',
+      name: 'Extract Name',
+      data: { field: 'user.name' },
+      inputs: [{ id: 'input', name: 'JSON' }],
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'parse-city',
+      type: 'json-parse',
+      name: 'Extract City',
+      data: { field: 'user.profile.city' },
+      inputs: [{ id: 'input', name: 'JSON' }],
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'result',
+      type: 'output',
+      name: 'User Info',
+      inputs: [{ id: 'input', name: 'Input' }]
+    }
+  ],
+  connections: [
+    { sourceNodeId: 'data-input', sourcePortId: 'output', targetNodeId: 'parse-name', targetPortId: 'input' },
+    { sourceNodeId: 'parse-name', sourcePortId: 'output', targetNodeId: 'result', targetPortId: 'input' }
+  ]
+};
+
+const result = await runner.execute(jsonWorkflow);
+console.log(result); // Extracted: "Alice"
+```
+
+### 3. Custom Node Creation
+
+```javascript
+const runner = new ClaraFlowRunner();
+
+// Register a custom node
+runner.registerCustomNode({
+  type: 'email-validator',
+  name: 'Email Validator',
+  executionCode: `
+    function execute(inputs, properties, context) {
+      const email = inputs.email || '';
+      const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+      const isValid = emailRegex.test(email);
+      
+      context.log('Validating email: ' + email);
+      
+      return {
+        output: isValid,
+        email: email,
+        status: isValid ? 'valid' : 'invalid'
+      };
+    }
+  `
+});
+
+// Use custom node in workflow
+const emailWorkflow = {
+  nodes: [
+    {
+      id: 'email-input',
+      type: 'input',
+      name: 'Email',
+      data: { value: 'user@example.com' },
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'validator',
+      type: 'email-validator',
+      name: 'Validate Email',
+      inputs: [{ id: 'email', name: 'Email' }],
+      outputs: [{ id: 'output', name: 'Valid' }]
+    },
+    {
+      id: 'result',
+      type: 'output',
+      name: 'Validation Result',
+      inputs: [{ id: 'input', name: 'Input' }]
+    }
+  ],
+  connections: [
+    { sourceNodeId: 'email-input', sourcePortId: 'output', targetNodeId: 'validator', targetPortId: 'email' },
+    { sourceNodeId: 'validator', sourcePortId: 'output', targetNodeId: 'result', targetPortId: 'input' }
+  ]
+};
+
+const result = await runner.execute(emailWorkflow);
+console.log(result); // Email validation result
+```
+
+### 4. AI/LLM Integration
+
+```javascript
+const aiWorkflow = {
+  nodes: [
+    {
+      id: 'prompt',
+      type: 'input',
+      name: 'User Prompt',
+      data: { value: 'Explain quantum computing in simple terms' },
+      outputs: [{ id: 'output', name: 'Output' }]
+    },
+    {
+      id: 'ai-chat',
+      type: 'llm',
+      name: 'AI Assistant',
+      data: {
+        apiKey: process.env.OPENAI_API_KEY,
+        model: 'gpt-3.5-turbo',
+        temperature: 0.7
+      },
+      inputs: [
+        { id: 'user', name: 'User Message' },
+        { id: 'system', name: 'System Message' }
+      ],
+      outputs: [{ id: 'output', name: 'Response' }]
+    },
+    {
+      id: 'response',
+      type: 'output',
+      name: 'AI Response',
+      inputs: [{ id: 'input', name: 'Input' }]
+    }
+  ],
+  connections: [
+    { sourceNodeId: 'prompt', sourcePortId: 'output', targetNodeId: 'ai-chat', targetPortId: 'user' },
+    { sourceNodeId: 'ai-chat', sourcePortId: 'output', targetNodeId: 'response', targetPortId: 'input' }
+  ]
+};
+
+const result = await runner.execute(aiWorkflow);
+console.log(result['response'].output); // AI explanation
+```
+
+## 🌐 Browser Usage
+
+### CDN (Quick Start)
 
 ```html
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Clara Flow SDK Example</title>
+    <title>Clara Flow SDK Demo</title>
 </head>
 <body>
-    <!-- Load the SDK -->
-    <script src="https://unpkg.com/clara-flow-sdk@latest/dist/clara-flow-sdk.umd.js"></script>
-    
+    <script src="https://unpkg.com/clara-flow-sdk@2.0.0/dist/clara-flow-sdk.umd.min.js"></script>
     <script>
-        // Initialize the flow runner
-        const runner = new ClaraFlowSDK.ClaraFlowRunner({
-            enableLogging: true,
-            timeout: 30000
-        });
+        const runner = new ClaraFlowSDK.ClaraFlowRunner();
         
-        // Execute a flow
-        runner.executeFlow(flowData, { inputValue: "Hello, World!" })
-            .then(result => {
-                console.log('Flow result:', result);
-            })
-            .catch(error => {
-                console.error('Flow error:', error);
-            });
+        const simpleFlow = {
+            nodes: [
+                { id: 'in', type: 'input', data: { value: 'Hello Browser!' }, outputs: [{ id: 'output' }] },
+                { id: 'out', type: 'output', inputs: [{ id: 'input' }] }
+            ],
+            connections: [
+                { sourceNodeId: 'in', sourcePortId: 'output', targetNodeId: 'out', targetPortId: 'input' }
+            ]
+        };
+        
+        runner.execute(simpleFlow).then(result => {
+            console.log('Result:', result);
+        });
     </script>
 </body>
 </html>
 ```
 
-### Browser-Specific Features
+### Browser with File Upload
 
-The browser version includes additional utilities for web applications:
+```html
+<input type="file" id="workflow-file" accept=".json">
+<button onclick="runWorkflow()">Run Workflow</button>
 
-```javascript
-// File upload handling
-const fileInput = document.getElementById('file-input');
-const file = fileInput.files[0];
-
-// Upload as base64
-runner.handleFileUpload(file, { outputFormat: 'base64' })
-    .then(base64Data => console.log('File as base64:', base64Data));
-
-// Browser utilities
-const browserInfo = ClaraFlowSDK.BrowserUtils.getBrowserInfo();
-const isBrowser = ClaraFlowSDK.BrowserUtils.isBrowser();
-
-// Flow import/export
-ClaraFlowSDK.BrowserUtils.downloadFlow(flowData, 'my-flow.json');
-ClaraFlowSDK.BrowserUtils.loadFlowFromFileInput(fileInput)
-    .then(flowData => console.log('Loaded flow:', flowData));
+<script>
+async function runWorkflow() {
+    const fileInput = document.getElementById('workflow-file');
+    const file = fileInput.files[0];
+    
+    if (file) {
+        const workflow = await ClaraFlowSDK.BrowserUtils.loadFlowFromFile(file);
+        const runner = new ClaraFlowSDK.ClaraFlowRunner();
+        const result = await runner.execute(workflow);
+        console.log('Workflow result:', result);
+    }
+}
+</script>
 ```
 
-## Supported Node Types
+## 📋 Built-in Node Types
 
-The SDK supports all built-in node types from Clara Studio:
+| Node Type | Description | Example Use Case |
+|-----------|-------------|------------------|
+| `input` | Accept user input | Form data, parameters |
+| `output` | Display results | Final output, responses |
+| `static-text` | Fixed text content | Templates, prompts |
+| `combine-text` | Merge text inputs | String concatenation |
+| `json-parse` | Parse JSON data | API response processing |
+| `if-else` | Conditional logic | Decision making |
+| `llm` | AI language model | Chat, text generation |
+| `structured-llm` | Structured AI output | JSON generation |
+| `api-request` | HTTP requests | External API calls |
 
-### Input & Output
-- **`input`** - Handles text, number, JSON, and boolean inputs with type conversion
-- **`output`** - Displays results with various formatting options
-- **`image-input`** - Processes image files and converts to base64
-- **`pdf-input`** - Extracts text from PDF documents with formatting options
-- **`file-upload`** - Universal file upload with configurable output formats and validation
-
-### AI & Intelligence
-- **`llm`** - Large Language Model interface with multi-modal support
-- **`structured-llm`** - Generate structured JSON outputs using OpenAI's structured response format
-- **`whisper-transcription`** - Audio transcription using OpenAI Whisper API
-
-### Data Processing
-- **`json-parse`** - Parse JSON strings and extract nested fields with dot notation
-- **`api-request`** - Production-grade HTTP client with comprehensive features
-- **`combine-text`** - Combines two text inputs with configurable separation for prompt building
-
-### Logic & Control
-- **`if-else`** - Conditional logic with JavaScript expression evaluation
-
-### Custom Nodes
-- Support for registering and executing custom node types
-- Sandboxed execution environment for security
-
-## Advanced Usage
-
-### API Request Node
-
-The `api-request` node provides enterprise-grade HTTP functionality:
+## ⚙️ Configuration Options
 
 ```javascript
-// Example flow with API request node
-const flowData = {
-  name: "API Example",
-  nodes: [
-    {
-      id: "api1",
-      type: "api-request",
-      data: {
-        method: "POST",
-        timeout: 30000,
-        retries: 3,
-        authType: "bearer",
-        contentType: "application/json",
-        responseType: "auto",
-        validateStatus: true,
-        followRedirects: true
-      }
-    }
-  ],
-  connections: []
+const runner = new ClaraFlowRunner({
+  enableLogging: true,        // Enable console logging
+  timeout: 30000,            // Execution timeout (ms)
+  logLevel: 'info',          // Log level: 'info', 'warn', 'error'
+  maxRetries: 3              // Max retry attempts
+});
+```
+
+## 🔧 Clara Studio Integration
+
+Import workflows directly from Clara Studio:
+
+```javascript
+// Export from Clara Studio as "SDK Enhanced" format
+const studioExport = {
+  format: 'clara-sdk',
+  version: '1.0.0',
+  flow: { /* workflow definition */ },
+  customNodes: [ /* custom node definitions */ ]
 };
 
-const result = await runner.executeFlow(flowData, {
-  url: "https://api.example.com/data",
-  body: { key: "value" },
-  headers: { "X-Custom": "header" },
-  auth: { token: "your-bearer-token" }
-});
+// Execute directly
+const result = await runner.execute(studioExport, inputs);
 ```
 
-**Features:**
-- All HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
-- Multiple authentication types (API key, Bearer token, Basic auth, Custom headers)
-- Content type handling (JSON, form data, multipart, text, XML)
-- Auto-retry with exponential backoff
-- Configurable timeouts and redirect handling
-- Intelligent response parsing
-
-### Structured LLM Node
-
-Generate structured JSON outputs with any OpenAI-compatible API:
-
-```javascript
-const flowData = {
-  name: "Structured Output",
-  nodes: [
-    {
-      id: "structured1",
-      type: "structured-llm",
-      data: {
-        apiBaseUrl: "http://localhost:11434/v1", // Ollama, OpenAI, or any compatible API
-        model: "llama3", // Works with any model
-        temperature: 0.7,
-        apiKey: "your-api-key",
-        useStructuredOutput: "auto" // auto, force, or disable
-      }
-    }
-  ]
-};
-
-const result = await runner.executeFlow(flowData, {
-  prompt: "Generate a user profile",
-  jsonExample: JSON.stringify({
-    name: "John Doe",
-    age: 30,
-    skills: ["JavaScript", "Python"],
-    active: true
-  }),
-  context: "For a software developer"
-});
-
-// result.jsonOutput will match the structure exactly
-```
-
-**Features:**
-- **Universal Compatibility**: Works with OpenAI, Ollama, and any OpenAI-compatible API
-- **Smart Fallback**: Automatically detects API capabilities and falls back to prompt-based JSON generation
-- **Robust Parsing**: Handles various response formats including markdown-wrapped JSON
-- **Schema Validation**: Uses OpenAI's structured output when available for guaranteed accuracy
-
-### PDF Input Node
-
-Extract text from PDF documents:
-
-```javascript
-const result = await runner.executeFlow(flowData, {
-  pdfFile: base64PdfData,  // PDF as base64 string
-  maxPages: 10,
-  preserveFormatting: true
-});
-
-console.log('Extracted text:', result.text);
-console.log('Metadata:', result.metadata);
-```
-
-**Features:**
-- Page-by-page text extraction
-- Formatting preservation options
-- Comprehensive metadata (page count, word count, etc.)
-- Error handling and validation
-
-### Combine Text Node
-
-Combine two text inputs with configurable separation:
-
-```javascript
-const result = await runner.executeFlow(flowData, {
-  text1: "Hello",
-  text2: "World"
-});
-
-// With different modes:
-// mode: "concatenate" -> "Hello World"
-// mode: "newline" -> "Hello\nWorld"
-// mode: "comma" -> "Hello, World"
-// mode: "custom" -> "Hello[separator]World"
-```
-
-**Features:**
-- Multiple combination modes (concatenate, newline, space, comma, custom)
-- Configurable separators and spacing
-- Optimized for prompt building and text processing
-- Handles empty inputs gracefully
-
-### File Upload Node
-
-Universal file handling with multiple output formats:
-
-```javascript
-const result = await runner.executeFlow(flowData, {
-  file: base64FileData  // File as base64 string or binary data
-});
-
-console.log('File info:', result.fileName, result.mimeType, result.size);
-console.log('File data:', result.data);
-```
-
-**Configuration Options:**
-- `outputFormat`: "base64", "base64_raw", "binary", "text", "metadata"
-- `maxSize`: Maximum file size in bytes (default: 10MB)
-- `allowedTypes`: Array of allowed MIME types
-
-**Features:**
-- Universal file format support
-- Multiple output formats for different use cases
-- File size and type validation
-- Metadata extraction (name, type, size, timestamp)
-- Binary and text data handling
-
-### Whisper Transcription Node
-
-Transcribe audio using OpenAI's Whisper API:
-
-```javascript
-const result = await runner.executeFlow(flowData, {
-  audio: audioData  // Audio as base64, binary, or Blob
-});
-
-console.log('Transcription:', result.text);
-console.log('Language:', result.language);
-console.log('Duration:', result.duration);
-```
-
-**Configuration Options:**
-- `model`: Whisper model to use (default: "whisper-1")
-- `language`: Target language (optional, auto-detected if not specified)
-- `prompt`: Context prompt to improve accuracy
-- `responseFormat`: "text", "json", "verbose_json"
-- `temperature`: Sampling temperature (0-1)
-
-**Features:**
-- Multiple audio format support (WAV, MP3, M4A, etc.)
-- Language detection and specification
-- Context prompts for improved accuracy
-- Detailed metadata and timing information
-- Robust error handling and validation
-
-## Error Handling
-
-The SDK provides comprehensive error handling:
+## 🐛 Error Handling
 
 ```javascript
 try {
-  const result = await runner.executeFlow(flowData, inputs);
+  const result = await runner.execute(workflow, inputs);
+  console.log('Success:', result);
 } catch (error) {
-  console.error('Flow execution failed:', error.message);
+  console.error('Workflow failed:', error.message);
   
   // Get detailed logs
   const logs = runner.getLogs();
@@ -339,99 +349,82 @@ try {
 }
 ```
 
-## Configuration Options
+## 📊 Monitoring & Debugging
 
 ```javascript
-const runner = new ClaraFlowRunner({
-  enableLogging: true,        // Enable detailed logging
-  timeout: 60000,             // Global timeout in milliseconds
-  sandbox: true,              // Sandbox custom node execution
-  maxNodes: 1000,             // Maximum nodes per flow
-  maxDepth: 100               // Maximum execution depth
+const runner = new ClaraFlowRunner({ enableLogging: true });
+
+// Execute workflow
+await runner.execute(workflow);
+
+// Get execution logs
+const logs = runner.getLogs();
+logs.forEach(log => {
+  console.log(`[${log.level}] ${log.message}`, log.data);
+});
+
+// Clear logs
+runner.clearLogs();
+```
+
+## 🚀 Server Deployment (Coming Soon)
+
+The SDK is designed to work seamlessly with server deployment:
+
+```javascript
+// Future server integration
+import express from 'express';
+import { ClaraFlowRunner } from 'clara-flow-sdk';
+
+const app = express();
+const runner = new ClaraFlowRunner();
+
+app.post('/execute', async (req, res) => {
+  try {
+    const { workflow, inputs } = req.body;
+    const result = await runner.execute(workflow, inputs);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 ```
 
-## Custom Nodes
+## 📝 TypeScript Support
 
-Register custom node types:
+```typescript
+import { ClaraFlowRunner, BrowserUtils } from 'clara-flow-sdk';
 
-```javascript
-await runner.registerCustomNode({
-  type: 'custom-transform',
-  name: 'Custom Transform',
-  inputs: [{ id: 'input', name: 'Input', type: 'any' }],
-  outputs: [{ id: 'output', name: 'Output', type: 'any' }],
-  executionCode: `
-    function execute(inputs, properties, context) {
-      return { output: inputs.input.toUpperCase() };
-    }
-  `
+interface WorkflowResult {
+  [key: string]: any;
+}
+
+const runner: ClaraFlowRunner = new ClaraFlowRunner({
+  enableLogging: true,
+  timeout: 30000
 });
+
+const result: WorkflowResult = await runner.execute(workflow, inputs);
 ```
 
-## Flow Format Compatibility
+## 🤝 Contributing
 
-The SDK supports multiple flow formats:
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```javascript
-// Agent Studio export format
-const agentStudioExport = {
-  format: "clara-sdk",
-  version: "1.0.0",
-  flow: {
-    id: "flow-1",
-    name: "My Flow",
-    nodes: [...],
-    connections: [...]
-  },
-  customNodes: [...],
-  metadata: {...}
-};
+## 📄 License
 
-// Direct flow format
-const directFlow = {
-  id: "flow-1",
-  name: "My Flow", 
-  nodes: [...],
-  connections: [...]
-};
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-// Both formats work seamlessly
-await runner.executeFlow(agentStudioExport);
-await runner.executeFlow(directFlow);
-```
+## 🆘 Support
 
-## Performance
+- 📖 [Documentation](https://github.com/clara-ai/clara-flow-sdk/wiki)
+- 🐛 [Issue Tracker](https://github.com/clara-ai/clara-flow-sdk/issues)
+- 💬 [Discord Community](https://discord.gg/clara)
 
-- **Fast Execution**: Optimized node execution pipeline
-- **Memory Efficient**: Minimal memory footprint
-- **Concurrent Execution**: Support for parallel node execution
-- **Streaming Support**: Handle large data sets efficiently
+---
 
-## Browser Support
-
-The SDK works in both Node.js and browser environments:
-
-```html
-<!-- Browser usage -->
-<script type="module">
-  import { ClaraFlowRunner } from 'clara-flow-sdk';
-  
-  const runner = new ClaraFlowRunner();
-  // Use as normal
-</script>
-```
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
-
-## Support
-
-- 📖 Documentation: [Full API Documentation](docs/)
-- 🐛 Issues: [GitHub Issues](https://github.com/clara-ai/clara-sdk/issues)
-- 💬 Community: [Clara Community](https://community.clara.ai) 
+**Made with ❤️ by the Clara Team** 
