@@ -701,6 +701,24 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [providers, setProviders] = useState<ClaraProvider[]>([]);
   const [availableModels, setAvailableModels] = useState<ClaraModel[]>([]);
 
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  // Load wallpaper from database
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
+
   // Connect to ComfyUI and fetch models, loras, vaes, and system stats
   useEffect(() => {
     const connectAndFetch = async () => {
@@ -1677,218 +1695,236 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   };
 
   return (
-    <div className="flex h-screen">
-      {!isInitialSetupComplete && (
-        <InitialLoadingOverlay 
-          loadingStatus={loadingStatus} 
-          connectionError={connectionError}
-          onNavigateHome={handleNavigateHome}
-          onRetry={handleRetryConnection}
+    <div className="flex h-screen relative">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
         />
       )}
-      <Sidebar
-        activePage="image-gen"
-        onPageChange={onPageChange || (() => {})}
-        sdModels={sdModels}
-        loras={loras}
-        vaes={vaes}
-        systemStats={systemStats}
-      />
-      <div className="flex-1 flex flex-col">
-        <ImageGenHeader 
-          userName="User" 
-          onPageChange={onPageChange} 
+
+      {/* Content with relative z-index */}
+      <div className="relative z-10 flex h-screen w-full">
+        {!isInitialSetupComplete && (
+          <InitialLoadingOverlay 
+            loadingStatus={loadingStatus} 
+            connectionError={connectionError}
+            onNavigateHome={handleNavigateHome}
+            onRetry={handleRetryConnection}
+          />
+        )}
+        <Sidebar
+          activePage="image-gen"
+          onPageChange={onPageChange || (() => {})}
+          sdModels={sdModels}
+          loras={loras}
+          vaes={vaes}
           systemStats={systemStats}
-          onComfyUIManager={() => setShowComfyUIManager(true)}
-          onModelManager={() => setShowModelManager(true)}
-          onSwitchToComfyUI={handleSwitchToComfyUI}
-          onRefreshComfyUI={refreshComfyUI}
-          showComfyUIInterface={showComfyUIInterface}
-          comfyuiMode={comfyuiMode}
         />
-        
-        {/* Conditional rendering: Show either Clara's interface or ComfyUI interface */}
-        {showComfyUIInterface ? (
-          // ComfyUI Interface
-          <div className="flex-1 relative bg-gray-100 dark:bg-gray-900">
-            {/* Loading State */}
-            {comfyUILoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600 dark:text-gray-400">Loading ComfyUI Interface...</p>
-                </div>
-              </div>
-            )}
-
-            {/* Error State */}
-            {comfyUILoadError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
-                <div className="text-center max-w-md mx-auto p-6">
-                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                    Cannot Load ComfyUI Interface
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-6">
-                    ComfyUI cannot be embedded due to security restrictions (X-Frame-Options). 
-                    You can open it in a new tab instead.
-                  </p>
-                  <div className="space-y-3">
-                    <button
-                      onClick={openComfyUIInNewTab}
-                      className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                    >
-                      Open ComfyUI in New Tab
-                    </button>
-                    <button
-                      onClick={handleSwitchToComfyUI}
-                      className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                    >
-                      Back to Clara ImageGen
-                    </button>
+        <div className="flex-1 flex flex-col">
+          <ImageGenHeader 
+            userName="User" 
+            onPageChange={onPageChange} 
+            systemStats={systemStats}
+            onComfyUIManager={() => setShowComfyUIManager(true)}
+            onModelManager={() => setShowModelManager(true)}
+            onSwitchToComfyUI={handleSwitchToComfyUI}
+            onRefreshComfyUI={refreshComfyUI}
+            showComfyUIInterface={showComfyUIInterface}
+            comfyuiMode={comfyuiMode}
+          />
+          
+          {/* Conditional rendering: Show either Clara's interface or ComfyUI interface */}
+          {showComfyUIInterface ? (
+            // ComfyUI Interface
+            <div className="flex-1 relative bg-gray-100 dark:bg-gray-900">
+              {/* Loading State */}
+              {comfyUILoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600 dark:text-gray-400">Loading ComfyUI Interface...</p>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-                         {/* ComfyUI WebView */}
-             {!comfyUILoadError && (
-               <ComfyUIWebView
-                 onLoad={handleComfyUILoad}
-                 onError={handleComfyUIError}
-                 comfyUIKey={comfyUIKey}
-                 comfyuiUrl={comfyuiUrl}
-               />
-             )}
-
-
-          </div>
-        ) : (
-          // Clara's ImageGen Interface
-          <>
-            {isGenerating && (
-              <LoadingOverlay 
-                progress={progress} 
-                images={generatedImages}
-                error={generationError}
-                onCancel={handleCancelGeneration}
-                onRetry={handleRetryGeneration}
-                onNavigateHome={handleNavigateHome}
-              />
-            )}
-            <div className="flex-1 overflow-hidden flex">
-              <div className={`flex-1 flex flex-col transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
-                {/* Gallery section - takes remaining space */}
-                <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
-                  <GeneratedGallery
-                    generatedImages={generatedImages}
-                    isGenerating={isGenerating}
-                    handleDownload={handleDownload}
-                    handleDelete={handleDelete}
-                  />
+              {/* Error State */}
+              {comfyUILoadError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-20">
+                  <div className="text-center max-w-md mx-auto p-6">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                      Cannot Load ComfyUI Interface
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                      ComfyUI cannot be embedded due to security restrictions (X-Frame-Options). 
+                      You can open it in a new tab instead.
+                    </p>
+                    <div className="space-y-3">
+                      <button
+                        onClick={openComfyUIInNewTab}
+                        className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        Open ComfyUI in New Tab
+                      </button>
+                      <button
+                        onClick={handleSwitchToComfyUI}
+                        className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                      >
+                        Back to Clara ImageGen
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                
-                {/* Prompt area - sticks to bottom */}
-                <div className={`flex-shrink-0 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
-                  <PromptArea
-                    prompt={prompt}
-                    setPrompt={setPrompt}
-                    mustSelectModel={mustSelectModel}
-                    isGenerating={isGenerating}
-                    handleSettingsClick={handleSettingsClick}
-                    handleGenerate={handleGenerate}
-                    showSettings={showSettings}
-                    handleImageUpload={handleImageUpload}
-                    onEnhancePrompt={handleEnhancePrompt}
-                    isEnhancing={isEnhancing}
-                    isLLMConnected={isLLMConnected}
-                    availableModels={availableModels}
-                    onModelSelect={handleLLMModelSelect}
-                    clearImage={clearImageFlag}
-                    onImageClear={handleImageClear}
-                    providers={providers} // Pass providers to PromptArea
-                  />
-                </div>
-              </div>
+              )}
+
+                           {/* ComfyUI WebView */}
+               {!comfyUILoadError && (
+                 <ComfyUIWebView
+                   onLoad={handleComfyUILoad}
+                   onError={handleComfyUIError}
+                   comfyUIKey={comfyUIKey}
+                   comfyuiUrl={comfyuiUrl}
+                 />
+               )}
+
+
             </div>
-          </>
+          ) : (
+            // Clara's ImageGen Interface
+            <>
+              {isGenerating && (
+                <LoadingOverlay 
+                  progress={progress} 
+                  images={generatedImages}
+                  error={generationError}
+                  onCancel={handleCancelGeneration}
+                  onRetry={handleRetryGeneration}
+                  onNavigateHome={handleNavigateHome}
+                />
+              )}
+              <div className="flex-1 overflow-hidden flex">
+                <div className={`flex-1 flex flex-col transition-all duration-300 ${showSettings ? 'pr-80' : 'pr-0'}`}>
+                  {/* Gallery section - takes remaining space */}
+                  <div className={`flex-1 overflow-y-auto p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
+                    <GeneratedGallery
+                      generatedImages={generatedImages}
+                      isGenerating={isGenerating}
+                      handleDownload={handleDownload}
+                      handleDelete={handleDelete}
+                    />
+                  </div>
+                  
+                  {/* Prompt area - sticks to bottom */}
+                  <div className={`flex-shrink-0 p-6 transition-all duration-300 ${showSettings ? 'max-w-5xl' : 'max-w-7xl'} mx-auto w-full`}>
+                    <PromptArea
+                      prompt={prompt}
+                      setPrompt={setPrompt}
+                      mustSelectModel={mustSelectModel}
+                      isGenerating={isGenerating}
+                      handleSettingsClick={handleSettingsClick}
+                      handleGenerate={handleGenerate}
+                      showSettings={showSettings}
+                      handleImageUpload={handleImageUpload}
+                      onEnhancePrompt={handleEnhancePrompt}
+                      isEnhancing={isEnhancing}
+                      isLLMConnected={isLLMConnected}
+                      availableModels={availableModels}
+                      onModelSelect={handleLLMModelSelect}
+                      clearImage={clearImageFlag}
+                      onImageClear={handleImageClear}
+                      providers={providers} // Pass providers to PromptArea
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        
+        {/* Global UI Elements */}
+        {showNotification && (
+          <div className="fixed top-4 right-4 z-50 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transition-opacity duration-300">
+            {notificationMessage}
+          </div>
+        )}
+        {showComfyUIManager && (
+          <ComfyUIManager onClose={() => setShowComfyUIManager(false)} />
+        )}
+        {showModelManager && (
+          <ImageModelManager onClose={() => setShowModelManager(false)} />
+        )}
+        {showCompatibilityModal && systemInfo && (
+          <SystemCompatibilityModal
+            isOpen={showCompatibilityModal}
+            onClose={handleUserRejection}
+            onAccept={handleUserConsent}
+            systemInfo={systemInfo}
+          />
+        )}
+        
+        {/* Settings Drawer - Only show in Clara interface mode */}
+        {!showComfyUIInterface && (
+          <SettingsDrawer
+            drawerRef={edgeRef}
+            showSettings={showSettings}
+            expandedSections={expandedSections}
+            toggleSection={toggleSection}
+            sdModels={sdModels}
+            selectedModel={selectedModel}
+            setSelectedModel={handleModelSelection}
+            loras={loras}
+            selectedLora={selectedLora}
+            setSelectedLora={setSelectedLora}
+            loraStrength={loraStrength}
+            setLoraStrength={setLoraStrength}
+            vaes={vaes}
+            selectedVae={selectedVae}
+            setSelectedVae={setSelectedVae}
+            negativeTags={negativeTags}
+            negativeInput={negativeInput}
+            setNegativeInput={setNegativeInput}
+            handleNegativeTagAdd={handleNegativeTagAdd}
+            handleNegativeTagRemove={handleNegativeTagRemove}
+            handleNegativeInputKeyDown={handleNegativeInputKeyDown}
+            steps={steps}
+            setSteps={setSteps}
+            guidanceScale={guidanceScale}
+            setGuidanceScale={setGuidanceScale}
+            resolutions={RESOLUTIONS}
+            selectedResolution={selectedResolution}
+            setSelectedResolution={setSelectedResolution}
+            customWidth={customWidth}
+            setCustomWidth={setCustomWidth}
+            customHeight={customHeight}
+            setCustomHeight={setCustomHeight}
+            controlNetModels={controlNetModels}
+            selectedControlNet={selectedControlNet}
+            setSelectedControlNet={setSelectedControlNet}
+            upscaleModels={upscaleModels}
+            selectedUpscaler={selectedUpscaler}
+            setSelectedUpscaler={setSelectedUpscaler}
+            denoise={denoise}
+            setDenoise={setDenoise}
+            sampler={sampler}
+            setSampler={setSampler}
+            scheduler={scheduler}
+            setScheduler={setScheduler}
+          />
         )}
       </div>
-      
-      {/* Global UI Elements */}
-      {showNotification && (
-        <div className="fixed top-4 right-4 z-50 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg transition-opacity duration-300">
-          {notificationMessage}
-        </div>
-      )}
-      {showComfyUIManager && (
-        <ComfyUIManager onClose={() => setShowComfyUIManager(false)} />
-      )}
-      {showModelManager && (
-        <ImageModelManager onClose={() => setShowModelManager(false)} />
-      )}
-      {showCompatibilityModal && systemInfo && (
-        <SystemCompatibilityModal
-          isOpen={showCompatibilityModal}
-          onClose={handleUserRejection}
-          onAccept={handleUserConsent}
-          systemInfo={systemInfo}
-        />
-      )}
-      
-      {/* Settings Drawer - Only show in Clara interface mode */}
-      {!showComfyUIInterface && (
-        <SettingsDrawer
-          drawerRef={edgeRef}
-          showSettings={showSettings}
-          expandedSections={expandedSections}
-          toggleSection={toggleSection}
-          sdModels={sdModels}
-          selectedModel={selectedModel}
-          setSelectedModel={handleModelSelection}
-          loras={loras}
-          selectedLora={selectedLora}
-          setSelectedLora={setSelectedLora}
-          loraStrength={loraStrength}
-          setLoraStrength={setLoraStrength}
-          vaes={vaes}
-          selectedVae={selectedVae}
-          setSelectedVae={setSelectedVae}
-          negativeTags={negativeTags}
-          negativeInput={negativeInput}
-          setNegativeInput={setNegativeInput}
-          handleNegativeTagAdd={handleNegativeTagAdd}
-          handleNegativeTagRemove={handleNegativeTagRemove}
-          handleNegativeInputKeyDown={handleNegativeInputKeyDown}
-          steps={steps}
-          setSteps={setSteps}
-          guidanceScale={guidanceScale}
-          setGuidanceScale={setGuidanceScale}
-          resolutions={RESOLUTIONS}
-          selectedResolution={selectedResolution}
-          setSelectedResolution={setSelectedResolution}
-          customWidth={customWidth}
-          setCustomWidth={setCustomWidth}
-          customHeight={customHeight}
-          setCustomHeight={setCustomHeight}
-          controlNetModels={controlNetModels}
-          selectedControlNet={selectedControlNet}
-          setSelectedControlNet={setSelectedControlNet}
-          upscaleModels={upscaleModels}
-          selectedUpscaler={selectedUpscaler}
-          setSelectedUpscaler={setSelectedUpscaler}
-          denoise={denoise}
-          setDenoise={setDenoise}
-          sampler={sampler}
-          setSampler={setSampler}
-          scheduler={scheduler}
-          setScheduler={setScheduler}
-        />
-      )}
     </div>
   );
 };

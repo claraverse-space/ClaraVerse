@@ -22,6 +22,7 @@ import ExportModal from './ExportModal';
 import NotebookExportService, { NotebookContent, ExportOptions } from './NotebookExportService';
 import { notebookDataCollector } from './NotebookDataCollector';
 import { NotebookResponse, NotebookDocumentResponse, claraNotebookService } from '../../services/claraNotebookService';
+import { db } from '../../db';
 
 interface NotebookWorkspaceProps {
   notebook: NotebookResponse;
@@ -52,6 +53,24 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
   const [showExportModal, setShowExportModal] = useState(false);
   const [notebookContent, setNotebookContent] = useState<NotebookContent | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+
+  // Load wallpaper from database
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
+  }, []);
 
   // Calculate completed document count
   const completedDocumentCount = documents.filter(doc => doc.status === 'completed').length;
@@ -206,193 +225,211 @@ const NotebookWorkspace: React.FC<NotebookWorkspaceProps> = ({
   };
 
   return (
-    <div className="h-[95vh] flex bg-white dark:bg-black overflow-hidden">
-      {/* Center Panel - Notes Canvas */}
-      <div 
-        className="flex-1 bg-white dark:bg-black flex flex-col h-full min-w-0"
-        style={{ width: getCenterPanelWidth() }}
-      >
-        {/* Center Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-black flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm font-medium">Back</span>
-            </button>
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-purple-500" />
-              <span className="font-medium text-gray-900 dark:text-white">{notebook.name}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Export Button */}
-            <button
-              onClick={handleOpenExportModal}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Export</span>
-            </button>
-
-            {/* Right Panel Toggle */}
-            <button
-              onClick={() => {
-                if (!showRightSidebar) {
-                  // Auto-expand to optimal width when opening sidebar
-                  const optimalWidths = {
-                    chat: 500,
-                    outline: 400,
-                    graph: 650
-                  };
-                  const optimalWidth = optimalWidths[rightSidebarContent];
-                  setRightSidebarWidth(Math.min(optimalWidth, 800));
-                }
-                setShowRightSidebar(!showRightSidebar);
-              }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                showRightSidebar
-                  ? 'bg-blue-500 text-white'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700'
-              }`}
-            >
-              <ChevronRight className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                {showRightSidebar ? "Hide Panel" : "Show Panel"}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Notes Canvas */}
-        <div className="flex-1 overflow-hidden min-h-0">
-          <NotebookCanvas
-            notebookId={notebook.id}
-            onNoteCreated={handleNoteCreated}
-            onNoteUpdated={handleNoteUpdated}
-            onNoteDeleted={handleNoteDeleted}
-          />
-        </div>
-      </div>
-
-      {/* Right Sidebar */}
-      {showRightSidebar && (
-        <>
-          {/* Right Resize Handle */}
-          <div
-            className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 cursor-col-resize transition-colors h-full"
-            onMouseDown={handleRightResize}
-          />
-
-          <div 
-            className="bg-white dark:bg-black border-l border-gray-200 dark:border-gray-700 flex flex-col h-full"
-            style={{ width: rightSidebarWidth }}
-          >
-            {/* Right Sidebar Header with Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <div className="flex items-center justify-between p-3">
-                <h3 className="font-medium text-gray-900 dark:text-white">Tools & Chat</h3>
-                <button
-                  onClick={() => setShowRightSidebar(false)}
-                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                  <span className="text-sm font-medium">Close</span>
-                </button>
-              </div>
-              
-              {/* Tab Navigation */}
-              <div className="flex border-b border-gray-200 dark:border-gray-700">
-                <button
-                  onClick={() => handleContentChange('chat')}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
-                    rightSidebarContent === 'chat'
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Chat
-                </button>
-                <button
-                  onClick={() => handleContentChange('outline')}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
-                    rightSidebarContent === 'outline'
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  <FileText className="w-4 h-4" />
-                  Outline
-                </button>
-
-                <button
-                  onClick={() => handleContentChange('graph')}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
-                    rightSidebarContent === 'graph'
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  <Network className="w-4 h-4" />
-                  Graph
-                </button>
-              </div>
-            </div>
-
-            {/* Right Sidebar Content */}
-            <div className="flex-1 overflow-hidden min-h-0">
-              {rightSidebarContent === 'chat' && (
-                <div className="h-full">
-                  <NotebookChat
-                    notebookId={notebook.id}
-                    documentCount={documents.length}
-                    completedDocumentCount={completedDocumentCount}
-                    onDocumentUpload={handleDocumentUpload}
-                  />
-                </div>
-              )}
-              {rightSidebarContent === 'outline' && (
-                <div className="p-4 h-full overflow-y-auto">
-                  <NotebookOutline notebookId={notebook.id} selectedNotes={selectedNotes} />
-                </div>
-              )}
-
-              {rightSidebarContent === 'graph' && (
-                <div className="h-full">
-                  <GraphViewer notebookId={notebook.id} onClose={() => setShowRightSidebar(false)} />
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Export Modal */}
-      {notebookContent && (
-        <ExportModal
-          isOpen={showExportModal}
-          onClose={() => {
-            setShowExportModal(false);
-            setNotebookContent(null);
+    <div className="h-[95vh] flex bg-white dark:bg-black overflow-hidden relative">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
           }}
-          onExport={handleExport}
-          notebookContent={notebookContent}
         />
       )}
 
-      {/* Loading overlay for export modal */}
-      {isLoadingContent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-500"></div>
-            <span className="text-gray-900 dark:text-gray-100">Loading notebook content...</span>
+      {/* Content with relative z-index */}
+      <div className="relative z-10 h-full flex w-full">
+        {/* Center Panel - Notes Canvas */}
+        <div 
+          className="flex-1 bg-white dark:bg-black flex flex-col h-full min-w-0"
+          style={{ width: getCenterPanelWidth() }}
+        >
+          {/* Center Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-black flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onClose}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-sm font-medium">Back</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-purple-500" />
+                <span className="font-medium text-gray-900 dark:text-white">{notebook.name}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Export Button */}
+              <button
+                onClick={handleOpenExportModal}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700"
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-sm font-medium">Export</span>
+              </button>
+
+              {/* Right Panel Toggle */}
+              <button
+                onClick={() => {
+                  if (!showRightSidebar) {
+                    // Auto-expand to optimal width when opening sidebar
+                    const optimalWidths = {
+                      chat: 500,
+                      outline: 400,
+                      graph: 650
+                    };
+                    const optimalWidth = optimalWidths[rightSidebarContent];
+                    setRightSidebarWidth(Math.min(optimalWidth, 800));
+                  }
+                  setShowRightSidebar(!showRightSidebar);
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  showRightSidebar
+                    ? 'bg-blue-500 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  {showRightSidebar ? "Hide Panel" : "Show Panel"}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Notes Canvas */}
+          <div className="flex-1 overflow-hidden min-h-0">
+            <NotebookCanvas
+              notebookId={notebook.id}
+              onNoteCreated={handleNoteCreated}
+              onNoteUpdated={handleNoteUpdated}
+              onNoteDeleted={handleNoteDeleted}
+            />
           </div>
         </div>
-      )}
+
+        {/* Right Sidebar */}
+        {showRightSidebar && (
+          <>
+            {/* Right Resize Handle */}
+            <div
+              className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 cursor-col-resize transition-colors h-full"
+              onMouseDown={handleRightResize}
+            />
+
+            <div 
+              className="bg-white dark:bg-black border-l border-gray-200 dark:border-gray-700 flex flex-col h-full"
+              style={{ width: rightSidebarWidth }}
+            >
+              {/* Right Sidebar Header with Tabs */}
+              <div className="border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div className="flex items-center justify-between p-3">
+                  <h3 className="font-medium text-gray-900 dark:text-white">Tools & Chat</h3>
+                  <button
+                    onClick={() => setShowRightSidebar(false)}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                    <span className="text-sm font-medium">Close</span>
+                  </button>
+                </div>
+                
+                {/* Tab Navigation */}
+                <div className="flex border-b border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => handleContentChange('chat')}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                      rightSidebarContent === 'chat'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Chat
+                  </button>
+                  <button
+                    onClick={() => handleContentChange('outline')}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                      rightSidebarContent === 'outline'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    Outline
+                  </button>
+
+                  <button
+                    onClick={() => handleContentChange('graph')}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                      rightSidebarContent === 'graph'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <Network className="w-4 h-4" />
+                    Graph
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Sidebar Content */}
+              <div className="flex-1 overflow-hidden min-h-0">
+                {rightSidebarContent === 'chat' && (
+                  <div className="h-full">
+                    <NotebookChat
+                      notebookId={notebook.id}
+                      documentCount={documents.length}
+                      completedDocumentCount={completedDocumentCount}
+                      onDocumentUpload={handleDocumentUpload}
+                    />
+                  </div>
+                )}
+                {rightSidebarContent === 'outline' && (
+                  <div className="p-4 h-full overflow-y-auto">
+                    <NotebookOutline notebookId={notebook.id} selectedNotes={selectedNotes} />
+                  </div>
+                )}
+
+                {rightSidebarContent === 'graph' && (
+                  <div className="h-full">
+                    <GraphViewer notebookId={notebook.id} onClose={() => setShowRightSidebar(false)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Export Modal */}
+        {notebookContent && (
+          <ExportModal
+            isOpen={showExportModal}
+            onClose={() => {
+              setShowExportModal(false);
+              setNotebookContent(null);
+            }}
+            onExport={handleExport}
+            notebookContent={notebookContent}
+          />
+        )}
+
+        {/* Loading overlay for export modal */}
+        {isLoadingContent && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-900 rounded-lg p-6 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-500"></div>
+              <span className="text-gray-900 dark:text-gray-100">Loading notebook content...</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
