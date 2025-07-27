@@ -1484,9 +1484,33 @@ Please provide your refined response for following user question:
     try {
       // Get conversation context (configurable context window, default 50 messages)
       const contextWindow = enforcedConfig?.contextWindow || 50;
-      const conversationHistory = currentMessages
+      const rawHistory = currentMessages
         .slice(-contextWindow)  // Take last N messages based on config
         .filter(msg => msg.role !== 'system'); // Exclude system messages
+
+      // Ensure proper user/assistant alternation for API compatibility
+      const conversationHistory: ClaraMessage[] = [];
+      let lastRole: 'user' | 'assistant' | null = null;
+      
+      for (const message of rawHistory) {
+        // Only include user and assistant messages
+        if (message.role === 'user' || message.role === 'assistant') {
+          // Ensure alternating pattern - skip consecutive messages of same role
+          if (lastRole !== message.role) {
+            conversationHistory.push(message);
+            lastRole = message.role;
+          }
+        }
+      }
+      
+      // Ensure the conversation history ends with an assistant message if we have history
+      // This prevents starting with user->user pattern when we add the current user message
+      if (conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1].role === 'user') {
+        // Remove the last user message to maintain alternating pattern
+        conversationHistory.pop();
+      }
+
+      console.log(`📚 Prepared ${conversationHistory.length} properly formatted history messages for AI service`);
 
       // Get system prompt (provider-specific or fallback to default)
       const currentProvider = providers.find(p => p.id === enforcedConfig.provider);

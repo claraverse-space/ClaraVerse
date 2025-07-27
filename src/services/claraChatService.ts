@@ -359,25 +359,49 @@ export class ClaraChatService {
       content: systemPrompt
     });
 
-    // Add conversation history if provided
+    // Add conversation history if provided with proper role alternation
     if (conversationHistory && conversationHistory.length > 0) {
-      const historyMessages = conversationHistory.slice(0, -1);
-      for (const historyMessage of historyMessages) {
-        const chatMessage: ChatMessage = {
-          role: historyMessage.role,
-          content: historyMessage.content
-        };
+      // Filter and organize conversation history to ensure proper alternating pattern
+      const validMessages: ChatMessage[] = [];
+      let lastRole: 'user' | 'assistant' | null = null;
+      
+      for (const historyMessage of conversationHistory) {
+        // Skip system messages and tool messages from history
+        if (historyMessage.role === 'system') {
+          continue;
+        }
+        
+        // Only include user and assistant messages
+        if (historyMessage.role === 'user' || historyMessage.role === 'assistant') {
+          // Ensure alternating pattern - skip consecutive messages of same role
+          if (lastRole !== historyMessage.role) {
+            const chatMessage: ChatMessage = {
+              role: historyMessage.role,
+              content: historyMessage.content
+            };
 
-        if (historyMessage.attachments) {
-          const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
-          if (imageAttachments.length > 0) {
-            chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+            if (historyMessage.attachments) {
+              const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
+              if (imageAttachments.length > 0) {
+                chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
+              }
+            }
+
+            validMessages.push(chatMessage);
+            lastRole = historyMessage.role;
           }
         }
-
-        messages.push(chatMessage);
       }
-      console.log(`📚 Added ${conversationHistory.length - 1} history messages to chat context`);
+      
+      // Ensure the conversation history ends with an assistant message if we have history
+      // This prevents starting with user->user pattern when we add the current user message
+      if (validMessages.length > 0 && validMessages[validMessages.length - 1].role === 'user') {
+        // Remove the last user message to maintain alternating pattern
+        validMessages.pop();
+      }
+      
+      messages.push(...validMessages);
+      console.log(`📚 Added ${validMessages.length} properly formatted history messages to chat context`);
     }
 
     // Add the current user message

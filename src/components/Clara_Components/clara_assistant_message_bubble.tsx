@@ -15,7 +15,7 @@
  * - Theme support
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { 
   User, 
   Bot, 
@@ -55,13 +55,14 @@ import { copyToClipboard } from '../../utils/clipboard';
 import { useSmoothScroll } from '../../hooks/useSmoothScroll';
 
 // Import TTS service
-import { claraTTSService } from '../../services/claraTTSService';
+import { claraTTSService, AudioControlState } from '../../services/claraTTSService';
 
 // Import ExecutionDetailsModal
 import ExecutionDetailsModal from './ExecutionDetailsModal';
 
 // Import ExtractedImagesRenderer
 import ExtractedImagesRenderer from './ExtractedImagesRenderer';
+import TTSControlPanel from './TTSControlPanel';
 
 /**
  * Thinking content parser and utilities
@@ -584,6 +585,7 @@ const MessageActions: React.FC<{
   isTTSHealthy?: boolean;
   isTTSPlaying?: boolean;
   isTTSLoading?: boolean;
+  showTTSControls?: boolean;
   onTTSToggle?: () => void;
   // Execution details props
   onShowExecutionDetails?: () => void;
@@ -596,6 +598,7 @@ const MessageActions: React.FC<{
   isTTSHealthy = false,
   isTTSPlaying = false,
   isTTSLoading = false,
+  showTTSControls = false,
   onTTSToggle,
   onShowExecutionDetails
 }) => {
@@ -679,7 +682,7 @@ const MessageActions: React.FC<{
       )}
 
       {/* TTS button - only for assistant messages */}
-      {message.role === 'assistant' && isTTSHealthy && (
+      {message.role === 'assistant' && isTTSHealthy && !showTTSControls && (
         <button
           onClick={onTTSToggle}
           disabled={isTTSLoading}
@@ -694,6 +697,16 @@ const MessageActions: React.FC<{
             <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           )}
         </button>
+      )}
+
+      {/* TTS Control Panel Indicator - show mini controls when panel is active */}
+      {message.role === 'assistant' && isTTSHealthy && showTTSControls && (
+        <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700/50">
+            <Volume2 className="w-3 h-3 text-blue-500 dark:text-blue-400" />
+            <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Playing</span>
+          </div>
+        </div>
       )}
 
       {/* Edit button */}
@@ -884,9 +897,14 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
   
   // TTS state
   const [isTTSHealthy, setIsTTSHealthy] = useState(false);
-  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
   const [isTTSLoading, setIsTTSLoading] = useState(false);
+  const [audioState, setAudioState] = useState<AudioControlState | null>(null);
   
+  // Check if this specific message is playing
+  const isThisMessagePlaying = audioState?.messageId === message.id;
+  const showTTSControls = isThisMessagePlaying && (audioState?.isPlaying || audioState?.isPaused);
+  const isTTSPlaying = isThisMessagePlaying && audioState?.isPlaying;
+
   // Use the smooth scroll hook for better streaming behavior
   const { scrollToElementDebounced, scrollToElementImmediate } = useSmoothScroll({
     debounceMs: 150,
@@ -980,14 +998,31 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
     return unsubscribe;
   }, []);
 
-  // TTS toggle handler
+  // Subscribe to TTS audio state changes
+  useEffect(() => {
+    const unsubscribe = claraTTSService.onStateChange((state) => {
+      setAudioState(state);
+      // setIsTTSPlaying(state.isPlaying || state.isPaused); // This is now handled by isThisMessagePlaying
+      // setShowTTSControls(state.isPlaying || state.isPaused); // This is now handled by showTTSControls
+      
+      // Auto-hide loading state when audio starts playing
+      if (state.isPlaying && isTTSLoading) {
+        setIsTTSLoading(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [isTTSLoading]);
+
+  // TTS toggle handler - enhanced for new controls
   const handleTTSToggle = async () => {
     if (!isAssistant || !responseContent.trim()) return;
     
-    if (isTTSPlaying) {
+    if (isTTSPlaying || showTTSControls) {
       // Stop current playback
       claraTTSService.stopPlayback();
-      setIsTTSPlaying(false);
+      // setIsTTSPlaying(false); // This is now handled by isThisMessagePlaying
+      // setShowTTSControls(false); // This is now handled by showTTSControls
       return;
     }
     
@@ -1007,35 +1042,41 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
       
       if (!cleanContent) {
         console.warn('No content to synthesize');
+        setIsTTSLoading(false);
         return;
       }
       
-      setIsTTSPlaying(true);
-      
-      await claraTTSService.synthesizeAndPlay({
+      await claraTTSService.synthesizeAndPlayWithControls({
         text: cleanContent,
         engine: 'kokoro',
         voice: 'af_sarah',
         speed: 1.0,
         language: 'en'
-      });
+      }, 0.7, 1.0, message.id); // Pass message ID to track which message is playing
       
     } catch (error) {
       console.error('TTS playback error:', error);
       // Don't show error to user for TTS failures, just log it
     } finally {
       setIsTTSLoading(false);
-      setIsTTSPlaying(false);
     }
   };
 
+  // Handle TTS control panel close
+  const handleTTSControlClose = useCallback(() => {
+    claraTTSService.stopPlayback();
+    // setShowTTSControls(false); // This is now handled by showTTSControls
+    // setIsTTSPlaying(false); // This is now handled by isThisMessagePlaying
+  }, []);
+
   // Stop TTS when message content changes (for streaming)
   useEffect(() => {
-    if (message.metadata?.isStreaming && isTTSPlaying) {
+    if (message.metadata?.isStreaming && (isTTSPlaying || showTTSControls)) {
       claraTTSService.stopPlayback();
-      setIsTTSPlaying(false);
+      // setIsTTSPlaying(false); // This is now handled by isThisMessagePlaying
+      // setShowTTSControls(false); // This is now handled by showTTSControls
     }
-  }, [message.content, message.metadata?.isStreaming, isTTSPlaying]);
+  }, [message.content, message.metadata?.isStreaming, isTTSPlaying, showTTSControls]);
 
   // Execution details handlers
   const handleShowExecutionDetails = () => {
@@ -1132,6 +1173,7 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
             isTTSHealthy={isTTSHealthy}
             isTTSPlaying={isTTSPlaying}
             isTTSLoading={isTTSLoading}
+            showTTSControls={showTTSControls}
             onTTSToggle={handleTTSToggle}
             onShowExecutionDetails={executionId ? handleShowExecutionDetails : undefined}
           />
@@ -1236,6 +1278,17 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
 
           {/* Artifacts are now handled inline within MessageContentRenderer - no separate artifact cards needed */}
         </div>
+
+        {/* TTS Control Panel - Show when audio is playing */}
+        {showTTSControls && message.role === 'assistant' && isTTSHealthy && (
+          <div className="mt-3">
+            <TTSControlPanel
+              isVisible={showTTSControls}
+              onClose={handleTTSControlClose}
+              className="transition-all duration-300 ease-in-out"
+            />
+          </div>
+        )}
 
         {/* Message Metadata */}
         <MessageMetadata 

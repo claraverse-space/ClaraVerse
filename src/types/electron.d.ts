@@ -249,6 +249,21 @@ declare global {
     };
     webContainerManager: any;
     claraTTSService: any;
+    electronScreenShare?: {
+      getDesktopSources: () => Promise<Array<{
+        id: string;
+        name: string;
+        thumbnail: string;
+      }>>;
+      getScreenAccessStatus: () => Promise<{
+        status: 'granted' | 'denied' | 'unknown';
+        error?: string;
+      }>;
+      requestScreenAccess: () => Promise<{
+        granted: boolean;
+        error?: string;
+      }>;
+    };
   }
 }
 

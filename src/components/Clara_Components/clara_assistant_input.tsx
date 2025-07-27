@@ -51,7 +51,9 @@ import {
   Brain,
   Shield,
   StopCircle,
-  Search
+  Search,
+  Grid3X3,
+  Monitor
 } from 'lucide-react';
 
 // Import types
@@ -599,6 +601,219 @@ const ModelSelector: React.FC<{
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * Apps Component - Dropdown with Clara plugins and tools
+ */
+const AppsDropdown: React.FC<{
+  show: boolean;
+  onClose: () => void;
+  onScreenShare: () => void;
+  isScreenSharing?: boolean;
+}> = ({ show, onClose, onScreenShare, isScreenSharing = false }) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (show) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [show, onClose]);
+
+  if (!show) return null;
+
+  const handleScreenShare = () => {
+    onScreenShare();
+    onClose();
+  };
+
+  return (
+    <div 
+      ref={dropdownRef}
+      className="absolute bottom-full right-0 mb-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
+    >
+      <div className="p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <Grid3X3 className="w-4 h-4 text-sakura-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Clara Apps</h3>
+        </div>
+        
+        <div className="space-y-1">
+          {/* Screen Share App */}
+          <button
+            onClick={handleScreenShare}
+            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
+              isScreenSharing 
+                ? 'bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50' 
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
+              isScreenSharing 
+                ? 'bg-green-200 dark:bg-green-800/50' 
+                : 'bg-blue-100 dark:bg-blue-900/30'
+            }`}>
+              <Monitor className={`w-4 h-4 ${
+                isScreenSharing 
+                  ? 'text-green-700 dark:text-green-400' 
+                  : 'text-blue-600 dark:text-blue-400'
+              }`} />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Screen Share {isScreenSharing && (
+                  <span className="text-xs text-green-600 dark:text-green-400">(Active)</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {isScreenSharing ? 'Stop sharing your screen' : 'Share your screen with Clara'}
+              </div>
+            </div>
+            {isScreenSharing && (
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            )}
+          </button>
+          
+          {/* Placeholder for future apps */}
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+            <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
+              More apps coming soon...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Screen Source Picker Component - Shows available screens and windows for sharing
+ */
+const ScreenSourcePicker: React.FC<{
+  show: boolean;
+  sources: Array<{ id: string; name: string; thumbnail: string }>;
+  onSelect: (source: { id: string; name: string; thumbnail: string }) => void;
+  onClose: () => void;
+}> = ({ show, sources, onSelect, onClose }) => {
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (show) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [show, onClose]);
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div 
+        ref={pickerRef}
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Monitor className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Choose Screen or Window to Share
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Select which screen or application window you want Clara to see
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[calc(80vh-140px)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sources.map((source) => (
+              <button
+                key={source.id}
+                onClick={() => onSelect(source)}
+                className="group relative border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <div className="aspect-video bg-gray-100 dark:bg-gray-700 rounded-md overflow-hidden mb-3">
+                  {source.thumbnail ? (
+                    <img
+                      src={source.thumbnail}
+                      alt={source.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Monitor className="w-8 h-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="text-left">
+                  <div className="font-medium text-gray-900 dark:text-white truncate">
+                    {source.name}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {source.name.includes('Screen') || source.name.includes('Desktop') ? 'Entire Screen' : 'Application Window'}
+                  </div>
+                </div>
+
+                {/* Selection indicator */}
+                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-2 h-2 bg-white rounded-full"></div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {sources.length === 0 && (
+            <div className="text-center py-12">
+              <Monitor className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">
+                No screens or windows available for sharing
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              💡 Tip: Choose "Entire Screen" to share everything, or select a specific window for privacy
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -2472,6 +2687,18 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [offlineProvider, setOfflineProvider] = useState<ClaraProvider | null>(null);
   const [showClaraCoreOffer, setShowClaraCoreOffer] = useState(false);
 
+  // Apps dropdown state
+  const [showAppsDropdown, setShowAppsDropdown] = useState(false);
+
+  // Screen sharing state
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Screen source picker state
+  const [showScreenPicker, setShowScreenPicker] = useState(false);
+  const [availableSources, setAvailableSources] = useState<Array<{ id: string; name: string; thumbnail: string }>>([]);
+
   // Progress tracking state for context loading feedback
   const [progressState, setProgressState] = useState<{
     isActive: boolean;
@@ -3249,6 +3476,60 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       }
     }
     
+    // Add screen capture if screen sharing is active
+    if (isScreenSharing) {
+      try {
+        const screenCapture = await captureScreen();
+        if (screenCapture) {
+          const screenAttachment: ClaraFileAttachment = {
+            id: `screen-capture-${Date.now()}`,
+            name: 'Screen Capture',
+            type: 'image',
+            size: 0, // Size not available for captures
+            mimeType: 'image/png',
+            base64: screenCapture,
+            processed: true,
+            processingResult: {
+              success: true,
+              metadata: {
+                isScreenCapture: true,
+                captureTime: new Date().toISOString()
+              }
+            }
+          };
+
+          // Add to attachments for AI
+          if (!attachments) {
+            attachments = [];
+          }
+          attachments.push(screenAttachment);
+
+          // Add to display attachments
+          displayAttachments.push({
+            ...screenAttachment,
+            base64: undefined, // Don't include base64 in display
+            processingResult: {
+              success: true,
+              extractedText: '[Screen Capture]'
+            }
+          });
+
+          addInfoNotification(
+            'Screen Captured',
+            'Current screen captured and included with your message.',
+            3000
+          );
+        }
+      } catch (error) {
+        console.error('Failed to capture screen for message:', error);
+        addErrorNotification(
+          'Screen Capture Failed',
+          'Could not capture screen for this message.',
+          3000
+        );
+      }
+    }
+    
     // Send enhanced prompt to AI for processing, but original input for display
     // Store the original input and display attachments in the enhanced prompt metadata
     if (displayAttachments.length > 0) {
@@ -3282,7 +3563,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     
     // Focus the textarea after sending for immediate next input
     focusTextarea();
-  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea]);
+  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea, isScreenSharing]);
 
   // Handle AI config changes
   const handleAIConfigChange = useCallback((newConfig: Partial<ClaraAIConfig>) => {
@@ -3517,17 +3798,81 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         
         // Add voice mode prefix for AI context
         const voiceModePrefix = "Warning: You are in speech mode, make sure to reply in few lines:  \n";
-        const messageWithPrefix = voiceModePrefix + originalTranscription;
+        let messageWithPrefix = voiceModePrefix + originalTranscription;
         
         console.log('🎤 Transcription complete:', originalTranscription);
         console.log('🎤 Sending message with voice mode prefix to AI');
         
+        // Initialize attachments array for screen capture and any other attachments
+        let attachments: ClaraFileAttachment[] | undefined;
+        
+        // Add screen capture if screen sharing is active
+        if (isScreenSharing) {
+          try {
+            const screenCapture = await captureScreen();
+            if (screenCapture) {
+              const screenAttachment: ClaraFileAttachment = {
+                id: `screen-capture-${Date.now()}`,
+                name: 'Screen Capture',
+                type: 'image',
+                size: 0, // Size not available for captures
+                mimeType: 'image/png',
+                base64: screenCapture,
+                processed: true,
+                processingResult: {
+                  success: true,
+                  metadata: {
+                    isScreenCapture: true,
+                    captureTime: new Date().toISOString()
+                  }
+                }
+              };
+
+              // Add to attachments for AI
+              if (!attachments) {
+                attachments = [];
+              }
+              attachments.push(screenAttachment);
+
+              // Add display metadata for screen capture
+              const displayAttachments = [{
+                id: screenAttachment.id,
+                name: screenAttachment.name,
+                type: screenAttachment.type,
+                size: screenAttachment.size,
+                processed: screenAttachment.processed
+              }];
+
+              // Create a special metadata comment that can be parsed later for display
+              const displayInfo = `[DISPLAY_META:${JSON.stringify({
+                originalMessage: originalTranscription,
+                displayAttachments: displayAttachments
+              })}]`;
+              messageWithPrefix = `${displayInfo}\n\n${messageWithPrefix}`;
+
+              addInfoNotification(
+                'Screen Captured',
+                'Current screen captured and included with your voice message.',
+                3000
+              );
+
+              console.log('🎤 Screen capture added to voice message');
+            }
+          } catch (error) {
+            console.error('Failed to capture screen for voice message:', error);
+            addErrorNotification(
+              'Screen Capture Failed',
+              'Could not capture screen for this voice message.',
+              3000
+            );
+          }
+        }
+        
         // Send the prefixed message to AI using the existing onSendMessage prop
         // The parent component will handle the actual message sending and display
-        // We'll pass the original transcription as a second parameter for display purposes
         if (onSendMessage) {
-          // For now, just send the prefixed message - the parent will handle display
-          onSendMessage(messageWithPrefix);
+          // Send the message with attachments if screen capture was successful
+          onSendMessage(messageWithPrefix, attachments);
         }
         
       } else {
@@ -3540,7 +3885,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     } finally {
       setIsVoiceProcessing(false);
     }
-  }, [onSendMessage]);
+  }, [onSendMessage, isScreenSharing, addInfoNotification, addErrorNotification]);
 
   // Simple voice mode toggle
   const handleVoiceModeToggle = useCallback(() => {
@@ -3560,6 +3905,220 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const handleVoiceToggle = useCallback(() => {
     setIsVoiceChatEnabled(!isVoiceChatEnabled);
   }, [isVoiceChatEnabled]);
+
+  // Apps dropdown toggle handler
+  const handleAppsToggle = useCallback(() => {
+    setShowAppsDropdown(!showAppsDropdown);
+  }, [showAppsDropdown]);
+
+  // Screen share handler
+  const handleScreenShare = useCallback(async () => {
+    try {
+      if (isScreenSharing) {
+        // Stop screen sharing
+        if (screenStream) {
+          screenStream.getTracks().forEach(track => track.stop());
+          setScreenStream(null);
+          setIsScreenSharing(false);
+          
+          // Clean up video element
+          if (screenVideoRef.current) {
+            screenVideoRef.current.srcObject = null;
+          }
+          
+          addInfoNotification(
+            'Screen Sharing Stopped',
+            'Clara is no longer capturing your screen.',
+            3000
+          );
+        }
+        setShowAppsDropdown(false);
+        return;
+      }
+
+      // Check if we're in Electron
+      const isElectron = typeof window !== 'undefined' && window.electronScreenShare;
+      
+      if (isElectron) {
+        // Electron screen sharing with picker
+        try {
+          // Check screen access permission on macOS
+          const accessStatus = await window.electronScreenShare?.getScreenAccessStatus();
+          if (accessStatus?.status === 'denied') {
+            const requestResult = await window.electronScreenShare?.requestScreenAccess();
+            if (!requestResult?.granted) {
+              addErrorNotification(
+                'Permission Denied',
+                'Screen recording permission is required. Please grant permission in System Preferences.',
+                7000
+              );
+              return;
+            }
+          }
+
+          // Get available desktop sources
+          const sources = await window.electronScreenShare?.getDesktopSources();
+          if (!sources || sources.length === 0) {
+            addErrorNotification(
+              'No Screens Available',
+              'No screens or windows available for sharing.',
+              5000
+            );
+            return;
+          }
+
+          // Show screen source picker
+          setAvailableSources(sources);
+          setShowScreenPicker(true);
+          setShowAppsDropdown(false);
+
+        } catch (electronError: any) {
+          console.error('Electron screen share error:', electronError);
+          addErrorNotification(
+            'Screen Sharing Failed',
+            `Failed to start screen sharing: ${electronError?.message || 'Unknown error'}`,
+            5000
+          );
+        }
+      } else {
+        // Browser screen sharing fallback
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          addErrorNotification(
+            'Screen Sharing Not Supported',
+            'Your browser does not support screen sharing. Please use Chrome, Firefox, or Edge.',
+            5000
+          );
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          });
+
+          if (!screenVideoRef.current) {
+            screenVideoRef.current = document.createElement('video');
+            screenVideoRef.current.style.display = 'none';
+            document.body.appendChild(screenVideoRef.current);
+          }
+
+          screenVideoRef.current.srcObject = stream;
+          await screenVideoRef.current.play();
+
+          setScreenStream(stream);
+          setIsScreenSharing(true);
+          setShowAppsDropdown(false);
+
+          stream.getVideoTracks()[0].addEventListener('ended', () => {
+            setIsScreenSharing(false);
+            setScreenStream(null);
+            if (screenVideoRef.current) {
+              screenVideoRef.current.srcObject = null;
+            }
+          });
+
+          addInfoNotification(
+            'Screen Sharing Active',
+            'Clara will now capture your screen with each message.',
+            5000
+          );
+        } catch (error: any) {
+          addErrorNotification(
+            'Screen Sharing Failed',
+            error.name === 'NotAllowedError' ? 'Permission denied' : 'Failed to start screen sharing',
+            5000
+          );
+        }
+      }
+    } catch (error: any) {
+      console.error('Screen share error:', error);
+      addErrorNotification(
+        'Screen Sharing Failed',
+        'An unexpected error occurred',
+        5000
+      );
+    }
+  }, [isScreenSharing, screenStream]);
+
+  // Capture screen as base64 image
+  const captureScreen = useCallback(async (): Promise<string | null> => {
+    if (!isScreenSharing || !screenVideoRef.current || !screenStream) {
+      return null;
+    }
+
+    try {
+      const video = screenVideoRef.current;
+      
+      // Check if video is ready and has valid dimensions
+      if (video.readyState < 2) {
+        // Wait for video to be ready with timeout
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Video load timeout'));
+          }, 3000);
+          
+          const handleLoaded = () => {
+            clearTimeout(timeout);
+            resolve(void 0);
+          };
+          
+          if (video.readyState >= 2) {
+            clearTimeout(timeout);
+            resolve(void 0);
+          } else {
+            video.addEventListener('loadeddata', handleLoaded, { once: true });
+            video.addEventListener('canplay', handleLoaded, { once: true });
+          }
+        });
+      }
+
+      // Verify video has valid dimensions
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        throw new Error('Video has invalid dimensions');
+      }
+
+      // Create canvas to capture the frame
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+
+      // Set canvas size to match video (with reasonable limits)
+      const maxWidth = 1920;
+      const maxHeight = 1080;
+      let { videoWidth, videoHeight } = video;
+      
+      // Scale down if too large
+      if (videoWidth > maxWidth || videoHeight > maxHeight) {
+        const ratio = Math.min(maxWidth / videoWidth, maxHeight / videoHeight);
+        videoWidth *= ratio;
+        videoHeight *= ratio;
+      }
+
+      canvas.width = videoWidth;
+      canvas.height = videoHeight;
+
+      // Draw current video frame to canvas
+      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+      // Convert to base64 with quality optimization
+      const dataURL = canvas.toDataURL('image/jpeg', 0.8); // Use JPEG for smaller size
+      const base64 = dataURL.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+
+      return base64;
+    } catch (error) {
+      console.error('Failed to capture screen:', error);
+      addErrorNotification(
+        'Screen Capture Failed',
+        `Failed to capture current screen: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        3000
+      );
+      return null;
+    }
+  }, [isScreenSharing, screenStream]);
 
   // Add token formatting utility function
   const formatTokens = (tokens: number): string => {
@@ -3942,6 +4501,107 @@ You can right-click on the image to save it or use it in your projects.`;
     setShowImageGenWidget(true);
   }, [imageGenEnabled, availableImageModels]);
 
+  // Cleanup screen sharing on component unmount
+  useEffect(() => {
+    return () => {
+      if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = null;
+          if (screenVideoRef.current.parentNode) {
+            screenVideoRef.current.parentNode.removeChild(screenVideoRef.current);
+          }
+        }
+      }
+    };
+  }, [screenStream]);
+
+  // Browser detection for better error messages
+  const getBrowserInfo = () => {
+    const userAgent = navigator.userAgent;
+    const isChrome = /Chrome/.test(userAgent) && /Google Inc/.test(navigator.vendor);
+    const isFirefox = /Firefox/.test(userAgent);
+    const isEdge = /Edg/.test(userAgent);
+    const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+    const isOpera = /OPR/.test(userAgent);
+    
+    return { isChrome, isFirefox, isEdge, isSafari, isOpera };
+  };
+
+  // Handle screen source selection from picker
+  const handleScreenSourceSelect = useCallback(async (selectedSource: { id: string; name: string; thumbnail: string }) => {
+    try {
+      setShowScreenPicker(false);
+
+      // Use Electron's desktopCapturer with the selected source
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: selectedSource.id,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            maxFrameRate: 30
+          }
+        } as any
+      });
+
+      // Set up video element
+      if (!screenVideoRef.current) {
+        screenVideoRef.current = document.createElement('video');
+        screenVideoRef.current.style.display = 'none';
+        screenVideoRef.current.style.position = 'absolute';
+        screenVideoRef.current.style.top = '-9999px';
+        screenVideoRef.current.muted = true;
+        screenVideoRef.current.playsInline = true;
+        document.body.appendChild(screenVideoRef.current);
+      }
+
+      screenVideoRef.current.srcObject = stream;
+      
+      // Wait for video to load before playing
+      await new Promise((resolve, reject) => {
+        if (screenVideoRef.current) {
+          screenVideoRef.current.onloadedmetadata = () => resolve(void 0);
+          screenVideoRef.current.onerror = reject;
+          screenVideoRef.current.play().catch(reject);
+        }
+      });
+
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+
+      // Listen for stream end
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
+        setIsScreenSharing(false);
+        setScreenStream(null);
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = null;
+        }
+        addInfoNotification(
+          'Screen Sharing Ended',
+          'Screen sharing was stopped.',
+          3000
+        );
+      });
+
+      addInfoNotification(
+        'Screen Sharing Active',
+        `Clara will now capture "${selectedSource.name}" with each message you send.`,
+        5000
+      );
+
+    } catch (error: any) {
+      console.error('Failed to start screen sharing with selected source:', error);
+      addErrorNotification(
+        'Screen Sharing Failed',
+        `Failed to start screen sharing: ${error?.message || 'Unknown error'}`,
+        5000
+      );
+    }
+  }, []);
+
   return (
     <div 
       ref={containerRef}
@@ -4137,6 +4797,33 @@ You can right-click on the image to save it or use it in your projects.`;
                         <Mic className="w-4 h-4" />
                       </button>
                     </Tooltip>
+
+                    {/* Apps */}
+                    <div className="relative">
+                      <Tooltip content={isScreenSharing ? "Clara Apps (Screen Sharing Active)" : "Clara Apps"} position="top">
+                        <button
+                          onClick={handleAppsToggle}
+                          className={`p-2 rounded-lg transition-colors mr-3 ${
+                            showAppsDropdown || isScreenSharing
+                              ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-400' 
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}
+                          disabled={isLoading}
+                        >
+                          <Grid3X3 className="w-4 h-4" />
+                          {isScreenSharing && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+                          )}
+                        </button>
+                      </Tooltip>
+                      
+                      <AppsDropdown
+                        show={showAppsDropdown}
+                        onClose={() => setShowAppsDropdown(false)}
+                        onScreenShare={handleScreenShare}
+                        isScreenSharing={isScreenSharing}
+                      />
+                    </div>
 
                     {/* New Chat */}
                     {/* <Tooltip content="New conversation" position="top">
@@ -4352,6 +5039,14 @@ You can right-click on the image to save it or use it in your projects.`;
           </div>
         </div>
       )}
+
+      {/* Screen Source Picker */}
+      <ScreenSourcePicker
+        show={showScreenPicker}
+        sources={availableSources}
+        onSelect={handleScreenSourceSelect}
+        onClose={() => setShowScreenPicker(false)}
+      />
 
       {/* Image Generation Widget */}
       <ChatImageGenWidget

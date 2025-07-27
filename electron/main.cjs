@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, protocol, globalShortcut, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, systemPreferences, Menu, shell, protocol, globalShortcut, Tray, nativeImage, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsSync = require('fs');
@@ -2518,9 +2518,11 @@ function registerHandlers() {
       if (watchdogService) {
         watchdogService.setComfyUIMonitoring(hasConsented);
       }
+
+      return { success: true };
     } catch (error) {
       log.error('Error saving ComfyUI consent:', error);
-      throw error;
+      return { success: false, error: error.message };
     }
   });
 
@@ -2961,6 +2963,53 @@ function registerHandlers() {
     } catch (error) {
       log.error(`Error restarting ${serviceName} service:`, error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // Screen sharing IPC handlers for Electron
+  ipcMain.handle('get-desktop-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 300, height: 200 }
+      });
+      
+      return sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL()
+      }));
+    } catch (error) {
+      log.error('Error getting desktop sources:', error);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-screen-access-status', async () => {
+    try {
+      if (process.platform === 'darwin') {
+        const status = systemPreferences.getMediaAccessStatus('screen');
+        return { status };
+      }
+      // On Windows/Linux, screen access is generally available
+      return { status: 'granted' };
+    } catch (error) {
+      log.error('Error checking screen access:', error);
+      return { status: 'unknown', error: error.message };
+    }
+  });
+
+  ipcMain.handle('request-screen-access', async () => {
+    try {
+      if (process.platform === 'darwin') {
+        const granted = await systemPreferences.askForMediaAccess('screen');
+        return { granted };
+      }
+      // On Windows/Linux, screen access is generally available
+      return { granted: true };
+    } catch (error) {
+      log.error('Error requesting screen access:', error);
+      return { granted: false, error: error.message };
     }
   });
 }
@@ -3987,7 +4036,9 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
-      sandbox: false
+      sandbox: false,
+      webSecurity: false, // Required for screen sharing in Electron
+      experimentalFeatures: true // Enable experimental web features
     },
     show: false,
     backgroundColor: '#0f0f23', // Dark background to match loading screen

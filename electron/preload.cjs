@@ -375,6 +375,13 @@ contextBridge.exposeInMainWorld('developerLogs', {
   clearLogs: () => ipcRenderer.invoke('developer-logs:clear')
 });
 
+// Add screen sharing API for Electron
+contextBridge.exposeInMainWorld('electronScreenShare', {
+  getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  getScreenAccessStatus: () => ipcRenderer.invoke('get-screen-access-status'),
+  requestScreenAccess: () => ipcRenderer.invoke('request-screen-access')
+});
+
 // Notify main process when preload script has loaded
 window.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('app-ready', 'Preload script has loaded');
