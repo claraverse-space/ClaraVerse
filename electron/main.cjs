@@ -900,6 +900,154 @@ function registerLlamaSwapHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // NEW: Configuration override IPC handlers
+  
+  // Get available GPU backends/engines
+  ipcMain.handle('get-available-backends', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = llamaSwapService.getAvailableBackends();
+      return result;
+    } catch (error) {
+      log.error('Error getting available backends:', error);
+      return { success: false, error: error.message, backends: [] };
+    }
+  });
+
+  // Set/override backend/engine selection
+  ipcMain.handle('set-backend-override', async (event, backendId) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.setBackendOverride(backendId);
+      return result;
+    } catch (error) {
+      log.error('Error setting backend override:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get current backend override setting
+  ipcMain.handle('get-backend-override', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.getBackendOverride();
+      return result;
+    } catch (error) {
+      log.error('Error getting backend override:', error);
+      return { success: false, error: error.message, backendId: null, isOverridden: false };
+    }
+  });
+
+  // Get current configuration as JSON (converted from YAML)
+  ipcMain.handle('get-config-as-json', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.getConfigAsJson();
+      return result;
+    } catch (error) {
+      log.error('Error getting config as JSON:', error);
+      return { success: false, error: error.message, config: null };
+    }
+  });
+
+  // Force reconfigure the service with current settings and overrides
+  ipcMain.handle('force-reconfigure', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.forceReconfigure();
+      return result;
+    } catch (error) {
+      log.error('Error during force reconfiguration:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get comprehensive configuration information for UI
+  ipcMain.handle('get-configuration-info', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.getConfigurationInfo();
+      return result;
+    } catch (error) {
+      log.error('Error getting configuration info:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Legacy alias for restart-llamaswap (for backward compatibility)
+  ipcMain.handle('restart-llamaswap-with-overrides', async () => {
+    try {
+      log.info('🔄 Starting service restart with backend overrides...');
+      
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      // Check current backend override
+      const currentOverride = await llamaSwapService.getBackendOverride();
+      if (currentOverride.success && currentOverride.backendId) {
+        log.info(`🎯 Backend override detected: ${currentOverride.backendId}`);
+      } else {
+        log.info('🎯 No backend override - using auto-detection');
+      }
+      
+      // Stop the current service
+      log.info('🛑 Stopping current service...');
+      await llamaSwapService.stop();
+      log.info('✅ Service stopped successfully');
+      
+      // Wait a moment for cleanup
+      log.info('⏳ Waiting for cleanup...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Force reconfigure to apply any overrides
+      try {
+        log.info('🔧 Regenerating configuration with backend overrides...');
+        const configResult = await llamaSwapService.forceReconfigure();
+        log.info('✅ Configuration updated with overrides:', configResult);
+      } catch (configError) {
+        log.warn('⚠️ Config regeneration had issues:', configError.message);
+      }
+      
+      // Start the service again
+      log.info('🚀 Starting service with new configuration...');
+      const result = await llamaSwapService.start();
+      
+      if (result.success) {
+        log.info('✅ Service restarted successfully with backend overrides!');
+      } else {
+        log.error('❌ Service restart failed:', result.error);
+      }
+      
+      return { 
+        success: result.success, 
+        message: result.message || 'Service restarted with overrides successfully',
+        error: result.error 
+      };
+    } catch (error) {
+      log.error('❌ Error restarting llamaSwap service with overrides:', error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 function registerModelManagerHandlers() {

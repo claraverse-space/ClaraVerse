@@ -3993,7 +3993,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
         try {
           const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            video: { 
+              width: { ideal: 3840, max: 3840 }, // 4K support
+              height: { ideal: 2160, max: 2160 },
+              frameRate: { ideal: 60, max: 60 } // Higher frame rate
+            },
             audio: false
           });
 
@@ -4086,27 +4090,39 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         throw new Error('Failed to get canvas context');
       }
 
-      // Set canvas size to match video (with reasonable limits)
-      const maxWidth = 1920;
-      const maxHeight = 1080;
+      // Set canvas size to match video (preserve original resolution)
       let { videoWidth, videoHeight } = video;
       
-      // Scale down if too large
+      // Only scale down if absolutely necessary for memory/performance
+      const maxWidth = 3840; // 4K support
+      const maxHeight = 2160;
+      
       if (videoWidth > maxWidth || videoHeight > maxHeight) {
         const ratio = Math.min(maxWidth / videoWidth, maxHeight / videoHeight);
-        videoWidth *= ratio;
-        videoHeight *= ratio;
+        videoWidth = Math.floor(videoWidth * ratio);
+        videoHeight = Math.floor(videoHeight * ratio);
       }
 
       canvas.width = videoWidth;
       canvas.height = videoHeight;
 
+      // Use high-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
       // Draw current video frame to canvas
       ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-      // Convert to base64 with quality optimization
-      const dataURL = canvas.toDataURL('image/jpeg', 0.8); // Use JPEG for smaller size
-      const base64 = dataURL.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+      // Convert to base64 with highest quality
+      // Use PNG for lossless quality, fallback to high-quality JPEG if PNG is too large
+      let dataURL = canvas.toDataURL('image/png'); // Lossless PNG
+      
+      // If PNG is too large (>10MB base64), use high-quality JPEG
+      if (dataURL.length > 10 * 1024 * 1024) {
+        dataURL = canvas.toDataURL('image/jpeg', 0.95); // 95% quality JPEG
+      }
+      
+      const base64 = dataURL.split(',')[1]; // Remove data URL prefix
 
       return base64;
     } catch (error) {
@@ -4540,9 +4556,11 @@ You can right-click on the image to save it or use it in your projects.`;
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: selectedSource.id,
-            maxWidth: 1920,
-            maxHeight: 1080,
-            maxFrameRate: 30
+            maxWidth: 3840, // Support 4K resolution
+            maxHeight: 2160,
+            minWidth: 1280, // Minimum quality threshold
+            minHeight: 720,
+            maxFrameRate: 60 // Higher frame rate for smoother capture
           }
         } as any
       });

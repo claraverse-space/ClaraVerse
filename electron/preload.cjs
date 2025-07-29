@@ -190,7 +190,16 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getCustomModelPaths: () => ipcRenderer.invoke('get-custom-model-paths'),
   scanCustomPathModels: (path) => ipcRenderer.invoke('scan-custom-path-models', path),
   getModelEmbeddingInfo: (modelPath) => ipcRenderer.invoke('get-model-embedding-info', modelPath),
-  searchHuggingFaceMmproj: (modelName, embeddingSize) => ipcRenderer.invoke('search-huggingface-mmproj', modelName, embeddingSize)
+  searchHuggingFaceMmproj: (modelName, embeddingSize) => ipcRenderer.invoke('search-huggingface-mmproj', modelName, embeddingSize),
+
+  // NEW: Configuration override API methods
+  getAvailableBackends: () => ipcRenderer.invoke('get-available-backends'),
+  setBackendOverride: (backendId) => ipcRenderer.invoke('set-backend-override', backendId),
+  getBackendOverride: () => ipcRenderer.invoke('get-backend-override'),
+  getConfigAsJson: () => ipcRenderer.invoke('get-config-as-json'),
+  forceReconfigure: () => ipcRenderer.invoke('force-reconfigure'),
+  getConfigurationInfo: () => ipcRenderer.invoke('get-configuration-info'),
+  restartWithOverrides: () => ipcRenderer.invoke('restart-llamaswap-with-overrides')
 });
 
 // Add model management API

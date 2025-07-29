@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Monitor, Cpu, Zap, AlertCircle, CheckCircle, RefreshCw, BarChart3, HardDrive, Settings, ToggleLeft, ToggleRight, Save, RotateCcw, Info } from 'lucide-react';
+import BackendConfigurationPanel from './BackendConfigurationPanel';
 
 interface GPUInfo {
   hasGPU: boolean;
@@ -970,7 +971,9 @@ const GPUDiagnostics: React.FC = () => {
         </div>
       </div>
 
-  
+      {/* Backend Configuration Studio */}
+      <BackendConfigurationPanel />
+
     </div>
   );
 };

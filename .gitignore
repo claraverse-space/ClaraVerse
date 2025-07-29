@@ -133,3 +133,4 @@ scripts/notarize-production.sh
 notarize-production.sh
 setup-notarization-env.sh
 mcp_workspace/*
+electron/llamacpp-binaries/*

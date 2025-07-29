@@ -12,6 +12,7 @@ class LlamaSwapService {
     this.process = null;
     this.isRunning = false;
     this.isStarting = false; // Add this flag to prevent concurrent starts
+    this.startingTimestamp = null; // Track when startup began
     this.port = 8091;
     this.ipcLogger = ipcLogger; // Add IPC logger reference
     
@@ -133,30 +134,74 @@ class LlamaSwapService {
     let platformDir;
     let binaryNames;
     
-    switch (platform) {
-      case 'darwin':
-        platformDir = arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-        binaryNames = {
-          llamaSwap: 'llama-swap-darwin',
-          llamaServer: 'llama-server'
-        };
-        break;
-      case 'linux':
-        platformDir = 'linux-x64';
-        binaryNames = {
-          llamaSwap: 'llama-swap-linux',
-          llamaServer: 'llama-server'
-        };
-        break;
-      case 'win32':
-        platformDir = 'win32-x64';
+    // NEW: Check for backend override first (synchronous check for constructor)
+    try {
+      const overridePath = path.join(os.homedir(), '.clara', 'settings', 'backend-override.json');
+      if (fsSync.existsSync(overridePath)) {
+        const overrideData = JSON.parse(fsSync.readFileSync(overridePath, 'utf8'));
+        if (overrideData.backendId && overrideData.backendId !== 'auto') {
+          const availableBackends = this.getAvailableBackends();
+          if (availableBackends.success) {
+            const targetBackend = availableBackends.backends.find(b => b.id === overrideData.backendId);
+            if (targetBackend && targetBackend.isAvailable && targetBackend.folder !== 'auto') {
+              log.info(`🔧 Applying backend override: ${targetBackend.name} (${overrideData.backendId})`);
+              platformDir = targetBackend.folder;
+            }
+          }
+        }
+      }
+    } catch (overrideError) {
+      log.debug('Error checking backend override during legacy detection:', overrideError.message);
+    }
+    
+    // If no override or override failed, use normal platform detection
+    if (!platformDir) {
+      switch (platform) {
+        case 'darwin':
+          platformDir = arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+          binaryNames = {
+            llamaSwap: 'llama-swap-darwin',
+            llamaServer: 'llama-server'
+          };
+          break;
+        case 'linux':
+          platformDir = 'linux-x64';
+          binaryNames = {
+            llamaSwap: 'llama-swap-linux',
+            llamaServer: 'llama-server'
+          };
+          break;
+        case 'win32':
+          // Detect GPU and choose best platform directory
+          platformDir = this.detectWindowsGPUPlatform();
+          binaryNames = {
+            llamaSwap: 'llama-swap-win32-x64.exe',
+            llamaServer: 'llama-server.exe'
+          };
+          break;
+        default:
+          throw new Error(`Unsupported platform: ${platform}-${arch}`);
+      }
+    }
+    
+    // Set binary names based on the final platform directory (important for overrides)
+    if (!binaryNames) {
+      if (platformDir.includes('win32')) {
         binaryNames = {
           llamaSwap: 'llama-swap-win32-x64.exe',
           llamaServer: 'llama-server.exe'
         };
-        break;
-      default:
-        throw new Error(`Unsupported platform: ${platform}-${arch}`);
+      } else if (platformDir.includes('darwin')) {
+        binaryNames = {
+          llamaSwap: 'llama-swap-darwin',
+          llamaServer: 'llama-server'
+        };
+      } else {
+        binaryNames = {
+          llamaSwap: 'llama-swap-linux',
+          llamaServer: 'llama-server'
+        };
+      }
     }
     
     const platformPath = path.join(this.baseDir, platformDir);
@@ -190,8 +235,643 @@ class LlamaSwapService {
     };
   }
 
+  /**
+   * Detect Windows GPU and return appropriate platform directory
+   */
+  detectWindowsGPUPlatform() {
+    const { spawnSync } = require('child_process');
+    
+    // Try GPU-specific folders in priority order
+    const gpuFolders = ['win32-x64-cuda', 'win32-x64-rocm', 'win32-x64-vulkan', 'win32-x64-cpu'];
+    
+    try {
+      // Check for NVIDIA GPU (CUDA)
+      const nvidiaSmi = spawnSync('nvidia-smi', ['--query-gpu=count', '--format=csv,noheader'], { 
+        encoding: 'utf8', 
+        timeout: 3000 
+      });
+      
+      if (nvidiaSmi.status === 0 && nvidiaSmi.stdout && parseInt(nvidiaSmi.stdout.trim()) > 0) {
+        const gpuCount = parseInt(nvidiaSmi.stdout.trim());
+        log.info(`🎮 Detected ${gpuCount} NVIDIA GPU(s) - using CUDA binaries`);
+        
+        // Check if cuda folder exists
+        if (fsSync.existsSync(path.join(this.baseDir, 'win32-x64-cuda'))) {
+          return 'win32-x64-cuda';
+        } else {
+          log.warn('CUDA folder not found, will try other options');
+        }
+      }
+    } catch (error) {
+      log.debug('NVIDIA detection failed:', error.message);
+    }
+
+    try {
+      // Check for AMD GPU (ROCm) via WMI
+      const wmic = spawnSync('wmic', [
+        'path', 'win32_VideoController', 
+        'get', 'name', '/format:csv'
+      ], { encoding: 'utf8', timeout: 3000 });
+      
+      if (wmic.status === 0 && wmic.stdout) {
+        const gpuInfo = wmic.stdout.toLowerCase();
+        if (gpuInfo.includes('amd') || gpuInfo.includes('radeon')) {
+          log.info('🎮 Detected AMD GPU - using ROCm binaries');
+          
+          // Check if rocm folder exists
+          if (fsSync.existsSync(path.join(this.baseDir, 'win32-x64-rocm'))) {
+            return 'win32-x64-rocm';
+          } else {
+            log.warn('ROCm folder not found, will try other options');
+          }
+        }
+      }
+    } catch (error) {
+      log.debug('AMD detection failed:', error.message);
+    }
+
+    // Check for Vulkan support (Intel/other GPUs)
+    try {
+      const vulkanInfo = spawnSync('vulkaninfo', ['--summary'], { 
+        encoding: 'utf8', 
+        timeout: 3000 
+      });
+      
+      if (vulkanInfo.status === 0) {
+        log.info('🎮 Detected Vulkan support - using Vulkan binaries');
+        
+        // Check if vulkan folder exists
+        if (fsSync.existsSync(path.join(this.baseDir, 'win32-x64-vulkan'))) {
+          return 'win32-x64-vulkan';
+        } else {
+          log.warn('Vulkan folder not found, will try other options');
+        }
+      }
+    } catch (error) {
+      log.debug('Vulkan detection failed:', error.message);
+    }
+
+    // Try each GPU folder in order, fallback to CPU
+    for (const folder of gpuFolders) {
+      if (fsSync.existsSync(path.join(this.baseDir, folder))) {
+        log.info(`🎮 Using available GPU platform: ${folder}`);
+        return folder;
+      }
+    }
+
+    // Check if we should auto-setup GPU folders
+    this.checkAndSetupGPUFolders();
+
+    // Final fallback to original folder
+    log.info('🎮 No GPU-specific folders found, using standard win32-x64');
+    return 'win32-x64';
+  }
+
+  /**
+   * Check if GPU folders exist and offer to set them up automatically
+   */
+  checkAndSetupGPUFolders() {
+    if (os.platform() !== 'win32') {
+      return;
+    }
+
+    const gpuFolders = ['win32-x64-cuda', 'win32-x64-rocm', 'win32-x64-vulkan', 'win32-x64-cpu'];
+    const existingFolders = gpuFolders.filter(folder => 
+      fsSync.existsSync(path.join(this.baseDir, folder))
+    );
+
+    if (existingFolders.length === 0) {
+      log.info('🚀 No GPU-specific folders found. Consider running setupGPUSpecificBinaries() to auto-download them.');
+      
+      // Only auto-setup in background if service is not currently starting
+      if (!this.isStarting && !this.isRunning) {
+        log.info('🔄 Scheduling background GPU folder setup...');
+        
+        // Auto-setup in background (non-blocking)
+        setTimeout(() => {
+          // Double-check we're still not starting/running before proceeding
+          if (!this.isStarting && !this.isRunning) {
+            log.info('🚀 Starting background GPU binary setup...');
+            this.setupGPUSpecificBinaries().then(result => {
+              if (result.success) {
+                log.info('✅ GPU-specific folders have been automatically set up in background!');
+                log.info('🔄 Next service start will use optimized GPU binaries.');
+              } else {
+                log.warn('⚠️ Background GPU folder setup failed:', result.error || result.message);
+              }
+            }).catch(error => {
+              log.warn('⚠️ Background GPU setup failed:', error.message);
+            });
+          } else {
+            log.info('🔄 Skipping background GPU setup - service is starting/running');
+          }
+        }, 5000); // Wait 5 seconds before starting background setup
+      } else {
+        log.info('🔄 Service is starting/running - skipping background GPU setup');
+      }
+    } else {
+      log.info(`🎮 Found ${existingFolders.length} existing GPU folders: ${existingFolders.join(', ')}`);
+    }
+  }
+
+  /**
+   * Create GPU-specific folders and download binaries automatically
+   */
+  async setupGPUSpecificBinaries() {
+    if (os.platform() !== 'win32') {
+      log.info('GPU-specific binary setup is only available for Windows');
+      return { success: false, message: 'Only supported on Windows' };
+    }
+
+    try {
+      log.info('🚀 Setting up GPU-specific binary folders...');
+      
+      // Create all GPU-specific folders
+      const gpuFolders = ['win32-x64-cuda', 'win32-x64-rocm', 'win32-x64-vulkan', 'win32-x64-cpu'];
+      
+      for (const folder of gpuFolders) {
+        const folderPath = path.join(this.baseDir, folder);
+        await fs.mkdir(folderPath, { recursive: true });
+        log.info(`📁 Created folder: ${folder}`);
+      }
+
+      // Download and extract binaries for each GPU type (with timeout protection)
+      log.info('⬇️ Starting GPU binary downloads...');
+      const downloadPromise = this.downloadGPUBinaries(gpuFolders);
+      const results = await Promise.race([
+        downloadPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('GPU binary download timeout after 5 minutes')), 300000)
+        )
+      ]);
+      
+      log.info('✅ GPU-specific binary setup completed');
+      return { success: true, results };
+      
+    } catch (error) {
+      log.error('❌ Failed to setup GPU-specific binaries:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Download GPU-specific binaries from llama.cpp releases
+   */
+  async downloadGPUBinaries(gpuFolders) {
+    const results = {};
+    
+    // Get latest llama.cpp release info
+    const releaseInfo = await this.getLatestLlamaCppRelease();
+    if (!releaseInfo) {
+      throw new Error('Could not fetch latest llama.cpp release information');
+    }
+
+    log.info(`📦 Found llama.cpp release: ${releaseInfo.version}`);
+
+    for (const folder of gpuFolders) {
+      try {
+        if (folder === 'win32-x64-cuda') {
+          // CUDA requires both main binaries and runtime libraries
+          log.info(`⬇️ Setting up CUDA binaries (dual download required)...`);
+          const cudaSuccess = await this.setupCudaBinaries(releaseInfo, folder);
+          
+          if (cudaSuccess) {
+            results[folder] = { success: true, method: 'cuda_dual_download' };
+          } else {
+            log.warn(`⚠️ CUDA setup failed, copying from base folder`);
+            await this.copyBinariesFromBase(folder);
+            results[folder] = { success: true, method: 'copied_from_base' };
+          }
+        } else {
+          // Standard single download for other GPU types
+          const downloadUrl = this.findAssetUrl(releaseInfo.assets, this.getGPUTypeFromFolder(folder), 'win32');
+          
+          if (!downloadUrl) {
+            log.warn(`⚠️ No download URL found for ${folder}, copying from base folder`);
+            await this.copyBinariesFromBase(folder);
+            results[folder] = { success: true, method: 'copied_from_base' };
+            continue;
+          }
+
+          log.info(`⬇️ Downloading binaries for ${folder}...`);
+          const success = await this.downloadAndExtractBinaries(downloadUrl, folder);
+          
+          if (success) {
+            results[folder] = { success: true, method: 'downloaded', url: downloadUrl };
+          } else {
+            log.warn(`⚠️ Download failed for ${folder}, copying from base folder`);
+            await this.copyBinariesFromBase(folder);
+            results[folder] = { success: true, method: 'copied_from_base' };
+          }
+        }
+        
+      } catch (error) {
+        log.error(`❌ Failed to setup ${folder}:`, error.message);
+        results[folder] = { success: false, error: error.message };
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Setup CUDA binaries with dual download (main binaries + runtime libraries)
+   */
+  async setupCudaBinaries(releaseInfo, targetFolder) {
+    try {
+      // Find both CUDA assets
+      const mainBinariesUrl = this.findCudaAsset(releaseInfo.assets, 'main');
+      const runtimeLibsUrl = this.findCudaAsset(releaseInfo.assets, 'cudart');
+      
+      if (!mainBinariesUrl) {
+        log.error('❌ Could not find main CUDA binaries asset');
+        return false;
+      }
+      
+      if (!runtimeLibsUrl) {
+        log.error('❌ Could not find CUDA runtime libraries asset');
+        return false;
+      }
+      
+      log.info(`🎯 Found CUDA main binaries: ${mainBinariesUrl.split('/').pop()}`);
+      log.info(`🎯 Found CUDA runtime libraries: ${runtimeLibsUrl.split('/').pop()}`);
+      
+      const targetPath = path.join(this.baseDir, targetFolder);
+      
+      // Download and extract main CUDA binaries
+      log.info('⬇️ Downloading CUDA main binaries...');
+      const mainSuccess = await this.downloadAndExtractBinaries(mainBinariesUrl, targetFolder);
+      
+      if (!mainSuccess) {
+        log.error('❌ Failed to download CUDA main binaries');
+        return false;
+      }
+      
+      // Download and extract CUDA runtime libraries to the same folder
+      log.info('⬇️ Downloading CUDA runtime libraries...');
+      const runtimeSuccess = await this.downloadAndExtractToExistingFolder(runtimeLibsUrl, targetPath);
+      
+      if (!runtimeSuccess) {
+        log.error('❌ Failed to download CUDA runtime libraries');
+        return false;
+      }
+      
+      // Copy llama-swap from base folder (common to all GPU types)
+      await this.copyLlamaSwapBinary(targetFolder);
+      
+      log.info('✅ CUDA binaries setup completed (main + runtime)');
+      return true;
+      
+    } catch (error) {
+      log.error('❌ Error setting up CUDA binaries:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Find CUDA-specific assets (main binaries or runtime libraries)
+   */
+  findCudaAsset(assets, type) {
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase();
+      
+      if (type === 'main') {
+        // Look for main CUDA binaries: llama-b6002-bin-win-cuda-12.4-x64.zip
+        if (name.includes('llama-') && 
+            name.includes('bin-win-cuda') && 
+            name.includes('.zip') &&
+            !name.includes('cudart')) {
+          return asset.browser_download_url;
+        }
+      } else if (type === 'cudart') {
+        // Look for CUDA runtime: cudart-llama-bin-win-cuda-12.4-x64.zip
+        if (name.includes('cudart') && 
+            name.includes('llama') && 
+            name.includes('bin-win-cuda') && 
+            name.includes('.zip')) {
+          return asset.browser_download_url;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Download and extract to an existing folder (for CUDA runtime libraries)
+   */
+  async downloadAndExtractToExistingFolder(downloadUrl, targetPath) {
+    try {
+      // Download the zip file
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      log.info(`⬇️ Downloading from: ${downloadUrl}`);
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      
+      // Create temp file
+      const tempDir = path.join(require('os').tmpdir(), 'clara-cuda-runtime');
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempZipPath = path.join(tempDir, 'cuda-runtime.zip');
+      
+      await fs.writeFile(tempZipPath, buffer);
+      log.info(`📦 Downloaded to: ${tempZipPath}`);
+
+      // Extract to existing target folder
+      const success = await this.extractBinaries(tempZipPath, targetPath);
+      
+      if (success) {
+        log.info(`✅ Successfully extracted CUDA runtime to: ${targetPath}`);
+        return true;
+      }
+      
+      return false;
+      
+    } catch (error) {
+      log.error(`Failed to download/extract CUDA runtime:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get GPU type from folder name
+   */
+  getGPUTypeFromFolder(folder) {
+    if (folder.includes('cuda')) return 'cuda';
+    if (folder.includes('rocm')) return 'rocm';
+    if (folder.includes('vulkan')) return 'vulkan';
+    if (folder.includes('cpu')) return 'cpu';
+    return 'unknown';
+  }
+
+  /**
+   * Get latest llama.cpp release from GitHub
+   */
+  async getLatestLlamaCppRelease() {
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      const response = await fetch('https://api.github.com/repos/ggerganov/llama.cpp/releases/latest');
+      
+      if (!response.ok) {
+        throw new Error(`GitHub API request failed: ${response.status}`);
+      }
+
+      const release = await response.json();
+      
+      return {
+        version: release.tag_name,
+        assets: release.assets || []
+      };
+      
+    } catch (error) {
+      log.error('Failed to fetch llama.cpp release info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Find appropriate asset URL for GPU type
+   */
+  findAssetUrl(assets, gpuType, platform) {
+    // Look for assets that match the GPU type and platform
+    const patterns = {
+      cuda: ['cuda', 'nvidia'],
+      rocm: ['hip-radeon', 'rocm', 'amd'],  // Updated to include hip-radeon pattern
+      vulkan: ['vulkan'],
+      cpu: ['cpu', 'no-gpu']
+    };
+
+    const searchPatterns = patterns[gpuType] || [gpuType];
+    
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase();
+      
+      // Check if asset matches platform and GPU type
+      if (name.includes('win') || name.includes('windows')) {
+        for (const pattern of searchPatterns) {
+          if (name.includes(pattern)) {
+            log.info(`🎯 Found asset for ${gpuType}: ${asset.name}`);
+            return asset.browser_download_url;
+          }
+        }
+      }
+    }
+
+    // Special case for ROCm: look specifically for hip-radeon pattern
+    if (gpuType === 'rocm') {
+      for (const asset of assets) {
+        const name = asset.name.toLowerCase();
+        // Look for pattern: llama-b6002-bin-win-hip-radeon-x64.zip
+        if (name.includes('llama-') && 
+            name.includes('bin-win-hip-radeon') && 
+            name.includes('.zip')) {
+          log.info(`🎯 Found ROCm/HIP asset: ${asset.name}`);
+          return asset.browser_download_url;
+        }
+      }
+    }
+
+    // Fallback: look for generic Windows binaries
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase();
+      if ((name.includes('win') || name.includes('windows')) && name.includes('.zip')) {
+        log.info(`🎯 Using generic Windows asset for ${gpuType}: ${asset.name}`);
+        return asset.browser_download_url;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Download and extract binaries to specific folder
+   */
+  async downloadAndExtractBinaries(downloadUrl, targetFolder) {
+    try {
+      // Add timeout protection to the entire download and extract process
+      const downloadAndExtractPromise = this.performDownloadAndExtract(downloadUrl, targetFolder);
+      
+      const success = await Promise.race([
+        downloadAndExtractPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Download timeout for ${targetFolder} after 2 minutes`)), 120000)
+        )
+      ]);
+      
+      return success;
+      
+    } catch (error) {
+      log.error(`Failed to download/extract binaries for ${targetFolder}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Perform the actual download and extract (separated for timeout handling)
+   */
+  async performDownloadAndExtract(downloadUrl, targetFolder) {
+    // Download the zip file
+    let fetch;
+    try {
+      fetch = global.fetch || (await import('node-fetch')).default;
+    } catch (importError) {
+      const nodeFetch = require('node-fetch');
+      fetch = nodeFetch.default || nodeFetch;
+    }
+
+    log.info(`⬇️ Downloading from: ${downloadUrl}`);
+    const response = await fetch(downloadUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    
+    // Create temp file
+    const tempDir = path.join(require('os').tmpdir(), 'clara-gpu-binaries');
+    await fs.mkdir(tempDir, { recursive: true });
+    const tempZipPath = path.join(tempDir, `${targetFolder}.zip`);
+    
+    await fs.writeFile(tempZipPath, buffer);
+    log.info(`📦 Downloaded to: ${tempZipPath}`);
+
+    // Extract using built-in or adm-zip
+    const targetPath = path.join(this.baseDir, targetFolder);
+    const success = await this.extractBinaries(tempZipPath, targetPath);
+    
+    if (success) {
+      // Copy llama-swap from base folder (it's common to all GPU types)
+      await this.copyLlamaSwapBinary(targetFolder);
+      log.info(`✅ Successfully set up binaries for ${targetFolder}`);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Extract binaries using available extraction method
+   */
+  async extractBinaries(zipPath, targetPath) {
+    try {
+      // Try adm-zip first
+      try {
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip(zipPath);
+        zip.extractAllTo(targetPath, true);
+        log.info(`📂 Extracted using adm-zip to: ${targetPath}`);
+        return true;
+      } catch (admZipError) {
+        log.debug('adm-zip not available, trying PowerShell extraction');
+      }
+
+      // Fallback to PowerShell on Windows
+      if (os.platform() === 'win32') {
+        return await this.extractWithPowerShell(zipPath, targetPath);
+      }
+
+      throw new Error('No extraction method available');
+      
+    } catch (error) {
+      log.error('Binary extraction failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Extract using PowerShell on Windows
+   */
+  async extractWithPowerShell(zipPath, targetPath) {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      const psCommand = `Expand-Archive -Path "${zipPath}" -DestinationPath "${targetPath}" -Force`;
+      const ps = spawn('powershell', ['-Command', psCommand], { stdio: 'pipe' });
+      
+      ps.on('close', (code) => {
+        if (code === 0) {
+          log.info(`📂 Extracted using PowerShell to: ${targetPath}`);
+          resolve(true);
+        } else {
+          log.error(`PowerShell extraction failed with code: ${code}`);
+          resolve(false);
+        }
+      });
+      
+      ps.on('error', (error) => {
+        log.error('PowerShell extraction error:', error);
+        resolve(false);
+      });
+    });
+  }
+
+  /**
+   * Copy binaries from base folder as fallback
+   */
+  async copyBinariesFromBase(targetFolder) {
+    const basePath = path.join(this.baseDir, 'win32-x64');
+    const targetPath = path.join(this.baseDir, targetFolder);
+    
+    if (!fsSync.existsSync(basePath)) {
+      throw new Error(`Base folder not found: ${basePath}`);
+    }
+
+    // Copy all files from base folder
+    const files = await fs.readdir(basePath);
+    
+    for (const file of files) {
+      const sourcePath = path.join(basePath, file);
+      const destPath = path.join(targetPath, file);
+      
+      await fs.copyFile(sourcePath, destPath);
+      log.info(`📋 Copied ${file} to ${targetFolder}`);
+    }
+  }
+
+  /**
+   * Copy llama-swap binary to GPU-specific folder (it's common to all)
+   */
+  async copyLlamaSwapBinary(targetFolder) {
+    const basePath = path.join(this.baseDir, 'win32-x64');
+    const targetPath = path.join(this.baseDir, targetFolder);
+    
+    const llamaSwapFiles = ['llama-swap-win32-x64.exe', 'llama-swap.exe'];
+    
+    for (const fileName of llamaSwapFiles) {
+      const sourcePath = path.join(basePath, fileName);
+      const destPath = path.join(targetPath, fileName);
+      
+      if (fsSync.existsSync(sourcePath)) {
+        await fs.copyFile(sourcePath, destPath);
+        log.info(`📋 Copied ${fileName} to ${targetFolder}`);
+        break; // Only copy the first one found
+      }
+    }
+  }
+
   async validateBinaries() {
     log.info('Starting binary validation...');
+    log.info(`📁 Config file location: ${this.configPath}`);
+    log.info(`📁 Base directory: ${this.baseDir}`);
+    log.info(`📁 Platform directory: ${this.platformBinDir || 'N/A'}`);
     
     try {
       // Use platform manager validation if available
@@ -229,26 +909,83 @@ class LlamaSwapService {
     }
     
     if (issues.length > 0) {
+      // Check if this is a GPU-specific folder that's missing binaries
+      const isGPUFolder = llamaSwap.includes('win32-x64-cuda') || 
+                         llamaSwap.includes('win32-x64-rocm') || 
+                         llamaSwap.includes('win32-x64-vulkan') || 
+                         llamaSwap.includes('win32-x64-cpu');
+      
+      if (isGPUFolder && os.platform() === 'win32') {
+        log.info('🔧 GPU-specific folder detected with missing binaries - attempting automatic setup...');
+        
+        try {
+          // Try to setup GPU binaries automatically
+          const setupResult = await this.setupGPUSpecificBinaries();
+          
+          if (setupResult.success) {
+            log.info('✅ GPU binaries setup completed successfully - retrying validation...');
+            
+            // Retry validation after setup
+            const retryIssues = [];
+            
+            if (!this.binaryExists(llamaSwap)) {
+              retryIssues.push(`llama-swap binary still not found at: ${llamaSwap}`);
+            }
+            
+            if (!this.binaryExists(llamaServer)) {
+              retryIssues.push(`llama-server binary still not found at: ${llamaServer}`);
+            }
+            
+            if (retryIssues.length === 0) {
+              log.info('✅ Binary validation successful after automatic setup');
+              return true;
+            } else {
+              log.error('❌ Binaries still missing after automatic setup:', retryIssues);
+              issues.push(...retryIssues.map(issue => `${issue} (after auto-setup)`));
+            }
+          } else {
+            log.error('❌ Automatic GPU binary setup failed:', setupResult.error || setupResult.message);
+            issues.push(`Automatic binary setup failed: ${setupResult.error || setupResult.message}`);
+          }
+        } catch (setupError) {
+          log.error('❌ Error during automatic binary setup:', setupError);
+          issues.push(`Binary setup error: ${setupError.message}`);
+        }
+      }
+      
       // Additional diagnostic information
       log.error('=== BINARY VALIDATION FAILED ===');
-      log.error('Base directory:', this.baseDir);
-      log.error('Platform directory:', this.platformBinDir);
-      log.error('Platform info:', this.platformInfo);
+      log.error('📁 Config file location:', this.configPath);
+      log.error('📁 Base directory:', this.baseDir);
+      log.error('📁 Platform directory:', this.platformBinDir);
+      log.error('📁 Platform info:', this.platformInfo);
+      log.error('📁 Binary paths:', this.binaryPaths);
       
       // List what's actually in the directories
       try {
         const baseContents = fsSync.readdirSync(this.baseDir);
-        log.error('Base directory contents:', baseContents);
+        log.error('📁 Base directory contents:', baseContents);
         
         if (fsSync.existsSync(this.platformBinDir)) {
           const platformContents = fsSync.readdirSync(this.platformBinDir);
-          log.error('Platform directory contents:', platformContents);
+          log.error('📁 Platform directory contents:', platformContents);
         } else {
-          log.error('Platform directory does not exist:', this.platformBinDir);
+          log.error('📁 Platform directory does not exist:', this.platformBinDir);
         }
       } catch (dirError) {
-        log.error('Error reading directory contents:', dirError.message);
+        log.error('📁 Error reading directory contents:', dirError.message);
       }
+      
+      // Show helpful suggestions
+      log.error('🔧 TROUBLESHOOTING SUGGESTIONS:');
+      if (isGPUFolder) {
+        log.error('   • GPU-specific folder detected but binaries are missing');
+        log.error('   • Try manually running: setupGPUSpecificBinaries()');
+        log.error('   • Or delete the GPU folder to fallback to base folder');
+      }
+      log.error('   • Check if antivirus software is blocking the binaries');
+      log.error('   • Verify the base directory exists and contains binaries');
+      log.error('   • Try restarting the application as administrator');
       
       const error = new Error(`Binary validation failed:\n${issues.join('\n')}`);
       error.issues = issues;
@@ -256,7 +993,8 @@ class LlamaSwapService {
         baseDir: this.baseDir,
         platformBinDir: this.platformBinDir,
         platformInfo: this.platformInfo,
-        binaryPaths: this.binaryPaths
+        binaryPaths: this.binaryPaths,
+        configPath: this.configPath
       };
       throw error;
     }
@@ -521,6 +1259,20 @@ class LlamaSwapService {
   }
 
   async generateConfig() {
+    // IMPORTANT: Apply backend overrides before generating config
+    const overriddenPlatform = await this.applyBackendOverride();
+    let llamaServerPath = this.binaryPaths.llamaServer;
+    
+    if (overriddenPlatform && overriddenPlatform !== 'auto') {
+      log.info(`🔧 Config generation using overridden platform: ${overriddenPlatform}`);
+      // Get the correct binary paths for the overridden platform
+      const overriddenBinaryPaths = this.getBinaryPathsWithOverride(overriddenPlatform);
+      llamaServerPath = overriddenBinaryPaths.llamaServer;
+      log.info(`🔧 Using overridden llama-server path: ${llamaServerPath}`);
+    } else {
+      log.info(`🔧 Config generation using default platform binary paths`);
+    }
+    
     const models = await this.scanModels();
     
     // Separate main models from mmproj files
@@ -629,8 +1381,8 @@ models:
 
     // Generate model configurations with dynamic GPU layer calculation
     for (const model of mainModels) {
-      // Use platform-specific llama-server path
-      const llamaServerPath = this.binaryPaths.llamaServer;
+      // Use the determined llama-server path (with backend override applied)
+      // NOTE: No longer using this.binaryPaths.llamaServer directly
       
       // Calculate optimal performance configuration for this model
       let perfConfig;
@@ -1147,6 +1899,30 @@ ${cmdLine}`;
     
     if (this.isStarting) {
       log.info('Llama-swap service is already starting, waiting for completion...');
+      
+      // Check if startup has been stuck for too long
+      const now = Date.now();
+      const startingDuration = this.startingTimestamp ? (now - this.startingTimestamp) / 1000 : 0;
+      
+      if (startingDuration > 120) { // 2 minutes
+        log.error(`🚨 Service has been stuck in starting state for ${Math.round(startingDuration)} seconds!`);
+        log.error('🔧 Force resetting starting state and attempting fresh start...');
+        
+        this.isStarting = false;
+        this.startingTimestamp = null;
+        
+        // Clean up any stuck processes
+        try {
+          await this.cleanup();
+          await this.cleanupStaleProcesses();
+        } catch (cleanupError) {
+          log.warn('Cleanup during force reset failed:', cleanupError.message);
+        }
+        
+        // Recursive call for fresh start
+        return await this.start();
+      }
+      
       // Wait for the current start attempt to complete
       let attempts = 0;
       while (this.isStarting && attempts < 30) { // Wait up to 30 seconds
@@ -1162,6 +1938,7 @@ ${cmdLine}`;
     }
     
     this.isStarting = true;
+    this.startingTimestamp = Date.now();
     
     try {
       // Reset retry flags for fresh start attempt
@@ -1169,6 +1946,40 @@ ${cmdLine}`;
       this.portRetryAttempted = false;
       this.handleFlashAttentionRequired = false;
       this.needsPortRetry = false;
+
+      // ===== COMPREHENSIVE GPU & BINARY SETUP (ALWAYS RUN) =====
+      log.info('🚀 Starting comprehensive GPU and binary verification...');
+      
+      try {
+        // Step 1: Always check and setup GPU-specific folders if missing (with timeout)
+        log.info('🔍 Step 1: Ensuring GPU folders and binaries...');
+        const setupPromise = this.ensureGPUFoldersAndBinaries();
+        const setupResult = await Promise.race([
+          setupPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('GPU setup timeout after 60 seconds')), 60000)
+          )
+        ]);
+        log.info('✅ Step 1 completed:', setupResult.message || 'GPU setup finished');
+        
+        // Step 2: Verify current GPU detection and folder selection (with timeout)
+        log.info('🔍 Step 2: Verifying current GPU setup...');
+        const verifyPromise = this.verifyCurrentGPUSetup();
+        const verifyResult = await Promise.race([
+          verifyPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('GPU verification timeout after 30 seconds')), 30000)
+          )
+        ]);
+        log.info('✅ Step 2 completed:', verifyResult.message || 'GPU verification finished');
+        
+      } catch (gpuError) {
+        log.error('⚠️ GPU setup/verification failed, but service will continue:', gpuError.message);
+        log.info('🔄 Service will attempt to use available binaries...');
+        
+        // Don't fail the entire startup just because GPU setup failed
+        // The service can still work with base binaries
+      }
 
       // Check for stale processes after updates
       await this.cleanupStaleProcesses();
@@ -1218,19 +2029,19 @@ ${cmdLine}`;
       log.info('🔧 Verifying binary integrity after potential updates...');
       await this.verifyAndRepairBinariesAfterUpdate();
 
-      // Validate binaries before attempting to start
-      log.info('Validating binaries before startup...');
+      // Validate binaries before attempting to start (this will auto-download if missing)
+      log.info('🔍 Final binary validation before startup...');
       await this.validateBinaries();
       
       // Ensure models directory and config exist
       await this.ensureDirectories();
       await this.generateConfig();
 
-      log.info('Starting llama-swap service...');
-      log.info(`Platform: ${this.platformInfo.platformDir}`);
-      log.info(`Binary path: ${this.binaryPaths.llamaSwap}`);
-      log.info(`Config path: ${this.configPath}`);
-      log.info(`Port: ${this.port}`);
+      log.info('🚀 All checks passed - starting llama-swap service...');
+      log.info(`🎮 Platform: ${this.platformInfo.platformDir}`);
+      log.info(`📁 Binary path: ${this.binaryPaths.llamaSwap}`);
+      log.info(`📁 Config path: ${this.configPath}`);
+      log.info(`🌐 Port: ${this.port}`);
 
       // Fixed command line arguments according to the binary's help output
       const args = [
@@ -1238,7 +2049,7 @@ ${cmdLine}`;
         '-listen', `127.0.0.1:${this.port}` // Bind to localhost only for better security
       ];
 
-      log.info(`Starting with args: ${args.join(' ')}`);
+      log.info(`🚀 Starting with args: ${args.join(' ')}`);
       
       if (this.ipcLogger) {
         this.ipcLogger.logProcessSpawn(this.binaryPaths.llamaSwap, args, {
@@ -1306,7 +2117,7 @@ ${cmdLine}`;
         if (output.includes(`listening on`) || 
             output.includes(`server started`) ||
             output.includes(`:${this.port}`)) {
-          log.info(`llama-swap service started successfully on port ${this.port}`);
+          log.info(`✅ llama-swap service started successfully on port ${this.port}`);
           if (this.ipcLogger) {
             this.ipcLogger.logServiceCall('LlamaSwapService', 'startupSuccess', { port: this.port });
           }
@@ -1383,15 +2194,15 @@ ${cmdLine}`;
       
       // Check if process is still running (didn't exit immediately due to error)
       if (this.process && !this.process.killed) {
-        log.info('llama-swap process is running, checking if service is responding...');
+        log.info('✅ llama-swap process is running, checking if service is responding...');
         
         // Try to check if the service is actually responding
         try {
           await this.waitForService(10); // Wait up to 10 seconds
-          log.info('llama-swap service is responding to requests');
+          log.info('✅ llama-swap service is responding to requests');
           return { success: true, message: 'Service started successfully' };
         } catch (serviceError) {
-          log.warn('llama-swap process started but service is not responding:', serviceError.message);
+          log.warn('⚠️ llama-swap process started but service is not responding:', serviceError.message);
           return { success: true, message: 'Service started but not responding yet', warning: serviceError.message };
         }
       } else {
@@ -1542,6 +2353,7 @@ ${cmdLine}`;
   cleanup() {
     this.isRunning = false;
     this.isStarting = false; // Reset starting flag
+    this.startingTimestamp = null; // Reset starting timestamp
     this.process = null;
     // Reset flash attention retry flags for next start attempt
     this.handleFlashAttentionRequired = false;
@@ -1581,15 +2393,50 @@ ${cmdLine}`;
     // First check if we have a process reference
     const hasProcess = this.process && !this.process.killed;
     
+    // Calculate how long we've been in starting state
+    const startingDuration = this.startingTimestamp ? 
+      Math.round((Date.now() - this.startingTimestamp) / 1000) : 0;
+    
     return {
       isRunning: this.isRunning && hasProcess,
-      isStarting: this.isStarting, // Include starting status for debugging
+      isStarting: this.isStarting,
+      startingDuration: startingDuration,
+      startingTimestamp: this.startingTimestamp,
+      isStuck: this.isStarting && startingDuration > 60, // Consider stuck after 1 minute
       port: this.port,
       pid: this.process?.pid,
       apiUrl: `http://localhost:${this.port}`,
       processExists: hasProcess,
       flagStatus: this.isRunning
     };
+  }
+
+  /**
+   * Force reset the service if it's stuck in starting state
+   */
+  async forceResetIfStuck() {
+    const status = this.getStatus();
+    
+    if (status.isStuck) {
+      log.error(`🚨 Service is stuck in starting state for ${status.startingDuration} seconds`);
+      log.info('🔧 Performing force reset...');
+      
+      // Force cleanup
+      this.cleanup();
+      
+      // Clean up any processes
+      try {
+        await this.cleanupStaleProcesses();
+        await this.killProcessesOnPort(this.port);
+      } catch (error) {
+        log.warn('Error during force cleanup:', error.message);
+      }
+      
+      log.info('✅ Force reset completed - service ready to start again');
+      return { success: true, message: 'Service force reset completed' };
+    } else {
+      return { success: false, message: 'Service is not stuck - no reset needed' };
+    }
   }
 
   // Add a new method to check if service is actually responding
@@ -3638,6 +4485,693 @@ ${cmdLine}`;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  /**
+   * Ensure GPU-specific folders and binaries are always available before startup
+   */
+  async ensureGPUFoldersAndBinaries() {
+    if (os.platform() !== 'win32') {
+      log.info('🎮 GPU-specific setup only available on Windows, skipping...');
+      return { success: true, message: 'Not Windows - GPU setup skipped' };
+    }
+
+    try {
+      log.info('🔍 Checking GPU-specific folder availability...');
+      
+      const gpuFolders = ['win32-x64-cuda', 'win32-x64-rocm', 'win32-x64-vulkan', 'win32-x64-cpu'];
+      const existingFolders = gpuFolders.filter(folder => 
+        fsSync.existsSync(path.join(this.baseDir, folder))
+      );
+
+      if (existingFolders.length === 0) {
+        log.info('🚀 No GPU-specific folders found - setting up all GPU types...');
+        
+        // Setup all GPU folders and binaries
+        const setupResult = await this.setupGPUSpecificBinaries();
+        
+        if (setupResult.success) {
+          log.info('✅ GPU-specific folders and binaries setup completed');
+          return setupResult;
+        } else {
+          log.warn('⚠️ GPU setup failed, service will use base folder:', setupResult.error);
+          return { success: true, message: 'GPU setup failed but service can continue', warning: setupResult.error };
+        }
+      } else {
+        log.info(`✅ Found ${existingFolders.length} existing GPU folders: ${existingFolders.join(', ')}`);
+        
+        // Check if the GPU folders have all required binaries
+        await this.verifyGPUFolderContents(existingFolders);
+        
+        return { success: true, message: `${existingFolders.length} GPU folders verified` };
+      }
+      
+    } catch (error) {
+      log.error('❌ Error ensuring GPU folders and binaries:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Verify current GPU detection and folder selection
+   */
+  async verifyCurrentGPUSetup() {
+    if (os.platform() !== 'win32') {
+      log.info('🎮 GPU verification only available on Windows, skipping...');
+      return { success: true, message: 'Not Windows - GPU verification skipped' };
+    }
+
+    try {
+      log.info('🔍 Verifying current GPU detection and folder selection...');
+      
+      // Re-detect GPU and get the platform folder that will be used
+      const detectedPlatform = this.detectWindowsGPUPlatform();
+      const expectedBinaryPath = path.join(this.baseDir, detectedPlatform);
+      
+      log.info(`🎮 GPU detection result: ${detectedPlatform}`);
+      log.info(`📁 Expected binary path: ${expectedBinaryPath}`);
+      
+      // Check if the selected folder exists and has required binaries
+      if (!fsSync.existsSync(expectedBinaryPath)) {
+        log.warn(`⚠️ Selected GPU folder doesn't exist: ${detectedPlatform}`);
+        
+        // Try to create and populate this specific folder
+        await this.setupSpecificGPUFolder(detectedPlatform);
+      } else {
+        // Verify the folder has required binaries
+        const requiredBinaries = ['llama-swap-win32-x64.exe', 'llama-server.exe'];
+        const missingBinaries = [];
+        
+        for (const binary of requiredBinaries) {
+          const binaryPath = path.join(expectedBinaryPath, binary);
+          if (!fsSync.existsSync(binaryPath)) {
+            missingBinaries.push(binary);
+          }
+        }
+        
+        if (missingBinaries.length > 0) {
+          log.warn(`⚠️ Missing binaries in ${detectedPlatform}: ${missingBinaries.join(', ')}`);
+          
+          // Try to fix missing binaries
+          await this.setupSpecificGPUFolder(detectedPlatform);
+        } else {
+          log.info(`✅ GPU folder ${detectedPlatform} has all required binaries`);
+        }
+      }
+      
+      return { success: true, message: `GPU setup verified for ${detectedPlatform}` };
+      
+    } catch (error) {
+      log.error('❌ Error verifying GPU setup:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Verify that existing GPU folders have all required binaries
+   */
+  async verifyGPUFolderContents(existingFolders) {
+    const requiredBinaries = ['llama-swap-win32-x64.exe', 'llama-server.exe'];
+    
+    for (const folder of existingFolders) {
+      const folderPath = path.join(this.baseDir, folder);
+      const missingBinaries = [];
+      
+      for (const binary of requiredBinaries) {
+        const binaryPath = path.join(folderPath, binary);
+        if (!fsSync.existsSync(binaryPath)) {
+          missingBinaries.push(binary);
+        }
+      }
+      
+      if (missingBinaries.length > 0) {
+        log.warn(`⚠️ GPU folder ${folder} missing binaries: ${missingBinaries.join(', ')}`);
+        log.info(`🔧 Attempting to fix missing binaries in ${folder}...`);
+        
+        try {
+          await this.setupSpecificGPUFolder(folder);
+        } catch (error) {
+          log.error(`❌ Failed to fix ${folder}:`, error.message);
+        }
+      } else {
+        log.info(`✅ GPU folder ${folder} has all required binaries`);
+      }
+    }
+  }
+
+  /**
+   * Setup a specific GPU folder with required binaries
+   */
+  async setupSpecificGPUFolder(folderName) {
+    try {
+      log.info(`🔧 Setting up specific GPU folder: ${folderName}`);
+      
+      // Create folder if it doesn't exist
+      const folderPath = path.join(this.baseDir, folderName);
+      await fs.mkdir(folderPath, { recursive: true });
+      
+      if (folderName === 'win32-x64-cuda') {
+        // CUDA requires dual download
+        const releaseInfo = await this.getLatestLlamaCppRelease();
+        if (releaseInfo) {
+          const success = await this.setupCudaBinaries(releaseInfo, folderName);
+          if (!success) {
+            await this.copyBinariesFromBase(folderName);
+          }
+        } else {
+          await this.copyBinariesFromBase(folderName);
+        }
+      } else {
+        // Other GPU types - try download first, fallback to copy
+        const releaseInfo = await this.getLatestLlamaCppRelease();
+        if (releaseInfo) {
+          const gpuType = this.getGPUTypeFromFolder(folderName);
+          const downloadUrl = this.findAssetUrl(releaseInfo.assets, gpuType, 'win32');
+          
+          if (downloadUrl) {
+            const success = await this.downloadAndExtractBinaries(downloadUrl, folderName);
+            if (!success) {
+              await this.copyBinariesFromBase(folderName);
+            }
+          } else {
+            await this.copyBinariesFromBase(folderName);
+          }
+        } else {
+          await this.copyBinariesFromBase(folderName);
+        }
+      }
+      
+      log.info(`✅ Successfully setup GPU folder: ${folderName}`);
+      
+    } catch (error) {
+      log.error(`❌ Failed to setup GPU folder ${folderName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available GPU backends/engines for the current platform
+   */
+  getAvailableBackends() {
+    try {
+      const platform = os.platform();
+      const arch = os.arch();
+      
+      let availableBackends = [];
+      
+      switch (platform) {
+        case 'win32':
+          availableBackends = [
+            {
+              id: 'cuda',
+              name: 'NVIDIA CUDA',
+              description: 'Optimized for NVIDIA GPUs with CUDA support',
+              folder: 'win32-x64-cuda',
+              requiresGPU: true,
+              gpuType: 'nvidia'
+            },
+            {
+              id: 'rocm',
+              name: 'AMD ROCm',
+              description: 'Optimized for AMD GPUs with ROCm support',
+              folder: 'win32-x64-rocm',
+              requiresGPU: true,
+              gpuType: 'amd'
+            },
+            {
+              id: 'vulkan',
+              name: 'Vulkan',
+              description: 'Cross-vendor GPU acceleration via Vulkan',
+              folder: 'win32-x64-vulkan',
+              requiresGPU: true,
+              gpuType: 'any'
+            },
+            {
+              id: 'cpu',
+              name: 'CPU Only',
+              description: 'CPU-only processing (no GPU acceleration)',
+              folder: 'win32-x64-cpu',
+              requiresGPU: false,
+              gpuType: 'none'
+            },
+            {
+              id: 'auto',
+              name: 'Auto-detect',
+              description: 'Automatically detect and use the best available backend',
+              folder: 'auto',
+              requiresGPU: false,
+              gpuType: 'auto'
+            }
+          ];
+          break;
+          
+        case 'darwin':
+          availableBackends = [
+            {
+              id: 'metal',
+              name: 'Apple Metal',
+              description: 'Optimized for Apple Silicon with Metal GPU acceleration',
+              folder: arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64',
+              requiresGPU: true,
+              gpuType: 'apple'
+            },
+            {
+              id: 'cpu',
+              name: 'CPU Only',
+              description: 'CPU-only processing (no GPU acceleration)',
+              folder: arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64',
+              requiresGPU: false,
+              gpuType: 'none'
+            },
+            {
+              id: 'auto',
+              name: 'Auto-detect',
+              description: 'Automatically detect and use the best available backend',
+              folder: 'auto',
+              requiresGPU: false,
+              gpuType: 'auto'
+            }
+          ];
+          break;
+          
+        case 'linux':
+          availableBackends = [
+            {
+              id: 'cuda',
+              name: 'NVIDIA CUDA',
+              description: 'Optimized for NVIDIA GPUs with CUDA support',
+              folder: 'linux-x64',
+              requiresGPU: true,
+              gpuType: 'nvidia'
+            },
+            {
+              id: 'rocm',
+              name: 'AMD ROCm',
+              description: 'Optimized for AMD GPUs with ROCm support',
+              folder: 'linux-x64',
+              requiresGPU: true,
+              gpuType: 'amd'
+            },
+            {
+              id: 'cpu',
+              name: 'CPU Only',
+              description: 'CPU-only processing (no GPU acceleration)',
+              folder: 'linux-x64',
+              requiresGPU: false,
+              gpuType: 'none'
+            },
+            {
+              id: 'auto',
+              name: 'Auto-detect',
+              description: 'Automatically detect and use the best available backend',
+              folder: 'auto',
+              requiresGPU: false,
+              gpuType: 'auto'
+            }
+          ];
+          break;
+          
+        default:
+          availableBackends = [
+            {
+              id: 'auto',
+              name: 'Auto-detect',
+              description: 'Automatically detect and use the best available backend',
+              folder: 'auto',
+              requiresGPU: false,
+              gpuType: 'auto'
+            }
+          ];
+      }
+      
+      // Check which backends actually have binaries available
+      const availableWithStatus = availableBackends.map(backend => {
+        let isAvailable = false;
+        let path = null;
+        
+        if (backend.folder === 'auto') {
+          isAvailable = true; // Auto-detect is always available
+        } else {
+          path = this.baseDir ? require('path').join(this.baseDir, backend.folder) : null;
+          isAvailable = path ? fsSync.existsSync(path) : false;
+        }
+        
+        return {
+          ...backend,
+          isAvailable,
+          binaryPath: path
+        };
+      });
+      
+      log.info(`Found ${availableWithStatus.length} potential backends for ${platform}`);
+      log.info(`${availableWithStatus.filter(b => b.isAvailable).length} backends have binaries available`);
+      
+      return {
+        success: true,
+        backends: availableWithStatus,
+        platform,
+        architecture: arch
+      };
+      
+    } catch (error) {
+      log.error('Error getting available backends:', error);
+      return {
+        success: false,
+        error: error.message,
+        backends: [],
+        platform: os.platform(),
+        architecture: os.arch()
+      };
+    }
+  }
+
+  /**
+   * Override the backend/engine selection
+   */
+  async setBackendOverride(backendId) {
+    try {
+      const settingsDir = path.join(os.homedir(), '.clara', 'settings');
+      await fs.mkdir(settingsDir, { recursive: true });
+      
+      const overridePath = path.join(settingsDir, 'backend-override.json');
+      
+      if (backendId === 'auto' || backendId === null || backendId === undefined) {
+        // Remove override to use auto-detection
+        if (fsSync.existsSync(overridePath)) {
+          await fs.unlink(overridePath);
+          log.info('Backend override removed - using auto-detection');
+        }
+        this.backendOverride = null;
+      } else {
+        // Save the override
+        const overrideData = {
+          backendId,
+          timestamp: new Date().toISOString(),
+          platform: os.platform(),
+          architecture: os.arch()
+        };
+        
+        await fs.writeFile(overridePath, JSON.stringify(overrideData, null, 2), 'utf8');
+        log.info(`Backend override set to: ${backendId}`);
+        this.backendOverride = backendId;
+      }
+      
+      return { success: true, backendId: this.backendOverride };
+    } catch (error) {
+      log.error('Error setting backend override:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get current backend override setting
+   */
+  async getBackendOverride() {
+    try {
+      const overridePath = path.join(os.homedir(), '.clara', 'settings', 'backend-override.json');
+      
+      if (!fsSync.existsSync(overridePath)) {
+        return { success: true, backendId: null, isOverridden: false };
+      }
+      
+      const overrideData = await fs.readFile(overridePath, 'utf8');
+      const override = JSON.parse(overrideData);
+      
+      return {
+        success: true,
+        backendId: override.backendId,
+        isOverridden: true,
+        timestamp: override.timestamp
+      };
+    } catch (error) {
+      log.error('Error getting backend override:', error);
+      return { success: false, error: error.message, backendId: null, isOverridden: false };
+    }
+  }
+
+  /**
+   * Apply backend override to platform detection
+   */
+  async applyBackendOverride() {
+    try {
+      const overrideResult = await this.getBackendOverride();
+      
+      if (!overrideResult.success || !overrideResult.isOverridden) {
+        return null; // No override, use normal detection
+      }
+      
+      const backendId = overrideResult.backendId;
+      const availableBackends = this.getAvailableBackends();
+      
+      if (!availableBackends.success) {
+        log.warn('Failed to get available backends for override application');
+        return null;
+      }
+      
+      const targetBackend = availableBackends.backends.find(b => b.id === backendId);
+      
+      if (!targetBackend) {
+        log.warn(`Backend override '${backendId}' not found in available backends`);
+        return null;
+      }
+      
+      if (!targetBackend.isAvailable) {
+        log.warn(`Backend override '${backendId}' is not available (binaries not found)`);
+        return null;
+      }
+      
+      log.info(`🔧 Applying backend override: ${targetBackend.name} (${backendId})`);
+      return targetBackend.folder;
+      
+    } catch (error) {
+      log.error('Error applying backend override:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get current configuration as JSON (converted from YAML)
+   */
+  async getConfigAsJson() {
+    try {
+      if (!fsSync.existsSync(this.configPath)) {
+        return {
+          success: false,
+          error: 'Configuration file not found. Please start the service first to generate config.',
+          config: null
+        };
+      }
+      
+      const yamlContent = await fs.readFile(this.configPath, 'utf8');
+      
+      // Parse YAML to JSON
+      let configJson;
+      try {
+        // Try to use js-yaml if available, otherwise try a simple parser
+        let yaml;
+        try {
+          yaml = require('js-yaml');
+        } catch (yamlError) {
+          // Fallback to a simple YAML parser if js-yaml is not available
+          log.info('js-yaml not available, using fallback YAML parsing');
+          configJson = this.parseSimpleYaml(yamlContent);
+        }
+        
+        if (yaml) {
+          configJson = yaml.load(yamlContent);
+        }
+      } catch (parseError) {
+        log.error('Error parsing YAML config:', parseError);
+        return {
+          success: false,
+          error: `Failed to parse YAML configuration: ${parseError.message}`,
+          config: null
+        };
+      }
+      
+      return {
+        success: true,
+        config: configJson,
+        configPath: this.configPath,
+        lastModified: fsSync.statSync(this.configPath).mtime
+      };
+      
+    } catch (error) {
+      log.error('Error reading config as JSON:', error);
+      return {
+        success: false,
+        error: error.message,
+        config: null
+      };
+    }
+  }
+
+  /**
+   * Simple YAML parser fallback (very basic, for emergency use)
+   */
+  parseSimpleYaml(yamlContent) {
+    // This is a very basic YAML parser - only handles the structure we generate
+    const lines = yamlContent.split('\n');
+    const result = {};
+    let currentSection = null;
+    let currentModel = null;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('#') || trimmed === '') {
+        continue; // Skip comments and empty lines
+      }
+      
+      if (trimmed.includes(':') && !trimmed.startsWith(' ')) {
+        // Top-level key
+        const [key, value] = trimmed.split(':', 2);
+        if (value && value.trim()) {
+          result[key.trim()] = value.trim();
+        } else {
+          currentSection = key.trim();
+          result[currentSection] = {};
+        }
+      } else if (trimmed.startsWith('  ') && !trimmed.startsWith('    ')) {
+        // Second-level key (like model names or group names)
+        if (currentSection) {
+          const [key, value] = trimmed.substring(2).split(':', 2);
+          if (value && value.trim()) {
+            result[currentSection][key.trim()] = value.trim();
+          } else {
+            currentModel = key.trim().replace(/['"]/g, ''); // Remove quotes
+            result[currentSection][currentModel] = {};
+          }
+        }
+      } else if (trimmed.startsWith('    ') && currentSection && currentModel) {
+        // Third-level key (model properties)
+        const [key, value] = trimmed.substring(4).split(':', 2);
+        if (value && value.trim()) {
+          const cleanValue = value.trim().replace(/['"]/g, ''); // Remove quotes
+          result[currentSection][currentModel][key.trim()] = cleanValue;
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Force regenerate configuration with current settings and overrides
+   */
+  async forceReconfigure() {
+    try {
+      log.info('🔄 Force reconfiguration requested');
+      
+      // Apply any backend overrides before regenerating config
+      const overriddenPlatform = await this.applyBackendOverride();
+      if (overriddenPlatform && overriddenPlatform !== 'auto') {
+        log.info(`🔧 Using overridden platform: ${overriddenPlatform}`);
+        // Temporarily override the platform detection
+        this.platformInfo.platformDir = overriddenPlatform;
+        this.binaryPaths = this.getBinaryPathsWithOverride(overriddenPlatform);
+        log.info(`🎯 Updated binary paths:`, {
+          llamaSwap: this.binaryPaths.llamaSwap,
+          llamaServer: this.binaryPaths.llamaServer
+        });
+      } else {
+        log.info('🔧 Using default platform detection (no override)');
+      }
+      
+      // Regenerate configuration
+      const result = await this.generateConfig();
+      
+      log.info('✅ Force reconfiguration completed');
+      return {
+        success: true,
+        message: 'Configuration regenerated successfully',
+        modelsFound: result.models,
+        configPath: this.configPath
+      };
+      
+    } catch (error) {
+      log.error('❌ Error during force reconfiguration:', error);
+      return {
+        success: false,  
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get binary paths with platform override
+   */
+  getBinaryPathsWithOverride(platformOverride) {
+    try {
+      const overridePlatformPath = path.join(this.baseDir, platformOverride);
+      
+      // Determine binary names based on platform
+      let binaryNames;
+      if (platformOverride.includes('win32')) {
+        binaryNames = {
+          llamaSwap: 'llama-swap-win32-x64.exe',
+          llamaServer: 'llama-server.exe'
+        };
+      } else if (platformOverride.includes('darwin')) {
+        binaryNames = {
+          llamaSwap: 'llama-swap-darwin',
+          llamaServer: 'llama-server'
+        };
+      } else {
+        binaryNames = {
+          llamaSwap: 'llama-swap-linux',
+          llamaServer: 'llama-server'
+        };
+      }
+      
+      return {
+        llamaSwap: path.join(overridePlatformPath, binaryNames.llamaSwap),
+        llamaServer: path.join(overridePlatformPath, binaryNames.llamaServer)
+      };
+      
+    } catch (error) {
+      log.error('Error getting binary paths with override:', error);
+      return this.binaryPaths; // Fallback to original paths
+    }
+  }
+
+  /**
+   * Get comprehensive configuration information for UI
+   */
+  async getConfigurationInfo() {
+    try {
+      const results = await Promise.all([
+        this.getAvailableBackends(),
+        this.getBackendOverride(),
+        this.getConfigAsJson(),
+        this.loadPerformanceSettings()
+      ]);
+      
+      const [backends, override, config, perfSettings] = results;
+      
+      return {
+        success: true,
+        availableBackends: backends.success ? backends.backends : [],
+        currentBackendOverride: override.success ? {
+          backendId: override.backendId,
+          isOverridden: override.isOverridden,
+          timestamp: override.timestamp
+        } : null,
+        configuration: config.success ? config.config : null,
+        configPath: this.configPath,
+        performanceSettings: perfSettings.success ? perfSettings.settings : null,
+        platform: os.platform(),
+        architecture: os.arch(),
+        serviceStatus: this.getStatus()
+      };
+      
+    } catch (error) {
+      log.error('Error getting configuration info:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 }
 
