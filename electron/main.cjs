@@ -480,6 +480,66 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Download official llama-swap binary
+  ipcMain.handle('download-official-llama-swap', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.downloadOfficialLlamaSwap();
+      return { success: true, ...result };
+    } catch (error) {
+      log.error('Error downloading official llama-swap:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Check for llama-swap updates
+  ipcMain.handle('check-llama-swap-updates', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.checkForLlamaSwapUpdates();
+      return { success: true, ...result };
+    } catch (error) {
+      log.error('Error checking llama-swap updates:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Update llama-swap to latest version
+  ipcMain.handle('update-llama-swap', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.updateLlamaSwap();
+      return { success: true, ...result };
+    } catch (error) {
+      log.error('Error updating llama-swap:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get llama-swap version
+  ipcMain.handle('get-llama-swap-version', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const version = await llamaSwapService.getLlamaSwapVersion();
+      return { success: true, version };
+    } catch (error) {
+      log.error('Error getting llama-swap version:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Debug binary paths (useful for troubleshooting production builds)
   ipcMain.handle('debug-binary-paths', async () => {
     try {

@@ -53,7 +53,9 @@ import {
   StopCircle,
   Search,
   Grid3X3,
-  Monitor
+  Monitor,
+  Cpu,
+  RefreshCw
 } from 'lucide-react';
 
 // Import types
@@ -842,11 +844,19 @@ const AdvancedOptions: React.FC<{
     features: false,
     mcp: false,
     autonomous: false,
-    artifacts: false
+    artifacts: false,
+    gpuSettings: false
   });
 
   // State for advanced parameters visibility
   const [showAdvancedParameters, setShowAdvancedParameters] = useState(false);
+
+  // State for GPU settings
+  const [availableBackends, setAvailableBackends] = useState<any[]>([]);
+  const [selectedBackend, setSelectedBackend] = useState<string>('auto');
+  const [actualBackend, setActualBackend] = useState<string>(''); // The backend actually being used
+  const [backendSaving, setBackendSaving] = useState(false);
+  const [backendRestarting, setBackendRestarting] = useState(false);
 
   // Load MCP servers when component mounts or when MCP is enabled
   useEffect(() => {
@@ -867,6 +877,85 @@ const AdvancedOptions: React.FC<{
 
     loadMcpServers();
   }, [aiConfig?.features.enableMCP]);
+
+  // Load backend configuration when component mounts
+  useEffect(() => {
+    const loadBackendConfiguration = async () => {
+      try {
+        const llamaSwap = (window as any).llamaSwap;
+        if (llamaSwap?.getConfigurationInfo) {
+          const result = await llamaSwap.getConfigurationInfo();
+          if (result.success) {
+            setAvailableBackends(result.availableBackends || []);
+            setSelectedBackend(result.currentBackendOverride?.backendId || 'auto');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load backend configuration:', error);
+      }
+    };
+
+    loadBackendConfiguration();
+  }, []);
+
+  // Periodically check service status to get actual backend being used
+  useEffect(() => {
+    let statusCheckInterval: NodeJS.Timeout;
+    
+    const checkServiceStatus = async () => {
+      try {
+        const llamaSwap = (window as any).llamaSwap;
+        if (llamaSwap?.getStatusWithHealthCheck) {
+          const status = await llamaSwap.getStatusWithHealthCheck();
+          if (status.success && status.currentBackendName) {
+            setActualBackend(status.currentBackendName);
+          }
+        }
+      } catch (error) {
+        console.debug('Error checking service status:', error);
+      }
+    };
+
+    // Check immediately and then every 10 seconds
+    checkServiceStatus();
+    statusCheckInterval = setInterval(checkServiceStatus, 10000);
+
+    return () => {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+    };
+  }, []);
+
+  // Handle backend change with restart
+  const handleBackendChange = async (backendId: string) => {
+    setBackendSaving(true);
+    setBackendRestarting(true);
+    
+    try {
+      const llamaSwap = (window as any).llamaSwap;
+      const result = await llamaSwap.setBackendOverride(backendId === 'auto' ? null : backendId);
+      
+      if (result.success) {
+        setSelectedBackend(backendId);
+        
+        // Restart the service to apply backend changes
+        if (llamaSwap?.restart) {
+          await llamaSwap.restart();
+        }
+      } else {
+        console.error('Failed to set backend override:', result.error);
+      }
+    } catch (error) {
+      console.error('Failed to change backend:', error);
+    } finally {
+      setBackendSaving(false);
+      // Keep restarting state for a bit longer to show the restart process
+      setTimeout(() => {
+        setBackendRestarting(false);
+      }, 3000);
+    }
+  };
 
   if (!show || !aiConfig) return null;
 
@@ -2622,6 +2711,106 @@ when you are asked for something always resort to writing a python script and ru
               </div>
             )}
           </div>
+
+          {/* GPU Settings Configuration */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="GPU Settings"
+              icon={<Monitor className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.gpuSettings}
+              onToggle={() => toggleSection('gpuSettings')}
+              badge={selectedBackend === 'auto' ? (actualBackend || 'Auto') : selectedBackend}
+            />
+            {expandedSections.gpuSettings && (
+              <div className="p-4 bg-white/20 dark:bg-gray-800/30 backdrop-blur-sm rounded-lg border border-white/10 dark:border-gray-700/50 space-y-4">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Cog className="w-4 h-4" />
+                    Backend Selection
+                  </h4>
+                  
+                  {/* Current Backend Display */}
+                  <div className="flex items-center justify-between p-3 bg-white/30 dark:bg-gray-700/20 rounded">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Current Backend:</span>
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-blue-500" />
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {selectedBackend === 'auto' 
+                          ? (actualBackend ? `Auto-detect (${actualBackend})` : 'Auto-detect')
+                          : availableBackends.find(b => b.id === selectedBackend)?.name || selectedBackend}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Backend Options */}
+                  <div className="grid grid-cols-1 gap-2">
+                    {/* Auto-detect Option */}
+                    <button
+                      onClick={() => handleBackendChange('auto')}
+                      disabled={backendSaving || backendRestarting}
+                      className={`p-3 border-2 rounded-lg text-left transition-all ${
+                        selectedBackend === 'auto'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                      } ${(backendSaving || backendRestarting) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Settings className="w-4 h-4 text-blue-500" />
+                        <span className="font-medium text-gray-900 dark:text-white">Auto-detect</span>
+                        {selectedBackend === 'auto' && !backendSaving && <span className="ml-auto text-blue-500 text-xs">Active</span>}
+                        {backendSaving && selectedBackend === 'auto' && <RefreshCw className="w-4 h-4 animate-spin ml-auto text-blue-500" />}
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Automatically detect and use the best available backend
+                      </p>
+                    </button>
+
+                    {/* Available Backends */}
+                    {availableBackends
+                      .filter(backend => backend.isAvailable)
+                      .map((backend) => (
+                        <button
+                          key={backend.id}
+                          onClick={() => handleBackendChange(backend.id)}
+                          disabled={backendSaving || backendRestarting}
+                          className={`p-3 border-2 rounded-lg text-left transition-all ${
+                            selectedBackend === backend.id
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          } ${(backendSaving || backendRestarting) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Cpu className="w-4 h-4 text-green-500" />
+                            <span className="font-medium text-gray-900 dark:text-white">{backend.name}</span>
+                            {selectedBackend === backend.id && !backendSaving && <span className="ml-auto text-blue-500 text-xs">Active</span>}
+                            {backendSaving && selectedBackend === backend.id && <RefreshCw className="w-4 h-4 animate-spin ml-auto text-blue-500" />}
+                          </div>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            {backend.description}
+                          </p>
+                        </button>
+                      ))}
+                  </div>
+
+                  {/* Status Messages */}
+                  {(backendSaving || backendRestarting) && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                        <span className="text-sm text-blue-700 dark:text-blue-300">
+                          {backendSaving ? 'Applying backend changes...' : 'Restarting service with new backend...'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500 dark:text-gray-400 p-2 bg-white/20 dark:bg-gray-700/20 rounded">
+                    <strong>Note:</strong> Changing the backend will restart the AI service. This may take a moment to complete.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -3288,7 +3477,23 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           
           if (!isHealthy) {
             setOfflineProvider(currentProvider);
-            setProviderOfflineMessage(`Clara's Pocket is not running. Would you like to start it?`);
+            
+            // Check if the service is currently starting
+            if (status.isStarting) {
+              const startupMessage = status.currentStartupPhase 
+                ? `Clara's Pocket is starting: ${status.currentStartupPhase}`
+                : 'Clara\'s Pocket is starting up, please wait...';
+              
+              // Calculate duration
+              const durationText = status.startingDuration > 0 
+                ? ` (${status.startingDuration}s)`
+                : '';
+                
+              setProviderOfflineMessage(`${startupMessage}${durationText}`);
+            } else {
+              setProviderOfflineMessage(`Clara's Pocket is not running. Would you like to start it?`);
+            }
+            
             setShowClaraCoreOffer(false); // Don't offer switch since this IS Clara Core
             setShowProviderOfflineModal(true);
             setProviderHealthStatus('unhealthy');
@@ -3328,6 +3533,31 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       return false;
     }
   }, [sessionConfig?.aiConfig?.provider, providers]);
+
+  // Poll for service status when the offline modal is shown and service is starting
+  useEffect(() => {
+    if (!showProviderOfflineModal) {
+      return;
+    }
+
+    // Check if we're showing a starting message
+    const isStarting = providerOfflineMessage.includes('starting');
+    if (!isStarting) {
+      return;
+    }
+
+    const pollInterval = setInterval(async () => {
+      // Re-check provider health to update the startup progress
+      const isHealthy = await checkProviderHealth();
+      
+      // If the service becomes healthy, hide the modal
+      if (isHealthy) {
+        setShowProviderOfflineModal(false);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [showProviderOfflineModal, providerOfflineMessage, checkProviderHealth]);
 
   // Handle starting Clara Core
   const handleStartClaraCore = useCallback(async () => {
@@ -4620,6 +4850,10 @@ You can right-click on the image to save it or use it in your projects.`;
     }
   }, []);
 
+  // Check if Clara's Pocket is currently starting
+  const isServiceStarting = offlineProvider?.type === 'claras-pocket' && 
+    providerOfflineMessage.includes('starting');
+
   return (
     <div 
       ref={containerRef}
@@ -5008,14 +5242,38 @@ You can right-click on the image to save it or use it in your projects.`;
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 m-4 max-w-md w-full mx-auto">
             {/* Icon */}
             <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                isServiceStarting 
+                  ? 'bg-blue-100 dark:bg-blue-900' 
+                  : 'bg-red-100 dark:bg-red-900'
+              }`}>
+                {isServiceStarting ? (
+                  <div className="w-6 h-6 text-blue-600 dark:text-blue-400">
+                    <svg className="animate-spin w-full h-full" fill="none" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  </div>
+                ) : (
+                  <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                )}
               </div>
             </div>
 
             {/* Title */}
             <h2 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-3">
-              Provider Not Responding
+              {isServiceStarting ? 'Starting Clara\'s Pocket' : 'Provider Not Responding'}
             </h2>
 
             {/* Message */}
@@ -5025,8 +5283,8 @@ You can right-click on the image to save it or use it in your projects.`;
 
             {/* Action Buttons */}
             <div className="flex flex-col space-y-3">
-              {offlineProvider?.type === 'claras-pocket' ? (
-                // If current provider is Clara Core, offer to start it
+              {offlineProvider?.type === 'claras-pocket' && !isServiceStarting ? (
+                // If current provider is Clara Core and NOT starting, offer to start it
                 <button
                   onClick={handleStartClaraCore}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
@@ -5034,7 +5292,7 @@ You can right-click on the image to save it or use it in your projects.`;
                   <Server className="w-5 h-5" />
                   <span>Start Clara's Pocket</span>
                 </button>
-              ) : (
+              ) : offlineProvider?.type !== 'claras-pocket' ? (
                 // If current provider is not Clara Core, offer to switch
                 showClaraCoreOffer && (
                   <button
@@ -5045,13 +5303,13 @@ You can right-click on the image to save it or use it in your projects.`;
                     <span>Switch to Clara's Pocket</span>
                   </button>
                 )
-              )}
+              ) : null}
               
               <button
                 onClick={() => setShowProviderOfflineModal(false)}
                 className="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200"
               >
-                Cancel
+                {isServiceStarting ? 'Hide' : 'Cancel'}
               </button>
             </div>
           </div>

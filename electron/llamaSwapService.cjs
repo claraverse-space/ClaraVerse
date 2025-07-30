@@ -13,6 +13,7 @@ class LlamaSwapService {
     this.isRunning = false;
     this.isStarting = false; // Add this flag to prevent concurrent starts
     this.startingTimestamp = null; // Track when startup began
+    this.currentStartupPhase = null; // Track current startup phase for user feedback
     this.port = 8091;
     this.ipcLogger = ipcLogger; // Add IPC logger reference
     
@@ -112,7 +113,23 @@ class LlamaSwapService {
    */
   getBinaryPathsWithFallback() {
     try {
-      // Try to get platform-specific paths first
+      // FIRST: Check for official llama-swap binary
+      const officialLlamaSwapPath = this.getOfficialLlamaSwapPath();
+      if (fsSync.existsSync(officialLlamaSwapPath)) {
+        log.info(`✅ Using official llama-swap binary: ${officialLlamaSwapPath}`);
+        
+        // Still need llama-server from platform-specific location
+        const platformPaths = this.platformManager.isCurrentPlatformSupported() 
+          ? this.platformManager.getBinaryPaths()
+          : this.getLegacyBinaryPaths();
+          
+        return {
+          llamaSwap: officialLlamaSwapPath,
+          llamaServer: platformPaths.llamaServer
+        };
+      }
+      
+      // FALLBACK: Try to get platform-specific paths
       if (this.platformManager.isCurrentPlatformSupported()) {
         return this.platformManager.getBinaryPaths();
       }
@@ -120,7 +137,7 @@ class LlamaSwapService {
       log.warn('Failed to get platform-specific binary paths, falling back to legacy detection:', error.message);
     }
 
-    // Fallback to legacy behavior
+    // FINAL FALLBACK: Legacy behavior
     return this.getLegacyBinaryPaths();
   }
 
@@ -867,6 +884,416 @@ class LlamaSwapService {
     }
   }
 
+  /**
+   * Download official llama-swap binary from GitHub releases
+   */
+  async downloadOfficialLlamaSwap() {
+    try {
+      log.info('🚀 Downloading official llama-swap binary...');
+      
+      // Get latest llama-swap release info
+      const releaseInfo = await this.getLatestLlamaSwapRelease();
+      if (!releaseInfo) {
+        throw new Error('Could not fetch latest llama-swap release information');
+      }
+
+      log.info(`📦 Found llama-swap release: ${releaseInfo.version}`);
+
+      // Determine platform-specific download URL
+      const downloadUrl = this.getLlamaSwapAssetUrl(releaseInfo.assets);
+      if (!downloadUrl) {
+        throw new Error(`No compatible llama-swap binary found for ${os.platform()}-${os.arch()}`);
+      }
+
+      log.info(`⬇️ Downloading from: ${downloadUrl}`);
+
+      // Download and extract to appropriate location
+      const success = await this.downloadAndExtractLlamaSwap(downloadUrl);
+      if (success) {
+        log.info('✅ Official llama-swap binary downloaded successfully');
+        return { success: true };
+      } else {
+        throw new Error('Failed to download or extract llama-swap binary');
+      }
+      
+    } catch (error) {
+      log.error('❌ Failed to download official llama-swap binary:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get latest llama-swap release from GitHub
+   */
+  async getLatestLlamaSwapRelease() {
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      const response = await fetch('https://api.github.com/repos/mostlygeek/llama-swap/releases/latest');
+      if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+      }
+
+      const release = await response.json();
+      return {
+        version: release.tag_name,
+        assets: release.assets
+      };
+    } catch (error) {
+      log.error('Error fetching llama-swap release info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get platform-specific llama-swap asset URL
+   */
+  getLlamaSwapAssetUrl(assets) {
+    const platform = os.platform();
+    const arch = os.arch();
+    
+    // Map Node.js platform/arch to llama-swap naming convention
+    let platformName, archName, fileExtension;
+    
+    switch (platform) {
+      case 'darwin':
+        platformName = 'darwin';
+        archName = arch === 'arm64' ? 'arm64' : 'amd64';
+        fileExtension = 'tar.gz';
+        break;
+      case 'linux':
+        platformName = 'linux';
+        archName = arch === 'arm64' ? 'arm64' : 'amd64';
+        fileExtension = 'tar.gz';
+        break;
+      case 'win32':
+        platformName = 'windows';
+        archName = 'amd64'; // llama-swap only provides amd64 for Windows
+        fileExtension = 'zip';
+        break;
+      default:
+        return null;
+    }
+
+    // Look for matching asset
+    const expectedPattern = `llama-swap_.*_${platformName}_${archName}.${fileExtension}`;
+    const regex = new RegExp(expectedPattern);
+    
+    for (const asset of assets) {
+      if (regex.test(asset.name)) {
+        log.info(`🎯 Found matching asset: ${asset.name}`);
+        return asset.browser_download_url;
+      }
+    }
+
+    log.warn(`⚠️ No matching asset found for pattern: ${expectedPattern}`);
+    return null;
+  }
+
+  /**
+   * Download and extract official llama-swap binary
+   */
+  async downloadAndExtractLlamaSwap(downloadUrl) {
+    try {
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      // Download the archive
+      log.info(`⬇️ Downloading llama-swap from: ${downloadUrl}`);
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      
+      // Create temp file
+      const tempDir = path.join(require('os').tmpdir(), 'clara-llamaswap');
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      const platform = os.platform();
+      const isWindows = platform === 'win32';
+      const tempFilePath = path.join(tempDir, `llama-swap.${isWindows ? 'zip' : 'tar.gz'}`);
+      
+      await fs.writeFile(tempFilePath, buffer);
+      log.info(`📦 Downloaded to: ${tempFilePath}`);
+
+      // Determine target directory for llama-swap binary
+      const targetDir = this.getLlamaSwapInstallDirectory();
+      await fs.mkdir(targetDir, { recursive: true });
+
+      // Extract based on platform
+      if (isWindows) {
+        await this.extractLlamaSwapZip(tempFilePath, targetDir);
+      } else {
+        await this.extractLlamaSwapTarGz(tempFilePath, targetDir);
+      }
+
+      // Clean up temp file
+      await fs.unlink(tempFilePath);
+      
+      // Verify the binary was extracted correctly
+      const binaryPath = this.getOfficialLlamaSwapPath();
+      if (!fsSync.existsSync(binaryPath)) {
+        throw new Error(`Binary not found after extraction: ${binaryPath}`);
+      }
+
+      // Make executable on Unix systems
+      if (!isWindows) {
+        await fs.chmod(binaryPath, 0o755);
+      }
+
+      log.info(`✅ llama-swap binary installed to: ${binaryPath}`);
+      return true;
+      
+    } catch (error) {
+      log.error('❌ Error downloading/extracting llama-swap:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the directory where llama-swap should be installed
+   */
+  getLlamaSwapInstallDirectory() {
+    // Install to a dedicated directory in app data
+    const userDataDir = app && app.getPath ? app.getPath('userData') : path.join(os.homedir(), '.clara');
+    return path.join(userDataDir, 'llama-swap');
+  }
+
+  /**
+   * Get the path to the official llama-swap binary
+   */
+  getOfficialLlamaSwapPath() {
+    const installDir = this.getLlamaSwapInstallDirectory();
+    const binaryName = os.platform() === 'win32' ? 'llama-swap.exe' : 'llama-swap';
+    return path.join(installDir, binaryName);
+  }
+
+  /**
+   * Extract llama-swap from ZIP (Windows)
+   */
+  async extractLlamaSwapZip(zipPath, targetDir) {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      
+      // Use PowerShell to extract ZIP
+      const psCommand = `
+        Expand-Archive -Path "${zipPath}" -DestinationPath "${targetDir}" -Force;
+        Get-ChildItem -Path "${targetDir}" -Recurse -Name "llama-swap.exe" | ForEach-Object {
+          $sourcePath = Join-Path "${targetDir}" $_
+          $destPath = Join-Path "${targetDir}" "llama-swap.exe"
+          if ($sourcePath -ne $destPath) {
+            Move-Item -Path $sourcePath -Destination $destPath -Force
+          }
+        }
+      `;
+      
+      const ps = spawn('powershell', ['-Command', psCommand], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      
+      ps.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      ps.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      ps.on('close', (code) => {
+        if (code === 0) {
+          log.info('✅ ZIP extraction completed');
+          resolve();
+        } else {
+          reject(new Error(`PowerShell extraction failed: ${stderr}`));
+        }
+      });
+      
+      setTimeout(() => {
+        ps.kill();
+        reject(new Error('ZIP extraction timeout'));
+      }, 30000);
+    });
+  }
+
+  /**
+   * Extract llama-swap from tar.gz (macOS/Linux)
+   */
+  async extractLlamaSwapTarGz(tarPath, targetDir) {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      
+      // Use tar to extract
+      const tar = spawn('tar', ['-xzf', tarPath, '-C', targetDir], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      
+      tar.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      tar.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      tar.on('close', (code) => {
+        if (code === 0) {
+          // Find and move the llama-swap binary to the root of target directory
+          this.findAndMoveLlamaSwapBinary(targetDir)
+            .then(() => {
+              log.info('✅ tar.gz extraction completed');
+              resolve();
+            })
+            .catch(reject);
+        } else {
+          reject(new Error(`tar extraction failed: ${stderr}`));
+        }
+      });
+      
+      setTimeout(() => {
+        tar.kill();
+        reject(new Error('tar.gz extraction timeout'));
+      }, 30000);
+    });
+  }
+
+  /**
+   * Find llama-swap binary in extracted directory and move to root
+   */
+  async findAndMoveLlamaSwapBinary(targetDir) {
+    const { spawn } = require('child_process');
+    
+    return new Promise((resolve, reject) => {
+      // Find the llama-swap binary (might be in a subdirectory)
+      const find = spawn('find', [targetDir, '-name', 'llama-swap', '-type', 'f'], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      
+      find.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      find.on('close', async (code) => {
+        if (code === 0 && stdout.trim()) {
+          const binaryPath = stdout.trim().split('\n')[0]; // Get first match
+          const targetPath = path.join(targetDir, 'llama-swap');
+          
+          try {
+            if (binaryPath !== targetPath) {
+              await fs.rename(binaryPath, targetPath);
+              log.info(`📦 Moved llama-swap binary to: ${targetPath}`);
+            }
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        } else {
+          reject(new Error('llama-swap binary not found in extracted archive'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Check if official llama-swap binary exists and is up to date
+   */
+  async checkOfficialLlamaSwapVersion() {
+    try {
+      const binaryPath = this.getOfficialLlamaSwapPath();
+      
+      if (!fsSync.existsSync(binaryPath)) {
+        log.info('🔍 Official llama-swap binary not found, needs download');
+        return { exists: false, needsUpdate: true };
+      }
+
+      // Get current version
+      const currentVersion = await this.getLlamaSwapBinaryVersion(binaryPath);
+      
+      // Get latest version from GitHub
+      const releaseInfo = await this.getLatestLlamaSwapRelease();
+      if (!releaseInfo) {
+        log.warn('⚠️ Could not check for updates, using existing binary');
+        return { exists: true, needsUpdate: false, currentVersion };
+      }
+
+      const latestVersion = releaseInfo.version;
+      const needsUpdate = currentVersion !== latestVersion;
+      
+      log.info(`📊 llama-swap version check: current=${currentVersion}, latest=${latestVersion}, needsUpdate=${needsUpdate}`);
+      
+      return {
+        exists: true,
+        needsUpdate,
+        currentVersion,
+        latestVersion
+      };
+      
+    } catch (error) {
+      log.error('❌ Error checking llama-swap version:', error);
+      return { exists: false, needsUpdate: true, error: error.message };
+    }
+  }
+
+  /**
+   * Get version of llama-swap binary
+   */
+  async getLlamaSwapBinaryVersion(binaryPath) {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      const process = spawn(binaryPath, ['--version'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 5000
+      });
+
+      let stdout = '';
+      
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      process.on('close', (code) => {
+        if (code === 0 && stdout) {
+          // Extract version from output (e.g., "llama-swap v144")
+          const versionMatch = stdout.match(/v?(\d+(?:\.\d+)*)/);
+          if (versionMatch) {
+            resolve(`v${versionMatch[1]}`);
+          } else {
+            resolve('unknown');
+          }
+        } else {
+          resolve('unknown');
+        }
+      });
+      
+      setTimeout(() => {
+        process.kill();
+        resolve('unknown');
+      }, 5000);
+    });
+  }
+
   async validateBinaries() {
     log.info('Starting binary validation...');
     log.info(`📁 Config file location: ${this.configPath}`);
@@ -884,17 +1311,38 @@ class LlamaSwapService {
       log.warn('Platform manager validation failed, using legacy validation:', error.message);
     }
 
-    // Fallback to legacy validation
-    log.info('Using legacy binary validation');
+    // Fallback to legacy validation with official binary support
+    log.info('Using legacy binary validation with official binary support');
     const { llamaSwap, llamaServer } = this.binaryPaths;
     
     const issues = [];
     
     log.info(`Checking llama-swap binary: ${llamaSwap}`);
     if (!this.binaryExists(llamaSwap)) {
-      const error = `llama-swap binary not found at: ${llamaSwap}`;
-      log.error(error);
-      issues.push(error);
+      log.warn(`llama-swap binary not found at: ${llamaSwap}`);
+      
+      // TRY AUTO-DOWNLOAD: Attempt to download official llama-swap binary
+      try {
+        log.info('🔄 Attempting to download official llama-swap binary...');
+        await this.downloadOfficialLlamaSwap();
+        
+        // Re-check using updated binary paths
+        const updatedPaths = this.getBinaryPathsWithFallback();
+        if (this.binaryExists(updatedPaths.llamaSwap)) {
+          log.info('✅ Successfully downloaded and validated official llama-swap binary');
+          // Update our current binary paths reference
+          this.binaryPaths.llamaSwap = updatedPaths.llamaSwap;
+        } else {
+          const error = `llama-swap binary not found at: ${llamaSwap} (download failed or not applicable)`;
+          log.error(error);
+          issues.push(error);
+        }
+      } catch (downloadError) {
+        log.error('❌ Failed to auto-download llama-swap binary:', downloadError.message);
+        const error = `llama-swap binary not found at: ${llamaSwap} (auto-download failed: ${downloadError.message})`;
+        log.error(error);
+        issues.push(error);
+      }
     } else {
       log.info('✅ llama-swap binary found');
     }
@@ -999,10 +1447,10 @@ class LlamaSwapService {
       throw error;
     }
     
-    // Check if binaries are executable
+    // Check if binaries are executable (use current binary paths)
     try {
-      await fs.access(llamaSwap, fs.constants.F_OK | fs.constants.X_OK);
-      await fs.access(llamaServer, fs.constants.F_OK | fs.constants.X_OK);
+      await fs.access(this.binaryPaths.llamaSwap, fs.constants.F_OK | fs.constants.X_OK);
+      await fs.access(this.binaryPaths.llamaServer, fs.constants.F_OK | fs.constants.X_OK);
       log.info('✅ Binaries are executable');
     } catch (error) {
       const execError = new Error(`Binaries exist but are not executable: ${error.message}`);
@@ -1012,6 +1460,73 @@ class LlamaSwapService {
     
     log.info('✅ Legacy binary validation successful');
     return true;
+  }
+
+  /**
+   * Check if there's a newer version of llama-swap available
+   */
+  async checkForLlamaSwapUpdates() {
+    try {
+      const currentVersion = await this.getLlamaSwapVersion();
+      const latestRelease = await this.getLatestLlamaSwapRelease();
+      
+      const hasUpdate = currentVersion !== latestRelease.tag_name;
+      
+      return {
+        hasUpdate,
+        currentVersion,
+        latestVersion: latestRelease.tag_name,
+        releaseInfo: latestRelease
+      };
+    } catch (error) {
+      log.error('Failed to check for llama-swap updates:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the version of the currently installed llama-swap binary
+   */
+  async getLlamaSwapVersion() {
+    try {
+      const paths = this.getBinaryPathsWithFallback();
+      if (!paths.llamaSwap || !fsSync.existsSync(paths.llamaSwap)) {
+        return 'not installed';
+      }
+
+      const result = await this.execAsync(`"${paths.llamaSwap}" --version`, { timeout: 5000 });
+      
+      // Extract version from output (format may vary)
+      const versionMatch = result.stdout.match(/v?(\d+\.\d+\.\d+)/);
+      return versionMatch ? versionMatch[1] : 'unknown';
+    } catch (error) {
+      log.warn('Failed to get llama-swap version:', error.message);
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Update llama-swap to the latest version
+   */
+  async updateLlamaSwap() {
+    try {
+      log.info('🔄 Updating llama-swap to latest version...');
+      
+      // Download latest version
+      await this.downloadOfficialLlamaSwap();
+      
+      // Verify the update
+      const newVersion = await this.getLlamaSwapVersion();
+      log.info(`✅ llama-swap updated to version: ${newVersion}`);
+      
+      return {
+        success: true,
+        version: newVersion
+      };
+    } catch (error) {
+      log.error('❌ Failed to update llama-swap:', error.message);
+      throw error;
+    }
   }
 
   binaryExists(binaryPath) {
@@ -1702,6 +2217,22 @@ ${cmdLine}`;
     }
 
     await fs.writeFile(this.configPath, configYaml);
+    
+    // Wait a moment for the file system to ensure the config is fully written
+    log.info('⏱️ Configuration written, ensuring file system sync...');
+    await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
+    
+    // Verify the config file was written successfully
+    try {
+      const verifyContent = await fs.readFile(this.configPath, 'utf8');
+      if (verifyContent.length < configYaml.length * 0.9) {
+        log.warn('⚠️ Config file verification shows incomplete write, waiting longer...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Additional 2 second delay
+      }
+    } catch (verifyError) {
+      log.warn('⚠️ Config file verification failed, but continuing:', verifyError.message);
+    }
+    
     log.info('Dynamic config generated with', mainModels.length, 'models using saved performance settings');
     
     return { models: mainModels.length };
@@ -1939,6 +2470,7 @@ ${cmdLine}`;
     
     this.isStarting = true;
     this.startingTimestamp = Date.now();
+    this.setStartupPhase('Initializing Clara\'s Pocket...');
     
     try {
       // Reset retry flags for fresh start attempt
@@ -1948,6 +2480,7 @@ ${cmdLine}`;
       this.needsPortRetry = false;
 
       // ===== COMPREHENSIVE GPU & BINARY SETUP (ALWAYS RUN) =====
+      this.setStartupPhase('Checking GPU and binary setup...');
       log.info('🚀 Starting comprehensive GPU and binary verification...');
       
       try {
@@ -1982,10 +2515,12 @@ ${cmdLine}`;
       }
 
       // Check for stale processes after updates
+      this.setStartupPhase('Cleaning up previous processes...');
       await this.cleanupStaleProcesses();
 
       // macOS Security Pre-check - Prepare for potential firewall prompts
       if (process.platform === 'darwin') {
+        this.setStartupPhase('Checking macOS security permissions...');
         log.info('🔒 macOS detected - checking network security requirements...');
         
         if (this.ipcLogger) {
@@ -2026,17 +2561,46 @@ ${cmdLine}`;
       }
 
       // Verify and repair binaries after potential updates
+      this.setStartupPhase('Verifying binary files...');
       log.info('🔧 Verifying binary integrity after potential updates...');
       await this.verifyAndRepairBinariesAfterUpdate();
 
       // Validate binaries before attempting to start (this will auto-download if missing)
+      this.setStartupPhase('Validating installation...');
       log.info('🔍 Final binary validation before startup...');
       await this.validateBinaries();
       
       // Ensure models directory and config exist
+      this.setStartupPhase('Setting up directories and models...');
       await this.ensureDirectories();
+      
+      // Generate configuration and wait for it to be properly written
+      this.setStartupPhase('Generating configuration...');
+      log.info('⚙️ Generating llama-swap configuration...');
       await this.generateConfig();
+      
+      // Wait a bit after config generation to ensure files are properly written to disk
+      this.setStartupPhase('Finalizing configuration...');
+      log.info('⏱️ Waiting for configuration to be fully written...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+      
+      // Additional verification that config file exists and is readable
+      this.setStartupPhase('Verifying configuration...');
+      try {
+        await fs.access(this.configPath, fs.constants.F_OK | fs.constants.R_OK);
+        const configContent = await fs.readFile(this.configPath, 'utf8');
+        if (configContent.length < 100) {
+          this.setStartupPhase('Waiting for configuration to complete...');
+          log.warn('⚠️ Configuration file seems too small, waiting longer...');
+          await new Promise(resolve => setTimeout(resolve, 3000)); // Additional 3 second delay
+        }
+        log.info('✅ Configuration file verified and ready');
+      } catch (configError) {
+        log.error('❌ Configuration file verification failed:', configError.message);
+        throw new Error(`Configuration file not ready: ${configError.message}`);
+      }
 
+      this.setStartupPhase('Starting service...');
       log.info('🚀 All checks passed - starting llama-swap service...');
       log.info(`🎮 Platform: ${this.platformInfo.platformDir}`);
       log.info(`📁 Binary path: ${this.binaryPaths.llamaSwap}`);
@@ -2059,6 +2623,7 @@ ${cmdLine}`;
       }
 
       // Final port check right before spawning - catch any lingering processes
+      this.setStartupPhase('Checking port availability...');
       log.info('🔍 Performing final port availability check...');
       await this.killProcessesOnPort(this.port);
       
@@ -2090,6 +2655,12 @@ ${cmdLine}`;
         throw portError;
       }
 
+      // Final preparation delay - ensure all file operations are complete
+      this.setStartupPhase('Final preparations...');
+      log.info('⏱️ Final preparation before spawning process...');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second final delay
+
+      this.setStartupPhase('Launching Clara\'s Pocket...');
       this.process = spawn(this.binaryPaths.llamaSwap, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: this.platformManager.getPlatformEnvironment(),
@@ -2097,6 +2668,7 @@ ${cmdLine}`;
       });
 
       this.isRunning = true;
+      this.setStartupPhase('Waiting for service to respond...');
       
       if (this.ipcLogger) {
         this.ipcLogger.logServiceCall('LlamaSwapService', 'processSpawned', { pid: this.process.pid });
@@ -2117,6 +2689,7 @@ ${cmdLine}`;
         if (output.includes(`listening on`) || 
             output.includes(`server started`) ||
             output.includes(`:${this.port}`)) {
+          this.setStartupPhase('Service ready!');
           log.info(`✅ llama-swap service started successfully on port ${this.port}`);
           if (this.ipcLogger) {
             this.ipcLogger.logServiceCall('LlamaSwapService', 'startupSuccess', { port: this.port });
@@ -2194,19 +2767,23 @@ ${cmdLine}`;
       
       // Check if process is still running (didn't exit immediately due to error)
       if (this.process && !this.process.killed) {
+        this.setStartupPhase('Verifying service health...');
         log.info('✅ llama-swap process is running, checking if service is responding...');
         
         // Try to check if the service is actually responding
         try {
           await this.waitForService(10); // Wait up to 10 seconds
+          this.setStartupPhase(null); // Clear startup phase when fully ready
           log.info('✅ llama-swap service is responding to requests');
           return { success: true, message: 'Service started successfully' };
         } catch (serviceError) {
+          this.setStartupPhase('Service starting but not ready yet...');
           log.warn('⚠️ llama-swap process started but service is not responding:', serviceError.message);
           return { success: true, message: 'Service started but not responding yet', warning: serviceError.message };
         }
       } else {
         this.isRunning = false;
+        this.setStartupPhase(null); // Clear startup phase on failure
         
         // Check if we need to retry with flash attention enabled
         if (this.handleFlashAttentionRequired && !this.flashAttentionRetryAttempted) {
@@ -2249,6 +2826,7 @@ ${cmdLine}`;
       log.error('Error starting llama-swap service:', error);
       this.isRunning = false;
       this.process = null;
+      this.setStartupPhase(null); // Clear startup phase on error
       
       return { 
         success: false, 
@@ -2354,6 +2932,7 @@ ${cmdLine}`;
     this.isRunning = false;
     this.isStarting = false; // Reset starting flag
     this.startingTimestamp = null; // Reset starting timestamp
+    this.currentStartupPhase = null; // Reset startup phase
     this.process = null;
     // Reset flash attention retry flags for next start attempt
     this.handleFlashAttentionRequired = false;
@@ -2368,6 +2947,14 @@ ${cmdLine}`;
     }
   }
 
+  /**
+   * Set the current startup phase for user feedback
+   */
+  setStartupPhase(phase) {
+    this.currentStartupPhase = phase;
+    log.info(`📱 Startup Phase: ${phase}`);
+  }
+
   async restart() {
     log.info('Restarting llama-swap service...');
     await this.stop();
@@ -2376,17 +2963,42 @@ ${cmdLine}`;
     this.cleanup();
     
     // Longer wait time to ensure process cleanup after binary updates
+    log.info('⏱️ Waiting for process cleanup after restart...');
     await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Regenerate config to ensure compatibility with updated binaries
     try {
+      log.info('⚙️ Regenerating configuration for restart...');
       await this.generateConfig();
+      
+      // Additional wait after config regeneration during restart
+      log.info('⏱️ Waiting for configuration regeneration to complete...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+      
       log.info('Configuration regenerated for updated binaries');
     } catch (configError) {
       log.warn('Config regeneration failed, using existing config:', configError.message);
     }
     
     return await this.start();
+  }
+
+  /**
+   * Get the actual backend type from platform directory
+   */
+  getBackendTypeFromPlatformDir(platformDir) {
+    if (!platformDir) return 'unknown';
+    
+    if (platformDir.includes('cuda')) return 'NVIDIA CUDA';
+    if (platformDir.includes('rocm')) return 'AMD ROCm';
+    if (platformDir.includes('vulkan')) return 'Vulkan';
+    if (platformDir.includes('cpu')) return 'CPU Only';
+    if (platformDir.includes('arm64')) return 'Apple Silicon';
+    if (platformDir.includes('darwin')) return 'Apple Metal';
+    if (platformDir.includes('win32')) return 'Windows';
+    if (platformDir.includes('linux')) return 'Linux';
+    
+    return platformDir; // Fallback to directory name
   }
 
   getStatus() {
@@ -2397,12 +3009,38 @@ ${cmdLine}`;
     const startingDuration = this.startingTimestamp ? 
       Math.round((Date.now() - this.startingTimestamp) / 1000) : 0;
     
+    // Get currently active backend information
+    let currentBackend = 'auto';
+    let currentPlatformDir = null;
+    
+    try {
+      // Get the backend override
+      const overridePath = path.join(os.homedir(), '.clara', 'settings', 'backend-override.json');
+      if (fsSync.existsSync(overridePath)) {
+        const overrideData = JSON.parse(fsSync.readFileSync(overridePath, 'utf8'));
+        if (overrideData.backendId && overrideData.backendId !== 'auto') {
+          currentBackend = overrideData.backendId;
+        }
+      }
+      
+      // Get the actual platform directory being used
+      if (this.platformManager && this.platformManager.platformInfo) {
+        currentPlatformDir = this.platformManager.platformInfo.platformDir;
+      }
+    } catch (error) {
+      log.debug('Error getting current backend info:', error.message);
+    }
+    
     return {
       isRunning: this.isRunning && hasProcess,
       isStarting: this.isStarting,
       startingDuration: startingDuration,
       startingTimestamp: this.startingTimestamp,
       isStuck: this.isStarting && startingDuration > 60, // Consider stuck after 1 minute
+      currentStartupPhase: this.currentStartupPhase, // Add current startup phase
+      currentBackend: currentBackend, // Add current backend override
+      currentPlatformDir: currentPlatformDir, // Add actual platform directory
+      currentBackendName: this.getBackendTypeFromPlatformDir(currentPlatformDir), // Add readable backend name
       port: this.port,
       pid: this.process?.pid,
       apiUrl: `http://localhost:${this.port}`,
@@ -3404,6 +4042,10 @@ ${cmdLine}`;
       
       // Regenerate the configuration with flash attention enabled
       await this.generateConfig();
+      
+      // Wait for flash attention config to be properly written
+      log.info('⏱️ Waiting for flash attention configuration to be finalized...');
+      await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
       
       log.info('✅ Configuration regenerated with flash attention enabled');
       
@@ -5080,6 +5722,10 @@ ${cmdLine}`;
       
       // Regenerate configuration
       const result = await this.generateConfig();
+      
+      // Wait for force reconfiguration to complete properly
+      log.info('⏱️ Waiting for force reconfiguration to finalize...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
       
       log.info('✅ Force reconfiguration completed');
       return {

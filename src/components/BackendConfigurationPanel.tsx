@@ -64,6 +64,7 @@ const BackendConfigurationPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedBackend, setSelectedBackend] = useState<string>('auto');
+  const [actualBackend, setActualBackend] = useState<string>(''); // The backend actually being used
   const [showJsonEditor, setShowJsonEditor] = useState(false);
   const [jsonConfig, setJsonConfig] = useState<string>('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -94,6 +95,11 @@ const BackendConfigurationPanel: React.FC = () => {
       if (result.success) {
         setConfigInfo(result);
         setSelectedBackend(result.currentBackendOverride?.backendId || 'auto');
+        
+        // Extract actual backend from service status
+        if (result.serviceStatus && result.serviceStatus.currentBackendName) {
+          setActualBackend(result.serviceStatus.currentBackendName);
+        }
         
         // Load JSON configuration
         if (result.configuration) {
@@ -466,8 +472,9 @@ const BackendConfigurationPanel: React.FC = () => {
                       getBackendIcon(configInfo?.availableBackends.find(b => b.id === selectedBackend) || {} as Backend)
                     )}
                     <span className="font-semibold text-gray-900 dark:text-white">
-                      {selectedBackend === 'auto' ? 'Auto-detect' : 
-                       configInfo?.availableBackends.find(b => b.id === selectedBackend)?.name || selectedBackend}
+                      {selectedBackend === 'auto' 
+                        ? (actualBackend ? `Auto-detect (${actualBackend})` : 'Auto-detect')
+                        : configInfo?.availableBackends.find(b => b.id === selectedBackend)?.name || selectedBackend}
                     </span>
                   </div>
                 </div>

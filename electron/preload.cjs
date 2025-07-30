@@ -192,6 +192,12 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getModelEmbeddingInfo: (modelPath) => ipcRenderer.invoke('get-model-embedding-info', modelPath),
   searchHuggingFaceMmproj: (modelName, embeddingSize) => ipcRenderer.invoke('search-huggingface-mmproj', modelName, embeddingSize),
 
+  // Official llama-swap binary management
+  downloadOfficialBinary: () => ipcRenderer.invoke('download-official-llama-swap'),
+  checkForUpdates: () => ipcRenderer.invoke('check-llama-swap-updates'),
+  updateToLatest: () => ipcRenderer.invoke('update-llama-swap'),
+  getVersion: () => ipcRenderer.invoke('get-llama-swap-version'),
+
   // NEW: Configuration override API methods
   getAvailableBackends: () => ipcRenderer.invoke('get-available-backends'),
   setBackendOverride: (backendId) => ipcRenderer.invoke('set-backend-override', backendId),
