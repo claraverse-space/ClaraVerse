@@ -451,7 +451,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     const wrapWithResizable = (component: React.ReactNode) => (
       <ResizableWidget
         key={widget.id}
-        className="glassmorphic rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-sakura-500/10 hover:-translate-y-1 hover:scale-[1.02] group"
+        className="glassmorphic rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-sakura-500/10 group"
         isRearrangeMode={isRearrangeMode}
         onSizePresetSelect={handleSizePresetSelect}
         currentSize={currentSize}
