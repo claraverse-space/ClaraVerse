@@ -83,24 +83,24 @@ interface LumaUILiteChatWindowProps {
   }) => void;
 }
 
-// Tool definitions for LumaUI-lite - comprehensive toolkit inspired by lumaTools.ts
+// Essential tools for vanilla HTML/CSS/JS projects only
 const LITE_TOOLS = [
   // Core File Operations
   {
     id: "create_file",
     name: "create_file",
-    description: "Create a completely new file with the specified content. Use this only for files that don't exist yet.",
+    description: "Create a completely new HTML, CSS, or JavaScript file with the specified content.",
     parameters: [
-      { name: "path", type: "string", description: "The file path to create (e.g., 'src/components/NewComponent.tsx')", required: true },
+      { name: "path", type: "string", description: "The file path to create (e.g., 'index.html', 'styles.css', 'script.js')", required: true },
       { name: "content", type: "string", description: "The complete content to write to the new file", required: false }
     ]
   },
   {
     id: "read_file", 
     name: "read_file",
-    description: "Read the complete contents of an existing file. Always use this BEFORE editing any file to understand the current structure and content.",
+    description: "Read the complete contents of an existing file. Always use this BEFORE editing any file to understand the current structure.",
     parameters: [
-      { name: "path", type: "string", description: "The file path to read (e.g., 'src/components/Header.tsx')", required: true }
+      { name: "path", type: "string", description: "The file path to read (e.g., 'index.html', 'styles.css')", required: true }
     ]
   },
   {
@@ -130,28 +130,19 @@ const LITE_TOOLS = [
       { name: "path", type: "string", description: "The file path to delete", required: true }
     ]
   },
-  // Directory Operations
+  // Basic Directory Operations
   {
     id: "create_directory",
     name: "create_directory",
-    description: "Create a new directory in the project structure.",
+    description: "Create a new directory in the project structure (e.g., for organizing CSS, JS, or image files).",
     parameters: [
-      { name: "path", type: "string", description: "The directory path to create (e.g., 'src/components')", required: true }
+      { name: "path", type: "string", description: "The directory path to create (e.g., 'css', 'js', 'images')", required: true }
     ]
   },
-  {
-    id: "list_directory", 
-    name: "list_directory",
-    description: "List all files and directories in a specific directory. Use '.' for root directory.",
-    parameters: [
-      { name: "path", type: "string", description: "The directory path to list (default: '.')", required: false }
-    ]
-  },
-  // File Management
   {
     id: "list_files",
     name: "list_files",
-    description: "List all files and directories in the project to understand the project structure. Alias for list_directory with root path.",
+    description: "List all files in the project to understand the project structure.",
     parameters: []
   },
   {
@@ -164,80 +155,15 @@ const LITE_TOOLS = [
   {
     id: "get_project_info",
     name: "get_project_info",
-    description: "Get detailed information about the project including package.json data, file counts, and project structure.",
-    parameters: []
-  },
-  {
-    id: "get_file_structure",
-    name: "get_file_structure",
-    description: "Get a detailed overview of the project's file structure and organization.",
+    description: "Get basic information about the HTML project including file counts and structure.",
     parameters: []
   },
   {
     id: "search_files",
     name: "search_files", 
-    description: "Search for files by name, path, or content. Useful for finding specific files or code patterns.",
+    description: "Search for files by name, path, or content. Useful for finding specific HTML elements, CSS classes, or JavaScript functions.",
     parameters: [
       { name: "pattern", type: "string", description: "The search pattern to look for in file names, paths, or content", required: true }
-    ]
-  },
-  // Development Operations (Simulated for LumaUI-lite)
-  {
-    id: "run_command",
-    name: "run_command",
-    description: "Simulate running a command. Note: LumaUI-lite runs in browser, so commands are simulated for learning purposes.",
-    parameters: [
-      { name: "command", type: "string", description: "The command to simulate (e.g., 'npm')", required: true },
-      { name: "args", type: "array", description: "Command arguments (e.g., ['install', 'lodash'])", required: false }
-    ]
-  },
-  {
-    id: "install_package",
-    name: "install_package",
-    description: "Simulate installing an npm package. This will show what would happen in a real environment.", 
-    parameters: [
-      { name: "package", type: "string", description: "The package name to install", required: true },
-      { name: "dev", type: "boolean", description: "Install as dev dependency", required: false }
-    ]
-  },
-  // Unix-style aliases for familiarity
-  {
-    id: "ls",
-    name: "ls",
-    description: "Unix-style command to list directory contents. Same as list_directory.",
-    parameters: [
-      { name: "path", type: "string", description: "The directory path to list (default: '.')", required: false }
-    ]
-  },
-  {
-    id: "cat",
-    name: "cat", 
-    description: "Unix-style command to read file contents. Same as read_file.",
-    parameters: [
-      { name: "path", type: "string", description: "The file path to read", required: true }
-    ]
-  },
-  // Template Generation
-  {
-    id: "create_landing_page",
-    name: "create_landing_page",
-    description: "Create a beautiful, responsive landing page template with secure Tailwind CSS implementation. Perfect for demonstrating the fixed COEP/security issues.",
-    parameters: []
-  },
-  {
-    id: "mkdir",
-    name: "mkdir",
-    description: "Unix-style command to create directories. Same as create_directory.",
-    parameters: [
-      { name: "path", type: "string", description: "The directory path to create", required: true }
-    ]
-  },
-  {
-    id: "touch",
-    name: "touch",
-    description: "Unix-style command to create empty files. Same as create_file with no content.",
-    parameters: [
-      { name: "path", type: "string", description: "The file path to create", required: true }
     ]
   }
 ];
@@ -314,8 +240,8 @@ const loadSystemPrompt = (): string => {
   return localStorage.getItem('lumaui-lite-system-prompt') || '';
 };
 
-// System prompt for LumaUI-lite
-const SYSTEM_PROMPT = `You are an expert UI/UX designer and frontend developer specializing in creating stunning, modern web applications with LumaUI-lite.
+// System prompt for the AI assistant
+const SYSTEM_PROMPT = `You are an expert UI/UX designer and frontend developer specializing in creating stunning, modern web applications.
 
 **PROJECT CONTEXT:**
 - Project: {{PROJECT_NAME}}
@@ -323,85 +249,79 @@ const SYSTEM_PROMPT = `You are an expert UI/UX designer and frontend developer s
 - Selected file: {{SELECTED_FILE}}
 
 **AVAILABLE TOOLS:**
-You have access to file operation tools to help users build their applications:
-- create_file: Create new files with specified content
+You have access to essential file operation tools for building vanilla HTML websites:
+- create_file: Create new HTML, CSS, or JavaScript files
 - edit_file: Replace entire file content (use for major changes)
+- edit_file_section: Make targeted edits to specific parts of files
 - read_file: Read current file content before making changes
-- list_files: Get overview of project structure
 - delete_file: Remove files that are no longer needed
+- list_files: Get overview of project structure
+- create_directory: Organize files into folders (css/, js/, images/, etc.)
+- search_files: Find specific content in files
+- create_html_template: Generate beautiful HTML page templates
 
 **YOUR DESIGN PHILOSOPHY:**
-You are a UI/UX expert who creates visually stunning, user-friendly applications. Always prioritize:
+You are a vanilla HTML/CSS/JavaScript expert who creates visually stunning, modern websites. Always prioritize:
 1. **Visual Excellence**: Beautiful, modern designs with attention to typography, spacing, and color
-2. **User Experience**: Intuitive navigation, smooth interactions, and delightful micro-animations
-3. **Modern Aesthetics**: Contemporary design trends, glassmorphism, gradients, and sophisticated layouts
-4. **Popular Libraries**: Always leverage the best modern libraries and frameworks
+2. **User Experience**: Intuitive navigation, smooth interactions, and delightful animations
+3. **Modern Web Standards**: Semantic HTML5, modern CSS, and vanilla JavaScript ES6+
+4. **Popular Libraries**: Leverage CDN libraries to enhance functionality without build tools
 5. **Responsive Design**: Mobile-first approach with perfect cross-device compatibility
 
 **ESSENTIAL LIBRARIES TO USE:**
-Always include these popular libraries in your HTML projects:
+Always include these popular libraries via CDN in your HTML projects:
 
 **CSS Frameworks & Styling:**
-- Tailwind CSS (via CDN): https://cdn.tailwindcss.com
+- Tailwind CSS: https://cdn.tailwindcss.com
 - Font Awesome 6.4.0+: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css
 - Google Fonts: https://fonts.googleapis.com (Inter, Poppins, Roboto, Montserrat)
 - Animate.css: https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css
 
-**JavaScript Libraries:**
+**JavaScript Libraries (Vanilla JS Compatible):**
 - Alpine.js: https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js (for reactive components)
 - AOS (Animate On Scroll): https://unpkg.com/aos@2.3.1/dist/aos.js
 - Swiper.js: https://cdn.jsdelivr.net/npm/swiper@10/swiper-bundle.min.js (for carousels)
-- Chart.js: https://cdn.jsdelivr.net/npm/chart.js (for data visualization)
-- Particles.js: https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js (for backgrounds)
-
-**UI Components & Interactions:**
-- Lottie Web: https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js (animations)
-- Typed.js: https://cdn.jsdelivr.net/npm/typed.js@2.0.12 (typing animations)
-- Vanilla Tilt: https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.0/dist/vanilla-tilt.min.js (3D effects)
 - GSAP: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js (advanced animations)
+- Typed.js: https://cdn.jsdelivr.net/npm/typed.js@2.0.12 (typing animations)
 
-**DESIGN PATTERNS TO IMPLEMENT:**
-1. **Hero Sections**: Compelling headlines with gradient text, animated backgrounds
-2. **Glassmorphism**: backdrop-blur effects with semi-transparent backgrounds
-3. **Neumorphism**: Soft, subtle shadows for modern card designs
-4. **Micro-interactions**: Hover effects, button animations, smooth transitions
-5. **Dark Mode**: Always include dark mode toggle functionality
-6. **Loading States**: Beautiful loading animations and skeleton screens
-7. **Scroll Animations**: Elements that animate as they enter the viewport
-8. **Interactive Elements**: Buttons with ripple effects, animated icons
+**VANILLA HTML PROJECT STRUCTURE:**
+\`\`\`
+project/
+  index.html          (Main entry point - mostly use this file for everything js, css, and HTML)
+  css/
+    styles.css        (Main stylesheet - only if the user asks for custom styles or overrides otherwise add it in index.html)
+    components.css    (Reusable component styles - e.g. buttons, cards or layouts only if the user asks for custom styles other wise add it in index.html)
+  js/
+    main.js           (Main JavaScript - only if the user asks for custom scripts other wise add it in index.html)
+\`\`\`
+
+**DESIGN PATTERNS FOR VANILLA WEBSITES:**
+1. **Hero Sections**: Compelling headlines with CSS animations, gradient backgrounds
+2. **Navigation**: Responsive navbar with smooth transitions, mobile hamburger menu
+3. **Cards**: Modern card layouts with CSS hover effects and subtle shadows
+4. **Forms**: Styled contact forms with CSS-only validation states
+5. **Galleries**: CSS Grid/Flexbox image galleries with lightbox functionality
+6. **Animations**: CSS transitions and keyframes for smooth interactions
+7. **Dark Mode**: CSS custom properties for easy theme switching
+8. **Responsive Layout**: CSS Grid and Flexbox for all screen sizes
 
 **CODE QUALITY STANDARDS:**
-- **Semantic HTML5**: Use proper semantic elements (header, nav, main, section, article, aside, footer)
-- **Modern CSS**: Flexbox, Grid, CSS Variables, clamp() for responsive typography
-- **Accessibility**: ARIA labels, keyboard navigation, screen reader support
-- **Performance**: Optimized images, lazy loading, efficient animations
-- **Clean JavaScript**: ES6+, async/await, modular code structure
+- **Semantic HTML5**: header, nav, main, section, article, aside, footer
+- **Modern CSS**: Grid, Flexbox, CSS Variables, clamp() for responsive design
+- **Vanilla JavaScript**: ES6+ features, async/await, DOM manipulation
+- **Accessibility**: ARIA labels, keyboard navigation, alt text for images
+- **Performance**: Optimized images, efficient CSS, minimal JavaScript
+- **Progressive Enhancement**: Core functionality works without JavaScript
 
-**UI/UX BEST PRACTICES:**
-1. **Typography Hierarchy**: Clear heading structure with proper font weights and sizes
-2. **Color Psychology**: Meaningful color choices that enhance user experience
-3. **Whitespace**: Generous spacing for better readability and visual breathing room
-4. **Visual Feedback**: Clear states for interactive elements (hover, active, disabled)
-5. **Progressive Enhancement**: Core functionality works without JavaScript
-6. **Mobile-First**: Design for mobile, then enhance for larger screens
+**BEST PRACTICES:**
+1. **File Organization**: Separate HTML, CSS, and JS into organized folders
+2. **Naming Conventions**: BEM methodology for CSS classes
+3. **Comments**: Clear documentation in code for future maintenance
+4. **Validation**: Use proper HTML5 form validation attributes
+5. **Cross-browser**: Test compatibility across modern browsers
+6. **SEO**: Proper meta tags, heading hierarchy, structured data
 
-**WORKFLOW:**
-1. Always read existing files to understand current design patterns
-2. Suggest and implement popular libraries that enhance the user experience
-3. Create cohesive design systems with consistent spacing, colors, and typography
-4. Add delightful animations and micro-interactions
-5. Ensure responsive design across all device sizes
-6. Test accessibility and provide alternative text for images
-
-**EXAMPLE IMPLEMENTATIONS:**
-- Navigation: Sticky headers with smooth scroll, mobile hamburger menus with animations
-- Cards: Glassmorphic cards with hover effects and subtle shadows
-- Forms: Floating labels, validation states, smooth focus transitions
-- Buttons: Gradient backgrounds, hover animations, loading states
-- Galleries: Masonry layouts, lightbox modals, lazy loading
-- Testimonials: Carousel sliders with smooth transitions
-
-Always create visually stunning, user-friendly applications that feel modern and professional. Prioritize user experience and visual appeal in every design decision!`;
+Always create visually stunning, modern websites using vanilla HTML, CSS, and JavaScript. Focus on clean code, responsive design, and excellent user experience!`;
 
 interface AIReflection {
   id: string;
@@ -449,7 +369,7 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
     {
       id: '1',
       type: 'assistant',
-      content: '🎨 **Welcome to LumaUI-lite Design Studio!**\n\nI\'m your expert UI/UX designer and frontend developer. I specialize in creating stunning, modern web applications with the latest design trends and popular libraries!\n\n✨ **What I can create:**\n🎯 **Beautiful UI Components** with glassmorphism & animations\n🌈 **Modern Design Systems** with Tailwind CSS & custom styling\n📱 **Responsive Layouts** that work perfectly on all devices\n🚀 **Interactive Elements** with smooth animations & micro-interactions\n💫 **Popular Libraries** like Alpine.js, AOS, Swiper, Chart.js, GSAP\n\n**Design Examples:**\n- "Create a stunning hero section with animated background"\n- "Build a glassmorphic navigation with smooth scroll"\n- "Design a modern contact form with floating labels"\n- "Add a testimonial carousel with Swiper.js"\n- "Create an animated pricing section with hover effects"\n- "Build a dark mode toggle with smooth transitions"\n\n**I always use popular libraries like:**\n• Tailwind CSS for styling\n• Font Awesome for icons\n• Alpine.js for interactivity\n• AOS for scroll animations\n• Google Fonts for typography\n\nTell me what amazing UI you want to create! 🚀',
+      content: '🎨 **Welcome to Design Studio!**\n\nI\'m your expert UI/UX designer and frontend developer. I specialize in creating stunning, modern web applications with the latest design trends and popular libraries!\n\n✨ **What I can create:**\n🎯 **Beautiful UI Components** with glassmorphism & animations\n🌈 **Modern Design Systems** with Tailwind CSS & custom styling\n📱 **Responsive Layouts** that work perfectly on all devices\n🚀 **Interactive Elements** with smooth animations & micro-interactions\n💫 **Popular Libraries** like Alpine.js, AOS, Swiper, Chart.js, GSAP\n\n**Design Examples:**\n- "Create a stunning hero section with animated background"\n- "Build a glassmorphic navigation with smooth scroll"\n- "Design a modern contact form with floating labels"\n- "Add a testimonial carousel with Swiper.js"\n- "Create an animated pricing section with hover effects"\n- "Build a dark mode toggle with smooth transitions"\n\n**I always use popular libraries like:**\n• Tailwind CSS for styling\n• Font Awesome for icons\n• Alpine.js for interactivity\n• AOS for scroll animations\n• Google Fonts for typography\n\nTell me what amazing UI you want to create! 🚀',
       timestamp: new Date()
     }
   ];
@@ -856,7 +776,6 @@ Your response must be a JSON object with this exact structure:
     }
   ],
   "estimatedSteps": 5,
-  "dependencies": ["react-hook-form", "zod"],
   "potentialChallenges": ["Existing routing might need updates", "Styling consistency"],
   "confidence": 90
 }
