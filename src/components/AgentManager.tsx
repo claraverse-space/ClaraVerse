@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { AgentFlow } from '../types/agent/types';
 import { agentWorkflowStorage } from '../services/agentWorkflowStorage';
+import { db } from '../db';
 
 interface AgentManagerProps {
   onPageChange: (page: string) => void;
@@ -17,10 +18,29 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
   const [agents, setAgents] = useState<AgentFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadAgents();
+  }, []);
+
+  // Load wallpaper from IndexedDB on mount
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        console.log('AgentManager: Loading wallpaper...');
+        const wallpaper = await db.getWallpaper();
+        console.log('AgentManager: Wallpaper loaded:', wallpaper ? 'Yes' : 'No');
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+          console.log('AgentManager: Wallpaper URL set:', wallpaper.substring(0, 50) + '...');
+        }
+      } catch (error) {
+        console.error('AgentManager: Error loading wallpaper:', error);
+      }
+    };
+    loadWallpaper();
   }, []);
 
   const loadAgents = async () => {
@@ -131,10 +151,27 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
       <div className="flex-1 flex flex-col min-h-0">
         <Topbar userName={userName} onPageChange={onPageChange} />
         
-        <div className="flex-1 bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden">
-          {/* Header */}
-          <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-6">
-            <div className="flex items-center justify-between">
+        <div className="flex-1 overflow-hidden relative">
+          <div className="h-full relative p-6 overflow-y-auto scrollbar-none">
+            {/* Wallpaper */}
+            {wallpaperUrl && (
+              <div 
+                className="fixed top-0 left-0 right-0 bottom-0 z-0"
+                style={{
+                  backgroundImage: `url(${wallpaperUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  opacity: 0.1,
+                  filter: 'blur(1px)',
+                  pointerEvents: 'none'
+                }}
+              />
+            )}
+            
+            <div className="relative z-10">
+              {/* Header */}
+              <div className="glassmorphic px-6 py-6 rounded-2xl">
+                <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 text-sakura-500 text-2xl">🧠</div>
@@ -168,7 +205,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                     placeholder="Search agents..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 w-80"
+                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 dark:bg-gray-900/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 w-80"
                   />
                 </div>
                 
@@ -203,7 +240,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-6">
+          <div className="overflow-auto p-6">
             {filteredAgents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto">
                 {searchQuery ? (
@@ -250,7 +287,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                 {filteredAgents.map((agent) => (
                   <div
                     key={agent.id}
-                    className="group glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+                    className="group glassmorphic rounded-xl hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
                   >
                     {/* Card Header */}
                     <div className="p-4 border-b border-white/20 dark:border-gray-700/50">
@@ -330,7 +367,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                 {filteredAgents.map((agent) => (
                   <div
                     key={agent.id}
-                    className="glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg transition-all duration-200"
+                    className="glassmorphic rounded-xl hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg transition-all duration-200"
                   >
                     <div className="p-6">
                       <div className="flex items-center justify-between">
@@ -406,6 +443,8 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                 ))}
               </div>
             )}
+          </div>
+          </div>
           </div>
         </div>
       </div>

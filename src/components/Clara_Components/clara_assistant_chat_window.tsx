@@ -572,7 +572,7 @@ const WelcomeScreen: React.FC<{
             <button
               key={index}
               onClick={() => onStartChat?.()}
-              className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-all hover:shadow-md group text-left"
+              className="p-4 bg-white/50 dark:bg-gray-800/50 rounded-xl hover:bg-white/70 dark:hover:bg-gray-800/70 transition-all hover:shadow-md group text-left"
             >
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -669,7 +669,7 @@ const ScrollToBottomButton: React.FC<{
     <button
       onClick={onClick}
       style={{ position: 'fixed', top: '6rem', right: '20rem', zIndex: 50 }}
-      className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
+      className="bg-white dark:bg-gray-800 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
     >
       <ArrowDown className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:text-sakura-600 dark:group-hover:text-sakura-400" />
     </button>

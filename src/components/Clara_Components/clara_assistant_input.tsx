@@ -521,7 +521,7 @@ const ModelSelector: React.FC<{
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading || models.length === 0}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors border border-gray-300 dark:border-gray-600 w-full max-w-[220px] min-w-[180px]"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors w-full max-w-[220px] min-w-[180px]"
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {selectedModelObj ? (
@@ -546,9 +546,9 @@ const ModelSelector: React.FC<{
       </button>
 
       {isOpen && models.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-0 w-full min-w-[320px] max-w-[480px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-80 flex flex-col">
+        <div className="absolute bottom-full mb-2 left-0 w-full min-w-[320px] max-w-[480px] bg-white dark:bg-gray-800 rounded-lg shadow-lg z-50 max-h-80 flex flex-col">
           {/* Search Input */}
-          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="p-3">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
@@ -557,7 +557,7 @@ const ModelSelector: React.FC<{
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search models..."
-                className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-sakura-500 dark:focus:ring-sakura-400 focus:border-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-sakura-500 dark:focus:ring-sakura-400 focus:border-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               />
@@ -5109,12 +5109,12 @@ You can right-click on the image to save it or use it in your projects.`;
                           {isStreamingMode ? (
                             <>
                               <Waves className="w-3 h-3" />
-                              <span>Streaming</span>
+                              <span>Text and Image</span>
                             </>
                           ) : (
                             <>
                               <Cog className="w-3 h-3" />
-                              <span>Tools</span>
+                              <span>Agents</span>
                               {currentAIConfig.mcp?.enabledServers?.length && (
                                 <span className="bg-white/20 px-1 rounded text-xs">
                                   {currentAIConfig.mcp.enabledServers.length}

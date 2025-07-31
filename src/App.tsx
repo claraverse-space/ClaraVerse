@@ -201,7 +201,7 @@ function App() {
                 case 'help':
                   return <Help />;
                 case 'notebooks':
-                  return <Notebooks />;
+                  return <Notebooks onPageChange={setActivePage} userName={userInfo?.name} />;
                 case 'lumaui':
                   return <Lumaui onPageChange={setActivePage} />;
                 case 'lumaui-lite':

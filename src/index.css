@@ -71,7 +71,7 @@
   }
 
   .glassmorphic {
-    @apply bg-white/70 backdrop-blur-lg border border-white/20 dark:bg-gray-900/70 dark:border-gray-800/20;
+    @apply bg-white/70 backdrop-blur-lg dark:bg-gray-900/70;
   }
 
   .glassmorphic-card {
@@ -729,13 +729,13 @@ textarea {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  /* border: 1px solid rgba(255, 255, 255, 0.2); */
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .dark .glassmorphic-enhanced {
   background: rgba(17, 24, 39, 0.8);
-  border: 1px solid rgba(75, 85, 99, 0.3);
+  /* border: 1px solid rgba(75, 85, 99, 0.3); */
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
@@ -806,7 +806,7 @@ textarea {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1000;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  /* border: 1px solid rgba(255, 255, 255, 0.1); */
 }
 
 .tooltip-enhanced::after {
