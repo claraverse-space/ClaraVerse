@@ -182,7 +182,8 @@ class LlamaSwapService {
           };
           break;
         case 'linux':
-          platformDir = 'linux-x64';
+          // Detect GPU and choose best platform directory
+          platformDir = this.detectLinuxGPUPlatform();
           binaryNames = {
             llamaSwap: 'llama-swap-linux',
             llamaServer: 'llama-server'
@@ -345,6 +346,72 @@ class LlamaSwapService {
   }
 
   /**
+   * Detect Linux GPU and return appropriate platform directory
+   */
+  detectLinuxGPUPlatform() {
+    const { spawnSync } = require('child_process');
+    
+    // Try GPU-specific folders in priority order
+    const gpuFolders = ['linux-x64-vulkan', 'linux-x64-cpu', 'linux-x64'];
+    
+    // Check for Vulkan support (primary GPU acceleration on Linux)
+    try {
+      const vulkanInfo = spawnSync('vulkaninfo', ['--summary'], { 
+        encoding: 'utf8', 
+        timeout: 3000 
+      });
+      
+      if (vulkanInfo.status === 0) {
+        log.info('🎮 Detected Vulkan support - using Vulkan binaries');
+        
+        // Check if vulkan folder exists
+        if (fsSync.existsSync(path.join(this.baseDir, 'linux-x64-vulkan'))) {
+          return 'linux-x64-vulkan';
+        } else {
+          log.warn('Vulkan folder not found, will try other options');
+        }
+      }
+    } catch (error) {
+      log.debug('Vulkan detection failed:', error.message);
+    }
+
+    // Alternative Vulkan detection via vkcube or vulkan-utils
+    try {
+      const vkcube = spawnSync('vkcube', ['--c', '1'], { 
+        encoding: 'utf8', 
+        timeout: 2000 
+      });
+      
+      // vkcube returns 0 if Vulkan is working
+      if (vkcube.status === 0) {
+        log.info('🎮 Detected Vulkan support via vkcube - using Vulkan binaries');
+        
+        // Check if vulkan folder exists
+        if (fsSync.existsSync(path.join(this.baseDir, 'linux-x64-vulkan'))) {
+          return 'linux-x64-vulkan';
+        }
+      }
+    } catch (error) {
+      log.debug('vkcube Vulkan detection failed:', error.message);
+    }
+
+    // Try each GPU folder in order, fallback to CPU
+    for (const folder of gpuFolders) {
+      if (fsSync.existsSync(path.join(this.baseDir, folder))) {
+        log.info(`🎮 Using available GPU platform: ${folder}`);
+        return folder;
+      }
+    }
+
+    // Check if we should auto-setup GPU folders
+    this.checkAndSetupLinuxGPUFolders();
+
+    // Final fallback to original folder
+    log.info('🎮 No GPU-specific folders found, using standard linux-x64');
+    return 'linux-x64';
+  }
+
+  /**
    * Check if GPU folders exist and offer to set them up automatically
    */
   checkAndSetupGPUFolders() {
@@ -395,10 +462,22 @@ class LlamaSwapService {
    * Create GPU-specific folders and download binaries automatically
    */
   async setupGPUSpecificBinaries() {
-    if (os.platform() !== 'win32') {
-      log.info('GPU-specific binary setup is only available for Windows');
-      return { success: false, message: 'Only supported on Windows' };
+    const platform = os.platform();
+    
+    if (platform === 'win32') {
+      return this.setupWindowsGPUSpecificBinaries();
+    } else if (platform === 'linux') {
+      return this.setupLinuxGPUSpecificBinaries();
+    } else {
+      log.info(`GPU-specific binary setup is not available for ${platform}`);
+      return { success: false, message: `Only supported on Windows and Linux, detected: ${platform}` };
     }
+  }
+
+  /**
+   * Create Windows GPU-specific folders and download binaries automatically
+   */
+  async setupWindowsGPUSpecificBinaries() {
 
     try {
       log.info('🚀 Setting up GPU-specific binary folders...');
@@ -427,6 +506,93 @@ class LlamaSwapService {
       
     } catch (error) {
       log.error('❌ Failed to setup GPU-specific binaries:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Check if Linux GPU folders exist and offer to set them up automatically
+   */
+  checkAndSetupLinuxGPUFolders() {
+    if (os.platform() !== 'linux') {
+      return;
+    }
+
+    const gpuFolders = ['linux-x64-vulkan', 'linux-x64-cpu'];
+    const existingFolders = gpuFolders.filter(folder => 
+      fsSync.existsSync(path.join(this.baseDir, folder))
+    );
+
+    if (existingFolders.length === 0) {
+      log.info('🚀 No Linux GPU-specific folders found. Consider running setupLinuxGPUSpecificBinaries() to auto-download them.');
+      
+      // Only auto-setup in background if service is not currently starting
+      if (!this.isStarting && !this.isRunning) {
+        log.info('🔄 Scheduling background Linux GPU folder setup...');
+        
+        // Auto-setup in background (non-blocking)
+        setTimeout(() => {
+          // Double-check we're still not starting/running before proceeding
+          if (!this.isStarting && !this.isRunning) {
+            log.info('🚀 Starting background Linux GPU binary setup...');
+            this.setupLinuxGPUSpecificBinaries().then(result => {
+              if (result.success) {
+                log.info('✅ Linux GPU-specific folders have been automatically set up in background!');
+                log.info('🔄 Next service start will use optimized GPU binaries.');
+              } else {
+                log.warn('⚠️ Background Linux GPU folder setup failed:', result.error || result.message);
+              }
+            }).catch(error => {
+              log.warn('⚠️ Background Linux GPU setup failed:', error.message);
+            });
+          } else {
+            log.info('🔄 Skipping background Linux GPU setup - service is starting/running');
+          }
+        }, 5000); // Wait 5 seconds before starting background setup
+      } else {
+        log.info('🔄 Service is starting/running - skipping background Linux GPU setup');
+      }
+    } else {
+      log.info(`🎮 Found ${existingFolders.length} existing Linux GPU folders: ${existingFolders.join(', ')}`);
+    }
+  }
+
+  /**
+   * Create Linux GPU-specific folders and download binaries automatically
+   */
+  async setupLinuxGPUSpecificBinaries() {
+    if (os.platform() !== 'linux') {
+      log.info('Linux GPU-specific binary setup is only available for Linux');
+      return { success: false, message: 'Only supported on Linux' };
+    }
+
+    try {
+      log.info('🚀 Setting up Linux GPU-specific binary folders...');
+      
+      // Create Linux GPU-specific folders
+      const gpuFolders = ['linux-x64-vulkan', 'linux-x64-cpu'];
+      
+      for (const folder of gpuFolders) {
+        const folderPath = path.join(this.baseDir, folder);
+        await fs.mkdir(folderPath, { recursive: true });
+        log.info(`📁 Created folder: ${folder}`);
+      }
+
+      // Download and extract binaries for each GPU type (with timeout protection)
+      log.info('⬇️ Starting Linux GPU binary downloads...');
+      const downloadPromise = this.downloadLinuxGPUBinaries(gpuFolders);
+      const results = await Promise.race([
+        downloadPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Linux GPU binary download timeout after 5 minutes')), 300000)
+        )
+      ]);
+      
+      log.info('✅ Linux GPU-specific binary setup completed');
+      return { success: true, results };
+      
+    } catch (error) {
+      log.error('❌ Failed to setup Linux GPU-specific binaries:', error);
       return { success: false, error: error.message };
     }
   }
@@ -484,6 +650,52 @@ class LlamaSwapService {
         
       } catch (error) {
         log.error(`❌ Failed to setup ${folder}:`, error.message);
+        results[folder] = { success: false, error: error.message };
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Download Linux GPU-specific binaries from llama.cpp releases
+   */
+  async downloadLinuxGPUBinaries(gpuFolders) {
+    const results = {};
+    
+    // Get latest llama.cpp release info
+    const releaseInfo = await this.getLatestLlamaCppRelease();
+    if (!releaseInfo) {
+      throw new Error('Could not fetch latest llama.cpp release information');
+    }
+
+    log.info(`📦 Found llama.cpp release: ${releaseInfo.version}`);
+
+    for (const folder of gpuFolders) {
+      try {
+        const gpuType = this.getGPUTypeFromFolder(folder);
+        const downloadUrl = this.findLinuxAssetUrl(releaseInfo.assets, gpuType);
+        
+        if (!downloadUrl) {
+          log.warn(`⚠️ No download URL found for Linux ${folder}, copying from base folder`);
+          await this.copyLinuxBinariesFromBase(folder);
+          results[folder] = { success: true, method: 'copied_from_base' };
+          continue;
+        }
+
+        log.info(`⬇️ Downloading Linux binaries for ${folder}...`);
+        const success = await this.downloadAndExtractBinaries(downloadUrl, folder);
+        
+        if (success) {
+          results[folder] = { success: true, method: 'downloaded', url: downloadUrl };
+        } else {
+          log.warn(`⚠️ Download failed for Linux ${folder}, copying from base folder`);
+          await this.copyLinuxBinariesFromBase(folder);
+          results[folder] = { success: true, method: 'copied_from_base' };
+        }
+        
+      } catch (error) {
+        log.error(`❌ Failed to setup Linux ${folder}:`, error.message);
         results[folder] = { success: false, error: error.message };
       }
     }
@@ -718,6 +930,39 @@ class LlamaSwapService {
   }
 
   /**
+   * Find appropriate asset URL for Linux GPU type
+   */
+  findLinuxAssetUrl(assets, gpuType) {
+    // Look for Linux-specific assets based on the GitHub release patterns
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase();
+      
+      // Check for Ubuntu/Linux assets (Ubuntu binaries work on most Linux distros)
+      if (name.includes('ubuntu') && name.includes('.zip')) {
+        if (gpuType === 'vulkan' && name.includes('vulkan')) {
+          log.info(`🎯 Found Linux Vulkan asset: ${asset.name}`);
+          return asset.browser_download_url;
+        } else if (gpuType === 'cpu' && !name.includes('vulkan') && !name.includes('cuda') && !name.includes('rocm')) {
+          // CPU version - the basic Ubuntu binary without GPU extensions
+          log.info(`🎯 Found Linux CPU asset: ${asset.name}`);
+          return asset.browser_download_url;
+        }
+      }
+    }
+
+    // Fallback: look for any Linux binary
+    for (const asset of assets) {
+      const name = asset.name.toLowerCase();
+      if ((name.includes('linux') || name.includes('ubuntu')) && name.includes('.zip')) {
+        log.info(`🎯 Using generic Linux asset for ${gpuType}: ${asset.name}`);
+        return asset.browser_download_url;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Download and extract binaries to specific folder
    */
   async downloadAndExtractBinaries(downloadUrl, targetFolder) {
@@ -793,11 +1038,24 @@ class LlamaSwapService {
       try {
         const AdmZip = require('adm-zip');
         const zip = new AdmZip(zipPath);
-        zip.extractAllTo(targetPath, true);
-        log.info(`📂 Extracted using adm-zip to: ${targetPath}`);
-        return true;
+        
+        // Check if this is a Linux Ubuntu binary with build/bin structure
+        const entries = zip.getEntries();
+        const hasBuildBinStructure = entries.some(entry => 
+          entry.entryName.includes('build/bin/') || entry.entryName.includes('bin/')
+        );
+        
+        if (hasBuildBinStructure) {
+          // Extract Linux binaries from build/bin/ structure
+          return await this.extractLinuxBinariesFromZip(zip, targetPath);
+        } else {
+          // Standard extraction for Windows binaries
+          zip.extractAllTo(targetPath, true);
+          log.info(`📂 Extracted using adm-zip to: ${targetPath}`);
+          return true;
+        }
       } catch (admZipError) {
-        log.debug('adm-zip not available, trying PowerShell extraction');
+        log.debug('adm-zip not available, trying platform-specific extraction');
       }
 
       // Fallback to PowerShell on Windows
@@ -805,10 +1063,70 @@ class LlamaSwapService {
         return await this.extractWithPowerShell(zipPath, targetPath);
       }
 
+      // Fallback to unzip on Linux/Unix
+      if (os.platform() === 'linux' || os.platform() === 'darwin') {
+        return await this.extractWithUnzip(zipPath, targetPath);
+      }
+
       throw new Error('No extraction method available');
       
     } catch (error) {
       log.error('Binary extraction failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Extract Linux binaries from zip with build/bin/ structure
+   */
+  async extractLinuxBinariesFromZip(zip, targetPath) {
+    try {
+      // Ensure target directory exists
+      await fs.mkdir(targetPath, { recursive: true });
+      
+      const entries = zip.getEntries();
+      let extractedCount = 0;
+      
+      for (const entry of entries) {
+        // Look for files in build/bin/ or bin/ directories
+        if ((entry.entryName.includes('build/bin/') || entry.entryName.includes('bin/')) && 
+            !entry.isDirectory) {
+          
+          // Extract just the filename (remove path)
+          const fileName = path.basename(entry.entryName);
+          
+          // Skip non-binary files
+          if (fileName.startsWith('.') || fileName.includes('.txt') || fileName.includes('.md')) {
+            continue;
+          }
+          
+          const targetFilePath = path.join(targetPath, fileName);
+          
+          // Extract the file content
+          const fileContent = entry.getData();
+          await fs.writeFile(targetFilePath, fileContent);
+          
+          // Make executable on Unix systems
+          if (os.platform() !== 'win32') {
+            await fs.chmod(targetFilePath, 0o755);
+          }
+          
+          log.info(`📄 Extracted binary: ${fileName} -> ${targetFilePath}`);
+          extractedCount++;
+        }
+      }
+      
+      if (extractedCount > 0) {
+        log.info(`📂 Successfully extracted ${extractedCount} Linux binaries from build/bin to: ${targetPath}`);
+        return true;
+      } else {
+        log.warn('⚠️ No binaries found in build/bin structure, falling back to standard extraction');
+        zip.extractAllTo(targetPath, true);
+        return true;
+      }
+      
+    } catch (error) {
+      log.error('Linux binary extraction failed:', error);
       return false;
     }
   }
@@ -841,6 +1159,153 @@ class LlamaSwapService {
   }
 
   /**
+   * Extract using unzip command on Linux/Unix systems
+   */
+  async extractWithUnzip(zipPath, targetPath) {
+    return new Promise((resolve) => {
+      const { spawn } = require('child_process');
+      
+      // First, try to extract and check the structure
+      const listCommand = spawn('unzip', ['-l', zipPath], { stdio: 'pipe' });
+      let zipContents = '';
+      
+      listCommand.stdout.on('data', (data) => {
+        zipContents += data.toString();
+      });
+      
+      listCommand.on('close', (code) => {
+        if (code !== 0) {
+          log.error(`unzip list failed with code: ${code}`);
+          resolve(false);
+          return;
+        }
+        
+        // Check if this has build/bin structure
+        const hasBuildBinStructure = zipContents.includes('build/bin/') || zipContents.includes(' bin/');
+        
+        if (hasBuildBinStructure) {
+          // Extract only the bin directory contents
+          this.extractLinuxBinariesWithUnzip(zipPath, targetPath).then(resolve);
+        } else {
+          // Standard extraction
+          const extractCommand = spawn('unzip', ['-o', zipPath, '-d', targetPath], { stdio: 'pipe' });
+          
+          extractCommand.on('close', (extractCode) => {
+            if (extractCode === 0) {
+              log.info(`📂 Extracted using unzip to: ${targetPath}`);
+              resolve(true);
+            } else {
+              log.error(`unzip extraction failed with code: ${extractCode}`);
+              resolve(false);
+            }
+          });
+          
+          extractCommand.on('error', (error) => {
+            log.error('unzip extraction error:', error);
+            resolve(false);
+          });
+        }
+      });
+      
+      listCommand.on('error', (error) => {
+        log.error('unzip list error:', error);
+        resolve(false);
+      });
+    });
+  }
+
+  /**
+   * Extract Linux binaries from build/bin structure using unzip command
+   */
+  async extractLinuxBinariesWithUnzip(zipPath, targetPath) {
+    return new Promise(async (resolve) => {
+      try {
+        // Ensure target directory exists
+        await fs.mkdir(targetPath, { recursive: true });
+        
+        // Create a temporary directory for extraction
+        const tempDir = path.join(require('os').tmpdir(), 'clara-linux-extract');
+        await fs.mkdir(tempDir, { recursive: true });
+        
+        const { spawn } = require('child_process');
+        
+        // Extract everything to temp directory first
+        const extractCommand = spawn('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'pipe' });
+        
+        extractCommand.on('close', async (code) => {
+          if (code !== 0) {
+            log.error(`unzip extraction failed with code: ${code}`);
+            resolve(false);
+            return;
+          }
+          
+          try {
+            // Find and move binaries from build/bin or bin directory
+            const binDirs = [
+              path.join(tempDir, 'build', 'bin'),
+              path.join(tempDir, 'bin')
+            ];
+            
+            let extractedCount = 0;
+            
+            for (const binDir of binDirs) {
+              if (fsSync.existsSync(binDir)) {
+                const files = await fs.readdir(binDir);
+                
+                for (const file of files) {
+                  const sourcePath = path.join(binDir, file);
+                  const targetFilePath = path.join(targetPath, file);
+                  
+                  // Skip directories and non-binary files
+                  const stat = await fs.stat(sourcePath);
+                  if (stat.isDirectory() || file.startsWith('.') || 
+                      file.includes('.txt') || file.includes('.md')) {
+                    continue;
+                  }
+                  
+                  // Copy the file
+                  await fs.copyFile(sourcePath, targetFilePath);
+                  
+                  // Make executable
+                  await fs.chmod(targetFilePath, 0o755);
+                  
+                  log.info(`📄 Extracted binary: ${file} -> ${targetFilePath}`);
+                  extractedCount++;
+                }
+                break; // Found the right directory, stop looking
+              }
+            }
+            
+            // Cleanup temp directory
+            await fs.rm(tempDir, { recursive: true, force: true });
+            
+            if (extractedCount > 0) {
+              log.info(`📂 Successfully extracted ${extractedCount} Linux binaries using unzip to: ${targetPath}`);
+              resolve(true);
+            } else {
+              log.warn('⚠️ No binaries found in expected directories');
+              resolve(false);
+            }
+            
+          } catch (error) {
+            log.error('Error processing extracted files:', error);
+            resolve(false);
+          }
+        });
+        
+        extractCommand.on('error', (error) => {
+          log.error('unzip extraction error:', error);
+          resolve(false);
+        });
+        
+      } catch (error) {
+        log.error('Linux binary extraction setup failed:', error);
+        resolve(false);
+      }
+    });
+  }
+
+  /**
    * Copy binaries from base folder as fallback
    */
   async copyBinariesFromBase(targetFolder) {
@@ -850,6 +1315,32 @@ class LlamaSwapService {
     if (!fsSync.existsSync(basePath)) {
       throw new Error(`Base folder not found: ${basePath}`);
     }
+
+    // Copy all files from base folder
+    const files = await fs.readdir(basePath);
+    
+    for (const file of files) {
+      const sourcePath = path.join(basePath, file);
+      const destPath = path.join(targetPath, file);
+      
+      await fs.copyFile(sourcePath, destPath);
+      log.info(`📋 Copied ${file} to ${targetFolder}`);
+    }
+  }
+
+  /**
+   * Copy Linux binaries from base folder as fallback
+   */
+  async copyLinuxBinariesFromBase(targetFolder) {
+    const basePath = path.join(this.baseDir, 'linux-x64');
+    const targetPath = path.join(this.baseDir, targetFolder);
+    
+    if (!fsSync.existsSync(basePath)) {
+      throw new Error(`Linux base folder not found: ${basePath}`);
+    }
+
+    // Ensure target directory exists
+    await fs.mkdir(targetPath, { recursive: true });
 
     // Copy all files from base folder
     const files = await fs.readdir(basePath);
@@ -5133,13 +5624,24 @@ ${cmdLine}`;
    * Ensure GPU-specific folders and binaries are always available before startup
    */
   async ensureGPUFoldersAndBinaries() {
-    if (os.platform() !== 'win32') {
-      log.info('🎮 GPU-specific setup only available on Windows, skipping...');
-      return { success: true, message: 'Not Windows - GPU setup skipped' };
+    const platform = os.platform();
+    
+    if (platform === 'win32') {
+      return this.ensureWindowsGPUFoldersAndBinaries();
+    } else if (platform === 'linux') {
+      return this.ensureLinuxGPUFoldersAndBinaries();
+    } else {
+      log.info(`🎮 GPU-specific setup only available on Windows and Linux, detected: ${platform}, skipping...`);
+      return { success: true, message: `Platform ${platform} - GPU setup skipped` };
     }
+  }
 
+  /**
+   * Ensure Windows GPU-specific folders and binaries are always available before startup
+   */
+  async ensureWindowsGPUFoldersAndBinaries() {
     try {
-      log.info('🔍 Checking GPU-specific folder availability...');
+      log.info('🔍 Checking Windows GPU-specific folder availability...');
       
       const gpuFolders = ['win32-x64-cuda', 'win32-x64-rocm', 'win32-x64-vulkan', 'win32-x64-cpu'];
       const existingFolders = gpuFolders.filter(folder => 
@@ -5147,29 +5649,69 @@ ${cmdLine}`;
       );
 
       if (existingFolders.length === 0) {
-        log.info('🚀 No GPU-specific folders found - setting up all GPU types...');
+        log.info('🚀 No Windows GPU-specific folders found - setting up all GPU types...');
         
         // Setup all GPU folders and binaries
-        const setupResult = await this.setupGPUSpecificBinaries();
+        const setupResult = await this.setupWindowsGPUSpecificBinaries();
         
         if (setupResult.success) {
-          log.info('✅ GPU-specific folders and binaries setup completed');
+          log.info('✅ Windows GPU-specific folders and binaries setup completed');
           return setupResult;
         } else {
-          log.warn('⚠️ GPU setup failed, service will use base folder:', setupResult.error);
-          return { success: true, message: 'GPU setup failed but service can continue', warning: setupResult.error };
+          log.warn('⚠️ Windows GPU setup failed, service will use base folder:', setupResult.error);
+          return { success: true, message: 'Windows GPU setup failed but service can continue', warning: setupResult.error };
         }
       } else {
-        log.info(`✅ Found ${existingFolders.length} existing GPU folders: ${existingFolders.join(', ')}`);
+        log.info(`✅ Found ${existingFolders.length} existing Windows GPU folders: ${existingFolders.join(', ')}`);
         
         // Check if the GPU folders have all required binaries
         await this.verifyGPUFolderContents(existingFolders);
         
-        return { success: true, message: `${existingFolders.length} GPU folders verified` };
+        return { success: true, message: `${existingFolders.length} Windows GPU folders verified` };
       }
       
     } catch (error) {
-      log.error('❌ Error ensuring GPU folders and binaries:', error);
+      log.error('❌ Error ensuring Windows GPU folders and binaries:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Ensure Linux GPU-specific folders and binaries are always available before startup
+   */
+  async ensureLinuxGPUFoldersAndBinaries() {
+    try {
+      log.info('🔍 Checking Linux GPU-specific folder availability...');
+      
+      const gpuFolders = ['linux-x64-vulkan', 'linux-x64-cpu'];
+      const existingFolders = gpuFolders.filter(folder => 
+        fsSync.existsSync(path.join(this.baseDir, folder))
+      );
+
+      if (existingFolders.length === 0) {
+        log.info('🚀 No Linux GPU-specific folders found - setting up all GPU types...');
+        
+        // Setup all GPU folders and binaries
+        const setupResult = await this.setupLinuxGPUSpecificBinaries();
+        
+        if (setupResult.success) {
+          log.info('✅ Linux GPU-specific folders and binaries setup completed');
+          return setupResult;
+        } else {
+          log.warn('⚠️ Linux GPU setup failed, service will use base folder:', setupResult.error);
+          return { success: true, message: 'Linux GPU setup failed but service can continue', warning: setupResult.error };
+        }
+      } else {
+        log.info(`✅ Found ${existingFolders.length} existing Linux GPU folders: ${existingFolders.join(', ')}`);
+        
+        // Check if the GPU folders have all required binaries
+        await this.verifyLinuxGPUFolderContents(existingFolders);
+        
+        return { success: true, message: `${existingFolders.length} Linux GPU folders verified` };
+      }
+      
+    } catch (error) {
+      log.error('❌ Error ensuring Linux GPU folders and binaries:', error);
       return { success: false, error: error.message };
     }
   }
@@ -5262,6 +5804,38 @@ ${cmdLine}`;
   }
 
   /**
+   * Verify that existing Linux GPU folders have all required binaries
+   */
+  async verifyLinuxGPUFolderContents(existingFolders) {
+    const requiredBinaries = ['llama-swap-linux', 'llama-server'];
+    
+    for (const folder of existingFolders) {
+      const folderPath = path.join(this.baseDir, folder);
+      const missingBinaries = [];
+      
+      for (const binary of requiredBinaries) {
+        const binaryPath = path.join(folderPath, binary);
+        if (!fsSync.existsSync(binaryPath)) {
+          missingBinaries.push(binary);
+        }
+      }
+      
+      if (missingBinaries.length > 0) {
+        log.warn(`⚠️ Linux GPU folder ${folder} missing binaries: ${missingBinaries.join(', ')}`);
+        log.info(`🔧 Attempting to fix missing binaries in ${folder}...`);
+        
+        try {
+          await this.setupSpecificLinuxGPUFolder(folder);
+        } catch (error) {
+          log.error(`❌ Failed to fix Linux ${folder}:`, error.message);
+        }
+      } else {
+        log.info(`✅ Linux GPU folder ${folder} has all required binaries`);
+      }
+    }
+  }
+
+  /**
    * Setup a specific GPU folder with required binaries
    */
   async setupSpecificGPUFolder(folderName) {
@@ -5307,6 +5881,43 @@ ${cmdLine}`;
       
     } catch (error) {
       log.error(`❌ Failed to setup GPU folder ${folderName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Setup a specific Linux GPU folder with required binaries
+   */
+  async setupSpecificLinuxGPUFolder(folderName) {
+    try {
+      log.info(`🔧 Setting up specific Linux GPU folder: ${folderName}`);
+      
+      // Create folder if it doesn't exist
+      const folderPath = path.join(this.baseDir, folderName);
+      await fs.mkdir(folderPath, { recursive: true });
+      
+      // Try download first, fallback to copy
+      const releaseInfo = await this.getLatestLlamaCppRelease();
+      if (releaseInfo) {
+        const gpuType = this.getGPUTypeFromFolder(folderName);
+        const downloadUrl = this.findLinuxAssetUrl(releaseInfo.assets, gpuType);
+        
+        if (downloadUrl) {
+          const success = await this.downloadAndExtractBinaries(downloadUrl, folderName);
+          if (!success) {
+            await this.copyLinuxBinariesFromBase(folderName);
+          }
+        } else {
+          await this.copyLinuxBinariesFromBase(folderName);
+        }
+      } else {
+        await this.copyLinuxBinariesFromBase(folderName);
+      }
+      
+      log.info(`✅ Successfully setup Linux GPU folder: ${folderName}`);
+      
+    } catch (error) {
+      log.error(`❌ Failed to setup Linux GPU folder ${folderName}:`, error);
       throw error;
     }
   }
@@ -5399,28 +6010,28 @@ ${cmdLine}`;
         case 'linux':
           availableBackends = [
             {
-              id: 'cuda',
-              name: 'NVIDIA CUDA',
-              description: 'Optimized for NVIDIA GPUs with CUDA support',
-              folder: 'linux-x64',
+              id: 'vulkan',
+              name: 'Vulkan',
+              description: 'Cross-vendor GPU acceleration via Vulkan',
+              folder: 'linux-x64-vulkan',
               requiresGPU: true,
-              gpuType: 'nvidia'
-            },
-            {
-              id: 'rocm',
-              name: 'AMD ROCm',
-              description: 'Optimized for AMD GPUs with ROCm support',
-              folder: 'linux-x64',
-              requiresGPU: true,
-              gpuType: 'amd'
+              gpuType: 'any'
             },
             {
               id: 'cpu',
               name: 'CPU Only',
               description: 'CPU-only processing (no GPU acceleration)',
-              folder: 'linux-x64',
+              folder: 'linux-x64-cpu',
               requiresGPU: false,
               gpuType: 'none'
+            },
+            {
+              id: 'legacy',
+              name: 'Legacy Linux',
+              description: 'Original Linux binaries (fallback option)',
+              folder: 'linux-x64',
+              requiresGPU: false,
+              gpuType: 'legacy'
             },
             {
               id: 'auto',
