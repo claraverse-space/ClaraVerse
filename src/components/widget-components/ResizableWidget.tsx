@@ -153,6 +153,42 @@ export const WIDGET_SIZE_CONSTRAINTS = {
       { label: '12x12', w: 12, h: 12 }
     ]
   },
+  'gpu-monitor': {
+    minW: 3,
+    minH: 3,
+    maxW: 12,
+    maxH: 12,
+    allowedSizes: [
+      { label: '3x3', w: 3, h: 3 },
+      { label: '4x4', w: 4, h: 4 },
+      { label: '4x6', w: 4, h: 6 },
+      { label: '6x4', w: 6, h: 4 },
+      { label: '6x6', w: 6, h: 6 },
+      { label: '6x8', w: 6, h: 8 },
+      { label: '8x6', w: 8, h: 6 },
+      { label: '8x8', w: 8, h: 8 },
+      { label: '8x10', w: 8, h: 10 },
+      { label: '10x8', w: 10, h: 8 },
+      { label: '10x10', w: 10, h: 10 },
+      { label: '12x8', w: 12, h: 8 },
+      { label: '12x10', w: 12, h: 10 },
+      { label: '12x12', w: 12, h: 12 }
+    ]
+  },
+  'system-resources': {
+    minW: 3,
+    minH: 3,
+    maxW: 12,
+    maxH: 8,
+    allowedSizes: [
+      { label: '3x3', w: 3, h: 3 },
+      { label: '4x4', w: 4, h: 4 },
+      { label: '6x4', w: 6, h: 4 },
+      { label: '8x6', w: 8, h: 6 },
+      { label: '10x7', w: 10, h: 7 },
+      { label: '12x8', w: 12, h: 8 }
+    ]
+  },
   app: {
     minW: 2,
     minH: 2,

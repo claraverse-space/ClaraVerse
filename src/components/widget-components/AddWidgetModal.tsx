@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, Bot, Info, Star, LayoutGrid, Briefcase, RefreshCw, Workflow, Upload, Play } from 'lucide-react';
+import { XCircle, Bot, Info, Star, LayoutGrid, Briefcase, RefreshCw, Workflow, Upload, Play, Monitor } from 'lucide-react';
 
 interface WidgetOption {
   id: string;
@@ -67,6 +67,48 @@ const AVAILABLE_WIDGETS: WidgetOption[] = [
           <h3 className="text-sm font-medium text-gray-900 dark:text-white">What's New in Clara</h3>
         </div>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Latest updates and improvements...</p>
+      </div>
+    )
+  },
+  {
+    id: 'gpu-monitor',
+    type: 'gpu-monitor',
+    name: 'GPU Monitor',
+    description: 'Real-time GPU usage, memory, temperature, and performance stats',
+    icon: <Monitor className="w-5 h-5" />,
+    category: 'system',
+    preview: (
+      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Monitor className="w-4 h-4 text-blue-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">GPU Monitor</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Live GPU stats for AI workloads...</p>
+        <div className="mt-2 flex items-center gap-1">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+          <span className="text-xs text-gray-500">Real-time Monitoring</span>
+        </div>
+      </div>
+    )
+  },
+  {
+    id: 'system-resources',
+    type: 'system-resources',
+    name: 'System Resources Graph',
+    description: 'Real-time graphical view of CPU, RAM, GPU, and VRAM usage over time',
+    icon: <LayoutGrid className="w-5 h-5" />,
+    category: 'system',
+    preview: (
+      <div className="p-3 bg-gray-500/5 dark:bg-gray-300/5 rounded-lg">
+        <div className="flex items-center gap-2">
+          <LayoutGrid className="w-4 h-4 text-purple-500" />
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">System Resources Graph</h3>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5">Interactive graphs for system performance...</p>
+        <div className="mt-2 flex items-center gap-1">
+          <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+          <span className="text-xs text-gray-500">Real-time Graphing</span>
+        </div>
       </div>
     )
   },

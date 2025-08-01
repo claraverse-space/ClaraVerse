@@ -205,7 +205,17 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   getConfigAsJson: () => ipcRenderer.invoke('get-config-as-json'),
   forceReconfigure: () => ipcRenderer.invoke('force-reconfigure'),
   getConfigurationInfo: () => ipcRenderer.invoke('get-configuration-info'),
-  restartWithOverrides: () => ipcRenderer.invoke('restart-llamaswap-with-overrides')
+  restartWithOverrides: () => ipcRenderer.invoke('restart-llamaswap-with-overrides'),
+  
+  // NEW: Configuration saving and management
+  saveConfigFromJson: (jsonConfig) => ipcRenderer.invoke('save-config-from-json', jsonConfig),
+  saveConfigAndRestart: (jsonConfig) => ipcRenderer.invoke('save-config-and-restart', jsonConfig),
+  regenerateConfig: () => ipcRenderer.invoke('regenerate-config'),
+  
+  // NEW: Model configuration management
+  getModelConfigurations: () => ipcRenderer.invoke('get-model-configurations'),
+  saveModelConfiguration: (modelName, modelConfig) => ipcRenderer.invoke('save-model-configuration', modelName, modelConfig),
+  saveAllModelConfigurations: (modelConfigs) => ipcRenderer.invoke('save-all-model-configurations', modelConfigs)
 });
 
 // Add model management API

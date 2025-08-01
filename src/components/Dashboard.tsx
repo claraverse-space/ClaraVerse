@@ -57,12 +57,15 @@ import WidgetContextMenu from './widget-components/WidgetContextMenu';
 import AddWidgetModal from './widget-components/AddWidgetModal';
 import EmailWidget from './widget-components/EmailWidget';
 import QuickChatWidget from './widget-components/QuickChatWidget';
+import GPUMonitorWidget from './widget-components/GPUMonitorWidget';
+import SystemResourcesGraphWidget from './widget-components/SystemResourcesGraphWidget';
 import FlowWidget from './widgets/FlowWidget';
 import ResizableWidget, { 
   WIDGET_SIZE_CONSTRAINTS, 
   DEFAULT_SIZE_CONSTRAINTS 
 } from './widget-components/ResizableWidget';
 import { useTheme } from '../hooks/useTheme';
+import { useWidgetService } from '../hooks/useWidgetService';
 
 // Extend Window interface to include electron
 declare global {
@@ -166,6 +169,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   // Add loading state for initial widget load
   const [isLoadingWidgets, setIsLoadingWidgets] = useState(true);
+
+  // Widget Service Management
+  const widgetService = useWidgetService({ 
+    widgets, 
+    autoManage: true 
+  });
 
   // Simulate initial loading (you can replace this with actual loading logic)
   useEffect(() => {
@@ -448,7 +457,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       }));
     };
 
-    const wrapWithResizable = (component: React.ReactNode) => (
+    const wrapWithResizable = (component: React.ReactNode, shouldPassSize = false) => (
       <ResizableWidget
         key={widget.id}
         className="glassmorphic rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-sakura-500/10 group"
@@ -460,7 +469,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         <div className="relative overflow-hidden rounded-2xl h-full">
           {/* Subtle gradient overlay on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          {component}
+          {shouldPassSize ? React.cloneElement(component as React.ReactElement, {
+            width: currentSize.w,
+            height: currentSize.h
+          }) : component}
         </div>
       </ResizableWidget>
     );
@@ -521,6 +533,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             url={widget.url || ''}
             onRemove={handleRemoveWidget}
           />
+        );
+      case 'gpu-monitor':
+        return wrapWithResizable(
+          <GPUMonitorWidget
+            id={widget.id}
+            onRemove={handleRemoveWidget}
+          />,
+          true
+        );
+      case 'system-resources':
+        return wrapWithResizable(
+          <SystemResourcesGraphWidget
+            id={widget.id}
+            onRemove={handleRemoveWidget}
+          />,
+          true
         );
       case 'flow-widget':
         return (

@@ -22,6 +22,7 @@ const PlatformManager = require('./platformManager.cjs');
 const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 const IPCLogger = require('./ipcLogger.cjs');
+const WidgetService = require('./widgetService.cjs');
 
 // NEW: Enhanced service management system (Backward compatible)
 const CentralServiceManager = require('./centralServiceManager.cjs');
@@ -136,6 +137,7 @@ let mcpService;
 let watchdogService;
 let updateService;
 let comfyUIModelService;
+let widgetService;
 
 // NEW: Enhanced service management (Coexists with existing services)
 let serviceConfigManager;
@@ -1049,6 +1051,111 @@ function registerLlamaSwapHandlers() {
       return result;
     } catch (error) {
       log.error('Error getting configuration info:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Save configuration from JSON (converted to YAML)
+  ipcMain.handle('save-config-from-json', async (event, jsonConfig) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.saveConfigFromJson(jsonConfig);
+      return result;
+    } catch (error) {
+      log.error('Error saving config from JSON:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Save configuration and restart service
+  ipcMain.handle('save-config-and-restart', async (event, jsonConfig) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.saveConfigAndRestart(jsonConfig);
+      return result;
+    } catch (error) {
+      log.error('Error saving config and restarting:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Regenerate configuration
+  ipcMain.handle('regenerate-config', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.regenerateConfig();
+      return result;
+    } catch (error) {
+      log.error('Error regenerating config:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get model configurations with native context sizes
+  ipcMain.handle('get-model-configurations', async () => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.getModelConfigurations();
+      return result;
+    } catch (error) {
+      log.error('Error getting model configurations:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Save configuration for a specific model
+  ipcMain.handle('save-model-configuration', async (event, modelName, modelConfig) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.saveModelConfiguration(modelName, modelConfig);
+      return result;
+    } catch (error) {
+      log.error('Error saving model configuration:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Save configurations for all models
+  ipcMain.handle('save-all-model-configurations', async (event, modelConfigs) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.saveAllModelConfigurations(modelConfigs);
+      return result;
+    } catch (error) {
+      log.error('Error saving all model configurations:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Load individual model configurations from persistent storage
+  ipcMain.handle('load-individual-model-configurations', async (event) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.loadIndividualModelConfigurations();
+      return result;
+    } catch (error) {
+      log.error('Error loading individual model configurations:', error);
       return { success: false, error: error.message };
     }
   });
@@ -2190,6 +2297,155 @@ function registerServiceConfigurationHandlers() {
   console.log('[main] Service configuration IPC handlers registered successfully');
 }
 
+// Register widget service IPC handlers
+function registerWidgetServiceHandlers() {
+  // Initialize widget service
+  ipcMain.handle('widget-service:init', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+        log.info('Widget service initialized');
+      }
+      return { success: true };
+    } catch (error) {
+      log.error('Error initializing widget service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Register a widget as active
+  ipcMain.handle('widget-service:register-widget', async (event, widgetType) => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      widgetService.registerWidget(widgetType);
+      const status = await widgetService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error registering widget:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Unregister a widget
+  ipcMain.handle('widget-service:unregister-widget', async (event, widgetType) => {
+    try {
+      if (!widgetService) {
+        return { success: true, status: { running: false, activeWidgets: [] } };
+      }
+      
+      widgetService.unregisterWidget(widgetType);
+      const status = await widgetService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error unregistering widget:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get widget service status
+  ipcMain.handle('widget-service:get-status', async () => {
+    try {
+      if (!widgetService) {
+        return { 
+          success: true, 
+          status: { 
+            running: false, 
+            port: 8765, 
+            activeWidgets: [], 
+            shouldRun: false 
+          } 
+        };
+      }
+      
+      const status = await widgetService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error getting widget service status:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Start widget service manually
+  ipcMain.handle('widget-service:start', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      const result = await widgetService.startService();
+      return result;
+    } catch (error) {
+      log.error('Error starting widget service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Stop widget service manually
+  ipcMain.handle('widget-service:stop', async () => {
+    try {
+      if (!widgetService) {
+        return { success: true, message: 'Service not running' };
+      }
+      
+      const result = await widgetService.stopService();
+      return result;
+    } catch (error) {
+      log.error('Error stopping widget service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Restart widget service
+  ipcMain.handle('widget-service:restart', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      const result = await widgetService.restartService();
+      return result;
+    } catch (error) {
+      log.error('Error restarting widget service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Manage service based on active widgets
+  ipcMain.handle('widget-service:manage', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      const result = await widgetService.manageService();
+      return { success: true, status: result };
+    } catch (error) {
+      log.error('Error managing widget service:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get service health status
+  ipcMain.handle('widget-service:health', async () => {
+    try {
+      if (!widgetService) {
+        return { success: true, healthy: false };
+      }
+      
+      const healthy = await widgetService.isServiceRunning();
+      return { success: true, healthy };
+    } catch (error) {
+      log.error('Error checking widget service health:', error);
+      return { success: false, error: error.message, healthy: false };
+    }
+  });
+
+  log.info('Widget service IPC handlers registered');
+}
+
 // Register handlers for various app functions
 function registerHandlers() {
   console.log('[main] Registering IPC handlers...');
@@ -2198,6 +2454,7 @@ function registerHandlers() {
   registerModelManagerHandlers();
   registerMCPHandlers();
   registerServiceConfigurationHandlers(); // NEW: Add service configuration handlers
+  registerWidgetServiceHandlers(); // NEW: Add widget service handlers
   
   // Add new chat handler
   ipcMain.handle('new-chat', async () => {
@@ -4453,6 +4710,16 @@ app.on('window-all-closed', async () => {
         watchdogService.stop();
       } catch (error) {
         log.error('Error stopping watchdog service:', error);
+      }
+    }
+
+    // Stop widget service
+    if (widgetService) {
+      try {
+        log.info('Stopping widget service...');
+        await widgetService.cleanup();
+      } catch (error) {
+        log.error('Error stopping widget service:', error);
       }
     }
 

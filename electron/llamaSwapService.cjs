@@ -41,6 +41,9 @@ class LlamaSwapService {
     this.configPath = path.join(userDataDir, 'llama-swap-config.yaml');
     this.logPath = path.join(userDataDir, 'llama-swap.log');
     
+    // Settings directory for storing performance settings and individual model configurations
+    this.settingsDir = path.join(os.homedir(), '.clara', 'settings');
+    
     log.info(`Base binary directory: ${this.baseDir}`);
     log.info(`Models directory: ${this.modelsDir}`);
     log.info(`Config path: ${this.configPath}`);
@@ -884,10 +887,26 @@ class LlamaSwapService {
       cuda: ['cuda', 'nvidia'],
       rocm: ['hip-radeon', 'rocm', 'amd'],  // Updated to include hip-radeon pattern
       vulkan: ['vulkan'],
-      cpu: ['cpu', 'no-gpu']
+      cpu: ['cpu'] // Updated to match actual CPU binary naming
     };
 
     const searchPatterns = patterns[gpuType] || [gpuType];
+    
+    // Special handling for CPU binaries
+    if (gpuType === 'cpu') {
+      for (const asset of assets) {
+        const name = asset.name.toLowerCase();
+        
+        // Look for CPU-specific naming: llama-bXXXX-bin-win-cpu-x64.zip
+        if (name.includes('llama-') && 
+            name.includes('bin-win-cpu') && 
+            name.includes('x64') && 
+            name.includes('.zip')) {
+          log.info(`🎯 Found CPU asset: ${asset.name}`);
+          return asset.browser_download_url;
+        }
+      }
+    }
     
     for (const asset of assets) {
       const name = asset.name.toLowerCase();
@@ -2041,12 +2060,14 @@ class LlamaSwapService {
     try {
       await fs.mkdir(path.join(os.homedir(), '.clara'), { recursive: true });
       await fs.mkdir(this.modelsDir, { recursive: true });
+      await fs.mkdir(this.settingsDir, { recursive: true });
       
       // Ensure the directory for config files exists
       const configDir = path.dirname(this.configPath);
       await fs.mkdir(configDir, { recursive: true });
       
       log.info(`Models directory ensured at: ${this.modelsDir}`);
+      log.info(`Settings directory ensured at: ${this.settingsDir}`);
       log.info(`Config directory ensured at: ${configDir}`);
     } catch (error) {
       log.error('Error creating directories:', error);
@@ -2374,6 +2395,28 @@ class LlamaSwapService {
       log.warn('Failed to load performance settings, using safe defaults:', error.message);
       globalPerfSettings = this.getSafeDefaultConfig();
     }
+
+    // Load individual model configurations (takes priority over global settings)
+    try {
+      const individualConfigs = await this.loadIndividualModelConfigurations();
+      if (individualConfigs.success && individualConfigs.models && individualConfigs.models.length > 0) {
+        this.customModelConfigs = individualConfigs.models;
+        log.info(`Loaded ${individualConfigs.models.length} individual model configurations from disk`);
+      } else {
+        // Fallback to generated configurations from metadata
+        const generatedConfigs = await this.getModelConfigurations();
+        if (generatedConfigs.success && generatedConfigs.models) {
+          this.customModelConfigs = generatedConfigs.models;
+          log.info(`Generated ${generatedConfigs.models.length} individual model configurations from metadata`);
+        } else {
+          this.customModelConfigs = [];
+          log.info('No individual model configurations found, using global settings');
+        }
+      }
+    } catch (error) {
+      log.warn('Failed to load individual model configurations:', error.message);
+      this.customModelConfigs = [];
+    }
     
     let configYaml = `# Auto-generated llama-swap configuration
 # Models directory: ${this.modelsDir}
@@ -2384,59 +2427,76 @@ models:
 `;
 
     const groupMembers = [];
+    const contextSizeSummary = []; // Track context sizes for summary logging
 
     // Generate model configurations with dynamic GPU layer calculation
     for (const model of mainModels) {
       // Use the determined llama-server path (with backend override applied)
       // NOTE: No longer using this.binaryPaths.llamaServer directly
       
+      // Check for custom model configuration
+      // Try to find by generated name first, then by filename
+      const customConfig = this.customModelConfigs?.find(c => c.name === model.name) || 
+                          this.customModelConfigs?.find(c => c.name === model.file);
+      
       // Calculate optimal performance configuration for this model
       let perfConfig;
       try {
-        // Start with saved performance settings
+        // Start with saved performance settings, but prioritize individual model config
         perfConfig = { ...globalPerfSettings };
         
-        // Apply some model-specific optimizations based on available GPU info
-        try {
-          const gpuInfo = await this.detectGPUInfo();
-          const cpuCores = require('os').cpus().length;
+        // If we have individual model configuration, override global settings
+        if (customConfig) {
+          // Override global settings with individual model configuration
+          if (customConfig.threads !== undefined) perfConfig.threads = customConfig.threads;
+          if (customConfig.configuredContextSize !== undefined) perfConfig.contextSize = customConfig.configuredContextSize;
+          if (customConfig.flashAttention !== undefined) perfConfig.flashAttention = customConfig.flashAttention;
+          if (customConfig.batchSize !== undefined) perfConfig.batchSize = customConfig.batchSize;
+          if (customConfig.ubatchSize !== undefined) perfConfig.ubatchSize = customConfig.ubatchSize;
           
-          // Apply performance settings to configuration
-          if (globalPerfSettings.threads) {
-            perfConfig.threads = globalPerfSettings.threads;
-          } else {
-            // Fallback to auto-detection if not set
-            perfConfig.threads = Math.max(1, Math.min(8, Math.floor(cpuCores / 2)));
-          }
+          log.info(`Model ${model.name}: Applied individual model configuration - threads:${perfConfig.threads}, context:${perfConfig.contextSize}, flash:${perfConfig.flashAttention}`);
+        } else {
+          // Apply some model-specific optimizations based on available GPU info
+          try {
+            const gpuInfo = await this.detectGPUInfo();
+            const cpuCores = require('os').cpus().length;
+            
+            // Apply performance settings to configuration
+            if (globalPerfSettings.threads) {
+              perfConfig.threads = globalPerfSettings.threads;
+            } else {
+              // Fallback to auto-detection if not set
+              perfConfig.threads = Math.max(1, Math.min(8, Math.floor(cpuCores / 2)));
+            }
 
-          // Apply context size from settings
-          if (globalPerfSettings.maxContextSize) {
-            perfConfig.contextSize = globalPerfSettings.maxContextSize;
-          }
+            // Apply context size from settings
+            if (globalPerfSettings.maxContextSize) {
+              perfConfig.contextSize = globalPerfSettings.maxContextSize;
+            }
 
-          // Apply parallel sequences from settings
-          if (globalPerfSettings.parallelSequences) {
-            perfConfig.parallelSequences = globalPerfSettings.parallelSequences;
-          }
+            // Apply parallel sequences from settings
+            if (globalPerfSettings.parallelSequences) {
+              perfConfig.parallelSequences = globalPerfSettings.parallelSequences;
+            }
 
-          // Apply optimization flags from settings
-          perfConfig.flashAttention = globalPerfSettings.flashAttention !== false;
-          perfConfig.optimizeFirstToken = globalPerfSettings.optimizeFirstToken || false;
-          perfConfig.aggressiveOptimization = globalPerfSettings.aggressiveOptimization || false;
-          perfConfig.enableContinuousBatching = globalPerfSettings.enableContinuousBatching !== false;
-          
-          // Apply conversation optimization settings
-          if (globalPerfSettings.keepTokens) {
-            perfConfig.keepTokens = globalPerfSettings.keepTokens;
+            // Apply optimization flags from settings
+            perfConfig.flashAttention = globalPerfSettings.flashAttention !== false;
+            perfConfig.optimizeFirstToken = globalPerfSettings.optimizeFirstToken || false;
+            perfConfig.aggressiveOptimization = globalPerfSettings.aggressiveOptimization || false;
+            perfConfig.enableContinuousBatching = globalPerfSettings.enableContinuousBatching !== false;
+            
+            // Apply conversation optimization settings
+            if (globalPerfSettings.keepTokens) {
+              perfConfig.keepTokens = globalPerfSettings.keepTokens;
+            }
+            if (globalPerfSettings.defragThreshold) {
+              perfConfig.defragThreshold = globalPerfSettings.defragThreshold;
+            }
+            
+            log.info(`Model ${model.name}: Applied global performance settings - threads:${perfConfig.threads}, context:${perfConfig.contextSize}, flash:${perfConfig.flashAttention}`);
+          } catch (detectionError) {
+            log.warn('GPU detection failed during config generation, using settings as-is:', detectionError.message);
           }
-          if (globalPerfSettings.defragThreshold) {
-            perfConfig.defragThreshold = globalPerfSettings.defragThreshold;
-          }
-          
-          log.info(`Model ${model.name}: Applied performance settings - threads:${perfConfig.threads}, context:${perfConfig.contextSize}, flash:${perfConfig.flashAttention}`);
-          
-        } catch (detectionError) {
-          log.warn('GPU detection failed during config generation, using settings as-is:', detectionError.message);
         }
         
       } catch (error) {
@@ -2445,9 +2505,13 @@ models:
         perfConfig = this.getSafeDefaultConfig();
       }
       
-      // Determine GPU layers to use - prioritize user setting over automatic calculation
+      // Determine GPU layers to use - prioritize individual model config, then user setting, then automatic calculation
       let gpuLayersToUse;
-      if (globalPerfSettings.gpuLayers !== undefined && globalPerfSettings.gpuLayers !== null) {
+      if (customConfig?.gpuLayers !== undefined && customConfig?.gpuLayers !== null) {
+        // Individual model configuration has GPU layers - use that setting
+        gpuLayersToUse = customConfig.gpuLayers;
+        log.info(`Model ${model.name}: Using individually-configured GPU layers: ${gpuLayersToUse}`);
+      } else if (globalPerfSettings.gpuLayers !== undefined && globalPerfSettings.gpuLayers !== null) {
         // User has explicitly set GPU layers - use their setting
         gpuLayersToUse = globalPerfSettings.gpuLayers;
         log.info(`Model ${model.name}: Using user-configured GPU layers: ${gpuLayersToUse}`);
@@ -2494,34 +2558,65 @@ models:
         log.info(`Model ${model.name}: Embeddings support enabled`);
       }
       
+      // Check for custom model configuration for threads
+      
       // CPU optimization from performance settings
-      cmdLine += ` --threads ${perfConfig.threads}`;
+      const threads = customConfig?.threads || perfConfig.threads;
+      cmdLine += ` --threads ${threads}`;
+      if (customConfig?.threads) {
+        log.info(`Model ${model.name}: Using custom thread count: ${threads}`);
+      }
       
       // **CRITICAL KV CACHE OPTIMIZATIONS FOR CONVERSATIONAL SPEED**
       
-      // 1. Context window optimization - let llama-server auto-detect from model metadata
-      // Different models have different native context lengths (8k, 32k, 128k, etc.)
-      // llama-server can read this from model metadata and use the optimal size
+      // 1. Context window optimization - extract context size from model's GGUF metadata
       let contextSize;
-      if (!isEmbedding && perfConfig.contextSize) {
-        // User has explicitly set a context size - use their setting (but not for embedding models)
-        contextSize = perfConfig.contextSize;
-        cmdLine += ` --ctx-size ${contextSize}`;
-        log.info(`Model ${model.name}: Using user-configured context size: ${contextSize}`);
-      } else if (isEmbedding) {
-        // For embedding models, never add context size - let llama-server decide automatically
-        log.info(`Model ${model.name}: Embedding model - letting llama-server auto-detect context size`);
-        contextSize = 8192; // Default fallback for keep token calculation only (not used in command line)
-      } else {
-        // No user setting - let llama-server auto-detect from model metadata
-        // This allows each model to use its native maximum context length
-        log.info(`Model ${model.name}: Using auto-detected context size from model metadata`);
-        contextSize = 8192; // Default fallback for keep token calculation only
+      let modelMetadata = null;
+      
+      // Extract context size from model's GGUF metadata
+      try {
+        modelMetadata = await this.extractGGUFMetadata(model.path);
+        if (modelMetadata && modelMetadata.contextSize) {
+          contextSize = modelMetadata.contextSize;
+          log.info(`🧠 Model ${model.name}: Found native context size: ${contextSize.toLocaleString()} tokens`);
+        }
+      } catch (error) {
+        log.warn(`Model ${model.name}: Could not extract GGUF metadata: ${error.message}`);
       }
       
-      // 2. Batch size optimization - prioritize user settings over automatic calculation
+      if (!isEmbedding && customConfig?.configuredContextSize) {
+        // Use custom configured context size
+        contextSize = customConfig.configuredContextSize;
+        cmdLine += ` --ctx-size ${contextSize}`;
+        log.info(`🎛️ Model ${model.name}: Using custom-configured context size: ${contextSize.toLocaleString()} tokens`);
+      } else if (!isEmbedding && perfConfig.contextSize) {
+        // User has explicitly set a context size - use their setting (overrides model metadata)
+        contextSize = perfConfig.contextSize;
+        cmdLine += ` --ctx-size ${contextSize}`;
+        log.info(`🎛️ Model ${model.name}: Using user-configured context size: ${contextSize.toLocaleString()} (overriding native: ${modelMetadata?.contextSize?.toLocaleString() || 'unknown'})`);
+      } else if (isEmbedding) {
+        // For embedding models, never add context size - let llama-server decide automatically
+        log.info(`🔤 Model ${model.name}: Embedding model - letting llama-server auto-detect context size`);
+        contextSize = 8192; // Default fallback for keep token calculation only (not used in command line)
+      } else if (contextSize) {
+        // Use the extracted context size from model metadata
+        cmdLine += ` --ctx-size ${contextSize}`;
+        log.info(`📖 Model ${model.name}: Using model's native context size: ${contextSize.toLocaleString()} tokens`);
+      } else {
+        // No metadata found - use reasonable default
+        contextSize = 8192;
+        cmdLine += ` --ctx-size ${contextSize}`;
+        log.info(`⚠️ Model ${model.name}: Could not determine native context size, using default: ${contextSize.toLocaleString()} tokens`);
+      }
+      
+      // 2. Batch size optimization - prioritize individual model config, then user settings, then automatic calculation
       let batchSize, ubatchSize;
-      if (globalPerfSettings.batchSize !== undefined && globalPerfSettings.ubatchSize !== undefined) {
+      if (customConfig?.batchSize !== undefined && customConfig?.ubatchSize !== undefined) {
+        // Individual model configuration has batch sizes - use those settings
+        batchSize = customConfig.batchSize;
+        ubatchSize = customConfig.ubatchSize;
+        log.info(`Model ${model.name}: Using individually-configured batch sizes: ${batchSize}/${ubatchSize}`);
+      } else if (globalPerfSettings.batchSize !== undefined && globalPerfSettings.ubatchSize !== undefined) {
         // User has explicitly set batch sizes - use their settings
         batchSize = globalPerfSettings.batchSize;
         ubatchSize = globalPerfSettings.ubatchSize;
@@ -2547,19 +2642,23 @@ models:
       const defragThreshold = perfConfig.defragThreshold || 0.1;
       cmdLine += ` --defrag-thold ${defragThreshold}`;
       
-      // 5. Memory optimization for conversations - respect user setting
-      if (globalPerfSettings.memoryLock !== false) {
+      // 5. Memory optimization for conversations - prioritize individual model config over global setting
+      const useMemoryLock = customConfig?.memoryLock !== undefined ? 
+        customConfig.memoryLock : (globalPerfSettings.memoryLock !== false);
+      if (useMemoryLock) {
         cmdLine += ` --mlock`; // Lock model in memory for consistent performance
         log.info(`Model ${model.name}: Memory lock enabled`);
       } else {
-        log.info(`Model ${model.name}: Memory lock disabled by user setting`);
+        log.info(`Model ${model.name}: Memory lock disabled`);
       }
       
       // 6. Parallel processing optimization - use saved setting
       cmdLine += ` --parallel ${perfConfig.parallelSequences || 1}`;
       
-      // 7. Flash attention if enabled in settings
-      if (perfConfig.flashAttention) {
+      // 7. Flash attention if enabled in individual model config or global settings
+      const useFlashAttention = customConfig?.flashAttention !== undefined ? 
+        customConfig.flashAttention : perfConfig.flashAttention;
+      if (useFlashAttention) {
         cmdLine += ` --flash-attn`;
       }
       
@@ -2656,6 +2755,15 @@ ${cmdLine}`;
 
 `;
       
+      // Track context size for summary logging
+      contextSizeSummary.push({
+        name: model.name,
+        contextSize: contextSize,
+        source: !isEmbedding && perfConfig.contextSize ? 'user-configured' : 
+                isEmbedding ? 'embedding-auto' :
+                modelMetadata?.contextSize ? 'model-metadata' : 'default'
+      });
+      
       groupMembers.push(model.name);
     }
 
@@ -2725,6 +2833,18 @@ ${cmdLine}`;
     }
     
     log.info('Dynamic config generated with', mainModels.length, 'models using saved performance settings');
+    
+    // Log context size summary
+    if (contextSizeSummary.length > 0) {
+      log.info('📚 Model Context Size Summary:');
+      for (const { name, contextSize, source } of contextSizeSummary) {
+        const sizeStr = contextSize ? contextSize.toLocaleString() : 'auto';
+        const emoji = source === 'user-configured' ? '🎛️' : 
+                     source === 'model-metadata' ? '📖' : 
+                     source === 'embedding-auto' ? '🔤' : '⚠️';
+        log.info(`   ${emoji} ${name}: ${sizeStr} tokens (${source})`);
+      }
+    }
     
     return { models: mainModels.length };
   }
@@ -5191,47 +5311,232 @@ ${cmdLine}`;
   }
 
   /**
-   * Extract metadata from GGUF file including embedding dimensions
+   * Extract metadata from GGUF file including embedding dimensions and context size
    */
   async extractGGUFMetadata(modelPath) {
     try {
       const fs = require('fs');
-      const buffer = Buffer.alloc(1024); // Read first 1KB to get header info
+      const fileName = path.basename(modelPath);
+      
+      // Read a larger chunk to parse metadata properly (64KB should be enough for most metadata)
+      const bufferSize = 65536;
+      const buffer = Buffer.alloc(bufferSize);
       
       const fd = fs.openSync(modelPath, 'r');
-      fs.readSync(fd, buffer, 0, 1024, 0);
+      const bytesRead = fs.readSync(fd, buffer, 0, bufferSize, 0);
       fs.closeSync(fd);
       
       // GGUF magic number check
       const magic = buffer.readUInt32LE(0);
       if (magic !== 0x46554747) { // 'GGUF' in little endian
+        log.warn(`${fileName}: Not a valid GGUF file (magic: 0x${magic.toString(16)})`);
         return null;
       }
       
       // Read version
       const version = buffer.readUInt32LE(4);
       
-      // Skip tensor count and metadata count for now
       let offset = 8;
       const tensorCount = buffer.readBigUInt64LE(offset);
       offset += 8;
       const metadataCount = buffer.readBigUInt64LE(offset);
       offset += 8;
       
-      // For a more complete implementation, we would parse the full metadata
-      // For now, try to determine embedding size from common patterns
-      let embeddingSize = this.estimateEmbeddingSize(modelPath);
+      // Parse metadata key-value pairs
+      const metadata = {};
+      let parsedCount = 0;
+      
+      for (let i = 0; i < Number(metadataCount) && offset < bytesRead - 16; i++) {
+        try {
+          // Read key length and key
+          if (offset + 8 >= bytesRead) {
+            break;
+          }
+          
+          const keyLength = buffer.readBigUInt64LE(offset);
+          offset += 8;
+          
+          if (Number(keyLength) > 1000 || offset + Number(keyLength) >= bytesRead) {
+            break;
+          }
+          
+          const key = buffer.subarray(offset, offset + Number(keyLength)).toString('utf-8');
+          offset += Number(keyLength);
+          
+          // Read value type
+          if (offset + 4 >= bytesRead) {
+            break;
+          }
+          
+          const valueType = buffer.readUInt32LE(offset);
+          offset += 4;
+          
+          let value = null;
+          
+          // Parse value based on type
+          switch (valueType) {
+            case 4: // GGUF_TYPE_UINT32
+              if (offset + 4 <= bytesRead) {
+                value = buffer.readUInt32LE(offset);
+                offset += 4;
+              }
+              break;
+            case 5: // GGUF_TYPE_INT32
+              if (offset + 4 <= bytesRead) {
+                value = buffer.readInt32LE(offset);
+                offset += 4;
+              }
+              break;
+            case 6: // GGUF_TYPE_FLOAT32
+              if (offset + 4 <= bytesRead) {
+                value = buffer.readFloatLE(offset);
+                offset += 4;
+              }
+              break;
+            case 7: // GGUF_TYPE_BOOL
+              if (offset + 1 <= bytesRead) {
+                value = buffer.readUInt8(offset) !== 0;
+                offset += 1;
+              }
+              break;
+            case 8: // GGUF_TYPE_STRING
+              if (offset + 8 <= bytesRead) {
+                const strLength = buffer.readBigUInt64LE(offset);
+                offset += 8;
+                if (Number(strLength) <= 10000 && offset + Number(strLength) <= bytesRead) {
+                  value = buffer.subarray(offset, offset + Number(strLength)).toString('utf-8');
+                  offset += Number(strLength);
+                } else {
+                  break;
+                }
+              }
+              break;
+            case 9: // GGUF_TYPE_ARRAY
+              // Skip arrays for now - they're complex to parse
+              if (offset + 12 <= bytesRead) {
+                const arrayType = buffer.readUInt32LE(offset);
+                offset += 4;
+                const arrayLength = buffer.readBigUInt64LE(offset);
+                offset += 8;
+                
+                const arrayLen = Number(arrayLength);
+                if (arrayLen > 10000) {
+                  break;
+                }
+                
+                // Skip the array data based on type
+                if (arrayType === 4 || arrayType === 5 || arrayType === 6) { // uint32, int32, float32
+                  offset += arrayLen * 4;
+                } else if (arrayType === 7) { // bool
+                  offset += arrayLen;
+                } else if (arrayType === 8) { // string array
+                  for (let j = 0; j < arrayLen && offset < bytesRead - 8; j++) {
+                    if (offset + 8 > bytesRead) break;
+                    const strLen = buffer.readBigUInt64LE(offset);
+                    offset += 8;
+                    if (offset + Number(strLen) > bytesRead) break;
+                    offset += Number(strLen);
+                  }
+                } else {
+                  break;
+                }
+              }
+              break;
+            default:
+              break;
+          }
+          
+          if (value !== null) {
+            metadata[key] = value;
+            parsedCount++;
+          }
+          
+        } catch (parseError) {
+          break;
+        }
+      }
+      
+      // Extract context size from metadata
+      let contextSize = null;
+      const contextKeys = [
+        'llama.context_length',
+        'llama.context_size', 
+        'context_length',
+        'n_ctx',
+        'max_position_embeddings',
+        // Model-specific context keys
+        'qwen3moe.context_length',
+        'qwen2.context_length', 
+        'qwen.context_length',
+        'gemma3.context_length',
+        'gemma2.context_length',
+        'gemma.context_length',
+        'mistral.context_length',
+        'phi3.context_length',
+        'phi.context_length',
+        'deepseek.context_length',
+        'codellama.context_length',
+        'bert.context_length',
+        'gpt.context_length'
+      ];
+      
+      for (const key of contextKeys) {
+        if (metadata[key] && typeof metadata[key] === 'number') {
+          contextSize = metadata[key];
+          break;
+        }
+      }
+      
+      // Extract embedding size
+      let embeddingSize = null;
+      const embeddingKeys = [
+        'llama.embedding_length',
+        'llama.embedding_size',
+        'embedding_length',
+        'hidden_size',
+        'n_embd',
+        // Model-specific embedding keys
+        'qwen3moe.embedding_length',
+        'qwen2.embedding_length',
+        'qwen.embedding_length', 
+        'gemma3.embedding_length',
+        'gemma2.embedding_length',
+        'gemma.embedding_length',
+        'mistral.embedding_length',
+        'phi3.embedding_length',
+        'phi.embedding_length',
+        'deepseek.embedding_length',
+        'codellama.embedding_length',
+        'bert.embedding_length',
+        'gpt.embedding_length'
+      ];
+      
+      for (const key of embeddingKeys) {
+        if (metadata[key] && typeof metadata[key] === 'number') {
+          embeddingSize = metadata[key];
+          break;
+        }
+      }
+      
+      // Fallback to estimation if no embedding size found in metadata
+      if (!embeddingSize) {
+        embeddingSize = this.estimateEmbeddingSize(modelPath);
+      }
       
       return {
         version,
         tensorCount: Number(tensorCount),
         metadataCount: Number(metadataCount),
-        embeddingSize
+        contextSize,
+        embeddingSize,
+        parsedMetadataCount: parsedCount
       };
     } catch (error) {
-      log.warn(`Failed to extract GGUF metadata from ${modelPath}:`, error.message);
+      log.warn(`Failed to extract GGUF metadata from ${path.basename(modelPath)}:`, error.message);
       return {
-        embeddingSize: this.estimateEmbeddingSize(modelPath)
+        contextSize: null,
+        embeddingSize: this.estimateEmbeddingSize(modelPath),
+        error: error.message
       };
     }
   }
@@ -6260,6 +6565,416 @@ ${cmdLine}`;
   }
 
   /**
+   * Save configuration from JSON (converted to YAML)
+   */
+  async saveConfigFromJson(jsonConfig) {
+    try {
+      if (typeof jsonConfig === 'string') {
+        try {
+          jsonConfig = JSON.parse(jsonConfig);
+        } catch (parseError) {
+          return {
+            success: false,
+            error: `Invalid JSON format: ${parseError.message}`
+          };
+        }
+      }
+
+      // Convert JSON to YAML
+      let yamlContent;
+      try {
+        let yaml;
+        try {
+          yaml = require('js-yaml');
+          yamlContent = yaml.dump(jsonConfig, {
+            indent: 2,
+            quotingType: '"',
+            forceQuotes: false
+          });
+        } catch (yamlError) {
+          // Fallback to simple JSON-to-YAML conversion
+          log.info('js-yaml not available, using fallback YAML generation');
+          yamlContent = this.jsonToSimpleYaml(jsonConfig);
+        }
+      } catch (convertError) {
+        log.error('Error converting JSON to YAML:', convertError);
+        return {
+          success: false,
+          error: `Failed to convert JSON to YAML: ${convertError.message}`
+        };
+      }
+
+      // Backup existing config
+      const backupPath = `${this.configPath}.backup-${Date.now()}`;
+      if (fsSync.existsSync(this.configPath)) {
+        try {
+          await fs.copyFile(this.configPath, backupPath);
+          log.info(`Configuration backed up to: ${backupPath}`);
+        } catch (backupError) {
+          log.warn('Failed to create config backup:', backupError);
+        }
+      }
+
+      // Write new YAML configuration
+      await fs.writeFile(this.configPath, yamlContent, 'utf8');
+      
+      // Verify the written file
+      const verifyContent = await fs.readFile(this.configPath, 'utf8');
+      if (verifyContent.length < yamlContent.length * 0.9) {
+        throw new Error('Configuration file verification failed - file may be corrupted');
+      }
+
+      log.info('Configuration saved successfully from JSON input (manual edit preserved)');
+      return {
+        success: true,
+        configPath: this.configPath,
+        backupPath: fsSync.existsSync(backupPath) ? backupPath : null,
+        message: 'Configuration saved successfully',
+        requiresRestart: this.checkIfConfigRequiresRestart(yamlContent)
+      };
+      
+    } catch (error) {
+      log.error('Error saving config from JSON:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Check if configuration changes require a service restart
+   */
+  checkIfConfigRequiresRestart(yamlContent) {
+    try {
+      // For now, we'll assume any manual configuration change might require restart
+      // since we don't have the original config to compare with
+      // This is a conservative approach to ensure users know they should restart
+      return {
+        required: true,
+        reason: 'Manual configuration changes may require restart to take effect',
+        recommendation: 'Use "Save & Restart" for immediate effect, or restart manually when convenient'
+      };
+    } catch (error) {
+      log.warn('Could not determine restart requirement:', error);
+      return {
+        required: true,
+        reason: 'Unable to determine if restart is required',
+        recommendation: 'Restart recommended to ensure changes take effect'
+      };
+    }
+  }
+
+  /**
+   * Simple JSON to YAML converter fallback
+   */
+  jsonToSimpleYaml(obj, indent = 0) {
+    const spaces = '  '.repeat(indent);
+    let yaml = '';
+    
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined) {
+        yaml += `${spaces}${key}: null\n`;
+      } else if (typeof value === 'boolean') {
+        yaml += `${spaces}${key}: ${value}\n`;
+      } else if (typeof value === 'number') {
+        yaml += `${spaces}${key}: ${value}\n`;
+      } else if (typeof value === 'string') {
+        // Escape strings that need quotes
+        const needsQuotes = value.includes(':') || value.includes('#') || value.includes('\n') || 
+                           value.trim() !== value || /^\d/.test(value);
+        yaml += `${spaces}${key}: ${needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value}\n`;
+      } else if (Array.isArray(value)) {
+        yaml += `${spaces}${key}:\n`;
+        for (const item of value) {
+          if (typeof item === 'object' && item !== null) {
+            yaml += `${spaces}  -\n`;
+            yaml += this.jsonToSimpleYaml(item, indent + 2).replace(/^/gm, '    ');
+          } else {
+            const needsQuotes = typeof item === 'string' && (item.includes(':') || item.includes('#'));
+            yaml += `${spaces}  - ${needsQuotes ? `"${item.replace(/"/g, '\\"')}"` : item}\n`;
+          }
+        }
+      } else if (typeof value === 'object') {
+        yaml += `${spaces}${key}:\n`;
+        yaml += this.jsonToSimpleYaml(value, indent + 1);
+      }
+    }
+    
+    return yaml;
+  }
+
+  /**
+   * Save configuration and restart service
+   */
+  async saveConfigAndRestart(jsonConfig) {
+    try {
+      // First save the configuration
+      const saveResult = await this.saveConfigFromJson(jsonConfig);
+      if (!saveResult.success) {
+        return saveResult;
+      }
+
+      log.info('Configuration saved, restarting service without regenerating config...');
+      
+      // Restart the service without regenerating config to preserve manual edits
+      const restartResult = await this.restartWithoutConfigRegeneration();
+      if (!restartResult.success) {
+        return {
+          success: false,
+          error: `Configuration saved but restart failed: ${restartResult.error}`,
+          configSaved: true,
+          backupPath: saveResult.backupPath
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Configuration saved and service restarted successfully',
+        configPath: this.configPath,
+        backupPath: saveResult.backupPath,
+        restarted: true
+      };
+      
+    } catch (error) {
+      log.error('Error saving config and restarting:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Restart service without regenerating configuration (preserves manual edits)
+   */
+  async restartWithoutConfigRegeneration() {
+    try {
+      log.info('Restarting llama-swap service without config regeneration...');
+      await this.stop();
+      
+      // Additional cleanup to ensure fresh start
+      this.cleanup();
+      
+      // Wait for process cleanup but don't regenerate config
+      log.info('⏱️ Waiting for process cleanup after restart...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      log.info('Starting service with existing configuration (preserving manual edits)...');
+      
+      // Start without calling generateConfig() to preserve manual edits
+      return await this.startWithoutConfigGeneration();
+      
+    } catch (error) {
+      log.error('Error during restart without config regeneration:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Start service without generating configuration (uses existing config file)
+   */
+  async startWithoutConfigGeneration() {
+    if (this.isRunning) {
+      log.info('Service is already running');
+      return { success: true, message: 'Service already running' };
+    }
+
+    if (this.isStarting) {
+      log.info('Service is already starting, waiting...');
+      // Wait for current startup to complete
+      while (this.isStarting) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      return { success: this.isRunning, message: this.isRunning ? 'Service started' : 'Service failed to start' };
+    }
+
+    try {
+      this.isStarting = true;
+      this.startingTimestamp = Date.now();
+      
+      // Check if config file exists
+      if (!fsSync.existsSync(this.configPath)) {
+        throw new Error('Configuration file not found. Please regenerate configuration first.');
+      }
+
+      log.info('Using existing configuration file:', this.configPath);
+      
+      // Skip config generation and jump to verification
+      this.setStartupPhase('Verifying configuration...');
+      
+      // Verify configuration file is readable
+      try {
+        const configContent = await fs.readFile(this.configPath, 'utf8');
+        if (configContent.length < 100) {
+          log.warn('⚠️ Configuration file seems too small');
+        }
+        log.info('✅ Configuration file verified and ready');
+      } catch (configError) {
+        throw new Error(`Configuration file is not readable: ${configError.message}`);
+      }
+
+      // Continue with the rest of the startup process (same as the main start method)
+      this.setStartupPhase('Starting service...');
+      log.info('🚀 All checks passed - starting llama-swap service...');
+      
+      // Get binary path
+      if (!this.binaryPaths?.llamaSwap) {
+        throw new Error('llama-swap binary path not found');
+      }
+
+      // Log startup information
+      log.info(`🎮 Platform: ${this.platformInfo.platformDir}`);
+      log.info(`📁 Binary path: ${this.binaryPaths.llamaSwap}`);
+      log.info(`📁 Config path: ${this.configPath}`);
+      log.info(`🌐 Port: ${this.port}`);
+
+      // Prepare startup arguments
+      const args = [
+        '-config', this.configPath,
+        '-listen', `127.0.0.1:${this.port}`
+      ];
+
+      log.info(`🚀 Starting with args: ${args.join(' ')}`);
+
+      // Final port check before starting
+      this.setStartupPhase('Checking port availability...');
+      await this.killProcessesOnPort(this.port);
+
+      // Double-check port is actually free
+      try {
+        const net = require('net');
+        const testServer = net.createServer();
+        
+        await new Promise((resolve, reject) => {
+          testServer.listen(this.port, '127.0.0.1', () => {
+            testServer.close();
+            log.info(`✅ Port ${this.port} is available for use`);
+            resolve();
+          });
+          
+          testServer.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+              reject(new Error(`Port ${this.port} is still in use after cleanup`));
+            } else {
+              reject(err);
+            }
+          });
+        });
+      } catch (portError) {
+        throw portError;
+      }
+
+      // Final preparation delay
+      this.setStartupPhase('Final preparations...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Start the process
+      this.setStartupPhase('Launching Clara\'s Pocket...');
+      this.process = spawn(this.binaryPaths.llamaSwap, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: this.platformManager.getPlatformEnvironment(),
+        detached: false
+      });
+
+      this.isRunning = true;
+      this.setStartupPhase('Waiting for service to respond...');
+      
+      // Start process monitoring
+      this.startProcessMonitoring();
+
+      // Set up process event handlers (same as main start method)
+      this.process.stdout.on('data', (data) => {
+        const output = data.toString();
+        log.info(`llama-swap stdout: ${output.trim()}`);
+        
+        this.parseProgressFromOutput(output);
+        
+        if (output.includes(`listening on`) || 
+            output.includes(`server started`) ||
+            output.includes(`:${this.port}`)) {
+          this.setStartupPhase('Service ready!');
+          log.info(`✅ llama-swap service started successfully on port ${this.port}`);
+        }
+      });
+
+      this.process.stderr.on('data', (data) => {
+        const error = data.toString();
+        log.error(`llama-swap stderr: ${error.trim()}`);
+      });
+
+      this.process.on('close', (code) => {
+        log.info(`llama-swap process exited with code ${code}`);
+        this.isRunning = false;
+        this.process = null;
+      });
+
+      this.process.on('error', (error) => {
+        log.error('Failed to start llama-swap service:', error);
+        this.isRunning = false;
+        this.process = null;
+      });
+
+      // Wait for process to stabilize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check if process is still running
+      if (this.process && !this.process.killed) {
+        this.setStartupPhase('Verifying service health...');
+        log.info('✅ llama-swap process is running, checking if service is responding...');
+        
+        try {
+          await this.waitForService(10);
+          this.setStartupPhase(null);
+          log.info('✅ llama-swap service is responding to requests');
+          return { success: true, message: 'Service started successfully with existing configuration' };
+        } catch (serviceError) {
+          log.warn('⚠️ llama-swap process started but service is not responding:', serviceError.message);
+          return { success: true, message: 'Service started but not responding yet', warning: serviceError.message };
+        }
+      } else {
+        this.isRunning = false;
+        this.setStartupPhase(null);
+        throw new Error('Service failed to start or exited immediately');
+      }
+
+    } catch (error) {
+      log.error('Error starting service without config generation:', error);
+      this.isRunning = false;
+      this.process = null;
+      return { success: false, error: error.message };
+    } finally {
+      this.isStarting = false;
+      this.startingTimestamp = null;
+      this.setStartupPhase(null);
+    }
+  }
+
+  /**
+   * Regenerate configuration (alias for generateConfig for UI compatibility)
+   */
+  async regenerateConfig() {
+    try {
+      const result = await this.generateConfig();
+      return {
+        success: true,
+        message: 'Configuration regenerated successfully',
+        models: result.models || 0,
+        configPath: this.configPath
+      };
+    } catch (error) {
+      log.error('Error regenerating config:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Simple YAML parser fallback (very basic, for emergency use)
    */
   parseSimpleYaml(yamlContent) {
@@ -6424,6 +7139,212 @@ ${cmdLine}`;
       
     } catch (error) {
       log.error('Error getting configuration info:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Load individual model configurations from persistent storage
+   */
+  async loadIndividualModelConfigurations() {
+    try {
+      const configsPath = path.join(this.settingsDir, 'individual-model-configs.json');
+      
+      if (!fsSync.existsSync(configsPath)) {
+        return {
+          success: false,
+          message: 'No individual model configurations file found'
+        };
+      }
+      
+      const configData = await fs.readFile(configsPath, 'utf8');
+      const configsMap = JSON.parse(configData);
+      
+      // Convert from map to array format expected by the system
+      const modelConfigs = Object.entries(configsMap).map(([name, config]) => ({
+        name,
+        ...config
+      }));
+      
+      return {
+        success: true,
+        models: modelConfigs
+      };
+    } catch (error) {
+      log.error('Error loading individual model configurations:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get model configurations with native context sizes
+   */
+  async getModelConfigurations() {
+    try {
+      const models = await this.scanModels();
+      const mainModels = models.filter(model => !this.isMmprojModel(model.file));
+      
+      const modelConfigs = [];
+      
+      for (const model of mainModels) {
+        const isEmbedding = this.isEmbeddingModel(model.file);
+        
+        // Extract context size from GGUF metadata
+        let nativeContextSize = null;
+        try {
+          const metadata = await this.extractGGUFMetadata(model.path);
+          if (metadata?.contextSize) {
+            nativeContextSize = metadata.contextSize;
+          }
+        } catch (error) {
+          log.warn(`Could not extract metadata for ${model.file}:`, error.message);
+        }
+        
+        // Get current configuration from existing config file
+        let currentConfig = {};
+        try {
+          if (fsSync.existsSync(this.configPath)) {
+            const configContent = fsSync.readFileSync(this.configPath, 'utf8');
+            
+            // Parse context size from command line
+            const modelSection = configContent.split(`"${model.file}":`)[1];
+            if (modelSection) {
+              const cmdMatch = modelSection.match(/--ctx-size (\d+)/);
+              if (cmdMatch) {
+                currentConfig.configuredContextSize = parseInt(cmdMatch[1]);
+              }
+              
+              const threadsMatch = modelSection.match(/--threads (\d+)/);
+              if (threadsMatch) {
+                currentConfig.threads = parseInt(threadsMatch[1]);
+              }
+              
+              const ttlMatch = modelSection.match(/ttl: (\d+)/);
+              if (ttlMatch) {
+                currentConfig.ttl = parseInt(ttlMatch[1]);
+              }
+            }
+          }
+        } catch (error) {
+          log.warn(`Could not parse current config for ${model.file}:`, error.message);
+        }
+        
+        modelConfigs.push({
+          name: model.file,
+          path: model.path,
+          port: isEmbedding ? 9998 : 9999,
+          isEmbedding,
+          nativeContextSize,
+          configuredContextSize: currentConfig.configuredContextSize || nativeContextSize,
+          gpuLayers: currentConfig.gpuLayers || 50,
+          batchSize: currentConfig.batchSize || 256,
+          ubatchSize: currentConfig.ubatchSize || 256,
+          threads: currentConfig.threads || 4,
+          flashAttention: currentConfig.flashAttention !== false,
+          memoryLock: currentConfig.memoryLock !== false,
+          ttl: currentConfig.ttl || 300,
+          status: 'available'
+        });
+      }
+      
+      return {
+        success: true,
+        models: modelConfigs
+      };
+    } catch (error) {
+      log.error('Error getting model configurations:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Save configuration for a specific model
+   */
+  async saveModelConfiguration(modelName, modelConfig) {
+    try {
+      // Load existing individual model configurations
+      const configsPath = path.join(this.settingsDir, 'individual-model-configs.json');
+      let existingConfigs = {};
+      
+      try {
+        if (fsSync.existsSync(configsPath)) {
+          const configData = await fs.readFile(configsPath, 'utf8');
+          existingConfigs = JSON.parse(configData);
+        }
+      } catch (error) {
+        log.warn('Failed to load existing individual model configurations:', error.message);
+        existingConfigs = {};
+      }
+      
+      // Update the configuration for this model
+      existingConfigs[modelName] = modelConfig;
+      
+      // Save updated configurations
+      await fs.writeFile(configsPath, JSON.stringify(existingConfigs, null, 2), 'utf8');
+      
+      // Update in-memory configurations
+      if (!this.customModelConfigs) {
+        this.customModelConfigs = [];
+      }
+      
+      // Remove existing config for this model and add updated one
+      this.customModelConfigs = this.customModelConfigs.filter(config => config.name !== modelName);
+      this.customModelConfigs.push({ name: modelName, ...modelConfig });
+      
+      // Regenerate configuration with updated settings
+      await this.generateConfig();
+      
+      log.info(`Configuration saved for model: ${modelName}`);
+      return {
+        success: true,
+        message: `Configuration saved for ${modelName}`
+      };
+    } catch (error) {
+      log.error(`Error saving model configuration for ${modelName}:`, error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Save configurations for all models
+   */
+  async saveAllModelConfigurations(modelConfigs) {
+    try {
+      // Save all individual model configurations to persistent storage
+      const configsPath = path.join(this.settingsDir, 'individual-model-configs.json');
+      const configsMap = {};
+      
+      for (const modelConfig of modelConfigs) {
+        configsMap[modelConfig.name] = modelConfig;
+      }
+      
+      await fs.writeFile(configsPath, JSON.stringify(configsMap, null, 2), 'utf8');
+      
+      // Store the model configurations for use in generateConfig
+      this.customModelConfigs = modelConfigs;
+      
+      // Regenerate configuration with custom settings
+      await this.generateConfig();
+      
+      log.info(`Configuration saved for ${modelConfigs.length} models`);
+      return {
+        success: true,
+        message: `Configuration saved for ${modelConfigs.length} models`
+      };
+    } catch (error) {
+      log.error('Error saving all model configurations:', error);
       return {
         success: false,
         error: error.message
