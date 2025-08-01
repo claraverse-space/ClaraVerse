@@ -116,7 +116,7 @@ const WatchdogStatus: React.FC<WatchdogStatusProps> = ({ className = '' }) => {
     fetchStatus();
 
     // Set up periodic refresh
-    const interval = setInterval(fetchStatus, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchStatus, 60000); // Refresh every 60 seconds (reduced from 30s)
 
     return () => {
       clearInterval(interval);

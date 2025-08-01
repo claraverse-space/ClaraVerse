@@ -111,7 +111,7 @@ const ServicesTab: React.FC = () => {
     };
 
     checkDockerServices();
-    const interval = setInterval(checkDockerServices, 30000);
+    const interval = setInterval(checkDockerServices, 60000); // Reduced from 30s to minimize API calls
     
     // Also fetch llama-swap status
     fetchLlamaSwapStatus();

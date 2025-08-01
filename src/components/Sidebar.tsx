@@ -123,8 +123,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     };
 
     loadServiceStatus();
-    // Check periodically every 30 seconds
-    const interval = setInterval(loadServiceStatus, 30000);
+    // Check periodically every 60 seconds (reduced from 30s to minimize noise)
+    const interval = setInterval(loadServiceStatus, 60000);
     return () => clearInterval(interval);
   }, []);
 

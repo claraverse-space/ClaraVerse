@@ -5,13 +5,13 @@ const fsSync = require('fs');
 const log = require('electron-log');
 const https = require('https');
 const http = require('http');
-const { pipeline } = require('stream/promises');
-const crypto = require('crypto');
-const { spawn } = require('child_process');
+// const { pipeline } = require('stream/promises');
+// const crypto = require('crypto');
+// const { spawn } = require('child_process');
 const DockerSetup = require('./dockerSetup.cjs');
 const { setupAutoUpdater, checkForUpdates, getUpdateInfo, checkLlamacppUpdates, updateLlamacppBinaries } = require('./updateService.cjs');
-const SplashScreen = require('./splash.cjs');
-const LoadingScreen = require('./loadingScreen.cjs');
+// const SplashScreen = require('./splash.cjs');
+// const LoadingScreen = require('./loadingScreen.cjs');
 const FeatureSelectionScreen = require('./featureSelection.cjs');
 const { createAppMenu } = require('./menu.cjs');
 const LlamaSwapService = require('./llamaSwapService.cjs');
@@ -2278,6 +2278,7 @@ function registerServiceConfigurationHandlers() {
   });
   
   // Get enhanced service status (includes deployment mode info)
+  let lastLoggedServiceStatus = '';
   ipcMain.handle('service-config:get-enhanced-status', async () => {
     try {
       if (!centralServiceManager) {
@@ -2286,7 +2287,14 @@ function registerServiceConfigurationHandlers() {
       }
       
       const status = centralServiceManager.getServicesStatus();
-      log.debug('📊 Enhanced service status:', status);
+      
+      // Only log if status has changed to reduce noise
+      const statusString = JSON.stringify(status);
+      if (statusString !== lastLoggedServiceStatus) {
+        log.info('📊 Enhanced service status changed:', status);
+        lastLoggedServiceStatus = statusString;
+      }
+      
       return status;
     } catch (error) {
       log.error('Error getting enhanced service status:', error);
@@ -4505,6 +4513,10 @@ async function initializeServicesInBackground() {
     // Initialize MCP service in background
     sendStatus('MCP', 'Initializing MCP service...', 'info');
     try {
+      // Initialize MCP service if not already initialized
+      if (!mcpService) {
+        mcpService = new MCPService();
+      }
       sendStatus('MCP', 'MCP service initialized', 'success');
       
       // Auto-start previously running servers
@@ -5846,6 +5858,10 @@ async function initializeServicesInBackground() {
     // Initialize MCP service in background
     sendStatus('MCP', 'Initializing MCP service...', 'info');
     try {
+      // Initialize MCP service if not already initialized
+      if (!mcpService) {
+        mcpService = new MCPService();
+      }
       sendStatus('MCP', 'MCP service initialized', 'success');
       
       // Update central service manager with MCP status

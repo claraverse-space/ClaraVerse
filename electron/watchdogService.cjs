@@ -8,7 +8,26 @@ class WatchdogService extends EventEmitter {
     this.dockerSetup = dockerSetup;
     this.llamaSwapService = llamaSwapService;
     this.mcpService = mcpService;
-    this.ipcLogger = ipcLogger; // Add IPC logger reference
+    this.ipcLogger = ipcLogger;
+    
+    // Professional logging configuration
+    this.logger = this.initializeLogger();
+    this.sessionId = this.generateSessionId();
+    this.serviceStates = new Map(); // Track service state changes
+    
+    // Logging configuration for enterprise-grade output
+    this.loggingConfig = {
+      level: 'INFO', // DEBUG, INFO, WARN, ERROR, FATAL
+      logOnlyStateChanges: true,
+      enableMetrics: true,
+      structuredOutput: true,
+      adminFriendly: true
+    };
+    
+    // Service state tracking for change detection
+    this.lastKnownStates = new Map();
+    this.lastLoggedStates = new Map();
+    this.serviceMetrics = new Map();
     
     // Get user's feature selections
     const selectedFeatures = global.selectedFeatures || {
@@ -95,84 +114,167 @@ class WatchdogService extends EventEmitter {
     this.startupTimer = null;
     this.activeNotifications = new Map();
     
-    log.info('Watchdog Service initialized');
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'constructor', { selectedFeatures }, 'initialized');
+    this.logEvent('WATCHDOG_INIT', 'INFO', 'Watchdog Service initialized', { 
+      selectedFeatures, 
+      sessionId: this.sessionId,
+      servicesCount: Object.keys(this.services).length 
+    });
+  }
+
+  // Initialize professional logging system
+  initializeLogger() {
+    const logger = {
+      format: (level, operation, message, metadata = {}) => {
+        const timestamp = new Date().toISOString();
+        const context = {
+          timestamp,
+          sessionId: this.sessionId,
+          component: 'WatchdogService',
+          level,
+          operation,
+          message,
+          ...metadata
+        };
+        
+        if (this.loggingConfig.structuredOutput) {
+          return JSON.stringify(context);
+        } else {
+          // Human-readable format for admins
+          const metaStr = Object.keys(metadata).length > 0 ? 
+            ` | ${JSON.stringify(metadata)}` : '';
+          return `[${timestamp}] [WATCHDOG:${level}] [${operation}] ${message}${metaStr}`;
+        }
+      }
+    };
+    return logger;
+  }
+
+  // Generate unique session ID for tracking
+  generateSessionId() {
+    return `wd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // Professional logging method
+  logEvent(operation, level, message, metadata = {}) {
+    const logLevel = this.loggingConfig.level;
+    const levelPriority = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, FATAL: 4 };
+    
+    // Only log if meets minimum level
+    if (levelPriority[level] < levelPriority[logLevel]) {
+      return;
     }
+
+    const formattedLog = this.logger.format(level, operation, message, metadata);
+    
+    // Route to appropriate log level
+    switch (level) {
+      case 'DEBUG':
+        log.debug(formattedLog);
+        break;
+      case 'INFO':
+        log.info(formattedLog);
+        break;
+      case 'WARN':
+        log.warn(formattedLog);
+        break;
+      case 'ERROR':
+      case 'FATAL':
+        log.error(formattedLog);
+        break;
+    }
+
+    // Send to IPC logger for critical events
+    if (this.ipcLogger && (level === 'ERROR' || level === 'FATAL' || level === 'WARN')) {
+      this.ipcLogger.logWatchdogEvent(operation, level, { message, ...metadata });
+    }
+  }
+
+  // Track service state changes with metrics
+  trackServiceStateChange(serviceKey, oldState, newState, metadata = {}) {
+    const timestamp = Date.now();
+    const stateChange = {
+      serviceKey,
+      oldState,
+      newState,
+      timestamp,
+      ...metadata
+    };
+
+    // Update service metrics
+    if (!this.serviceMetrics.has(serviceKey)) {
+      this.serviceMetrics.set(serviceKey, {
+        stateChanges: 0,
+        totalDowntime: 0,
+        lastHealthyTime: null,
+        restartCount: 0
+      });
+    }
+
+    const metrics = this.serviceMetrics.get(serviceKey);
+    metrics.stateChanges++;
+
+    // Calculate downtime if recovering
+    if (oldState !== 'healthy' && newState === 'healthy' && metrics.lastHealthyTime) {
+      const downtime = timestamp - metrics.lastHealthyTime;
+      metrics.totalDowntime += downtime;
+    }
+
+    if (newState === 'healthy') {
+      metrics.lastHealthyTime = timestamp;
+    }
+
+    this.serviceMetrics.set(serviceKey, metrics);
+    this.lastKnownStates.set(serviceKey, newState);
+
+    return stateChange;
   }
 
   // Enable or disable ComfyUI monitoring based on user consent
   setComfyUIMonitoring(enabled) {
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'setComfyUIMonitoring', { enabled });
-    }
-    
     if (enabled) {
       this.services.comfyui.enabled = true;
-      log.info('ComfyUI monitoring enabled by user consent');
+      this.logEvent('COMFYUI_MONITORING', 'INFO', 'ComfyUI monitoring enabled by user consent');
     } else {
       this.services.comfyui.enabled = false;
       this.services.comfyui.status = 'disabled';
-      log.info('ComfyUI monitoring disabled - user has not consented');
+      this.logEvent('COMFYUI_MONITORING', 'INFO', 'ComfyUI monitoring disabled - user has not consented');
     }
   }
 
   // Start the watchdog monitoring
   start() {
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'start');
-    }
-    
     if (this.isRunning) {
-      log.warn('Watchdog service is already running');
+      this.logEvent('WATCHDOG_START', 'WARN', 'Attempted to start already running watchdog service');
       return;
     }
 
     this.isRunning = true;
     this.isStarting = true;
-    log.info('Starting Watchdog Service...');
+    
+    this.logEvent('WATCHDOG_START', 'INFO', 'Starting Watchdog Service', {
+      checkInterval: this.config.checkInterval,
+      startupDelay: this.config.startupDelay,
+      gracePeriod: this.config.gracePeriod
+    });
     
     // Set all services to "starting" state during startup
-    for (const service of Object.values(this.services)) {
+    for (const [serviceKey, service] of Object.entries(this.services)) {
+      const oldState = service.status;
       service.status = 'starting';
+      this.trackServiceStateChange(serviceKey, oldState, 'starting', { reason: 'watchdog_startup' });
     }
     
     // Check ComfyUI consent status
-    const fs = require('fs');
-    const path = require('path');
-    const { app } = require('electron');
-    
-    try {
-      const userDataPath = app.getPath('userData');
-      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
-      
-      if (this.ipcLogger) {
-        this.ipcLogger.logFileOperation('read', consentFile);
-      }
-      
-      if (fs.existsSync(consentFile)) {
-        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
-        this.setComfyUIMonitoring(consentData.hasConsented === true);
-      } else {
-        this.setComfyUIMonitoring(false);
-      }
-    } catch (error) {
-      log.warn('Could not read ComfyUI consent status, disabling monitoring:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.readConsentFile', error);
-      }
-      this.setComfyUIMonitoring(false);
-    }
+    this.checkComfyUIConsent();
     
     // Wait for startup delay before beginning health checks
-    log.info(`Watchdog waiting ${this.config.startupDelay / 1000} seconds before starting health checks...`);
+    this.logEvent('WATCHDOG_STARTUP_DELAY', 'INFO', 'Waiting for startup delay before health checks', {
+      delaySeconds: this.config.startupDelay / 1000
+    });
+    
     this.startupTimer = setTimeout(() => {
       this.isStarting = false;
-      log.info('Watchdog startup delay complete, beginning health checks...');
-      
-      if (this.ipcLogger) {
-        this.ipcLogger.logWatchdogEvent('startup-complete', 'watchdog');
-      }
+      this.logEvent('WATCHDOG_HEALTH_CHECKS_BEGIN', 'INFO', 'Startup delay complete, beginning health checks');
       
       // Perform initial health checks
       this.performHealthChecks();
@@ -181,24 +283,52 @@ class WatchdogService extends EventEmitter {
       this.checkTimer = setInterval(() => {
         this.performHealthChecks();
       }, this.config.checkInterval);
+      
     }, this.config.startupDelay);
 
     this.emit('started');
-    log.info('Watchdog Service started successfully (health checks will begin after startup delay)');
+    this.logEvent('WATCHDOG_STARTED', 'INFO', 'Watchdog Service started successfully');
+  }
+
+  checkComfyUIConsent() {
+    const fs = require('fs');
+    const path = require('path');
+    const { app } = require('electron');
+    
+    try {
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
+      
+      if (fs.existsSync(consentFile)) {
+        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
+        this.setComfyUIMonitoring(consentData.hasConsented === true);
+        this.logEvent('COMFYUI_CONSENT_CHECK', 'INFO', 'ComfyUI consent status loaded', {
+          consentEnabled: consentData.hasConsented,
+          consentDate: consentData.timestamp
+        });
+      } else {
+        this.setComfyUIMonitoring(false);
+        this.logEvent('COMFYUI_CONSENT_CHECK', 'INFO', 'No ComfyUI consent file found, monitoring disabled');
+      }
+    } catch (error) {
+      this.setComfyUIMonitoring(false);
+      this.logEvent('COMFYUI_CONSENT_ERROR', 'ERROR', 'Failed to read ComfyUI consent status', {
+        error: error.message
+      });
+    }
   }
 
   // Stop the watchdog monitoring
   stop() {
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'stop');
-    }
-    
     if (!this.isRunning) {
+      this.logEvent('WATCHDOG_STOP', 'WARN', 'Attempted to stop already stopped watchdog service');
       return;
     }
 
     this.isRunning = false;
     this.isStarting = false;
+    
+    this.logEvent('WATCHDOG_STOP', 'INFO', 'Stopping Watchdog Service');
     
     if (this.checkTimer) {
       clearInterval(this.checkTimer);
@@ -217,7 +347,7 @@ class WatchdogService extends EventEmitter {
     this.activeNotifications.clear();
 
     this.emit('stopped');
-    log.info('Watchdog Service stopped');
+    this.logEvent('WATCHDOG_STOPPED', 'INFO', 'Watchdog Service stopped successfully');
   }
 
   // Check if a service is within its grace period
@@ -230,8 +360,16 @@ class WatchdogService extends EventEmitter {
     const inGracePeriod = timeSinceHealthy < this.config.gracePeriod;
     
     if (inGracePeriod) {
-      const remainingMinutes = Math.ceil((this.config.gracePeriod - timeSinceHealthy) / (60 * 1000));
-      log.debug(`${service.name} is in grace period (${remainingMinutes} minutes remaining)`);
+      // Only log once when grace period starts
+      if (!service.gracePeriodLogged) {
+        this.logEvent('SERVICE_GRACE_PERIOD', 'DEBUG', `${service.name} is in grace period`, {
+          timeRemainingMs: this.config.gracePeriod - timeSinceHealthy,
+          timeRemainingMin: Math.round((this.config.gracePeriod - timeSinceHealthy) / 60000)
+        });
+        service.gracePeriodLogged = true;
+      }
+    } else {
+      service.gracePeriodLogged = false;
     }
     
     return inGracePeriod;
@@ -241,341 +379,361 @@ class WatchdogService extends EventEmitter {
   async performHealthChecks() {
     // Skip health checks during startup phase
     if (this.isStarting) {
-      log.debug('Skipping health checks during startup phase');
       return;
     }
 
     const timestamp = new Date();
-    log.debug('Performing watchdog health checks...');
-    
-    if (this.ipcLogger) {
-      this.ipcLogger.logWatchdogEvent('health-check-start', 'all-services');
-    }
+    let healthCheckSummary = {
+      totalServices: 0,
+      checkedServices: 0,
+      healthyServices: 0,
+      unhealthyServices: 0,
+      skippedServices: 0,
+      stateChanges: []
+    };
 
     for (const [serviceKey, service] of Object.entries(this.services)) {
+      healthCheckSummary.totalServices++;
+      
       // Skip disabled services
       if (!service.enabled) {
+        healthCheckSummary.skippedServices++;
         continue;
       }
 
       // Skip services that are in grace period (recently confirmed healthy)
       if (this.isServiceInGracePeriod(service)) {
-        log.debug(`Skipping health check for ${service.name} - in grace period`);
+        healthCheckSummary.skippedServices++;
         continue;
       }
 
+      healthCheckSummary.checkedServices++;
+      const previousStatus = service.status;
+
       try {
-        if (this.ipcLogger) {
-          this.ipcLogger.logWatchdogEvent('health-check', serviceKey, { status: service.status });
-        }
-        
         const isHealthy = await service.healthCheck();
         service.lastCheck = timestamp;
 
         if (isHealthy) {
           if (service.status !== 'healthy') {
-            log.info(`${service.name} is now healthy - granting ${this.config.gracePeriod / (60 * 1000)} minute grace period`);
+            // Service recovered - important state change
+            const stateChange = this.trackServiceStateChange(serviceKey, service.status, 'healthy', {
+              reason: 'health_check_recovery',
+              failureCount: service.failureCount
+            });
+            healthCheckSummary.stateChanges.push(stateChange);
+            
             service.status = 'healthy';
-            service.lastHealthyTime = Date.now(); // Start grace period
+            service.lastHealthyTime = Date.now();
             service.failureCount = 0;
             service.isRetrying = false;
             
-            if (this.ipcLogger) {
-              this.ipcLogger.logWatchdogEvent('service-healthy', serviceKey, { 
-                gracePeriodMinutes: this.config.gracePeriod / (60 * 1000) 
-              });
-            }
+            this.logEvent('SERVICE_RECOVERY', 'INFO', `${service.name} has recovered and is now healthy`, {
+              previousStatus,
+              downtimeMs: stateChange.downtimeMs || 0,
+              failureCount: service.failureCount
+            });
             
             this.emit('serviceRestored', serviceKey, service);
+            healthCheckSummary.healthyServices++;
           } else {
-            // Service was already healthy, refresh the grace period
+            // Service was already healthy - just refresh grace period silently
             service.lastHealthyTime = Date.now();
-            log.debug(`${service.name} confirmed healthy - grace period refreshed`);
+            healthCheckSummary.healthyServices++;
           }
         } else {
-          // Service is unhealthy - grace period no longer applies
+          // Service is unhealthy
+          const wasHealthy = service.status === 'healthy';
           service.lastHealthyTime = null;
           service.failureCount++;
-          log.warn(`${service.name} health check failed (attempt ${service.failureCount}/${this.config.retryAttempts})`);
           
-          if (this.ipcLogger) {
-            this.ipcLogger.logWatchdogEvent('service-unhealthy', serviceKey, { 
-              failureCount: service.failureCount,
-              maxRetries: this.config.retryAttempts,
-              gracePeriodCleared: true
+          if (wasHealthy) {
+            // New failure - log immediately
+            const stateChange = this.trackServiceStateChange(serviceKey, 'healthy', 'degraded', {
+              reason: 'health_check_failure',
+              failureCount: service.failureCount
             });
-          }
-
-          if (service.failureCount >= this.config.retryAttempts && !service.isRetrying) {
-            // Max retries reached, attempt to restart service
+            healthCheckSummary.stateChanges.push(stateChange);
+            
+            this.logEvent('SERVICE_DEGRADED', 'WARN', `${service.name} health check failed - service degraded`, {
+              failureCount: service.failureCount,
+              maxRetries: this.config.retryAttempts
+            });
+          } else if (service.failureCount === this.config.retryAttempts && !service.isRetrying) {
+            // Critical failure threshold reached
+            const stateChange = this.trackServiceStateChange(serviceKey, service.status, 'failed', {
+              reason: 'critical_failure',
+              failureCount: service.failureCount
+            });
+            healthCheckSummary.stateChanges.push(stateChange);
+            
             service.status = 'failed';
             service.isRetrying = true;
             
-            log.error(`${service.name} has failed after ${this.config.retryAttempts} attempts. Attempting restart...`);
+            this.logEvent('SERVICE_CRITICAL_FAILURE', 'ERROR', `${service.name} has failed critically - initiating restart`, {
+              failureCount: service.failureCount,
+              maxRetries: this.config.retryAttempts
+            });
             
-            if (this.ipcLogger) {
-              this.ipcLogger.logWatchdogEvent('service-restart-attempt', serviceKey);
-            }
-            
-            try {
-              await service.restart();
-              
-              // Wait a bit before checking if restart was successful
-              setTimeout(async () => {
-                const restartHealthy = await service.healthCheck();
-                if (restartHealthy) {
-                  service.status = 'healthy';
-                  service.lastHealthyTime = Date.now(); // Start new grace period after successful restart
-                  service.failureCount = 0;
-                  service.isRetrying = false;
-                  log.info(`${service.name} successfully restarted and is healthy - new grace period granted`);
-                  
-                  if (this.ipcLogger) {
-                    this.ipcLogger.logWatchdogEvent('service-restart-success', serviceKey, {
-                      gracePeriodMinutes: this.config.gracePeriod / (60 * 1000)
-                    });
-                  }
-                  
-                  this.emit('serviceRestarted', serviceKey, service);
-                  this.showRestartSuccessNotification(service);
-                } else {
-                  service.isRetrying = false;
-                  service.lastHealthyTime = null; // Clear grace period on failed restart
-                  log.error(`${service.name} restart failed - service still unhealthy`);
-                  
-                  if (this.ipcLogger) {
-                    this.ipcLogger.logWatchdogEvent('service-restart-failed', serviceKey);
-                  }
-                  
-                  this.emit('serviceFailed', serviceKey, service);
-                  this.showRestartFailureNotification(service);
-                }
-              }, this.config.retryDelay);
-              
-            } catch (restartError) {
-              service.isRetrying = false;
-              service.lastHealthyTime = null; // Clear grace period on restart error
-              log.error(`Error restarting ${service.name}:`, restartError);
-              
-              if (this.ipcLogger) {
-                this.ipcLogger.logError(`WatchdogService.restart.${serviceKey}`, restartError);
-              }
-              
-              this.emit('serviceFailed', serviceKey, service);
-              this.showRestartFailureNotification(service);
-            }
-          } else if (service.failureCount < this.config.retryAttempts) {
+            // Attempt restart in background
+            this.attemptServiceRestart(serviceKey, service);
+          } else {
             service.status = 'degraded';
           }
+          
+          healthCheckSummary.unhealthyServices++;
         }
       } catch (error) {
-        log.error(`Error performing health check for ${service.name}:`, error);
+        // Health check errors are always critical
+        const stateChange = this.trackServiceStateChange(serviceKey, service.status, 'error', {
+          reason: 'health_check_error',
+          error: error.message
+        });
+        healthCheckSummary.stateChanges.push(stateChange);
+        
         service.status = 'error';
         service.lastCheck = timestamp;
-        service.lastHealthyTime = null; // Clear grace period on health check error
+        service.lastHealthyTime = null;
         
-        if (this.ipcLogger) {
-          this.ipcLogger.logError(`WatchdogService.healthCheck.${serviceKey}`, error);
-        }
+        this.logEvent('SERVICE_ERROR', 'ERROR', `${service.name} health check encountered an error`, {
+          error: error.message,
+          previousStatus,
+          stack: error.stack
+        });
+        
+        healthCheckSummary.unhealthyServices++;
       }
+    }
+
+    // Only log health check summary if there were state changes or if in debug mode
+    if (healthCheckSummary.stateChanges.length > 0 || this.loggingConfig.level === 'DEBUG') {
+      this.logEvent('HEALTH_CHECK_COMPLETE', 
+        healthCheckSummary.stateChanges.length > 0 ? 'INFO' : 'DEBUG',
+        'Health check cycle completed', 
+        healthCheckSummary
+      );
+    }
+  }
+
+  // Separate restart logic with proper logging
+  async attemptServiceRestart(serviceKey, service) {
+    this.logEvent('SERVICE_RESTART_ATTEMPT', 'INFO', `Attempting to restart ${service.name}`, {
+      failureCount: service.failureCount,
+      previousStatus: service.status
+    });
+
+    try {
+      await service.restart();
+      
+      // Give service time to start before checking health
+      setTimeout(async () => {
+        try {
+          const restartHealthy = await service.healthCheck();
+          if (restartHealthy) {
+            const stateChange = this.trackServiceStateChange(serviceKey, 'failed', 'healthy', {
+              reason: 'restart_success'
+            });
+            
+            service.status = 'healthy';
+            service.lastHealthyTime = Date.now();
+            service.failureCount = 0;
+            service.isRetrying = false;
+            
+            this.logEvent('SERVICE_RESTART_SUCCESS', 'INFO', `${service.name} restart completed successfully`, {
+              downtimeMs: stateChange.downtimeMs || 0
+            });
+            
+            this.emit('serviceRestarted', serviceKey, service);
+            this.showRestartSuccessNotification(service);
+          } else {
+            service.isRetrying = false;
+            service.lastHealthyTime = null;
+            
+            this.logEvent('SERVICE_RESTART_FAILED', 'ERROR', `${service.name} restart completed but service is still unhealthy`);
+            
+            this.emit('serviceFailed', serviceKey, service);
+            this.showRestartFailureNotification(service);
+          }
+        } catch (healthCheckError) {
+          service.isRetrying = false;
+          service.lastHealthyTime = null;
+          
+          this.logEvent('SERVICE_RESTART_HEALTH_CHECK_ERROR', 'ERROR', `${service.name} restart health check failed`, {
+            error: healthCheckError.message
+          });
+          
+          this.emit('serviceFailed', serviceKey, service);
+          this.showRestartFailureNotification(service);
+        }
+      }, this.config.retryDelay);
+      
+    } catch (restartError) {
+      service.isRetrying = false;
+      service.lastHealthyTime = null;
+      
+      this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', `${service.name} restart operation failed`, {
+        error: restartError.message,
+        stack: restartError.stack
+      });
+      
+      this.emit('serviceFailed', serviceKey, service);
+      this.showRestartFailureNotification(service);
     }
   }
 
   // Individual service health check methods
   async checkClarasCoreHealth() {
     try {
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('WatchdogService', 'checkClarasCoreHealth');
-      }
-      
       const status = await this.llamaSwapService.getStatusWithHealthCheck();
       const isHealthy = status.isRunning && status.healthCheck === 'passed';
       
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('LlamaSwapService', 'getStatusWithHealthCheck', null, { 
-          isRunning: status.isRunning, 
-          healthCheck: status.healthCheck,
-          isHealthy: isHealthy 
-        });
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK', 'DEBUG', 'Clara\'s Core health check completed', {
+        isRunning: status.isRunning,
+        healthCheck: status.healthCheck,
+        isHealthy: isHealthy
+      });
       
       return isHealthy;
     } catch (error) {
-      log.error('Clara\'s Core health check error:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.checkClarasCoreHealth', error);
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK_ERROR', 'ERROR', 'Clara\'s Core health check failed', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
 
   async checkN8nHealth() {
     try {
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('WatchdogService', 'checkN8nHealth');
-      }
-      
       const result = await this.dockerSetup.checkN8NHealth();
       
-      if (this.ipcLogger) {
-        this.ipcLogger.logDockerOperation('health-check', 'n8n', result);
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK', 'DEBUG', 'n8n health check completed', {
+        success: result.success,
+        details: result
+      });
       
       return result.success === true;
     } catch (error) {
-      log.error('n8n health check error:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.checkN8nHealth', error);
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK_ERROR', 'ERROR', 'n8n health check failed', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
 
   async checkPythonHealth() {
     try {
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('WatchdogService', 'checkPythonHealth');
-      }
-      
       const isRunning = await this.dockerSetup.isPythonRunning();
       
-      if (this.ipcLogger) {
-        this.ipcLogger.logDockerOperation('health-check', 'python', { isRunning });
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK', 'DEBUG', 'Python Backend health check completed', {
+        isRunning: isRunning
+      });
       
       return isRunning;
     } catch (error) {
-      log.error('Python service health check error:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.checkPythonHealth', error);
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK_ERROR', 'ERROR', 'Python Backend health check failed', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
 
   async checkComfyUIHealth() {
     try {
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('WatchdogService', 'checkComfyUIHealth');
-      }
-      
       const isRunning = await this.dockerSetup.isComfyUIRunning();
       
-      if (this.ipcLogger) {
-        this.ipcLogger.logDockerOperation('health-check', 'comfyui', { isRunning });
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK', 'DEBUG', 'ComfyUI health check completed', {
+        isRunning: isRunning
+      });
       
       return isRunning;
     } catch (error) {
-      log.error('ComfyUI health check error:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.checkComfyUIHealth', error);
-      }
+      this.logEvent('SERVICE_HEALTH_CHECK_ERROR', 'ERROR', 'ComfyUI health check failed', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
 
   // Individual service restart methods
   async restartClarasCore() {
-    log.info('Restarting Clara\'s Core service...');
-    
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'restartClarasCore');
-    }
+    this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating Clara\'s Core service restart');
     
     try {
       if (this.llamaSwapService.isRunning) {
-        if (this.ipcLogger) {
-          this.ipcLogger.logServiceCall('LlamaSwapService', 'stop');
-        }
         await this.llamaSwapService.stop();
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
-      if (this.ipcLogger) {
-        this.ipcLogger.logServiceCall('LlamaSwapService', 'start');
-      }
       await this.llamaSwapService.start();
+      this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'Clara\'s Core restart operation completed');
+      
     } catch (error) {
-      log.error('Error restarting Clara\'s Core:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.restartClarasCore', error);
-      }
+      this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'Clara\'s Core restart operation failed', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
 
   async restartN8nService() {
-    log.info('Restarting n8n service...');
-    
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'restartN8nService');
-    }
+    this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating n8n service restart');
     
     try {
       if (this.dockerSetup.containers.n8n) {
-        if (this.ipcLogger) {
-          this.ipcLogger.logDockerOperation('restart', 'n8n');
-        }
         await this.dockerSetup.startContainer(this.dockerSetup.containers.n8n);
+        this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'n8n restart operation completed');
       }
     } catch (error) {
-      log.error('Error restarting n8n service:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.restartN8nService', error);
-      }
+      this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'n8n restart operation failed', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
 
   async restartPythonService() {
-    log.info('Restarting Python service...');
-    
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'restartPythonService');
-    }
+    this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating Python Backend service restart');
     
     try {
       if (this.dockerSetup.containers.python) {
-        if (this.ipcLogger) {
-          this.ipcLogger.logDockerOperation('restart', 'python');
-        }
         await this.dockerSetup.startContainer(this.dockerSetup.containers.python);
+        this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'Python Backend restart operation completed');
       }
     } catch (error) {
-      log.error('Error restarting Python service:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.restartPythonService', error);
-      }
+      this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'Python Backend restart operation failed', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
 
   async restartComfyUIService() {
-    log.info('Restarting ComfyUI service...');
-    
-    if (this.ipcLogger) {
-      this.ipcLogger.logServiceCall('WatchdogService', 'restartComfyUIService');
-    }
+    this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating ComfyUI service restart');
     
     try {
       if (this.dockerSetup.containers.comfyui) {
-        if (this.ipcLogger) {
-          this.ipcLogger.logDockerOperation('restart', 'comfyui');
-        }
         await this.dockerSetup.startContainer(this.dockerSetup.containers.comfyui);
+        this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'ComfyUI restart operation completed');
       }
     } catch (error) {
-      log.error('Error restarting ComfyUI service:', error);
-      if (this.ipcLogger) {
-        this.ipcLogger.logError('WatchdogService.restartComfyUIService', error);
-      }
+      this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'ComfyUI restart operation failed', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
 
   // Notification methods for restart success/failure
   showRestartSuccessNotification(service) {
+    this.logEvent('NOTIFICATION_SENT', 'INFO', `Showing restart success notification for ${service.name}`);
     this.showNotification(
       `${service.name} Restarted`,
       `${service.name} has been successfully restarted and is now healthy.`,
@@ -586,23 +744,27 @@ class WatchdogService extends EventEmitter {
   showRestartFailureNotification(service) {
     // Only show failure notifications for the first few attempts to avoid spam
     if (service.failureCount <= this.config.maxNotificationAttempts) {
+      this.logEvent('NOTIFICATION_SENT', 'WARN', `Showing restart failure notification for ${service.name}`, {
+        failureCount: service.failureCount,
+        maxAttempts: this.config.maxNotificationAttempts
+      });
       this.showNotification(
         `${service.name} Restart Failed`,
         `Failed to restart ${service.name}. Manual intervention may be required.`,
         'error'
       );
     } else {
-      log.info(`${service.name} restart failure notification suppressed (attempt ${service.failureCount} > max ${this.config.maxNotificationAttempts}) - working silently`);
+      this.logEvent('NOTIFICATION_SUPPRESSED', 'INFO', `Restart failure notification suppressed for ${service.name}`, {
+        failureCount: service.failureCount,
+        maxAttempts: this.config.maxNotificationAttempts,
+        reason: 'spam_prevention'
+      });
     }
   }
 
   // Show non-persistent notification
   showNotification(title, body, type = 'info') {
     try {
-      if (this.ipcLogger) {
-        this.ipcLogger.logWatchdogEvent('notification', 'system', { title, body, type });
-      }
-      
       const notification = new Notification({
         title,
         body,
@@ -737,35 +899,96 @@ class WatchdogService extends EventEmitter {
 
   // Manual health check trigger
   async performManualHealthCheck() {
-    log.info('Manual health check triggered');
+    this.logEvent('MANUAL_HEALTH_CHECK', 'INFO', 'Manual health check triggered by admin');
     await this.performHealthChecks();
-    return this.getServicesStatus();
+    const status = this.getServicesStatus();
+    this.logEvent('MANUAL_HEALTH_CHECK_COMPLETE', 'INFO', 'Manual health check completed', status);
+    return status;
   }
 
   // Reset failure counts for all services
   resetFailureCounts() {
-    for (const service of Object.values(this.services)) {
+    for (const [serviceKey, service] of Object.entries(this.services)) {
+      const oldFailureCount = service.failureCount;
       service.failureCount = 0;
       service.isRetrying = false;
       // Keep grace period intact when resetting failure counts
     }
-    log.info('All service failure counts reset (grace periods preserved)');
+    this.logEvent('FAILURE_COUNTS_RESET', 'INFO', 'All service failure counts reset by admin', {
+      preservedGracePeriods: true
+    });
   }
 
   // Force end grace period for a specific service (for manual intervention)
   endGracePeriod(serviceKey) {
     if (this.services[serviceKey]) {
       this.services[serviceKey].lastHealthyTime = null;
-      log.info(`Grace period ended for ${this.services[serviceKey].name}`);
+      this.logEvent('GRACE_PERIOD_ENDED', 'INFO', `Grace period manually ended for ${this.services[serviceKey].name}`, {
+        serviceKey: serviceKey,
+        reason: 'admin_intervention'
+      });
     }
   }
 
   // Force end grace period for all services
   endAllGracePeriods() {
-    for (const service of Object.values(this.services)) {
-      service.lastHealthyTime = null;
+    const endedServices = [];
+    for (const [serviceKey, service] of Object.entries(this.services)) {
+      if (service.lastHealthyTime) {
+        service.lastHealthyTime = null;
+        endedServices.push(service.name);
+      }
     }
-    log.info('All service grace periods ended');
+    this.logEvent('ALL_GRACE_PERIODS_ENDED', 'INFO', 'All service grace periods manually ended by admin', {
+      affectedServices: endedServices,
+      reason: 'admin_intervention'
+    });
+  }
+
+  // Enable verbose logging for debugging
+  enableVerboseLogging() {
+    this.loggingConfig.level = 'DEBUG';
+    this.logEvent('VERBOSE_LOGGING_ENABLED', 'INFO', 'Verbose logging enabled for debugging');
+  }
+
+  // Disable verbose logging 
+  disableVerboseLogging() {
+    this.loggingConfig.level = 'INFO';
+    this.logEvent('VERBOSE_LOGGING_DISABLED', 'INFO', 'Verbose logging disabled');
+  }
+
+  // Get comprehensive system health report
+  getSystemHealthReport() {
+    const report = {
+      timestamp: new Date().toISOString(),
+      sessionId: this.sessionId,
+      watchdogStatus: this.isRunning ? 'running' : 'stopped',
+      totalServices: Object.keys(this.services).length,
+      enabledServices: Object.values(this.services).filter(s => s.enabled).length,
+      healthyServices: Object.values(this.services).filter(s => s.status === 'healthy').length,
+      services: {},
+      serviceMetrics: Object.fromEntries(this.serviceMetrics),
+      configuration: {
+        checkInterval: this.config.checkInterval,
+        gracePeriod: this.config.gracePeriod,
+        retryAttempts: this.config.retryAttempts
+      }
+    };
+
+    for (const [serviceKey, service] of Object.entries(this.services)) {
+      report.services[serviceKey] = {
+        name: service.name,
+        status: service.status,
+        enabled: service.enabled,
+        failureCount: service.failureCount,
+        isRetrying: service.isRetrying,
+        lastCheck: service.lastCheck,
+        lastHealthyTime: service.lastHealthyTime,
+        inGracePeriod: this.isServiceInGracePeriod(service)
+      };
+    }
+
+    return report;
   }
 }
 

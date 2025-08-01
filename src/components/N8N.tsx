@@ -82,8 +82,8 @@ const useN8NServiceConfig = () => {
 
     loadServiceConfig();
 
-    // Refresh configuration every 30 seconds
-    const interval = setInterval(loadServiceConfig, 30000);
+    // Refresh configuration every 60 seconds (reduced from 30s to minimize API calls)
+    const interval = setInterval(loadServiceConfig, 60000);
     return () => clearInterval(interval);
   }, []);
 

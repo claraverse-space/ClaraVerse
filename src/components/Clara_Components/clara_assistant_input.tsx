@@ -916,9 +916,9 @@ const AdvancedOptions: React.FC<{
       }
     };
 
-    // Check immediately and then every 10 seconds
+    // Check immediately and then every 30 seconds (reduced from 10s to minimize noise)
     checkServiceStatus();
-    statusCheckInterval = setInterval(checkServiceStatus, 10000);
+    statusCheckInterval = setInterval(checkServiceStatus, 30000);
 
     return () => {
       if (statusCheckInterval) {
