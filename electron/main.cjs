@@ -2517,6 +2517,78 @@ function registerHandlers() {
     }
   });
 
+  // Fast startup handlers for dashboard
+  ipcMain.handle('get-initialization-state', async () => {
+    return {
+      needsFeatureSelection: global.needsFeatureSelection || false,
+      selectedFeatures: global.selectedFeatures || null,
+      systemConfig: global.systemConfig || null,
+      dockerAvailable: dockerSetup ? await dockerSetup.isDockerRunning() : false,
+      servicesStatus: {
+        llamaSwap: llamaSwapService ? llamaSwapService.isRunning : false,
+        mcp: mcpService ? true : false,
+        docker: dockerSetup ? true : false,
+        watchdog: watchdogService ? watchdogService.isRunning : false
+      }
+    };
+  });
+  
+  ipcMain.handle('save-feature-selection', async (event, features) => {
+    try {
+      const featureSelection = new FeatureSelectionScreen();
+      featureSelection.saveConfig(features);
+      global.selectedFeatures = features;
+      global.needsFeatureSelection = false;
+      return { success: true };
+    } catch (error) {
+      log.error('Error saving feature selection:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  ipcMain.handle('initialize-service', async (event, serviceName) => {
+    try {
+      const sendUpdate = (status, message) => {
+        event.sender.send('service-init-progress', { service: serviceName, status, message });
+      };
+      
+      switch(serviceName) {
+        case 'docker':
+          if (!dockerSetup) dockerSetup = new DockerSetup();
+          const dockerAvailable = await dockerSetup.isDockerRunning();
+          if (!dockerAvailable) {
+            throw new Error('Docker is not running');
+          }
+          await dockerSetup.setup(global.selectedFeatures, (status) => {
+            sendUpdate('progress', status);
+          });
+          break;
+          
+        case 'llamaSwap':
+          if (!llamaSwapService) llamaSwapService = new LlamaSwapService(ipcLogger);
+          await llamaSwapService.start();
+          break;
+          
+        case 'mcp':
+          if (!mcpService) mcpService = new MCPService();
+          await mcpService.startAllEnabledServers();
+          break;
+          
+        case 'watchdog':
+          if (!watchdogService && dockerSetup?.docker) {
+            watchdogService = new WatchdogService(dockerSetup.docker, mcpService);
+            watchdogService.start();
+          }
+          break;
+      }
+      
+      return { success: true };
+    } catch (error) {
+      log.error(`Error initializing service ${serviceName}:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Update handlers
   ipcMain.handle('check-for-updates', () => {
     return checkForUpdates();
@@ -3913,43 +3985,86 @@ async function askToStartDockerDesktop(loadingScreen) {
  */
 async function initialize() {
   try {
-    console.log('🚀 Starting application initialization');
+    console.log('🚀 Starting application initialization (fast mode)');
     
     // Check if this is first time launch
     const featureSelection = new FeatureSelectionScreen();
     let selectedFeatures = null;
     
     if (featureSelection.isFirstTimeLaunch()) {
-      console.log('🎯 First time launch detected - showing feature selection');
-      try {
-        selectedFeatures = await featureSelection.show();
-        console.log('✅ Feature selection completed:', selectedFeatures);
-        console.log('✅ Feature selection window should be closed now, continuing with initialization...');
-      } catch (error) {
-        console.error('❌ Feature selection failed or was cancelled:', error.message);
-        // Use default features if selection fails
-        selectedFeatures = {
-          comfyUI: true,
-          n8n: true,
-          ragAndTts: true,
-          claraCore: true
-        };
-        console.log('📋 Using default feature configuration due to error');
-      }
+      console.log('🎯 First time launch detected - will show feature selection in main app');
+      // Use default features for now, let the main app handle feature selection
+      selectedFeatures = {
+        comfyUI: true,
+        n8n: true,
+        ragAndTts: true,
+        claraCore: true
+      };
+      // Mark that we need to show feature selection in the main app
+      global.needsFeatureSelection = true;
     } else {
       // Load existing feature configuration
       selectedFeatures = FeatureSelectionScreen.getCurrentConfig();
       console.log('📋 Loaded existing feature configuration:', selectedFeatures);
+      global.needsFeatureSelection = false;
     }
     
     // Store selected features globally for use throughout initialization
     global.selectedFeatures = selectedFeatures;
     
-    // Show loading screen after feature selection
-    loadingScreen = new LoadingScreen();
-    loadingScreen.setStatus('Validating system resources...', 'info');
+    // Skip loading screen - go directly to main window creation
+    console.log('⚡ Fast startup mode - skipping splash screen');
     
-    // Validate system resources and OS compatibility first
+    // Register handlers early (needed for IPC communication)
+    if (!global.handlersRegistered) {
+      registerHandlers();
+      global.handlersRegistered = true;
+    }
+    
+    // Create main window immediately for fast startup
+    console.log('📱 Creating main window immediately...');
+    await createMainWindow();
+    
+    // Send initial app state to renderer
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.send('app-initialization-state', {
+        needsFeatureSelection: global.needsFeatureSelection,
+        selectedFeatures: selectedFeatures,
+        status: 'initializing'
+      });
+    });
+    
+    // Initialize everything else in the background
+    initializeInBackground(selectedFeatures);
+    
+  } catch (error) {
+    log.error(`Initialization error: ${error.message}`, error);
+    // Create main window even if initialization fails
+    if (!mainWindow) {
+      await createMainWindow();
+    }
+    // Send error state to renderer
+    mainWindow.webContents.send('app-initialization-state', {
+      status: 'error',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Background initialization function that runs after main window is shown
+ */
+async function initializeInBackground(selectedFeatures) {
+  try {
+    // Send status update
+    const sendStatusUpdate = (status, details = {}) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('service-status-update', { status, ...details });
+      }
+    };
+    
+    // Validate system resources
+    sendStatusUpdate('validating', { message: 'Validating system resources...' });
     let systemConfig;
     try {
       const platformManager = new PlatformManager(path.join(__dirname, 'llamacpp-binaries'));
@@ -3958,24 +4073,6 @@ async function initialize() {
       // Handle critical OS compatibility issues
       if (systemConfig.osCompatibility && !systemConfig.osCompatibility.isSupported) {
         log.error('🚨 Critical OS compatibility issue detected');
-        log.error('❌ Your operating system version is not supported by ClaraVerse');
-        
-        // Show upgrade instructions
-        const upgradeInstructions = systemConfig.osCompatibility.upgradeInstructions;
-        if (upgradeInstructions) {
-          log.error(`📋 ${upgradeInstructions.title}`);
-          log.error(`💡 ${upgradeInstructions.description}`);
-          log.error('🔧 Upgrade Instructions:');
-          upgradeInstructions.instructions.forEach(instruction => {
-            log.error(`   ${instruction}`);
-          });
-        }
-        
-        // Show critical OS compatibility warning
-        loadingScreen.setStatus('Critical OS compatibility issue detected - Limited functionality', 'error');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Show warning for 3 seconds
-        
-        // Force core-only mode for unsupported OS
         systemConfig.performanceMode = 'core-only';
         systemConfig.enabledFeatures = {
           claraCore: true,
@@ -3983,101 +4080,117 @@ async function initialize() {
           comfyUI: false,
           advancedFeatures: false
         };
-        
-        log.warn('🔧 Forcing Core-Only mode due to OS compatibility issues');
+        sendStatusUpdate('warning', { 
+          message: 'OS compatibility issue - Limited functionality',
+          osCompatibility: systemConfig.osCompatibility
+        });
       }
-      
-      // Log system resource validation results
-      if (systemConfig.performanceMode === 'core-only') {
-        const reason = systemConfig.osCompatibility && !systemConfig.osCompatibility.isSupported ? 
-          'OS compatibility and system resource limitations' : 'insufficient system resources';
-        loadingScreen.setStatus(`Starting in Core-Only mode due to ${reason}...`, 'warning');
-        log.warn(`🎯 Starting in Core-Only mode due to ${reason}`);
-      } else if (systemConfig.performanceMode === 'lite') {
-        loadingScreen.setStatus('Limited system resources - Starting in Lite mode...', 'warning');
-        log.info('⚡ Starting in Lite mode with reduced features');
-      } else {
-        loadingScreen.setStatus('System validation complete - Full feature mode available', 'success');
-        log.info('✅ Starting in Full feature mode');
-      }
-      
-      // Log OS compatibility warnings if any
-      if (systemConfig.osCompatibility && systemConfig.osCompatibility.warnings.length > 0) {
-        log.warn('⚠️  OS compatibility warnings:');
-        systemConfig.osCompatibility.warnings.forEach(warning => log.warn(`   • ${warning}`));
-      }
-      
     } catch (error) {
-      log.error('❌ System resource validation failed, continuing with default configuration:', error);
-      loadingScreen.setStatus('System validation failed - Using default configuration...', 'warning');
+      log.error('System resource validation failed:', error);
       systemConfig = null;
     }
     
-    // Store system config globally for use throughout the application
     global.systemConfig = systemConfig;
     
-    // NEW: Initialize service configuration managers (Safe - no dependencies)
-    loadingScreen.setStatus('Initializing service configuration...', 'info');
+    // Initialize service configuration managers
+    sendStatusUpdate('initializing', { message: 'Initializing service configuration...' });
     try {
       serviceConfigManager = new ServiceConfigurationManager();
       centralServiceManager = new CentralServiceManager(serviceConfigManager);
       
-      // Register services with the central service manager
       const { SERVICE_DEFINITIONS } = require('./serviceDefinitions.cjs');
       Object.keys(SERVICE_DEFINITIONS).forEach(serviceName => {
         const serviceDefinition = SERVICE_DEFINITIONS[serviceName];
         centralServiceManager.registerService(serviceName, serviceDefinition);
       });
-      
-      log.info('✅ Service configuration managers initialized and services registered');
     } catch (error) {
-      log.warn('⚠️  Service configuration managers initialization failed, continuing without them:', error);
-      // Continue without service config managers (backward compatibility)
+      log.warn('Service configuration managers initialization failed:', error);
     }
     
-    loadingScreen.setStatus('Checking Docker availability...', 'info');
-    
-    // Check if Docker is available (but skip if in core-only mode)
+    // Check Docker availability
+    sendStatusUpdate('checking-docker', { message: 'Checking Docker availability...' });
     dockerSetup = new DockerSetup();
     let isDockerAvailable = false;
     
-    if (systemConfig && systemConfig.enabledFeatures.dockerServices) {
+    if (!systemConfig || systemConfig.enabledFeatures.dockerServices !== false) {
       isDockerAvailable = await dockerSetup.isDockerRunning();
-    } else {
-      log.info('🔧 Docker services disabled due to system resource limitations');
     }
     
+    // Initialize services based on Docker availability
     if (isDockerAvailable) {
-      console.log('Docker detected - starting with Docker services setup');
-      loadingScreen.setStatus('Docker detected - Setting up services...', 'info');
-      await initializeWithDocker();
+      sendStatusUpdate('docker-available', { message: 'Docker detected - Setting up services...' });
+      await initializeServicesWithDocker(selectedFeatures, sendStatusUpdate);
     } else {
-      console.log('Docker not available - checking if we can start it...');
-      
-      // On Windows, macOS, and Linux, ask if user wants to start Docker Desktop
-      let dockerStarted = false;
-      if (process.platform === 'win32' || process.platform === 'darwin' || process.platform === 'linux') {
-        dockerStarted = await askToStartDockerDesktop(loadingScreen);
-      }
-      
-      if (dockerStarted) {
-        // Docker was started successfully, reinitialize DockerSetup and proceed with Docker mode
-        dockerSetup = new DockerSetup();
-        console.log('Docker started - proceeding with Docker services setup');
-        loadingScreen.setStatus('Docker started - Setting up services...', 'info');
-        await initializeWithDocker();
-      } else {
-        console.log('Docker not available - starting in lightweight mode');
-        loadingScreen.setStatus('Docker not available - Starting in lightweight mode...', 'warning');
-        await initializeWithoutDocker();
-      }
+      sendStatusUpdate('docker-not-available', { message: 'Docker not available - Running in lightweight mode...' });
+      await initializeServicesWithoutDocker(selectedFeatures, sendStatusUpdate);
     }
+    
+    sendStatusUpdate('ready', { message: 'All services initialized' });
     
   } catch (error) {
-    log.error(`Initialization error: ${error.message}`, error);
-    loadingScreen?.setStatus(`Error: ${error.message}`, 'error');
-    // Fallback to lightweight initialization
-    await initializeWithoutDocker();
+    log.error('Background initialization error:', error);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service-status-update', { 
+        status: 'error', 
+        error: error.message 
+      });
+    }
+  }
+}
+
+/**
+ * Initialize services with Docker support
+ */
+async function initializeServicesWithDocker(selectedFeatures, sendStatusUpdate) {
+  try {
+    // Initialize core services
+    llamaSwapService = new LlamaSwapService(ipcLogger);
+    updateService = platformUpdateService;
+    
+    if (selectedFeatures.ragAndTts) {
+      mcpService = new MCPService();
+    }
+    
+    // Initialize Docker services
+    sendStatusUpdate('docker-initializing', { message: 'Setting up Docker containers...' });
+    await dockerSetup.setup(selectedFeatures, (status) => {
+      sendStatusUpdate('docker-setup', { message: status });
+    });
+    
+    // Start background services
+    sendStatusUpdate('starting-services', { message: 'Starting background services...' });
+    await initializeServicesInBackground();
+    
+    // Initialize watchdog
+    watchdogService = new WatchdogService(dockerSetup.docker, mcpService);
+    watchdogService.start();
+    
+  } catch (error) {
+    log.error('Error initializing services with Docker:', error);
+    throw error;
+  }
+}
+
+/**
+ * Initialize services without Docker
+ */
+async function initializeServicesWithoutDocker(selectedFeatures, sendStatusUpdate) {
+  try {
+    // Initialize only essential services
+    llamaSwapService = new LlamaSwapService(ipcLogger);
+    updateService = platformUpdateService;
+    
+    if (selectedFeatures.ragAndTts) {
+      mcpService = new MCPService();
+    }
+    
+    // Start background services
+    sendStatusUpdate('starting-services', { message: 'Starting services...' });
+    await initializeServicesInBackground();
+    
+  } catch (error) {
+    log.error('Error initializing services without Docker:', error);
+    throw error;
   }
 }
 
@@ -4618,39 +4731,16 @@ async function createMainWindow() {
 
   // Wait for DOM content to be fully loaded before showing
   mainWindow.webContents.once('dom-ready', () => {
-    log.info('Main window DOM ready, preparing to show...');
+    log.info('Main window DOM ready, showing immediately (fast startup mode)');
     
-    // Additional delay to ensure React app is fully rendered
-    setTimeout(() => {
-      // Check if loading screen is still valid before proceeding
-      if (loadingScreen && loadingScreen.isValid()) {
-        log.info('Notifying loading screen that main window is ready');
-        loadingScreen.notifyMainWindowReady();
-        
-        // Wait for loading screen fade-out before showing main window
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            log.info('Showing main window');
-            mainWindow.show();
-          }
-          
-          // Clean up loading screen
-          if (loadingScreen) {
-            loadingScreen.close();
-            loadingScreen = null;
-          }
-        }, 1500); // Longer delay to ensure smooth fade out
-      } else {
-        // If no loading screen, show immediately
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.show();
-        }
-      }
-      
-      // Initialize auto-updater when window is ready
-      // Note: Auto-updates work in both development and production
-      setupAutoUpdater(mainWindow);
-    }, 2000); // Wait for React to fully initialize
+    // Show window immediately for fast startup
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      log.info('Showing main window (fast startup)');
+      mainWindow.show();
+    }
+    
+    // Initialize auto-updater when window is ready
+    setupAutoUpdater(mainWindow);
   });
 
   // Fallback: Show window when ready (in case dom-ready doesn't fire)

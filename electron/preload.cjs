@@ -37,7 +37,10 @@ const validChannels = [
   'model-download-progress',
   'trigger-new-chat',
   'hide-to-tray',
-  'show-from-tray'
+  'show-from-tray',
+  'app-initialization-state',
+  'service-status-update',
+  'service-init-progress'
 ];
 
 // Add explicit logging for debugging
@@ -119,6 +122,11 @@ contextBridge.exposeInMainWorld('electron', {
   // Update startup settings to use the new handle-based IPC
   setStartupSettings: (settings) => ipcRenderer.invoke('set-startup-settings', settings),
   getStartupSettings: () => ipcRenderer.invoke('get-startup-settings'),
+  
+  // Fast startup APIs for dashboard
+  getInitializationState: () => ipcRenderer.invoke('get-initialization-state'),
+  saveFeatureSelection: (features) => ipcRenderer.invoke('save-feature-selection', features),
+  initializeService: (serviceName) => ipcRenderer.invoke('initialize-service', serviceName),
 });
 
 // Add Docker container management API
