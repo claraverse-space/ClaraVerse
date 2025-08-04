@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import CreateNotebookModal from './CreateNotebookModal';
 import NotebookDetails from './NotebookDetails';
+import PythonStartupModal from '../PythonStartupModal';
 import { claraNotebookService, NotebookResponse, ProviderConfig } from '../../services/claraNotebookService';
 import { ProvidersProvider } from '../../contexts/ProvidersContext';
 import { db } from '../../db';
@@ -28,6 +29,7 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedNotebook, setSelectedNotebook] = useState<NotebookResponse | null>(null);
   const [isBackendHealthy, setIsBackendHealthy] = useState(false);
+  const [showStartupModal, setShowStartupModal] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
 
@@ -58,6 +60,17 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
       loadNotebooks();
     }
   }, [isBackendHealthy]);
+
+  // Show startup modal when backend is not healthy
+  useEffect(() => {
+    if (!isBackendHealthy && !showStartupModal) {
+      // Add a slight delay to avoid showing modal immediately on component mount
+      const timer = setTimeout(() => {
+        setShowStartupModal(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isBackendHealthy, showStartupModal]);
 
   const loadNotebooks = async () => {
     if (!isBackendHealthy) {
@@ -575,6 +588,19 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
             onCreate={handleCreateNotebook}
           />
         )}
+
+        {/* Python backend startup modal */}
+        <PythonStartupModal
+          isOpen={showStartupModal}
+          onClose={() => setShowStartupModal(false)}
+          onStartupComplete={() => {
+            setShowStartupModal(false);
+            // Refresh the backend health after successful startup
+            setTimeout(() => {
+              loadNotebooks();
+            }, 1000);
+          }}
+        />
       </div>
     </div>
   );

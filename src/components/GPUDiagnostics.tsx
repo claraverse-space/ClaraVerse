@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Monitor, Cpu, Zap, AlertCircle, CheckCircle, RefreshCw, BarChart3, HardDrive, Info } from 'lucide-react';
 import BackendConfigurationPanel from './BackendConfigurationPanel';
+import { parseJsonConfiguration } from '../utils/commandLineParser';
 
 interface GPUInfo {
   hasGPU: boolean;
@@ -292,6 +293,35 @@ const GPUDiagnostics: React.FC = () => {
     memoryLock: true
   });
 
+  // Helper functions for model estimation
+  const estimateModelSizeGB = (modelName: string): number => {
+    const name = modelName.toLowerCase();
+    if (name.includes('30b') || name.includes('27b')) return 25;
+    if (name.includes('7b') || name.includes('8b')) return 7;
+    if (name.includes('3b') || name.includes('4b')) return 3;
+    if (name.includes('1b') || name.includes('nano')) return 1;
+    if (name.includes('embed')) return 0.5;
+    return 5; // default
+  };
+
+  const estimateLayersFromGpuLayers = (gpuLayers: number): number => {
+    // Most models have around 80-120 layers, estimate based on GPU layers
+    if (gpuLayers === 0) return 80; // Default for CPU-only
+    if (gpuLayers >= 80) return Math.max(80, gpuLayers);
+    return Math.max(80, Math.round(gpuLayers * 1.5)); // Estimate total layers
+  };
+
+  const estimateParams = (modelName: string): string => {
+    const name = modelName.toLowerCase();
+    if (name.includes('30b')) return '30B params';
+    if (name.includes('27b')) return '27B params';
+    if (name.includes('7b') || name.includes('8b')) return '7B params';
+    if (name.includes('3b') || name.includes('4b')) return '3B params';
+    if (name.includes('1b') || name.includes('nano')) return '1B params';
+    if (name.includes('embed')) return 'Embedding';
+    return 'Unknown params';
+  };
+
   const fetchGPUDiagnostics = async () => {
     setLoading(true);
     setError(null);
@@ -323,7 +353,32 @@ const GPUDiagnostics: React.FC = () => {
       
       if (response.success) {
         setGpuInfo(response.gpuInfo);
-        setModelGPUInfo(response.modelInfo || []);
+        
+        // Get actual configuration and parse model info
+        try {
+          const configResult = await llamaSwap.getConfigurationInfo();
+          if (configResult.success && configResult.configuration) {
+            const parsedModels = parseJsonConfiguration(configResult.configuration);
+            
+            // Convert ParsedModelConfig to ModelGPUInfo format for display
+            const modelInfoForGPU = parsedModels.map(model => ({
+              name: model.name,
+              path: model.modelPath || '',
+              sizeGB: estimateModelSizeGB(model.name),
+              estimatedLayers: estimateLayersFromGpuLayers(model.gpuLayers || 0),
+              allocatedLayers: model.gpuLayers || 0,
+              estimatedParams: estimateParams(model.name)
+            }));
+            
+            setModelGPUInfo(modelInfoForGPU);
+          } else {
+            // Fallback to response.modelInfo if configuration parsing fails
+            setModelGPUInfo(response.modelInfo || []);
+          }
+        } catch (configError) {
+          console.warn('Failed to parse configuration, using fallback:', configError);
+          setModelGPUInfo(response.modelInfo || []);
+        }
         
         // Detect CPU cores for thread configuration
         if (navigator.hardwareConcurrency) {

@@ -3,6 +3,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import Store from './n8n_components/Store';
 import MiniStore from './n8n_components/MiniStore';
+import N8NStartupModal from './N8NStartupModal';
 import { Plus, Trash2, Check, X,  AlertCircle,  ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon, WifiOff } from 'lucide-react';
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
@@ -139,6 +140,51 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [showMiniStore, setShowMiniStore] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
+  // N8N startup modal state
+  const [showStartupModal, setShowStartupModal] = useState(false);
+  const [n8nServiceRunning, setN8nServiceRunning] = useState<boolean | null>(null);
+
+  // Check N8N service status on component mount and when service config changes
+  useEffect(() => {
+    const checkN8NStatus = async () => {
+      if (serviceConfigLoading || !n8nUrl) return;
+      
+      try {
+        const result = await (window as any).electronAPI.invoke('n8n:check-service-status');
+        setN8nServiceRunning(result.running);
+        
+        // Show modal if service is not running
+        // For docker mode: show startup modal
+        // For manual mode: show connection error modal
+        if (!result.running) {
+          setShowStartupModal(true);
+        }
+      } catch (error) {
+        console.error('Failed to check N8N service status:', error);
+        setN8nServiceRunning(false);
+        
+        // Show modal if we can't determine status (likely not running)
+        setShowStartupModal(true);
+      }
+    };
+
+    checkN8NStatus();
+  }, [serviceConfigLoading, n8nUrl, n8nMode]);
+
+  const handleStartupModalSuccess = (serviceUrl: string) => {
+    setN8nServiceRunning(true);
+    setShowStartupModal(false);
+    
+    // Refresh the webview with the new service URL
+    if (webviewRef.current) {
+      webviewRef.current.src = serviceUrl;
+    }
+  };
+
+  const handleStartupModalClose = () => {
+    setShowStartupModal(false);
+  };
+
   // Wallpaper state
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -209,7 +255,24 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
     }
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    // First check service status
+    try {
+      const result = await (window as any).electronAPI.invoke('n8n:check-service-status');
+      setN8nServiceRunning(result.running);
+      
+      if (!result.running) {
+        setShowStartupModal(true);
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check N8N service status:', error);
+      setN8nServiceRunning(false);
+      setShowStartupModal(true);
+      return;
+    }
+
+    // If service is running, refresh the webview
     if (webviewRef.current) {
       try {
         webviewRef.current.reload();
@@ -236,10 +299,31 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
 
     const handleLoadStart = () => setIsLoading(true);
     const handleLoadStop = () => setIsLoading(false);
-    const handleDidFailLoad = (event: Event) => {
+    const handleDidFailLoad = async (event: Event) => {
       const failEvent = event as any;
       // Ignore -3 error code which is a normal cancellation
       if (failEvent.errorCode !== -3) {
+        // Check if this is a connection failure (could be docker or manual mode)
+        if (failEvent.errorCode === -102 || failEvent.errorCode === -105) {
+          // Connection refused or name not resolved - likely service not running
+          try {
+            const result = await (window as any).electronAPI.invoke('n8n:check-service-status');
+            if (!result.running) {
+              setShowStartupModal(true);
+              setError(null); // Clear error since we'll show modal instead
+              setIsLoading(false);
+              return;
+            }
+          } catch (error) {
+            console.error('Failed to check service status after connection failure:', error);
+            // Show modal anyway as fallback
+            setShowStartupModal(true);
+            setError(null);
+            setIsLoading(false);
+            return;
+          }
+        }
+        
         setError(`Failed to load n8n view: ${failEvent.errorDescription} (Code: ${failEvent.errorCode})`);
         setIsLoading(false);
         
@@ -817,6 +901,15 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           </div>
         </main>
       </div>
+
+      {/* N8N Startup Modal */}
+      <N8NStartupModal
+        isOpen={showStartupModal}
+        onClose={handleStartupModalClose}
+        onSuccess={handleStartupModalSuccess}
+        n8nMode={n8nMode}
+        n8nUrl={n8nUrl}
+      />
     </div>
   );
 };

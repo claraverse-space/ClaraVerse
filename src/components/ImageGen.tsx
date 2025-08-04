@@ -7,6 +7,7 @@ import ComfyUIManager from './ComfyUIManager';
 import ImageModelManager from './ImageModelManager';
 import { claraApiService } from '../services/claraApiService';
 import { ClaraModel, ClaraProvider } from '../types/clara_assistant_types';
+import ComfyUIStartupModal from './ComfyUIStartupModal';
 
 import PromptArea from './imagegen_components/PromptArea';
 import GeneratedGallery from './imagegen_components/GeneratedGallery';
@@ -593,6 +594,10 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // Initial loading states
   const [isInitialSetupComplete, setIsInitialSetupComplete] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  
+  // ComfyUI startup modal state
+  const [showComfyUIStartupModal, setShowComfyUIStartupModal] = useState(false);
+  
   type LoadingStatus = {
     sdModels: 'pending' | 'loading' | 'success' | 'error';
     loras: 'pending' | 'loading' | 'success' | 'error';
@@ -748,9 +753,13 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         setLoadingStatus(prev => ({ ...prev, vaes: 'success' }));
         setIsInitialSetupComplete(true);
       } catch (err) {
+        console.error('Failed to connect to ComfyUI:', err);
         setConnectionError('Failed to connect to ComfyUI WebSocket API.');
         setLoadingStatus(prev => ({ ...prev, connection: 'error', systemStats: 'error', sdModels: 'error', loras: 'error', vaes: 'error' }));
         setIsInitialSetupComplete(true);
+        
+        // Show the startup modal when connection fails
+        setShowComfyUIStartupModal(true);
       }
     };
     if (!serviceConfigLoading) connectAndFetch();
@@ -1634,6 +1643,55 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     setComfyUILoading(true);
   };
 
+  // ComfyUI startup modal handlers
+  const handleComfyUIModalClose = () => {
+    setShowComfyUIStartupModal(false);
+  };
+
+  const handleComfyUIModalSuccess = () => {
+    setShowComfyUIStartupModal(false);
+    setConnectionError(null);
+    
+    // Retry connection after successful startup
+    setTimeout(() => {
+      // Trigger a reconnection by updating the comfyUI key or retrying connection
+      const reconnect = async () => {
+        try {
+          console.log('Retrying ComfyUI connection after successful startup...');
+          let url = comfyuiUrl;
+          if (!url) url = 'http://localhost:8188';
+          const isHttps = url.startsWith('https://');
+          url = url.replace(/^https?:\/\//, '');
+          const client = new Client({ api_host: url, ssl: isHttps });
+          clientRef.current = client;
+          await client.connect();
+          
+          // Fetch data again
+          const sdModelsResp = await client.getSDModels();
+          setSDModels(sdModelsResp);
+          const lorasResp = await client.getLoRAs();
+          setLoras(lorasResp);
+          const vaesResp = await client.getVAEs();
+          setVAEs(vaesResp);
+          
+          setLoadingStatus({
+            sdModels: 'success',
+            loras: 'success',
+            vaes: 'success',
+            systemStats: 'success',
+            connection: 'connected'
+          });
+          setIsInitialSetupComplete(true);
+          console.log('ComfyUI reconnection successful');
+        } catch (err) {
+          console.error('ComfyUI reconnection failed:', err);
+          // Don't show modal again immediately to avoid loops
+        }
+      };
+      reconnect();
+    }, 2000); // Wait 2 seconds before retrying
+  };
+
   // Replace the fetchLLMModels function with provider-based system
   const fetchLLMModels = async (): Promise<ClaraModel[]> => {
     try {
@@ -1924,6 +1982,15 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             setScheduler={setScheduler}
           />
         )}
+        
+        {/* ComfyUI Startup Modal */}
+        <ComfyUIStartupModal
+          isOpen={showComfyUIStartupModal}
+          onClose={handleComfyUIModalClose}
+          onSuccess={handleComfyUIModalSuccess}
+          comfyuiMode={comfyuiMode}
+          comfyuiUrl={comfyuiUrl}
+        />
       </div>
     </div>
   );

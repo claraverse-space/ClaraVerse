@@ -3563,7 +3563,10 @@ ${cmdLine}`;
    */
   setStartupPhase(phase) {
     this.currentStartupPhase = phase;
-    log.info(`📱 Startup Phase: ${phase}`);
+    // Only log when there's an actual phase to report
+    if (phase !== null) {
+      log.info(`📱 Startup Phase: ${phase}`);
+    }
   }
 
   async restart() {
@@ -3794,6 +3797,74 @@ ${cmdLine}`;
 
   getApiUrl() {
     return `http://localhost:${this.port}`;
+  }
+
+  /**
+   * Unload all running models via the /unload endpoint
+   */
+  async unloadAllModels() {
+    try {
+      if (!this.isRunning) {
+        return { success: true, message: 'Service not running, no models to unload' };
+      }
+
+      let fetch;
+      try {
+        fetch = global.fetch || (await import('node-fetch')).default;
+      } catch (importError) {
+        const nodeFetch = require('node-fetch');
+        fetch = nodeFetch.default || nodeFetch;
+      }
+
+      log.info('🔄 Attempting to unload all running models...');
+
+      // First, get list of running models
+      try {
+        const runningResponse = await fetch(`http://localhost:${this.port}/running`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (runningResponse.ok) {
+          const runningData = await runningResponse.json();
+          if (runningData.models && runningData.models.length > 0) {
+            log.info(`📋 Found ${runningData.models.length} running models to unload`);
+          } else {
+            log.info('📋 No running models found');
+            return { success: true, message: 'No running models to unload' };
+          }
+        }
+      } catch (runningError) {
+        log.debug('Could not check running models:', runningError.message);
+      }
+
+      // Call the /unload endpoint to unload all models
+      const unloadResponse = await fetch(`http://localhost:${this.port}/unload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}) // Empty body to unload all
+      });
+
+      if (unloadResponse.ok) {
+        const unloadData = await unloadResponse.json();
+        log.info('✅ Successfully unloaded all models');
+        return { 
+          success: true, 
+          message: 'All models unloaded successfully',
+          data: unloadData
+        };
+      } else {
+        const errorText = await unloadResponse.text();
+        throw new Error(`Unload request failed: ${unloadResponse.status} - ${errorText}`);
+      }
+
+    } catch (error) {
+      log.warn('⚠️ Model unloading failed:', error.message);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   // Helper method to extract quantization info
@@ -6618,6 +6689,56 @@ ${cmdLine}`;
       // Write new YAML configuration
       await fs.writeFile(this.configPath, yamlContent, 'utf8');
       
+      // Extract and save individual model configurations from the JSON config
+      try {
+        if (jsonConfig.models) {
+          const modelConfigs = [];
+          
+          for (const [modelName, modelData] of Object.entries(jsonConfig.models)) {
+            // Parse the command line to extract individual model settings
+            const parsedConfig = this.parseCommandLineToConfig(modelData.cmd || '');
+            
+            // Create individual model config with parsed settings
+            const individualConfig = {
+              name: modelName,
+              threads: parsedConfig.threads,
+              configuredContextSize: parsedConfig.contextSize,
+              flashAttention: parsedConfig.flashAttention,
+              memoryLock: parsedConfig.memoryLock,
+              batchSize: parsedConfig.batchSize,
+              ubatchSize: parsedConfig.ubatchSize,
+              gpuLayers: parsedConfig.gpuLayers
+            };
+            
+            // Only include defined values
+            Object.keys(individualConfig).forEach(key => {
+              if (individualConfig[key] === undefined) {
+                delete individualConfig[key];
+              }
+            });
+            
+            modelConfigs.push(individualConfig);
+          }
+          
+          // Save individual model configurations
+          const configsPath = path.join(this.settingsDir, 'individual-model-configs.json');
+          const configsMap = {};
+          
+          for (const modelConfig of modelConfigs) {
+            configsMap[modelConfig.name] = modelConfig;
+          }
+          
+          await fs.writeFile(configsPath, JSON.stringify(configsMap, null, 2), 'utf8');
+          log.info(`Saved individual configurations for ${modelConfigs.length} models to ${configsPath}`);
+          
+          // Update in-memory model configurations
+          this.customModelConfigs = modelConfigs;
+        }
+      } catch (extractError) {
+        log.warn('Failed to extract and save individual model configurations:', extractError.message);
+        // Don't fail the entire save operation if this fails
+      }
+      
       // Verify the written file
       const verifyContent = await fs.readFile(this.configPath, 'utf8');
       if (verifyContent.length < yamlContent.length * 0.9) {
@@ -6705,7 +6826,7 @@ ${cmdLine}`;
   }
 
   /**
-   * Save configuration and restart service
+   * Save configuration and restart service with complete unloading
    */
   async saveConfigAndRestart(jsonConfig) {
     try {
@@ -6715,14 +6836,49 @@ ${cmdLine}`;
         return saveResult;
       }
 
-      log.info('Configuration saved, restarting service without regenerating config...');
+      log.info('Configuration saved, performing complete LlamaSwap server restart with model unloading...');
       
-      // Restart the service without regenerating config to preserve manual edits
-      const restartResult = await this.restartWithoutConfigRegeneration();
+      // Step 1: Unload all models before shutdown
+      try {
+        log.info('🔄 Unloading all running models...');
+        const unloadResult = await this.unloadAllModels();
+        if (unloadResult.success) {
+          log.info('✅ All models unloaded successfully');
+        } else {
+          log.warn('⚠️ Model unloading failed, proceeding with restart:', unloadResult.error);
+        }
+      } catch (unloadError) {
+        log.warn('⚠️ Model unloading encountered error, proceeding with restart:', unloadError.message);
+      }
+
+      // Step 2: Complete service shutdown and cleanup
+      log.info('🛑 Completely shutting down LlamaSwap server...');
+      await this.stop();
+      
+      // Step 3: Comprehensive cleanup to ensure fresh start
+      this.cleanup();
+      
+      // Step 4: Clean up stale processes and port
+      log.info('🧹 Cleaning up all processes and resources...');
+      try {
+        await this.cleanupStaleProcesses();
+        await this.killProcessesOnPort(this.port);
+      } catch (cleanupError) {
+        log.warn('⚠️ Cleanup warning (non-critical):', cleanupError.message);
+      }
+      
+      // Step 5: Extended wait for complete cleanup
+      log.info('⏱️ Waiting for complete process cleanup...');
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Extended wait
+      
+      log.info('🚀 Starting fresh LlamaSwap server with new configuration...');
+      
+      // Step 6: Start without calling generateConfig() to preserve manual edits
+      const restartResult = await this.startWithoutConfigGeneration();
       if (!restartResult.success) {
         return {
           success: false,
-          error: `Configuration saved but restart failed: ${restartResult.error}`,
+          error: `Configuration saved but complete restart failed: ${restartResult.error}`,
           configSaved: true,
           backupPath: saveResult.backupPath
         };
@@ -6730,14 +6886,15 @@ ${cmdLine}`;
 
       return {
         success: true,
-        message: 'Configuration saved and service restarted successfully',
+        message: 'Configuration saved and LlamaSwap server completely restarted successfully',
         configPath: this.configPath,
         backupPath: saveResult.backupPath,
-        restarted: true
+        restarted: true,
+        modelsUnloaded: true
       };
       
     } catch (error) {
-      log.error('Error saving config and restarting:', error);
+      log.error('Error saving config and performing complete restart:', error);
       return {
         success: false,
         error: error.message
@@ -7116,10 +7273,11 @@ ${cmdLine}`;
         this.getAvailableBackends(),
         this.getBackendOverride(),
         this.getConfigAsJson(),
-        this.loadPerformanceSettings()
+        this.loadPerformanceSettings(),
+        this.detectGPUInfo()
       ]);
       
-      const [backends, override, config, perfSettings] = results;
+      const [backends, override, config, perfSettings, gpuInfo] = results;
       
       return {
         success: true,
@@ -7134,7 +7292,8 @@ ${cmdLine}`;
         performanceSettings: perfSettings.success ? perfSettings.settings : null,
         platform: os.platform(),
         architecture: os.arch(),
-        serviceStatus: this.getStatus()
+        serviceStatus: this.getStatus(),
+        gpuInfo: gpuInfo
       };
       
     } catch (error) {
@@ -7350,6 +7509,44 @@ ${cmdLine}`;
         error: error.message
       };
     }
+  }
+
+  /**
+   * Parse command line arguments to extract configuration parameters
+   */
+  parseCommandLineToConfig(cmdLine) {
+    const config = {};
+    
+    if (!cmdLine || typeof cmdLine !== 'string') {
+      return config;
+    }
+    
+    // Parse various command line parameters
+    const patterns = {
+      threads: /--threads\s+(\d+)/,
+      contextSize: /--ctx-size\s+(\d+)/,
+      flashAttention: /--flash-attn/,
+      memoryLock: /--mlock/,
+      batchSize: /--batch-size\s+(\d+)/,
+      ubatchSize: /--ubatch-size\s+(\d+)/,
+      gpuLayers: /--n-gpu-layers\s+(\d+)/
+    };
+    
+    // Extract numeric parameters
+    for (const [key, pattern] of Object.entries(patterns)) {
+      if (key === 'flashAttention' || key === 'memoryLock') {
+        // Boolean flags
+        config[key] = pattern.test(cmdLine);
+      } else {
+        // Numeric parameters
+        const match = cmdLine.match(pattern);
+        if (match) {
+          config[key] = parseInt(match[1]);
+        }
+      }
+    }
+    
+    return config;
   }
 }
 

@@ -614,6 +614,30 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Create user consent file for watchdog service
+  ipcMain.handle('createUserConsentFile', async (event, consentData) => {
+    try {
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'user-service-consent.json');
+      
+      // Ensure the consent data has all required fields
+      const consentFileData = {
+        hasConsented: consentData.hasConsented || false,
+        services: consentData.services || {},
+        timestamp: consentData.timestamp || new Date().toISOString(),
+        onboardingVersion: consentData.onboardingVersion || '1.0'
+      };
+      
+      fsSync.writeFileSync(consentFile, JSON.stringify(consentFileData, null, 2), 'utf8');
+      log.info('User consent file created successfully:', consentFile);
+      
+      return { success: true, filePath: consentFile };
+    } catch (error) {
+      log.error('Error creating user consent file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Custom model path handlers
   ipcMain.handle('set-custom-model-path', async (event, customPath) => {
     try {
@@ -1937,13 +1961,20 @@ function registerModelManagerHandlers() {
 
 // Register MCP service IPC handlers
 function registerMCPHandlers() {
+  // Helper function to ensure MCP service is initialized
+  function ensureMCPService() {
+    if (!mcpService) {
+      log.info('MCP service not initialized, creating new instance...');
+      mcpService = new MCPService();
+    }
+    return mcpService;
+  }
+
   // Get all MCP servers
   ipcMain.handle('mcp-get-servers', async () => {
     try {
-      if (!mcpService) {
-        return [];
-      }
-      return mcpService.getAllServers();
+      const service = ensureMCPService();
+      return service.getAllServers();
     } catch (error) {
       log.error('Error getting MCP servers:', error);
       return [];
@@ -1953,10 +1984,8 @@ function registerMCPHandlers() {
   // Add MCP server
   ipcMain.handle('mcp-add-server', async (event, serverConfig) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.addServer(serverConfig);
+      const service = ensureMCPService();
+      return await service.addServer(serverConfig);
     } catch (error) {
       log.error('Error adding MCP server:', error);
       throw error;
@@ -1966,10 +1995,8 @@ function registerMCPHandlers() {
   // Remove MCP server
   ipcMain.handle('mcp-remove-server', async (event, name) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.removeServer(name);
+      const service = ensureMCPService();
+      return await service.removeServer(name);
     } catch (error) {
       log.error('Error removing MCP server:', error);
       throw error;
@@ -1979,10 +2006,8 @@ function registerMCPHandlers() {
   // Update MCP server
   ipcMain.handle('mcp-update-server', async (event, name, updates) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.updateServer(name, updates);
+      const service = ensureMCPService();
+      return await service.updateServer(name, updates);
     } catch (error) {
       log.error('Error updating MCP server:', error);
       throw error;
@@ -1992,10 +2017,8 @@ function registerMCPHandlers() {
   // Start MCP server
   ipcMain.handle('mcp-start-server', async (event, name) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      const serverInfo = await mcpService.startServer(name);
+      const service = ensureMCPService();
+      const serverInfo = await service.startServer(name);
       
       // Return only serializable data, excluding the process object
       return {
@@ -2014,10 +2037,8 @@ function registerMCPHandlers() {
   // Stop MCP server
   ipcMain.handle('mcp-stop-server', async (event, name) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.stopServer(name);
+      const service = ensureMCPService();
+      return await service.stopServer(name);
     } catch (error) {
       log.error('Error stopping MCP server:', error);
       throw error;
@@ -2027,10 +2048,8 @@ function registerMCPHandlers() {
   // Restart MCP server
   ipcMain.handle('mcp-restart-server', async (event, name) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      const serverInfo = await mcpService.restartServer(name);
+      const service = ensureMCPService();
+      const serverInfo = await service.restartServer(name);
       
       // Return only serializable data, excluding the process object
       return {
@@ -2049,10 +2068,8 @@ function registerMCPHandlers() {
   // Get MCP server status
   ipcMain.handle('mcp-get-server-status', async (event, name) => {
     try {
-      if (!mcpService) {
-        return null;
-      }
-      return mcpService.getServerStatus(name);
+      const service = ensureMCPService();
+      return service.getServerStatus(name);
     } catch (error) {
       log.error('Error getting MCP server status:', error);
       return null;
@@ -2062,10 +2079,8 @@ function registerMCPHandlers() {
   // Test MCP server
   ipcMain.handle('mcp-test-server', async (event, name) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.testServer(name);
+      const service = ensureMCPService();
+      return await service.testServer(name);
     } catch (error) {
       log.error('Error testing MCP server:', error);
       return { success: false, error: error.message };
@@ -2075,10 +2090,8 @@ function registerMCPHandlers() {
   // Get MCP server templates
   ipcMain.handle('mcp-get-templates', async () => {
     try {
-      if (!mcpService) {
-        return [];
-      }
-      return mcpService.getServerTemplates();
+      const service = ensureMCPService();
+      return service.getServerTemplates();
     } catch (error) {
       log.error('Error getting MCP templates:', error);
       return [];
@@ -2088,10 +2101,8 @@ function registerMCPHandlers() {
   // Start all enabled MCP servers
   ipcMain.handle('mcp-start-all-enabled', async () => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.startAllEnabledServers();
+      const service = ensureMCPService();
+      return await service.startAllEnabledServers();
     } catch (error) {
       log.error('Error starting all enabled MCP servers:', error);
       throw error;
@@ -2101,10 +2112,8 @@ function registerMCPHandlers() {
   // Stop all MCP servers
   ipcMain.handle('mcp-stop-all', async () => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.stopAllServers();
+      const service = ensureMCPService();
+      return await service.stopAllServers();
     } catch (error) {
       log.error('Error stopping all MCP servers:', error);
       throw error;
@@ -2114,10 +2123,8 @@ function registerMCPHandlers() {
   // Import from Claude Desktop config
   ipcMain.handle('mcp-import-claude-config', async (event, configPath) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.importFromClaudeConfig(configPath);
+      const service = ensureMCPService();
+      return await service.importFromClaudeConfig(configPath);
     } catch (error) {
       log.error('Error importing Claude config:', error);
       throw error;
@@ -2127,10 +2134,8 @@ function registerMCPHandlers() {
   // Start previously running servers
   ipcMain.handle('mcp-start-previously-running', async () => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.startPreviouslyRunningServers();
+      const service = ensureMCPService();
+      return await service.startPreviouslyRunningServers();
     } catch (error) {
       log.error('Error starting previously running MCP servers:', error);
       throw error;
@@ -2140,10 +2145,8 @@ function registerMCPHandlers() {
   // Save current running state
   ipcMain.handle('mcp-save-running-state', async () => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      mcpService.saveRunningState();
+      const service = ensureMCPService();
+      service.saveRunningState();
       return true;
     } catch (error) {
       log.error('Error saving MCP server running state:', error);
@@ -2154,10 +2157,8 @@ function registerMCPHandlers() {
   // Execute MCP tool call
   ipcMain.handle('mcp-execute-tool', async (event, toolCall) => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.executeToolCall(toolCall);
+      const service = ensureMCPService();
+      return await service.executeToolCall(toolCall);
     } catch (error) {
       log.error('Error executing MCP tool call:', error);
       throw error;
@@ -2167,10 +2168,8 @@ function registerMCPHandlers() {
   // Diagnose Node.js installation
   ipcMain.handle('mcp-diagnose-node', async () => {
     try {
-      if (!mcpService) {
-        throw new Error('MCP service not initialized');
-      }
-      return await mcpService.diagnoseNodeInstallation();
+      const service = ensureMCPService();
+      return await service.diagnoseNodeInstallation();
     } catch (error) {
       log.error('Error diagnosing Node.js installation:', error);
       return {
@@ -2223,6 +2222,23 @@ function registerServiceConfigurationHandlers() {
       return { success: true };
     } catch (error) {
       log.error(`Error setting service configuration for ${serviceName}:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Alias for onboarding compatibility
+  ipcMain.handle('service-config:set-manual-url', async (event, serviceName, url) => {
+    try {
+      if (!serviceConfigManager) {
+        throw new Error('Service configuration manager not initialized');
+      }
+      
+      serviceConfigManager.setServiceConfig(serviceName, 'manual', url);
+      log.info(`Service ${serviceName} configured with manual URL: ${url}`);
+      
+      return { success: true };
+    } catch (error) {
+      log.error(`Error setting manual URL for ${serviceName}:`, error);
       return { success: false, error: error.message };
     }
   });
@@ -2288,11 +2304,25 @@ function registerServiceConfigurationHandlers() {
       
       const status = centralServiceManager.getServicesStatus();
       
-      // Only log if status has changed to reduce noise
-      const statusString = JSON.stringify(status);
-      if (statusString !== lastLoggedServiceStatus) {
-        log.info('📊 Enhanced service status changed:', status);
-        lastLoggedServiceStatus = statusString;
+      // Only log if meaningful status has changed (exclude dynamic fields like uptime, lastHealthCheck)
+      const stableStatus = {};
+      for (const [serviceName, serviceStatus] of Object.entries(status)) {
+        stableStatus[serviceName] = {
+          state: serviceStatus.state,
+          deploymentMode: serviceStatus.deploymentMode,
+          restartAttempts: serviceStatus.restartAttempts,
+          serviceUrl: serviceStatus.serviceUrl,
+          isManual: serviceStatus.isManual,
+          canRestart: serviceStatus.canRestart,
+          supportedModes: serviceStatus.supportedModes,
+          lastError: serviceStatus.lastError
+        };
+      }
+      
+      const stableStatusString = JSON.stringify(stableStatus);
+      if (stableStatusString !== lastLoggedServiceStatus) {
+        log.info('📊 Enhanced service status changed:', stableStatus);
+        lastLoggedServiceStatus = stableStatusString;
       }
       
       return status;
@@ -2454,6 +2484,350 @@ function registerWidgetServiceHandlers() {
   log.info('Widget service IPC handlers registered');
 }
 
+// Register N8N specific IPC handlers
+function registerN8NHandlers() {
+  // Check Docker status
+  ipcMain.handle('n8n:check-docker-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { dockerRunning: false, error: 'Docker setup not initialized' };
+      }
+      
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      return { dockerRunning };
+    } catch (error) {
+      log.error('Error checking Docker status:', error);
+      return { dockerRunning: false, error: error.message };
+    }
+  });
+
+  // Check N8N service status
+  ipcMain.handle('n8n:check-service-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { running: false, error: 'Docker setup not initialized' };
+      }
+
+      // Check service configuration mode
+      let n8nRunning = false;
+      let serviceUrl = 'http://localhost:5678';
+      
+      if (serviceConfigManager) {
+        const n8nMode = serviceConfigManager.getServiceMode('n8n');
+        if (n8nMode === 'manual') {
+          const n8nUrl = serviceConfigManager.getServiceUrl('n8n');
+          if (n8nUrl) {
+            serviceUrl = n8nUrl;
+            try {
+              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+              const healthCheck = createManualHealthCheck(n8nUrl, '/');
+              n8nRunning = await healthCheck();
+            } catch (error) {
+              log.debug(`N8N manual health check failed: ${error.message}`);
+              n8nRunning = false;
+            }
+          }
+        } else {
+          const healthResult = await dockerSetup.checkN8NHealth();
+          n8nRunning = healthResult.success;
+          if (dockerSetup.ports && dockerSetup.ports.n8n) {
+            serviceUrl = `http://localhost:${dockerSetup.ports.n8n}`;
+          }
+        }
+      } else {
+        const healthResult = await dockerSetup.checkN8NHealth();
+        n8nRunning = healthResult.success;
+        if (dockerSetup.ports && dockerSetup.ports.n8n) {
+          serviceUrl = `http://localhost:${dockerSetup.ports.n8n}`;
+        }
+      }
+
+      return { running: n8nRunning, serviceUrl };
+    } catch (error) {
+      log.error('Error checking N8N service status:', error);
+      return { running: false, error: error.message };
+    }
+  });
+
+  // Start N8N container
+  ipcMain.handle('n8n:start-container', async () => {
+    try {
+      if (!dockerSetup) {
+        return { success: false, error: 'Docker setup not initialized' };
+      }
+
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      if (!dockerRunning) {
+        return { success: false, error: 'Docker is not running' };
+      }
+
+      // Start the N8N container
+      log.info('Starting N8N container...');
+      await dockerSetup.startContainer(dockerSetup.containers.n8n);
+      
+      // Wait for the service to be healthy with timeout
+      const maxAttempts = 30; // 30 seconds timeout
+      let attempts = 0;
+      let healthResult = { success: false };
+      
+      while (attempts < maxAttempts && !healthResult.success) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        healthResult = await dockerSetup.checkN8NHealth();
+        attempts++;
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('n8n:startup-progress', {
+            message: `Starting N8N... (${attempts}/${maxAttempts})`,
+            progress: Math.round((attempts / maxAttempts) * 100)
+          });
+        }
+      }
+
+      if (healthResult.success) {
+        const serviceUrl = dockerSetup.ports && dockerSetup.ports.n8n 
+          ? `http://localhost:${dockerSetup.ports.n8n}` 
+          : 'http://localhost:5678';
+          
+        log.info('N8N container started successfully');
+        return { success: true, serviceUrl };
+      } else {
+        log.warn('N8N container started but health check failed');
+        return { success: false, error: 'N8N started but is not responding to health checks' };
+      }
+    } catch (error) {
+      log.error('Error starting N8N container:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  log.info('N8N IPC handlers registered');
+}
+
+// Register ComfyUI specific IPC handlers
+function registerComfyUIHandlers() {
+  // Check Docker status
+  ipcMain.handle('comfyui:check-docker-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { dockerRunning: false, error: 'Docker setup not initialized' };
+      }
+      
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      return { dockerRunning };
+    } catch (error) {
+      log.error('Error checking Docker status:', error);
+      return { dockerRunning: false, error: error.message };
+    }
+  });
+
+  // Check ComfyUI service status
+  ipcMain.handle('comfyui:check-service-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { running: false, error: 'Docker setup not initialized' };
+      }
+
+      // Check service configuration mode
+      let comfyuiRunning = false;
+      let serviceUrl = 'http://localhost:8188';
+      
+      if (serviceConfigManager) {
+        const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
+        if (comfyuiMode === 'manual') {
+          const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
+          if (comfyuiUrl) {
+            serviceUrl = comfyuiUrl;
+            try {
+              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+              const healthCheck = createManualHealthCheck(comfyuiUrl, '/');
+              comfyuiRunning = await healthCheck();
+            } catch (error) {
+              log.debug(`ComfyUI manual health check failed: ${error.message}`);
+              comfyuiRunning = false;
+            }
+          }
+        } else {
+          const healthResult = await dockerSetup.isComfyUIRunning();
+          comfyuiRunning = healthResult;
+          if (dockerSetup.ports && dockerSetup.ports.comfyui) {
+            serviceUrl = `http://localhost:${dockerSetup.ports.comfyui}`;
+          }
+        }
+      } else {
+        const healthResult = await dockerSetup.isComfyUIRunning();
+        comfyuiRunning = healthResult;
+        if (dockerSetup.ports && dockerSetup.ports.comfyui) {
+          serviceUrl = `http://localhost:${dockerSetup.ports.comfyui}`;
+        }
+      }
+
+      return { running: comfyuiRunning, serviceUrl };
+    } catch (error) {
+      log.error('Error checking ComfyUI service status:', error);
+      return { running: false, error: error.message };
+    }
+  });
+
+  // Start ComfyUI container
+  ipcMain.handle('comfyui:start-container', async () => {
+    try {
+      if (!dockerSetup) {
+        return { success: false, error: 'Docker setup not initialized' };
+      }
+
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      if (!dockerRunning) {
+        return { success: false, error: 'Docker is not running' };
+      }
+
+      // Start the ComfyUI container
+      log.info('Starting ComfyUI container...');
+      await dockerSetup.startContainer(dockerSetup.containers.comfyui);
+      
+      // Wait for the service to be healthy with timeout (ComfyUI takes longer)
+      const maxAttempts = 60; // 60 seconds timeout
+      let attempts = 0;
+      let healthResult = { success: false };
+      
+      while (attempts < maxAttempts && !healthResult.success) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        healthResult = { success: await dockerSetup.isComfyUIRunning() };
+        attempts++;
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('comfyui:startup-progress', {
+            message: `Starting ComfyUI... (${attempts}/${maxAttempts})`,
+            progress: Math.round((attempts / maxAttempts) * 100)
+          });
+        }
+      }
+
+      if (healthResult.success) {
+        const serviceUrl = dockerSetup.ports && dockerSetup.ports.comfyui 
+          ? `http://localhost:${dockerSetup.ports.comfyui}` 
+          : 'http://localhost:8188';
+          
+        log.info('ComfyUI container started successfully');
+        return { success: true, serviceUrl };
+      } else {
+        log.warn('ComfyUI container started but health check failed');
+        return { success: false, error: 'ComfyUI started but is not responding to health checks' };
+      }
+    } catch (error) {
+      log.error('Error starting ComfyUI container:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  log.info('ComfyUI IPC handlers registered');
+}
+
+// Register Python Backend specific IPC handlers
+function registerPythonBackendHandlers() {
+  // Check Docker status
+  ipcMain.handle('check-docker-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { isRunning: false, error: 'Docker setup not initialized' };
+      }
+      
+      const isRunning = await dockerSetup.isDockerRunning();
+      return { isRunning };
+    } catch (error) {
+      log.error('Error checking Docker status:', error);
+      return { isRunning: false, error: error.message };
+    }
+  });
+
+  // Check Python backend service status
+  ipcMain.handle('check-python-status', async () => {
+    try {
+      if (!dockerSetup) {
+        return { isHealthy: false, serviceUrl: null, mode: 'docker', error: 'Docker setup not initialized' };
+      }
+
+      // Get service configuration to determine mode
+      const config = await serviceConfigManager.getServiceConfig('notebooks');
+      const mode = config?.deploymentMode || 'docker';
+      let serviceUrl = null;
+
+      if (mode === 'docker') {
+        // Check if Docker is running first
+        const dockerRunning = await dockerSetup.isDockerRunning();
+        if (dockerRunning) {
+          const healthResult = await dockerSetup.isPythonRunning();
+          if (dockerSetup.ports && dockerSetup.ports.python) {
+            serviceUrl = `http://localhost:${dockerSetup.ports.python}`;
+          }
+          return { isHealthy: healthResult, serviceUrl, mode };
+        } else {
+          return { isHealthy: false, serviceUrl: null, mode, error: 'Docker is not running' };
+        }
+      } else {
+        // Manual mode - check configured URL
+        const manualUrl = config?.manualUrl;
+        if (manualUrl) {
+          serviceUrl = manualUrl;
+          // For manual mode, we can try to ping the URL
+          const healthResult = await dockerSetup.isPythonRunning();
+          return { isHealthy: healthResult, serviceUrl, mode };
+        } else {
+          return { isHealthy: false, serviceUrl: null, mode, error: 'No manual URL configured' };
+        }
+      }
+    } catch (error) {
+      log.error('Error checking Python backend status:', error);
+      return { isHealthy: false, serviceUrl: null, mode: 'docker', error: error.message };
+    }
+  });
+
+  // Start Python backend container
+  ipcMain.handle('start-python-container', async () => {
+    try {
+      if (!dockerSetup) {
+        return { success: false, error: 'Docker setup not initialized' };
+      }
+
+      const dockerRunning = await dockerSetup.isDockerRunning();
+      if (!dockerRunning) {
+        return { success: false, error: 'Docker is not running. Please start Docker first.' };
+      }
+
+      // Get Python container configuration
+      const pythonConfig = dockerSetup.containers.python;
+      if (!pythonConfig) {
+        return { success: false, error: 'Python container configuration not found' };
+      }
+
+      log.info('Starting Python backend container...');
+      await dockerSetup.startContainer(pythonConfig);
+
+      // Wait for the container to be healthy with timeout
+      const maxAttempts = 30; // 60 seconds max
+      let attempts = 0;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const isHealthy = await dockerSetup.isPythonRunning();
+        
+        if (isHealthy) {
+          log.info('Python backend container started and is healthy');
+          return { success: true };
+        }
+        
+        attempts++;
+      }
+
+      return { success: false, error: 'Python backend started but is not responding to health checks' };
+    } catch (error) {
+      log.error('Error starting Python backend container:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  log.info('Python Backend IPC handlers registered');
+}
+
 // Register handlers for various app functions
 function registerHandlers() {
   console.log('[main] Registering IPC handlers...');
@@ -2463,6 +2837,9 @@ function registerHandlers() {
   registerMCPHandlers();
   registerServiceConfigurationHandlers(); // NEW: Add service configuration handlers
   registerWidgetServiceHandlers(); // NEW: Add widget service handlers
+  registerN8NHandlers(); // NEW: Add N8N specific handlers
+  registerComfyUIHandlers(); // NEW: Add ComfyUI specific handlers
+  registerPythonBackendHandlers(); // NEW: Add Python Backend specific handlers
   
   // Add new chat handler
   ipcMain.handle('new-chat', async () => {
@@ -2584,7 +2961,7 @@ function registerHandlers() {
           
         case 'watchdog':
           if (!watchdogService && dockerSetup?.docker) {
-            watchdogService = new WatchdogService(dockerSetup.docker, mcpService);
+            watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
             watchdogService.start();
           }
           break;
@@ -3449,6 +3826,52 @@ function registerHandlers() {
     return false;
   });
 
+  // Docker Desktop startup handler
+  ipcMain.handle('start-docker-desktop', async () => {
+    try {
+      log.info('Received request to start Docker Desktop from onboarding');
+      
+      // Get Docker path
+      const dockerPath = await checkDockerDesktopInstalled();
+      if (!dockerPath) {
+        return { 
+          success: false, 
+          error: 'Docker Desktop not found on system' 
+        };
+      }
+      
+      // Check if Docker is already running
+      const isRunning = dockerSetup ? await dockerSetup.isDockerRunning() : false;
+      if (isRunning) {
+        return { 
+          success: true, 
+          message: 'Docker Desktop is already running' 
+        };
+      }
+      
+      // Start Docker Desktop
+      const startSuccess = await startDockerDesktop(dockerPath);
+      
+      if (startSuccess) {
+        return { 
+          success: true, 
+          message: 'Docker Desktop startup initiated' 
+        };
+      } else {
+        return { 
+          success: false, 
+          error: 'Failed to start Docker Desktop' 
+        };
+      }
+    } catch (error) {
+      log.error('Error starting Docker Desktop:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Unknown error starting Docker Desktop' 
+      };
+    }
+  });
+
   // Generic Docker service control handlers
   ipcMain.handle('start-docker-service', async (event, serviceName) => {
     try {
@@ -4000,18 +4423,18 @@ async function initialize() {
     let selectedFeatures = null;
     
     if (featureSelection.isFirstTimeLaunch()) {
-      console.log('🎯 First time launch detected - will show feature selection in main app');
-      // Use default features for now, let the main app handle feature selection
+      console.log('🎯 First time launch detected - will show onboarding in main app');
+      // DO NOT auto-start any services on first launch - wait for user consent
       selectedFeatures = {
-        comfyUI: true,
-        n8n: true,
-        ragAndTts: true,
-        claraCore: true
+        comfyUI: false,
+        n8n: false,
+        ragAndTts: false,
+        claraCore: true // Only Clara Core is always enabled
       };
-      // Mark that we need to show feature selection in the main app
+      // Mark that we need to show onboarding in the main app
       global.needsFeatureSelection = true;
     } else {
-      // Load existing feature configuration
+      // Load existing feature configuration (user has completed onboarding)
       selectedFeatures = FeatureSelectionScreen.getCurrentConfig();
       console.log('📋 Loaded existing feature configuration:', selectedFeatures);
       global.needsFeatureSelection = false;
@@ -4124,13 +4547,50 @@ async function initializeInBackground(selectedFeatures) {
       isDockerAvailable = await dockerSetup.isDockerRunning();
     }
     
-    // Initialize services based on Docker availability
-    if (isDockerAvailable) {
-      sendStatusUpdate('docker-available', { message: 'Docker detected - Setting up services...' });
-      await initializeServicesWithDocker(selectedFeatures, sendStatusUpdate);
+    // Only initialize services if user has completed onboarding and given consent
+    const hasUserConsent = !global.needsFeatureSelection;
+    
+    if (hasUserConsent) {
+      // Check if user has enabled auto-start for services
+      let shouldAutoStartServices = false;
+      try {
+        // Since we can't easily access the frontend db from main process,
+        // and the default is false (which is what we want for security),
+        // we'll default to false unless explicitly set
+        shouldAutoStartServices = false;
+        
+        // TODO: In the future, we could save startup preferences to a separate file
+        // that both frontend and backend can access, or use IPC communication
+      } catch (error) {
+        log.warn('Could not check auto-start preference, defaulting to false:', error);
+        shouldAutoStartServices = false;
+      }
+      
+      if (shouldAutoStartServices) {
+        // User has explicitly enabled auto-start - initialize services
+        console.log('✅ User consent obtained and auto-start enabled - initializing selected services');
+        if (isDockerAvailable) {
+          sendStatusUpdate('docker-available', { message: 'Docker detected - Setting up services...' });
+          await initializeServicesWithDocker(selectedFeatures, sendStatusUpdate);
+        } else {
+          sendStatusUpdate('docker-not-available', { message: 'Docker not available - Running in lightweight mode...' });
+          await initializeServicesWithoutDocker(selectedFeatures, sendStatusUpdate);
+        }
+      } else {
+        // User has consent but auto-start is disabled - wait for manual service start
+        console.log('✅ User consent obtained but auto-start disabled - services available on demand');
+        sendStatusUpdate('consent-no-autostart', { 
+          message: 'Services available - start them manually when needed',
+          dockerAvailable: isDockerAvailable 
+        });
+      }
     } else {
-      sendStatusUpdate('docker-not-available', { message: 'Docker not available - Running in lightweight mode...' });
-      await initializeServicesWithoutDocker(selectedFeatures, sendStatusUpdate);
+      // First time launch - wait for user to complete onboarding
+      console.log('⏳ First time launch - waiting for user consent before starting services');
+      sendStatusUpdate('waiting-for-consent', { 
+        message: 'Waiting for user to complete onboarding before starting services...',
+        dockerAvailable: isDockerAvailable 
+      });
     }
     
     sendStatusUpdate('ready', { message: 'All services initialized' });
@@ -4170,7 +4630,7 @@ async function initializeServicesWithDocker(selectedFeatures, sendStatusUpdate) 
     await initializeServicesInBackground();
     
     // Initialize watchdog
-    watchdogService = new WatchdogService(dockerSetup.docker, mcpService);
+    watchdogService = new WatchdogService(dockerSetup, llamaSwapService, mcpService);
     watchdogService.start();
     
   } catch (error) {
@@ -4956,6 +5416,9 @@ ipcMain.handle('update-feature-config', async (event, newConfig) => {
     // Load current config
     const currentConfig = featureSelection.loadConfig();
     
+    // Check if this is completing first-time setup
+    const wasFirstTime = currentConfig.firstTimeSetup === true;
+    
     // Update with new selections
     const updatedConfig = {
       ...currentConfig,
@@ -4963,6 +5426,7 @@ ipcMain.handle('update-feature-config', async (event, newConfig) => {
         claraCore: true, // Always enabled
         ...newConfig
       },
+      firstTimeSetup: false, // Mark onboarding as complete
       setupTimestamp: new Date().toISOString()
     };
     
@@ -4972,7 +5436,35 @@ ipcMain.handle('update-feature-config', async (event, newConfig) => {
     if (success) {
       // Update global selected features
       global.selectedFeatures = updatedConfig.selectedFeatures;
+      global.needsFeatureSelection = false; // User has completed onboarding
       log.info('✅ Feature configuration updated:', updatedConfig.selectedFeatures);
+      
+      // If this was first-time setup completion, initialize services with user consent
+      if (wasFirstTime && newConfig.userConsentGiven) {
+        log.info('🎉 User completed onboarding - initializing selected services with consent');
+        
+        // Send status update to UI
+        const sendStatusUpdate = (status, details = {}) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('service-status-update', { status, ...details });
+          }
+        };
+        
+        // Initialize services with user's selections
+        if (dockerSetup) {
+          const isDockerAvailable = await dockerSetup.isDockerRunning();
+          
+          if (isDockerAvailable) {
+            sendStatusUpdate('docker-available', { message: 'Starting selected services with Docker...' });
+            await initializeServicesWithDocker(updatedConfig.selectedFeatures, sendStatusUpdate);
+          } else {
+            sendStatusUpdate('docker-not-available', { message: 'Starting selected services in lightweight mode...' });
+            await initializeServicesWithoutDocker(updatedConfig.selectedFeatures, sendStatusUpdate);
+          }
+          
+          sendStatusUpdate('ready', { message: 'All selected services initialized' });
+        }
+      }
     }
     
     return success;

@@ -248,6 +248,12 @@ class WatchdogService extends EventEmitter {
       return;
     }
 
+    // Check for user consent before starting any service monitoring
+    if (!this.checkUserConsent()) {
+      this.logEvent('WATCHDOG_START', 'INFO', 'User consent not found, watchdog service will not monitor services');
+      return;
+    }
+
     this.isRunning = true;
     this.isStarting = true;
     
@@ -288,6 +294,90 @@ class WatchdogService extends EventEmitter {
 
     this.emit('started');
     this.logEvent('WATCHDOG_STARTED', 'INFO', 'Watchdog Service started successfully');
+  }
+
+  checkUserConsent() {
+    const fs = require('fs');
+    const path = require('path');
+    const { app } = require('electron');
+    
+    try {
+      const userDataPath = app.getPath('userData');
+      const consentFile = path.join(userDataPath, 'user-service-consent.json');
+      
+      if (fs.existsSync(consentFile)) {
+        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
+        this.logEvent('USER_CONSENT_CHECK', 'INFO', 'User service consent status loaded', {
+          hasConsented: consentData.hasConsented,
+          servicesConsented: consentData.services,
+          consentDate: consentData.timestamp
+        });
+        
+        // Check if user has auto-start enabled (default: false)
+        let autoStartEnabled = false;
+        try {
+          // Since we can't easily access the frontend db from main process,
+          // and the default is false (which is what we want for security),
+          // we'll default to false unless explicitly set via a dedicated file
+          
+          // TODO: In the future, we could save startup preferences to a separate file
+          // that both frontend and backend can access
+          autoStartEnabled = false;
+        } catch (error) {
+          this.logEvent('AUTO_START_CHECK', 'WARN', 'Could not check auto-start preference', {
+            error: error.message
+          });
+        }
+        
+        if (!autoStartEnabled) {
+          this.logEvent('AUTO_START_DISABLED', 'INFO', 'Auto-start disabled - watchdog will not monitor services');
+          // Disable all services if auto-start is disabled
+          for (const [serviceKey, service] of Object.entries(this.services)) {
+            service.enabled = false;
+            service.status = 'disabled';
+          }
+          return false;
+        }
+        
+        // Only enable services that user has explicitly consented to
+        if (consentData.hasConsented && consentData.services) {
+          for (const [serviceKey, service] of Object.entries(this.services)) {
+            if (consentData.services[serviceKey] === true) {
+              service.enabled = true;
+              this.logEvent('SERVICE_CONSENT_ENABLED', 'INFO', `Service ${serviceKey} enabled by user consent`);
+            } else {
+              service.enabled = false;
+              service.status = 'disabled';
+              this.logEvent('SERVICE_CONSENT_DISABLED', 'INFO', `Service ${serviceKey} disabled - no user consent`);
+            }
+          }
+        }
+        
+        return consentData.hasConsented === true && autoStartEnabled;
+      } else {
+        this.logEvent('USER_CONSENT_CHECK', 'INFO', 'No user consent file found, service monitoring disabled');
+        
+        // Disable all services if no consent file exists
+        for (const [serviceKey, service] of Object.entries(this.services)) {
+          service.enabled = false;
+          service.status = 'disabled';
+        }
+        
+        return false;
+      }
+    } catch (error) {
+      this.logEvent('USER_CONSENT_ERROR', 'ERROR', 'Failed to read user consent status', {
+        error: error.message
+      });
+      
+      // Disable all services on error
+      for (const [serviceKey, service] of Object.entries(this.services)) {
+        service.enabled = false;
+        service.status = 'disabled';
+      }
+      
+      return false;
+    }
   }
 
   checkComfyUIConsent() {

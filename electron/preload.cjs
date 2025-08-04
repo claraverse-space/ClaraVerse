@@ -164,6 +164,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
   saveComfyUIConsent: (hasConsented) => ipcRenderer.invoke('save-comfyui-consent', hasConsented),
   getComfyUIConsent: () => ipcRenderer.invoke('get-comfyui-consent'),
+  createUserConsentFile: (consentData) => ipcRenderer.invoke('createUserConsentFile', consentData),
   getGPUInfo: () => ipcRenderer.invoke('get-gpu-info'),
   
   // Services status API

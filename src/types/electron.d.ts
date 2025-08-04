@@ -92,11 +92,13 @@ export interface ElectronAPI {
   comfyuiOptimize: () => Promise<{ success: boolean; message?: string; error?: string }>;
   
   // System information methods
-  getPlatform: () => string;
   getSystemInfo: () => Promise<{ arch: string; platform: string; [key: string]: any }>;
   saveComfyUIConsent: (hasConsented: boolean) => Promise<void>;
   getComfyUIConsent: () => Promise<{ hasConsented: boolean; timestamp?: string; version?: string } | null>;
   getGPUInfo: () => Promise<{ success: boolean; gpuInfo?: { hasNvidiaGPU: boolean; gpuName: string; isAMD: boolean; renderer?: string; [key: string]: any }; error?: string }>;
+  
+  // Generic invoke method for IPC
+  invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
 interface LlamaSwapAPI {
@@ -110,7 +112,6 @@ interface LlamaSwapAPI {
     };
     error?: string;
   }>;
-}
   
   // Services status
   getServicesStatus: () => Promise<{

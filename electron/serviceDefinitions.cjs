@@ -98,6 +98,12 @@ const SERVICE_DEFINITIONS = {
     priority: 3,
     dependencies: ['docker'],
     
+    // NEW: Deployment mode support - native binary service
+    deploymentModes: ['native'],
+    platformSupport: {
+      native: ['win32', 'darwin', 'linux'] // Native binary supported on all platforms
+    },
+    
     binaryPath: platform === 'darwin' 
       ? './llamacpp-binaries/llamacpp-server-darwin-arm64'
       : platform === 'linux'

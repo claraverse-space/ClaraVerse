@@ -144,6 +144,8 @@ class CentralServiceManager extends EventEmitter {
       // Start service based on deployment mode
       if (deploymentMode === 'manual') {
         service.instance = await this.startManualService(serviceName, service);
+      } else if (deploymentMode === 'native') {
+        service.instance = await this.startNativeService(serviceName, service);
       } else {
         // Default to Docker mode (backward compatibility)
         const startupMethod = this.getStartupMethod(service);
@@ -567,6 +569,27 @@ class CentralServiceManager extends EventEmitter {
       startTime: Date.now(),
       deploymentMode: 'manual'
     };
+  }
+
+  /**
+   * NEW: Start native service (binary executable)
+   */
+  async startNativeService(serviceName, service) {
+    log.info(`🔧 Starting native service ${serviceName}`);
+    
+    // Use the service's custom start method if available
+    if (service.customStart) {
+      const instance = await service.customStart();
+      return {
+        type: 'native',
+        instance: instance,
+        startTime: Date.now(),
+        deploymentMode: 'native'
+      };
+    }
+    
+    // Fallback: generic native service startup
+    throw new Error(`Native service ${serviceName} does not define a customStart method`);
   }
 
   /**

@@ -39,7 +39,7 @@ interface DownloadProgress {
 interface EnhancedServiceStatus {
   [serviceName: string]: {
     state: 'running' | 'stopped' | 'starting' | 'error';
-    deploymentMode: 'docker' | 'manual';
+    deploymentMode: 'docker' | 'manual' | 'native';
     restartAttempts: number;
     lastHealthCheck: number | null;
     uptime: number;
@@ -63,7 +63,6 @@ interface MenuItem {
   label: string;
   id: string;
   disabled?: boolean;
-  status?: 'ready' | 'starting';
 }
 
 const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled = false }: SidebarProps) => {
@@ -107,24 +106,81 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     return () => window.removeEventListener('clara-background-activity', handleClaraActivity as EventListener);
   }, []);
 
-  // Check enhanced service status (matching Settings.tsx approach)
+  // Listen for real-time service status changes
+  useEffect(() => {
+    const handleServiceStatusUpdate = (event: any) => {
+      const { serviceName, status, error } = event.detail || {};
+      
+      if (serviceName && status) {
+        console.log(`🔍 Sidebar - Real-time status update: ${serviceName} -> ${status}`, error ? `Error: ${error}` : '');
+        
+        setEnhancedServiceStatus(prev => ({
+          ...prev,
+          [serviceName]: {
+            ...prev[serviceName],
+            state: status === 'running' ? 'running' : 
+                   status === 'starting' ? 'starting' :
+                   status === 'error' || error ? 'error' : 'stopped',
+            lastHealthCheck: Date.now()
+          }
+        }));
+      }
+    };
+
+    // Listen for background service status events
+    window.addEventListener('background-service-status', handleServiceStatusUpdate);
+    window.addEventListener('service-status-update', handleServiceStatusUpdate);
+    
+    return () => {
+      window.removeEventListener('background-service-status', handleServiceStatusUpdate);
+      window.removeEventListener('service-status-update', handleServiceStatusUpdate);
+    };
+  }, []);
+
+  // Enhanced service status monitoring with watchdog integration
   useEffect(() => {
     const loadServiceStatus = async () => {
       try {
         if ((window as any).electronAPI?.invoke) {
-          const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
-          console.log('🔍 Sidebar - Enhanced service status:', status);
-          setEnhancedServiceStatus(status || {});
+          // First get enhanced status from service config
+          const enhancedStatus = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
+          
+          // Then get real-time status from watchdog service
+          const watchdogResult = await (window as any).electronAPI.invoke('watchdog-get-services-status');
+          
+          if (watchdogResult?.success && watchdogResult?.services) {
+            // Merge watchdog status with enhanced status for complete picture
+            const mergedStatus = { ...enhancedStatus };
+            
+            Object.entries(watchdogResult.services).forEach(([serviceName, watchdogData]: [string, any]) => {
+              if (mergedStatus[serviceName]) {
+                mergedStatus[serviceName] = {
+                  ...mergedStatus[serviceName],
+                  state: watchdogData.isHealthy ? 'running' : 'stopped',
+                  lastHealthCheck: watchdogData.lastCheck || null,
+                  uptime: watchdogData.uptime || 0
+                };
+              }
+            });
+            
+            console.log('🔍 Sidebar - Merged service status (enhanced + watchdog):', mergedStatus);
+            console.log('🔍 Sidebar - LlamaSwap specific status:', mergedStatus.llamaswap);
+            setEnhancedServiceStatus(mergedStatus);
+          } else {
+            // Fallback to enhanced status only
+            console.log('🔍 Sidebar - Enhanced service status only:', enhancedStatus);
+            setEnhancedServiceStatus(enhancedStatus || {});
+          }
         }
       } catch (error) {
-        console.error('Failed to load enhanced service status:', error);
+        console.error('Failed to load service status:', error);
         setEnhancedServiceStatus({});
       }
     };
 
     loadServiceStatus();
-    // Check periodically every 60 seconds (reduced from 30s to minimize noise)
-    const interval = setInterval(loadServiceStatus, 60000);
+    // More frequent updates for better reactivity (every 15 seconds)
+    const interval = setInterval(loadServiceStatus, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -224,35 +280,43 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     );
   };
 
+  // Simple helper function to check if service is responding
+  const isServiceResponding = (serviceName: string): boolean => {
+    const serviceStatus = enhancedServiceStatus[serviceName];
+    return serviceStatus?.state === 'running';
+  };
+
   const mainMenuItems: MenuItem[] = [
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
-    // { icon: Bot, label: 'Chat', id: 'assistant' },
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
     { icon: BookOpen, label: 'Notebooks', id: 'notebooks' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
-    // Only show Image Gen if ComfyUI feature is enabled
+    // Only show Image Gen if ComfyUI feature is enabled by user
     ...(featureConfig.comfyUI ? [{
       icon: ImageIcon, 
       label: 'Image Gen', 
-      id: 'image-gen',
-      status: enhancedServiceStatus.comfyui?.state === 'running' ? 'ready' as const : 'starting' as const
+      id: 'image-gen'
     }] : []),
-    // Only show n8n if feature is enabled AND service is running
-    ...(featureConfig.n8n && enhancedServiceStatus.n8n?.state === 'running'
-      ? [{ icon: Network, label: 'Workflows', id: 'n8n' }] 
-      : [])
+    // Only show n8n if feature is enabled by user
+    ...(featureConfig.n8n ? [{
+      icon: Network, 
+      label: 'Workflows', 
+      id: 'n8n'
+    }] : [])
   ];
 
-  // Debug logging for ComfyUI visibility
-  // console.log('🔍 Sidebar Debug:', {
-  //   'featureConfig.comfyUI': featureConfig.comfyUI,
-  //   'enhancedServiceStatus.comfyui': enhancedServiceStatus.comfyui,
-  //   'comfyui state': enhancedServiceStatus.comfyui?.state,
-  //   'final menu items count': mainMenuItems.length,
-  //   'has image-gen': mainMenuItems.some(item => item.id === 'image-gen')
-  // });
+  // Enhanced debug logging for service visibility
+  console.log('🔍 Sidebar Service Debug:', {
+    'featureConfig': featureConfig,
+    'enhancedServiceStatus': enhancedServiceStatus,
+    'comfyui enabled': featureConfig.comfyUI,
+    'comfyui responding': isServiceResponding('comfyui'),
+    'n8n enabled': featureConfig.n8n,
+    'n8n responding': isServiceResponding('n8n'),
+    'final menu items': mainMenuItems.map(item => ({ id: item.id }))
+  });
 
   const bottomMenuItems: MenuItem[] = [
     { icon: Settings, label: 'Settings', id: 'settings' },
@@ -307,11 +371,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
                   {item.id === 'clara' && claraBackgroundActivity && (
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   )}
-                  {/* ComfyUI status indicator */}
-                  {item.id === 'image-gen' && item.status === 'starting' && (
-                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                  )}
-                  {item.id === 'image-gen' && item.status === 'ready' && (
+                  {/* Simple ping indicators for n8n and image-gen when responding */}
+                  {(item.id === 'n8n' || item.id === 'image-gen') && isServiceResponding(item.id === 'n8n' ? 'n8n' : 'comfyui') && (
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
                   )}
                 </div>
@@ -324,14 +385,6 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
                   {/* Background activity text indicator when expanded */}
                   {item.id === 'clara' && claraBackgroundActivity && isExpanded && (
                     <span className="ml-2 text-xs text-green-500 font-medium">●</span>
-                  )}
-                  {/* ComfyUI status text when expanded */}
-                  {item.id === 'image-gen' && isExpanded && (
-                    <span className={`ml-2 text-xs font-medium ${
-                      item.status === 'ready' ? 'text-green-500' : 'text-yellow-500'
-                    }`}>
-                      {item.status === 'ready' ? '●' : '○'}
-                    </span>
                   )}
                 </span>
               </button>
