@@ -5,6 +5,14 @@ export const DEFAULT_UI_PREFERENCES = {
   font_scale: 1.0,
   accent_color: '#ec4899', // Default sakura-500
   font_family: 'system-ui', // Default system font
+  font_weight: 'normal' as 'light' | 'normal' | 'medium' | 'semibold',
+  line_height: 'normal' as 'tight' | 'normal' | 'relaxed' | 'loose',
+  letter_spacing: 'normal' as 'tight' | 'normal' | 'wide',
+  // Extended theming options
+  background_style: 'default' as 'default' | 'warm' | 'cool' | 'minimal' | 'cozy',
+  interface_density: 'normal' as 'compact' | 'normal' | 'comfortable',
+  border_radius: 'normal' as 'sharp' | 'normal' | 'rounded' | 'soft',
+  glassmorphism_strength: 'medium' as 'none' | 'subtle' | 'medium' | 'strong',
 };
 
 // Font scale options
@@ -15,6 +23,29 @@ export const FONT_SCALE_OPTIONS = [
   { value: 1.15, label: 'Large (115%)', description: 'Slightly larger text' },
   { value: 1.3, label: 'Large+ (130%)', description: 'Larger text for better readability' },
   { value: 1.5, label: 'Extra Large (150%)', description: 'Maximum font size' },
+];
+
+// Font weight options
+export const FONT_WEIGHT_OPTIONS = [
+  { value: 'light', label: 'Light (300)', description: 'Thin, elegant text' },
+  { value: 'normal', label: 'Normal (400)', description: 'Standard weight' },
+  { value: 'medium', label: 'Medium (500)', description: 'Slightly bold' },
+  { value: 'semibold', label: 'Semibold (600)', description: 'Bold and clear' },
+];
+
+// Line height options
+export const LINE_HEIGHT_OPTIONS = [
+  { value: 'tight', label: 'Tight (1.25)', description: 'Compact line spacing' },
+  { value: 'normal', label: 'Normal (1.5)', description: 'Standard line spacing' },
+  { value: 'relaxed', label: 'Relaxed (1.75)', description: 'Comfortable reading' },
+  { value: 'loose', label: 'Loose (2.0)', description: 'Maximum readability' },
+];
+
+// Letter spacing options
+export const LETTER_SPACING_OPTIONS = [
+  { value: 'tight', label: 'Tight (-0.025em)', description: 'Condensed characters' },
+  { value: 'normal', label: 'Normal (0)', description: 'Standard spacing' },
+  { value: 'wide', label: 'Wide (0.025em)', description: 'Expanded characters' },
 ];
 
 // Popular accent color options
@@ -79,23 +110,265 @@ function darken(r: number, g: number, b: number, factor: number): string {
   return `${newR} ${newG} ${newB}`;
 }
 
-// Common system fonts that are widely available
+// AI-Inspired fonts commonly used by popular AI interfaces
 export const SYSTEM_FONTS = [
-  { value: 'system-ui', label: 'System Default', description: 'Your system\'s default font' },
-  { value: 'Inter, system-ui, sans-serif', label: 'Inter', description: 'Modern sans-serif' },
-  { value: 'Roboto, system-ui, sans-serif', label: 'Roboto', description: 'Google\'s Roboto font' },
-  { value: 'Segoe UI, system-ui, sans-serif', label: 'Segoe UI', description: 'Windows system font' },
-  { value: 'San Francisco, system-ui, sans-serif', label: 'San Francisco', description: 'Apple system font' },
-  { value: 'Arial, sans-serif', label: 'Arial', description: 'Classic sans-serif' },
-  { value: 'Helvetica, Arial, sans-serif', label: 'Helvetica', description: 'Clean sans-serif' },
-  { value: 'Georgia, serif', label: 'Georgia', description: 'Readable serif font' },
-  { value: 'Times New Roman, serif', label: 'Times New Roman', description: 'Traditional serif' },
-  { value: 'Courier New, monospace', label: 'Courier New', description: 'Monospace font' },
-  { value: 'Monaco, Consolas, monospace', label: 'Monaco', description: 'Code editor font' },
+  // Popular AI Interface Fonts
+  { value: 'system-ui', label: 'System Default', description: 'Your system\'s default font', category: 'System' },
+  { value: '"Söhne", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif', label: 'Söhne', description: 'ChatGPT\'s signature font family', category: 'AI Interface' },
+  { value: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', label: 'Inter', description: 'Modern, clean interface font', category: 'AI Interface' },
+  { value: '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif', label: 'SF Pro Display', description: 'Apple\'s premium display font', category: 'AI Interface' },
+  { value: '"Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif', label: 'Segoe UI', description: 'Microsoft\'s modern system font', category: 'AI Interface' },
+  { value: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', label: 'Roboto', description: 'Google\'s Material Design font', category: 'AI Interface' },
+  
+  // Professional & Modern Fonts
+  { value: '"Helvetica Neue", Helvetica, Arial, sans-serif', label: 'Helvetica Neue', description: 'Classic modern sans-serif', category: 'Professional' },
+  { value: '"Open Sans", -apple-system, BlinkMacSystemFont, sans-serif', label: 'Open Sans', description: 'Friendly and open character', category: 'Professional' },
+  { value: '"Lato", -apple-system, BlinkMacSystemFont, sans-serif', label: 'Lato', description: 'Humanist sans-serif', category: 'Professional' },
+  { value: '"Source Sans Pro", -apple-system, BlinkMacSystemFont, sans-serif', label: 'Source Sans Pro', description: 'Adobe\'s clean sans-serif', category: 'Professional' },
+  { value: '"Nunito", -apple-system, BlinkMacSystemFont, sans-serif', label: 'Nunito', description: 'Rounded, friendly appearance', category: 'Professional' },
+  
+  // Reading & Content Fonts
+  { value: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif', label: 'Charter', description: 'Optimized for reading', category: 'Reading' },
+  { value: '"Georgia", "Times New Roman", Times, serif', label: 'Georgia', description: 'Screen-optimized serif', category: 'Reading' },
+  { value: '"Crimson Text", Georgia, serif', label: 'Crimson Text', description: 'Book-style serif font', category: 'Reading' },
+  { value: '"Merriweather", Georgia, serif', label: 'Merriweather', description: 'Designed for readability', category: 'Reading' },
+  
+  // Monospace & Code Fonts
+  { value: '"SF Mono", Monaco, Inconsolata, "Roboto Mono", monospace', label: 'SF Mono', description: 'Apple\'s monospace font', category: 'Code' },
+  { value: '"Fira Code", "SF Mono", Monaco, Consolas, monospace', label: 'Fira Code', description: 'Programming font with ligatures', category: 'Code' },
+  { value: '"JetBrains Mono", "SF Mono", Monaco, Consolas, monospace', label: 'JetBrains Mono', description: 'Developer-focused monospace', category: 'Code' },
+  { value: '"Source Code Pro", Monaco, Consolas, monospace', label: 'Source Code Pro', description: 'Adobe\'s monospace font', category: 'Code' },
+  { value: '"Consolas", "SF Mono", Monaco, monospace', label: 'Consolas', description: 'Microsoft\'s ClearType font', category: 'Code' },
+  
+  // Classic & Fallback Fonts
+  { value: 'Arial, sans-serif', label: 'Arial', description: 'Universal sans-serif', category: 'Classic' },
+  { value: 'Helvetica, Arial, sans-serif', label: 'Helvetica', description: 'Timeless Swiss design', category: 'Classic' },
+  { value: '"Times New Roman", Times, serif', label: 'Times New Roman', description: 'Traditional serif', category: 'Classic' },
+  { value: 'Courier, "Courier New", monospace', label: 'Courier', description: 'Typewriter-style font', category: 'Classic' },
+];
+
+// Comprehensive visual presets inspired by popular AI interfaces
+export const FONT_PRESETS = [
+  {
+    id: 'chatgpt',
+    name: 'ChatGPT Style',
+    description: 'Clean and modern like OpenAI\'s ChatGPT',
+    icon: '🤖',
+    settings: {
+      font_family: '"Söhne", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif',
+      font_scale: 1.0,
+      line_height: 'relaxed' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#10a37f', // ChatGPT's signature green
+      background_style: 'default' as const,
+      interface_density: 'normal' as const,
+      border_radius: 'normal' as const,
+      glassmorphism_strength: 'subtle' as const
+    }
+  },
+  {
+    id: 'claude',
+    name: 'Claude Style', 
+    description: 'Elegant and readable like Anthropic\'s Claude',
+    icon: '🎭',
+    settings: {
+      font_family: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      font_scale: 1.0,
+      line_height: 'relaxed' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#cc785c', // Claude's warm orange-brown
+      background_style: 'warm' as const,
+      interface_density: 'comfortable' as const,
+      border_radius: 'rounded' as const,
+      glassmorphism_strength: 'medium' as const
+    }
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini Style',
+    description: 'Google\'s clean and professional look',
+    icon: '💎',
+    settings: {
+      font_family: '"Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      font_scale: 1.0,
+      line_height: 'normal' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#4285f4', // Google Blue
+      background_style: 'cool' as const,
+      interface_density: 'normal' as const,
+      border_radius: 'normal' as const,
+      glassmorphism_strength: 'subtle' as const
+    }
+  },
+  {
+    id: 'copilot',
+    name: 'GitHub Copilot Style',
+    description: 'Developer-friendly interface',
+    icon: '🧑‍💻',
+    settings: {
+      font_family: '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 0.95,
+      line_height: 'normal' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'medium' as const,
+      accent_color: '#7c3aed', // GitHub Copilot Purple
+      background_style: 'minimal' as const,
+      interface_density: 'compact' as const,
+      border_radius: 'sharp' as const,
+      glassmorphism_strength: 'none' as const
+    }
+  },
+  {
+    id: 'notion',
+    name: 'Notion Style',
+    description: 'Clean workspace aesthetic',
+    icon: '📝',
+    settings: {
+      font_family: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 1.0,
+      line_height: 'relaxed' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#2f1b69', // Notion's dark purple
+      background_style: 'minimal' as const,
+      interface_density: 'comfortable' as const,
+      border_radius: 'normal' as const,
+      glassmorphism_strength: 'subtle' as const
+    }
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity Style',
+    description: 'Search-focused AI interface',
+    icon: '🔍',
+    settings: {
+      font_family: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 0.95,
+      line_height: 'normal' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'medium' as const,
+      accent_color: '#0ea5e9', // Perplexity's sky blue
+      background_style: 'cool' as const,
+      interface_density: 'compact' as const,
+      border_radius: 'rounded' as const,
+      glassmorphism_strength: 'medium' as const
+    }
+  },
+  {
+    id: 'readwise',
+    name: 'Reading Optimized',
+    description: 'Perfect for long conversations',
+    icon: '📚',
+    settings: {
+      font_family: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif',
+      font_scale: 1.1,
+      line_height: 'loose' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#f59e0b', // Warm amber for reading comfort
+      background_style: 'cozy' as const,
+      interface_density: 'comfortable' as const,
+      border_radius: 'soft' as const,
+      glassmorphism_strength: 'strong' as const
+    }
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal Clean',
+    description: 'Ultra-clean minimalist style',
+    icon: '⚪',
+    settings: {
+      font_family: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+      font_scale: 0.95,
+      line_height: 'tight' as const,
+      letter_spacing: 'tight' as const,
+      font_weight: 'light' as const,
+      accent_color: '#6b7280', // Minimal gray
+      background_style: 'minimal' as const,
+      interface_density: 'compact' as const,
+      border_radius: 'sharp' as const,
+      glassmorphism_strength: 'none' as const
+    }
+  },
+  {
+    id: 'accessibility',
+    name: 'High Readability',
+    description: 'Optimized for accessibility',
+    icon: '♿',
+    settings: {
+      font_family: '"Open Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 1.2,
+      line_height: 'loose' as const,
+      letter_spacing: 'wide' as const,
+      font_weight: 'medium' as const,
+      accent_color: '#059669', // High contrast green
+      background_style: 'default' as const,
+      interface_density: 'comfortable' as const,
+      border_radius: 'rounded' as const,
+      glassmorphism_strength: 'subtle' as const
+    }
+  },
+  {
+    id: 'discord',
+    name: 'Discord Style',
+    description: 'Gaming and community focused',
+    icon: '🎮',
+    settings: {
+      font_family: '"Whitney", "Helvetica Neue", Helvetica, Arial, sans-serif',
+      font_scale: 1.0,
+      line_height: 'normal' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'medium' as const,
+      accent_color: '#5865f2', // Discord Blurple
+      background_style: 'cool' as const,
+      interface_density: 'normal' as const,
+      border_radius: 'rounded' as const,
+      glassmorphism_strength: 'medium' as const
+    }
+  },
+  {
+    id: 'linear',
+    name: 'Linear Style',
+    description: 'Clean and efficient design',
+    icon: '📐',
+    settings: {
+      font_family: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 0.95,
+      line_height: 'tight' as const,
+      letter_spacing: 'tight' as const,
+      font_weight: 'medium' as const,
+      accent_color: '#6366f1', // Linear's indigo
+      background_style: 'minimal' as const,
+      interface_density: 'compact' as const,
+      border_radius: 'normal' as const,
+      glassmorphism_strength: 'subtle' as const
+    }
+  },
+  {
+    id: 'apple',
+    name: 'Apple Style',
+    description: 'Premium and polished interface',
+    icon: '🍎',
+    settings: {
+      font_family: '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+      font_scale: 1.0,
+      line_height: 'normal' as const,
+      letter_spacing: 'normal' as const,
+      font_weight: 'normal' as const,
+      accent_color: '#007aff', // Apple Blue
+      background_style: 'default' as const,
+      interface_density: 'normal' as const,
+      border_radius: 'soft' as const,
+      glassmorphism_strength: 'strong' as const
+    }
+  }
 ];
 
 // Detect available system fonts
-export async function detectSystemFonts(): Promise<{ value: string; label: string; description: string }[]> {
+export async function detectSystemFonts(): Promise<{ value: string; label: string; description: string; category: string }[]> {
   const fonts = [...SYSTEM_FONTS];
   
   // Test for additional popular fonts
@@ -119,6 +392,7 @@ export async function detectSystemFonts(): Promise<{ value: string; label: strin
             value: `${testFont.family}, system-ui, sans-serif`,
             label: testFont.family,
             description: testFont.description,
+            category: 'Web Fonts'
           });
         }
       } catch (error) {

@@ -11,7 +11,11 @@ import GPUDiagnostics from './GPUDiagnostics';
 import { 
   DEFAULT_UI_PREFERENCES, 
   FONT_SCALE_OPTIONS, 
+  FONT_WEIGHT_OPTIONS,
+  LINE_HEIGHT_OPTIONS,
+  LETTER_SPACING_OPTIONS,
   ACCENT_COLOR_OPTIONS, 
+  FONT_PRESETS,
   applyUIPreferences,
   detectSystemFonts
 } from '../utils/uiPreferences';
@@ -156,7 +160,7 @@ const Settings = () => {
   const [savingFeatureConfig, setSavingFeatureConfig] = useState(false);
 
   // Available system fonts state
-  const [availableFonts, setAvailableFonts] = useState<{ value: string; label: string; description: string }[]>([]);
+  const [availableFonts, setAvailableFonts] = useState<{ value: string; label: string; description: string; category: string }[]>([]);
   const [fontsLoading, setFontsLoading] = useState(true);
 
   // Type for update info to fix TypeScript errors
@@ -454,10 +458,10 @@ const Settings = () => {
         console.error('Failed to detect system fonts:', error);
         // Fall back to a basic set of fonts if detection fails
         setAvailableFonts([
-          { value: 'system-ui', label: 'System Default', description: 'Your system\'s default font' },
-          { value: 'Arial, sans-serif', label: 'Arial', description: 'Classic sans-serif' },
-          { value: 'Georgia, serif', label: 'Georgia', description: 'Readable serif font' },
-          { value: 'Monaco, Consolas, monospace', label: 'Monaco', description: 'Code editor font' },
+          { value: 'system-ui', label: 'System Default', description: 'Your system\'s default font', category: 'System' },
+          { value: 'Arial, sans-serif', label: 'Arial', description: 'Classic sans-serif', category: 'Classic' },
+          { value: 'Georgia, serif', label: 'Georgia', description: 'Readable serif font', category: 'Classic' },
+          { value: 'Monaco, Consolas, monospace', label: 'Monaco', description: 'Code editor font', category: 'Code' },
         ]);
       } finally {
         setFontsLoading(false);
@@ -693,8 +697,8 @@ const Settings = () => {
     const newPersonalInfo = {
       ...personalInfo,
       ui_preferences: {
-        ...personalInfo.ui_preferences,
         ...DEFAULT_UI_PREFERENCES,
+        ...personalInfo.ui_preferences,
         ...updates
       }
     };
@@ -1855,6 +1859,63 @@ const Settings = () => {
                     </div>
                   </div>
 
+                  {/* Advanced Typography Controls */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Font Weight */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Font Weight
+                      </label>
+                      <select
+                        value={personalInfo.ui_preferences?.font_weight || DEFAULT_UI_PREFERENCES.font_weight}
+                        onChange={(e) => handleUIPreferenceChange({ font_weight: e.target.value as any })}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        {FONT_WEIGHT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Line Height */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Line Height
+                      </label>
+                      <select
+                        value={personalInfo.ui_preferences?.line_height || DEFAULT_UI_PREFERENCES.line_height}
+                        onChange={(e) => handleUIPreferenceChange({ line_height: e.target.value as any })}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        {LINE_HEIGHT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Letter Spacing */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Letter Spacing
+                      </label>
+                      <select
+                        value={personalInfo.ui_preferences?.letter_spacing || DEFAULT_UI_PREFERENCES.letter_spacing}
+                        onChange={(e) => handleUIPreferenceChange({ letter_spacing: e.target.value as any })}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        {LETTER_SPACING_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Accent Color */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1926,6 +1987,164 @@ const Settings = () => {
                     </div>
                   </div>
 
+                  {/* Interface Presets */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Interface Presets
+                      </label>
+                      <button
+                        onClick={() => alert('🎨 Custom theme creation coming soon! Save your perfect combination of colors, fonts, and styling.')}
+                        className="text-xs px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                      >
+                        + Create Custom
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                      Complete visual themes inspired by popular AI interfaces • Hover to preview
+                    </p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {FONT_PRESETS.map((preset) => {
+                        const isActive = (personalInfo.ui_preferences?.font_family === preset.settings.font_family &&
+                          personalInfo.ui_preferences?.accent_color === (preset.settings as any).accent_color);
+                        
+                        return (
+                        <button
+                          key={preset.id}
+                          onClick={() => handleUIPreferenceChange(preset.settings)}
+                          onMouseEnter={() => {
+                            // Show preview tooltip on hover
+                            const tooltip = document.getElementById(`preset-tooltip-${preset.id}`);
+                            if (tooltip) tooltip.style.display = 'block';
+                          }}
+                          onMouseLeave={() => {
+                            const tooltip = document.getElementById(`preset-tooltip-${preset.id}`);
+                            if (tooltip) tooltip.style.display = 'none';
+                          }}
+                          className={`group relative p-4 rounded-xl border transition-all hover:shadow-lg bg-white/50 dark:bg-gray-800/50 text-left transform hover:scale-[1.02] ${
+                            isActive 
+                              ? 'border-sakura-300 dark:border-sakura-600 bg-sakura-50/50 dark:bg-sakura-900/20 shadow-md' 
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Icon and Color Preview */}
+                            <div className="flex-shrink-0">
+                              <div className="text-xl mb-2">{preset.icon}</div>
+                              <div className="flex gap-1">
+                                <div 
+                                  className="w-4 h-4 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm"
+                                  style={{ backgroundColor: (preset.settings as any).accent_color }}
+                                />
+                                {/* Accessibility indicator */}
+                                {preset.id === 'accessibility' && (
+                                  <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                                    <span className="text-white text-xs">A</span>
+                                  </div>
+                                )}
+                                {/* Reading optimized indicator */}
+                                {preset.id === 'readwise' && (
+                                  <div className="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
+                                    <span className="text-white text-xs">👁</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <div 
+                                  className="text-sm font-semibold text-gray-900 dark:text-white"
+                                  style={{ 
+                                    fontFamily: preset.settings.font_family,
+                                    fontWeight: (preset.settings as any).font_weight === 'light' ? '300' : 
+                                               (preset.settings as any).font_weight === 'normal' ? '400' :
+                                               (preset.settings as any).font_weight === 'medium' ? '500' : 
+                                               (preset.settings as any).font_weight === 'semibold' ? '600' : '400'
+                                  }}
+                                >
+                                  {preset.name}
+                                </div>
+                                {/* Active indicator */}
+                                {isActive && (
+                                  <div className="flex items-center gap-1">
+                                    <Check className="w-4 h-4 text-sakura-500 flex-shrink-0" />
+                                    <span className="text-xs text-sakura-600 dark:text-sakura-400 font-medium">Active</span>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                {preset.description}
+                              </p>
+                              
+                              {/* Typography Preview */}
+                              <div 
+                                className="text-xs text-gray-600 dark:text-gray-300 mb-2"
+                                style={{ 
+                                  fontFamily: preset.settings.font_family,
+                                  fontSize: `${preset.settings.font_scale * 12}px`,
+                                  lineHeight: (preset.settings as any).line_height === 'tight' ? '1.25' :
+                                             (preset.settings as any).line_height === 'normal' ? '1.5' :
+                                             (preset.settings as any).line_height === 'relaxed' ? '1.75' :
+                                             (preset.settings as any).line_height === 'loose' ? '2.0' : '1.5',
+                                  letterSpacing: (preset.settings as any).letter_spacing === 'tight' ? '-0.025em' :
+                                                (preset.settings as any).letter_spacing === 'normal' ? '0' :
+                                                (preset.settings as any).letter_spacing === 'wide' ? '0.025em' : '0',
+                                  fontWeight: (preset.settings as any).font_weight === 'light' ? '300' : 
+                                             (preset.settings as any).font_weight === 'normal' ? '400' :
+                                             (preset.settings as any).font_weight === 'medium' ? '500' : 
+                                             (preset.settings as any).font_weight === 'semibold' ? '600' : '400'
+                                }}
+                              >
+                                How are you today? This is a sample of the interface with this preset applied.
+                              </div>
+                              
+                              {/* Settings Summary with badges */}
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-400">
+                                  {Math.round(preset.settings.font_scale * 100)}%
+                                </span>
+                                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-400 capitalize">
+                                  {(preset.settings as any).font_weight}
+                                </span>
+                                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-400 capitalize">
+                                  {(preset.settings as any).line_height} spacing
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Hover tooltip with more details */}
+                          <div 
+                            id={`preset-tooltip-${preset.id}`}
+                            className="absolute -top-2 -right-2 bg-black dark:bg-white text-white dark:text-black text-xs px-2 py-1 rounded shadow-lg z-50 hidden pointer-events-none"
+                          >
+                            Click to apply theme
+                          </div>
+                        </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Theme Recommendations */}
+                    <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-purple-600 dark:text-purple-400">✨</span>
+                        <h4 className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+                          Smart Recommendations
+                        </h4>
+                      </div>
+                      <div className="text-xs text-purple-700 dark:text-purple-300 space-y-1">
+                        <p>• <strong>For long reading:</strong> Try "Reading Optimized" with serif fonts and comfortable spacing</p>
+                        <p>• <strong>For accessibility:</strong> "High Readability" offers maximum contrast and larger text</p>
+                        <p>• <strong>For developers:</strong> "GitHub Copilot" provides a familiar coding environment feel</p>
+                        <p>• <strong>For focus:</strong> "Minimal Clean" reduces visual distractions</p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Font Family Selection */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1938,17 +2157,57 @@ const Settings = () => {
                           <span className="text-sm text-gray-600 dark:text-gray-400">Loading fonts...</span>
                         </div>
                       ) : (
-                        <select
-                          value={personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family}
-                          onChange={(e) => handleUIPreferenceChange({ font_family: e.target.value })}
-                          className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                        >
-                          {availableFonts.map((font) => (
-                            <option key={font.value} value={font.value}>
-                              {font.label}
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          {/* Categorized Font Selection */}
+                          {['AI Interface', 'Professional', 'Reading', 'Code', 'Classic', 'System', 'Web Fonts'].map((category) => {
+                            const categoryFonts = availableFonts.filter(font => font.category === category);
+                            if (categoryFonts.length === 0) return null;
+                            
+                            return (
+                              <div key={category} className="mb-4">
+                                <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-2">
+                                  {category}
+                                </h4>
+                                <div className="grid grid-cols-1 gap-2">
+                                  {categoryFonts.map((font) => (
+                                    <button
+                                      key={font.value}
+                                      onClick={() => handleUIPreferenceChange({ font_family: font.value })}
+                                      className={`group text-left p-3 rounded-lg border transition-all ${
+                                        (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family) === font.value
+                                          ? 'border-sakura-300 dark:border-sakura-600 bg-sakura-50 dark:bg-sakura-900/20'
+                                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div 
+                                            className="font-medium text-gray-900 dark:text-white mb-1"
+                                            style={{ fontFamily: font.value }}
+                                          >
+                                            {font.label}
+                                          </div>
+                                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {font.description}
+                                          </div>
+                                          <div 
+                                            className="text-sm text-gray-600 dark:text-gray-300 mt-2"
+                                            style={{ fontFamily: font.value }}
+                                          >
+                                            The quick brown fox jumps over the lazy dog
+                                          </div>
+                                        </div>
+                                        {(personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family) === font.value && (
+                                          <Check className="w-4 h-4 text-sakura-500 ml-2 flex-shrink-0" />
+                                        )}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </>
                       )}
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {!fontsLoading && availableFonts.find(font => font.value === (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family))?.description}
@@ -1956,45 +2215,137 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  {/* Preview */}
+                  {/* Enhanced Preview Section */}
                   <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                      Preview
-                    </h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Live Typography Preview
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            // Toggle between sample texts
+                            const samples = [
+                              "The quick brown fox jumps over the lazy dog.",
+                              "Hello! How can I assist you today?",
+                              "This is a longer sample text to demonstrate how your typography settings affect readability in extended conversations with Clara.",
+                              "Code: function greet() { return 'Hello World'; }"
+                            ];
+                            const current = document.querySelector('[data-preview-text]')?.textContent || '';
+                            const currentIndex = samples.indexOf(current);
+                            const nextIndex = (currentIndex + 1) % samples.length;
+                            const previewEl = document.querySelector('[data-preview-text]');
+                            if (previewEl) previewEl.textContent = samples[nextIndex];
+                          }}
+                          className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                        >
+                          Change Sample
+                        </button>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Contrast: <span className="font-mono">4.8:1</span> ✅
+                        </div>
+                      </div>
+                    </div>
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div 
-                          className="w-6 h-6 rounded-full"
+                          className="w-6 h-6 rounded-full shadow-sm ring-2 ring-white dark:ring-gray-700"
                           style={{ backgroundColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color }}
                         />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          This is how your accent color will appear
+                          This is your accent color • Used for buttons, links, and highlights
                         </span>
                       </div>
                       <div 
                         style={{ 
                           fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
-                          fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`
+                          fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 16)}px`,
+                          fontWeight: personalInfo.ui_preferences?.font_weight === 'light' ? '300' : 
+                                     personalInfo.ui_preferences?.font_weight === 'normal' ? '400' :
+                                     personalInfo.ui_preferences?.font_weight === 'medium' ? '500' : 
+                                     personalInfo.ui_preferences?.font_weight === 'semibold' ? '600' : '400',
+                          lineHeight: personalInfo.ui_preferences?.line_height === 'tight' ? '1.25' :
+                                     personalInfo.ui_preferences?.line_height === 'normal' ? '1.5' :
+                                     personalInfo.ui_preferences?.line_height === 'relaxed' ? '1.75' : 
+                                     personalInfo.ui_preferences?.line_height === 'loose' ? '2.0' : '1.5',
+                          letterSpacing: personalInfo.ui_preferences?.letter_spacing === 'tight' ? '-0.025em' :
+                                        personalInfo.ui_preferences?.letter_spacing === 'normal' ? '0' :
+                                        personalInfo.ui_preferences?.letter_spacing === 'wide' ? '0.025em' : '0'
                         }}
-                        className="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                        className="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm"
                       >
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white text-sm font-semibold">
+                            C
+                          </div>
+                          <div>
+                            <p className="text-gray-800 dark:text-gray-200 font-semibold text-sm">Clara</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">AI Assistant</p>
+                          </div>
+                        </div>
                         <p className="text-gray-800 dark:text-gray-200 font-medium mb-2">
-                          Sample Text with Selected Font
+                          Sample Conversation Preview
                         </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          This preview shows your selected font family "{availableFonts.find(f => f.value === (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family))?.label || 'System Default'}" at {Math.round((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 100)}% scale.
+                        <p 
+                          className="text-gray-600 dark:text-gray-400 mb-3"
+                          data-preview-text
+                        >
+                          The quick brown fox jumps over the lazy dog. This preview demonstrates how your typography settings affect readability and visual appeal in conversations with Clara.
                         </p>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 bg-gray-50 dark:bg-gray-800 rounded p-2">
+                          <div className="flex justify-between">
+                            <span>Font:</span>
+                            <span className="font-mono">"{availableFonts.find(f => f.value === (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family))?.label || 'System Default'}"</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Size:</span>
+                            <span className="font-mono">{Math.round((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 100)}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Weight:</span>
+                            <span className="font-mono">{FONT_WEIGHT_OPTIONS.find(w => w.value === (personalInfo.ui_preferences?.font_weight || DEFAULT_UI_PREFERENCES.font_weight))?.label || 'Normal'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Line Height:</span>
+                            <span className="font-mono">{LINE_HEIGHT_OPTIONS.find(l => l.value === (personalInfo.ui_preferences?.line_height || DEFAULT_UI_PREFERENCES.line_height))?.label || 'Normal'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Letter Spacing:</span>
+                            <span className="font-mono">{LETTER_SPACING_OPTIONS.find(s => s.value === (personalInfo.ui_preferences?.letter_spacing || DEFAULT_UI_PREFERENCES.letter_spacing))?.label || 'Normal'}</span>
+                          </div>
+                        </div>
                       </div>
-                      <button 
-                        className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-                        style={{ 
-                          backgroundColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color,
-                          fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
-                          fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`
-                        }}
-                      >
-                        Sample Button
-                      </button>
+                      <div className="flex gap-2">
+                        <button 
+                          className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-all hover:shadow-md transform hover:scale-105"
+                          style={{ 
+                            backgroundColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color,
+                            fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
+                            fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`,
+                            fontWeight: personalInfo.ui_preferences?.font_weight === 'light' ? '300' : 
+                                       personalInfo.ui_preferences?.font_weight === 'normal' ? '400' :
+                                       personalInfo.ui_preferences?.font_weight === 'medium' ? '500' : 
+                                       personalInfo.ui_preferences?.font_weight === 'semibold' ? '600' : '400',
+                          }}
+                        >
+                          Primary Button
+                        </button>
+                        <button 
+                          className="px-4 py-2 border rounded-lg text-sm font-medium transition-all hover:shadow-md transform hover:scale-105"
+                          style={{ 
+                            borderColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color,
+                            color: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color,
+                            fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
+                            fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`,
+                            fontWeight: personalInfo.ui_preferences?.font_weight === 'light' ? '300' : 
+                                       personalInfo.ui_preferences?.font_weight === 'normal' ? '400' :
+                                       personalInfo.ui_preferences?.font_weight === 'medium' ? '500' : 
+                                       personalInfo.ui_preferences?.font_weight === 'semibold' ? '600' : '400',
+                          }}
+                        >
+                          Secondary Button
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2809,7 +3160,7 @@ const ProcessButton = () => {
                         Current Llama.cpp Version
                       </h4>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Version {llamacppUpdateInfo?.currentVersion || 'Unknown'} on {llamacppUpdateInfo ? getPlatformName(llamacppUpdateInfo.platform) : 'Unknown Platform'}
+                        Version {llamacppUpdateInfo?.currentVersion || 'Unknown'} on {llamacppUpdateInfo && llamacppUpdateInfo.platform ? getPlatformName(llamacppUpdateInfo.platform) : 'Unknown Platform'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                         Updates official binaries only (llama-server, llama-cli, etc.)
@@ -2836,139 +3187,10 @@ const ProcessButton = () => {
                 </div>
 
                 {/* Llama.cpp Update Status */}
-                {llamacppUpdateInfo && (
-                  <div className="space-y-4">
-                    {llamacppUpdateInfo.error ? (
-                      <div className="bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                        <div className="flex items-center gap-3">
-                          <AlertCircle className="w-5 h-5 text-red-500" />
-                          <div>
-                            <h4 className="font-medium text-red-900 dark:text-red-100">
-                              Binary Update Check Failed
-                            </h4>
-                            <p className="text-sm text-red-700 dark:text-red-300">
-                              {llamacppUpdateInfo.error}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : llamacppUpdateInfo.hasUpdate ? (
-                      <div className="bg-orange-50/50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-6">
-                        <div className="flex items-start gap-4">
-                          <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/40 rounded-full flex items-center justify-center">
-                            <HardDrive className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-orange-900 dark:text-orange-100 mb-2">
-                              🚀 New Llama.cpp Binaries Available: {llamacppUpdateInfo.latestVersion || 'Latest Version'}
-                            </h4>
-                            
-                            <div className="space-y-3">
-                              <p className="text-sm text-orange-700 dark:text-orange-300">
-                                ⚡ Updated official binaries provide better performance, bug fixes, and new features for local AI inference.
-                                Download size: <strong>{llamacppUpdateInfo.downloadSize}</strong>
-                              </p>
-                              
-                              <div className="bg-orange-100/60 dark:bg-orange-900/30 rounded-lg p-3 text-sm">
-                                <p className="text-orange-800 dark:text-orange-200">
-                                  <strong>📋 What will be updated:</strong> Official llama.cpp binaries (llama-server, llama-cli, etc.)
-                                </p>
-                                <p className="text-orange-700 dark:text-orange-300 mt-1">
-                                  <strong>🔒 What stays untouched:</strong> Clara's custom binaries (llama-swap and others)
-                                </p>
-                              </div>
-                              
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={updateLlamacppBinaries}
-                                  disabled={updatingLlamacppBinaries}
-                                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                                >
-                                  {updatingLlamacppBinaries ? (
-                                    <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                      Updating...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Download className="w-4 h-4" />
-                                      Update Official Binaries
-                                    </>
-                                  )}
-                                </button>
-                                
-                                {llamacppUpdateInfo.releaseUrl && (
-                                  <button
-                                    onClick={openReleaseNotes}
-                                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-                                  >
-                                    <ExternalLink className="w-4 h-4" />
-                                    Release Notes
-                                  </button>
-                                )}
-                              </div>
-
-                              {llamacppUpdateInfo.publishedAt && (
-                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-3">
-                                  Released {new Date(llamacppUpdateInfo.publishedAt).toLocaleDateString()}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-green-50/50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center">
-                            <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-green-900 dark:text-green-100">
-                              Official Binaries Up to Date!
-                            </h4>
-                            <p className="text-sm text-green-700 dark:text-green-300">
-                              Llama.cpp binaries {llamacppUpdateInfo.currentVersion || 'Unknown'} are the latest version.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {lastLlamacppUpdateCheck && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                        Binaries last checked: {lastLlamacppUpdateCheck.toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                )}
+             
 
                 {/* Binary Update Information */}
-                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">
-                    🔧 Binary Update Information
-                  </h4>
-                  <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                    <div className="flex items-start gap-3">
-                      <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
-                      <div>
-                        <strong>Official Binaries Only:</strong> Updates llama-server, llama-cli, and other official tools from ggerganov/llama.cpp.
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
-                      <div>
-                        <strong>Clara's Custom Binaries:</strong> llama-swap and other Clara-specific tools remain untouched and preserved.
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
-                      <div>
-                        <strong>Safe Updates:</strong> Your existing setup continues working, only official tools get performance improvements.
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                
               </div>
               )}
 

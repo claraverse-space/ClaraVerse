@@ -69,6 +69,14 @@ export interface PersonalInfo {
     font_scale: number; // Font size scaling factor (0.75 - 1.5)
     accent_color: string; // Hex color code for accent color
     font_family: string; // Font family name
+    font_weight?: 'light' | 'normal' | 'medium' | 'semibold'; // Font weight
+    line_height?: 'tight' | 'normal' | 'relaxed' | 'loose'; // Line height
+    letter_spacing?: 'tight' | 'normal' | 'wide'; // Letter spacing
+    // Extended theming options
+    background_style?: 'default' | 'warm' | 'cool' | 'minimal' | 'cozy'; // Background atmosphere
+    interface_density?: 'compact' | 'normal' | 'comfortable'; // UI spacing
+    border_radius?: 'sharp' | 'normal' | 'rounded' | 'soft'; // Corner rounding
+    glassmorphism_strength?: 'none' | 'subtle' | 'medium' | 'strong'; // Glass effect intensity
   };
 }
 
