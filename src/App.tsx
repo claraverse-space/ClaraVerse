@@ -20,6 +20,7 @@ import { db } from './db';
 import { ProvidersProvider } from './contexts/ProvidersContext';
 import ClaraAssistant from './components/ClaraAssistant';
 import { StartupService } from './services/startupService';
+import { initializeUIPreferences, applyUIPreferences } from './utils/uiPreferences';
 
 function App() {
   const [activePage, setActivePage] = useState(() => localStorage.getItem('activePage') || 'dashboard');
@@ -39,6 +40,10 @@ function App() {
         setShowOnboarding(false);
         setUserInfo({ name: info.name });
       }
+      
+      // Initialize and apply UI preferences
+      initializeUIPreferences();
+      applyUIPreferences(info);
     };
     checkUserInfo();
     
@@ -56,6 +61,32 @@ function App() {
     // Apply startup settings
     StartupService.getInstance().applyStartupSettings();
   }, []);
+
+  // Trigger MCP servers restoration on app startup
+  useEffect(() => {
+    const restoreMCPServers = async () => {
+      if (window.mcpService && !showOnboarding) {
+        try {
+          console.log('App ready - attempting to restore MCP servers...');
+          const results = await window.mcpService.startPreviouslyRunning();
+          const successCount = results.filter((r: { success: boolean }) => r.success).length;
+          const totalCount = results.length;
+          
+          if (totalCount > 0) {
+            console.log(`MCP restoration: ${successCount}/${totalCount} servers restored`);
+          } else {
+            console.log('MCP restoration: No servers to restore');
+          }
+        } catch (error) {
+          console.error('Error restoring MCP servers:', error);
+        }
+      }
+    };
+
+    // Delay restoration slightly to ensure app is fully initialized
+    const timeoutId = setTimeout(restoreMCPServers, 2000);
+    return () => clearTimeout(timeoutId);
+  }, [showOnboarding]);
 
   // Listen for global shortcut trigger to navigate to Clara chat
   useEffect(() => {
@@ -195,7 +226,7 @@ function App() {
             {(() => {
               switch (activePage) {
                 case 'settings':
-                  return <Settings alphaFeaturesEnabled={alphaFeaturesEnabled} setAlphaFeaturesEnabled={setAlphaFeaturesEnabled} />;
+                  return <Settings />;
                 case 'debug':
                   return <Debug />;
                 case 'help':
@@ -203,7 +234,7 @@ function App() {
                 case 'notebooks':
                   return <Notebooks onPageChange={setActivePage} userName={userInfo?.name} />;
                 case 'lumaui':
-                  return <Lumaui onPageChange={setActivePage} />;
+                  return <Lumaui />;
                 case 'lumaui-lite':
                   return <LumaUILite />;
                 case 'dashboard':

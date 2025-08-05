@@ -35,7 +35,8 @@
     --sakura-400: #ff669d;
     --sakura-500: #ff1a75;
     --sakura-600: #e6006b;
-    font-family: 'Quicksand', sans-serif;
+    --font-family: system-ui, -apple-system, sans-serif;
+    font-family: var(--font-family);
   }
 
   .dark {
@@ -75,7 +76,7 @@
   }
 
   .glassmorphic-card {
-    @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border border-white/30 dark:border-gray-700/30 shadow-xl;
+    @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md shadow-xl;
   }
 }
 
@@ -480,7 +481,7 @@ textarea {
 
 /* Enhanced glassmorphism effects for voice chat */
 .glassmorphic-card {
-  @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border border-white/30 dark:border-gray-700/30 shadow-xl;
+  @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-md  shadow-xl;
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
 }
@@ -843,4 +844,12 @@ textarea {
 
 .animate-auto-mode-glow {
   animation: autoModeGlow 3s ease-in-out infinite;
+}
+
+.react-flow__node-default, .react-flow__node-input, .react-flow__node-output, .react-flow__node-group { 
+  /* remove the border styles */
+  border: none;
+  box-shadow: none;
+  background: transparent;
+
 }

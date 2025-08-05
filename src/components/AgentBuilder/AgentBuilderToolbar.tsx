@@ -17,7 +17,7 @@ const AgentBuilderToolbar: React.FC = () => {
         variant="outline"
         size="sm"
         onClick={() => setShowWorkflowTemplates(true)}
-        className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+        className="bg-white/10 text-white hover:bg-white/20"
       >
         <Plus className="w-4 h-4 mr-1" />
         Templates
@@ -27,7 +27,7 @@ const AgentBuilderToolbar: React.FC = () => {
         variant="outline"
         size="sm"
         onClick={() => exportFlow('clara-native')}
-        className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+        className="bg-white/10 text-white hover:bg-white/20"
         disabled={!currentFlow}
       >
         <Download className="w-4 h-4 mr-1" />
@@ -38,7 +38,7 @@ const AgentBuilderToolbar: React.FC = () => {
         variant="outline"
         size="sm"
         onClick={() => exportFlow('clara-sdk')}
-        className="bg-blue-500/20 border-blue-400/40 text-blue-100 hover:bg-blue-500/30"
+        className="bg-blue-500/20 text-blue-100 hover:bg-blue-500/30"
         disabled={!currentFlow}
         title="Export for SDK - includes custom node code"
       >
@@ -50,7 +50,7 @@ const AgentBuilderToolbar: React.FC = () => {
         variant="outline"
         size="sm"
         onClick={() => setShowImportDialog(true)}
-        className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+        className="bg-white/10 text-white hover:bg-white/20"
       >
         <Upload className="w-4 h-4 mr-1" />
         Import

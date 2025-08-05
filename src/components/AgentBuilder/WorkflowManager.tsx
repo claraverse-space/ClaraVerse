@@ -231,7 +231,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500 rounded-lg text-white">
               <Folder className="w-5 h-5" />
@@ -275,7 +275,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
         </div>
 
         {/* Search and Filters */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+        <div className="p-4 bg-gray-50 dark:bg-gray-800/50">
           <div className="flex items-center gap-4 mb-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -284,14 +284,14 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
                 placeholder="Search workflows..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
               />
             </div>
             
             <select
               value={filters.sortBy}
               onChange={(e) => handleFilterChange({ sortBy: e.target.value as any })}
-              className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
+              className="px-3 py-2 bg-white dark:bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-gray-100"
             >
               <option value="updatedAt">Last Modified</option>
               <option value="createdAt">Date Created</option>
@@ -301,7 +301,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
             
             <button
               onClick={() => handleFilterChange({ sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc' })}
-              className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+              className="px-3 py-2 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
               title={`Sort ${filters.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
             >
               {filters.sortOrder === 'asc' ? '↑' : '↓'}
@@ -309,13 +309,13 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
           </div>
 
           {showFilters && (
-            <div className="flex items-center gap-4 py-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-4 py-3">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={filters.showStarred}
                   onChange={(e) => handleFilterChange({ showStarred: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                  className="rounded text-blue-500 focus:ring-blue-500"
                 />
                 <Star className="w-4 h-4 text-yellow-500" />
                 Starred Only
@@ -326,7 +326,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
                   type="checkbox"
                   checked={filters.showArchived}
                   onChange={(e) => handleFilterChange({ showArchived: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                  className="rounded text-blue-500 focus:ring-blue-500"
                 />
                 <Archive className="w-4 h-4 text-gray-500" />
                 Show Archived
@@ -363,7 +363,7 @@ const WorkflowManager: React.FC<WorkflowManagerProps> = ({ isOpen, onClose, onLo
 
         {/* Error Display */}
         {error && (
-          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-red-500" />
             <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
             <button 

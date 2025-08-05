@@ -376,7 +376,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
         
         <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 min-h-0 overflow-hidden">
           {/* Agent Studio Header */}
-          <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-4 flex-shrink-0">
+          <div className="glassmorphic px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -493,8 +493,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
           <div className="flex-1 flex overflow-hidden min-h-0">
             {/* Node Palette Sidebar */}
             {isNodePaletteOpen && (
-              <div className="w-80 glassmorphic border-r border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden min-h-0">
-                <div className="p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0">
+              <div className="w-80 glassmorphic flex flex-col overflow-hidden min-h-0">
+                <div className="p-4 flex-shrink-0">
                   <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
                     Node Library
                   </h2>
@@ -503,7 +503,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                   <input
                     type="text"
                     placeholder="Search nodes..."
-                    className="w-full px-3 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                    className="w-full px-3 py-2 glassmorphic-card rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sakura-500"
                   />
                 </div>
                 
@@ -592,7 +592,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                         ].map((node) => (
                                                       <div
                               key={node.name}
-                              className="group p-4 glassmorphic-card rounded-xl border border-white/30 dark:border-gray-700/50 hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                              className="group p-4 glassmorphic-card rounded-xl hover:border-green-300 dark:hover:border-green-500 hover:shadow-lg cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
                               draggable
                               onDragStart={(e) => onDragStart(e, node.type)}
                             >
@@ -926,7 +926,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
             {/* Canvas Area */}
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               {/* Canvas Header */}
-              <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-3 flex-shrink-0">
+              <div className="glassmorphic px-6 py-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Canvas • {currentFlow ? `${currentFlow.name}` : 'No flow selected'}
@@ -976,8 +976,8 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
 
             {/* Execution Log Panel */}
             {isExecutionLogOpen && (
-              <div className="w-96 glassmorphic border-l border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden min-h-0">
-                <div className="p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0">
+              <div className="w-96 glassmorphic flex flex-col overflow-hidden min-h-0">
+                <div className="p-4 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                       <Terminal className="w-5 h-5" />

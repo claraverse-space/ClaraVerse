@@ -1,13 +1,13 @@
-import React, { memo, useState } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { NodeProps } from 'reactflow';
 import { Brain, Eye, RefreshCw, Check, AlertCircle } from 'lucide-react';
 import BaseNode from './BaseNode';
 
 const LLMNode = memo<NodeProps>((props) => {
   const { data } = props;
-  const [apiBaseUrl, setApiBaseUrl] = useState(data.apiBaseUrl || 'https://api.openai.com/v1');
+  const [apiBaseUrl, setApiBaseUrl] = useState(data.apiBaseUrl || 'http://localhost:8091/v1');
   const [apiKey, setApiKey] = useState(data.apiKey || '');
-  const [model, setModel] = useState(data.model || 'gpt-3.5-turbo');
+  const [model, setModel] = useState(data.model || '');
   const [temperature, setTemperature] = useState(data.temperature || 0.7);
   const [maxTokens, setMaxTokens] = useState(data.maxTokens || 1000);
   const [showConfig, setShowConfig] = useState(false);
@@ -16,15 +16,84 @@ const LLMNode = memo<NodeProps>((props) => {
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const [isConfigSaved, setIsConfigSaved] = useState(false);
 
-  // Default models (fallback) - only used for initial state, not displayed
-  const defaultModels = [
-    'gpt-3.5-turbo',
-    'gpt-4',
-    'gpt-4-vision-preview',
-    'claude-3-haiku-20240307',
-    'claude-3-sonnet-20240229',
-    'claude-3-opus-20240229'
-  ];
+  const loadModelsFromAPI = useCallback(async () => {
+    if (!apiBaseUrl) {
+      setModelLoadError('API Base URL is required');
+      return;
+    }
+
+    setIsLoadingModels(true);
+    setModelLoadError(null);
+
+    try {
+      // Prepare headers - only add Authorization if API key is provided
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (apiKey && apiKey.trim()) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const response = await fetch(`${apiBaseUrl}/models`, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error('Authentication failed - API key may be required or invalid');
+        } else if (response.status === 403) {
+          throw new Error('Access forbidden - check API key permissions');
+        } else {
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+      }
+
+      const responseData = await response.json();
+      
+      if (responseData.data && Array.isArray(responseData.data)) {
+        // Extract model IDs and sort them
+        const apiModels = responseData.data
+          .map((model: any) => model.id)
+          .filter((id: string) => id && typeof id === 'string')
+          .sort();
+        
+        if (apiModels.length > 0) {
+          setAvailableModels(apiModels);
+          setIsConfigSaved(true);
+          
+          // Set the first model as default if no model is currently selected
+          if (!model || !apiModels.includes(model)) {
+            const firstModel = apiModels[0];
+            setModel(firstModel);
+            if (data.onUpdate) {
+              data.onUpdate({ data: { ...data, model: firstModel } });
+            }
+          }
+        } else {
+          throw new Error('No models found in API response');
+        }
+      } else {
+        throw new Error('Invalid API response format');
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+      setModelLoadError(error instanceof Error ? error.message : 'Failed to load models');
+      // Don't fall back to default models - show no models loaded
+      setAvailableModels([]);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [apiBaseUrl, apiKey, model, data]);
+
+  // Auto-load models on component mount if using default localhost URL
+  useEffect(() => {
+    if (apiBaseUrl === 'http://localhost:8091/v1' && availableModels.length === 0) {
+      loadModelsFromAPI();
+    }
+  }, [apiBaseUrl, availableModels.length, loadModelsFromAPI]);
 
   const handleApiBaseUrlChange = (value: string) => {
     setApiBaseUrl(value);
@@ -60,75 +129,6 @@ const LLMNode = memo<NodeProps>((props) => {
     setMaxTokens(value);
     if (data.onUpdate) {
       data.onUpdate({ data: { ...data, maxTokens: value } });
-    }
-  };
-
-  const loadModelsFromAPI = async () => {
-    if (!apiBaseUrl) {
-      setModelLoadError('API Base URL is required');
-      return;
-    }
-
-    setIsLoadingModels(true);
-    setModelLoadError(null);
-
-    try {
-      // Prepare headers - only add Authorization if API key is provided
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (apiKey && apiKey.trim()) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-
-      const response = await fetch(`${apiBaseUrl}/models`, {
-        method: 'GET',
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.data && Array.isArray(data.data)) {
-        // Extract model IDs and sort them
-        const apiModels = data.data
-          .map((model: any) => model.id)
-          .filter((id: string) => id && typeof id === 'string')
-          .sort();
-        
-        if (apiModels.length > 0) {
-          // Create a merged list: keep defaults if they're not in API, add all API models
-          const mergedModels = [...new Set([...defaultModels, ...apiModels])];
-          setAvailableModels(mergedModels);
-          setIsConfigSaved(true);
-          
-          // Only change the model if it's not in either defaults or API models
-          // This preserves user's selection as long as it's valid
-          if (!mergedModels.includes(model)) {
-            // Only change if the current model is truly invalid
-            const firstModel = apiModels[0];
-            setModel(firstModel);
-            if (data.onUpdate) {
-              data.onUpdate({ data: { ...data, model: firstModel } });
-            }
-          }
-        } else {
-          throw new Error('No models found in API response');
-        }
-      } else {
-        throw new Error('Invalid API response format');
-      }
-    } catch (error) {
-      console.error('Failed to load models:', error);
-      setModelLoadError(error instanceof Error ? error.message : 'Failed to load models');
-      // Don't fall back to default models - show no models loaded
-      setAvailableModels([]);
-    } finally {
-      setIsLoadingModels(false);
     }
   };
 
@@ -185,7 +185,7 @@ const LLMNode = memo<NodeProps>((props) => {
           <select
             value={model}
             onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
+            className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
           >
             {modelsToShow.length === 0 ? (
               <option value={model || ""}>
@@ -237,7 +237,7 @@ const LLMNode = memo<NodeProps>((props) => {
               max="4000"
               value={maxTokens}
               onChange={(e) => handleMaxTokensChange(parseInt(e.target.value))}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
             />
           </div>
         </div>
@@ -252,7 +252,7 @@ const LLMNode = memo<NodeProps>((props) => {
 
         {/* API Configuration */}
         {showConfig && (
-          <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 API Base URL
@@ -261,8 +261,8 @@ const LLMNode = memo<NodeProps>((props) => {
                 type="text"
                 value={apiBaseUrl}
                 onChange={(e) => handleApiBaseUrlChange(e.target.value)}
-                placeholder="https://api.openai.com/v1 or http://localhost:11434/v1"
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all"
+                placeholder="http://localhost:8091/v1 or https://api.openai.com/v1"
+                className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
               />
             </div>
             <div>

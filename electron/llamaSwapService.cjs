@@ -4862,81 +4862,18 @@ ${cmdLine}`;
     try {
       log.info('🧹 Cleaning up stale processes before service start...');
       
-      // First, try to kill processes using our specific port
+      // Use targeted port-based cleanup first (already implemented efficiently)
       await this.killProcessesOnPort(this.port);
       
-      // On Windows, check for any remaining llama-server or llama-swap processes
+      // Platform-specific cleanup with minimal system impact
       if (process.platform === 'win32') {
-        const { spawn } = require('child_process');
-        
-        // Kill any orphaned llama-server processes on our port
-        try {
-          const netstatProcess = spawn('netstat', ['-ano'], { stdio: ['ignore', 'pipe', 'ignore'] });
-          let netstatOutput = '';
-          
-          netstatProcess.stdout.on('data', (data) => {
-            netstatOutput += data.toString();
-          });
-          
-          await new Promise((resolve) => {
-            netstatProcess.on('close', () => resolve());
-          });
-          
-          // Look for processes using our ports
-          const lines = netstatOutput.split('\n');
-          const processesOnPort = [];
-          
-          for (const line of lines) {
-            if (line.includes(':9999') || line.includes(`:${this.port}`)) {
-              const parts = line.trim().split(/\s+/);
-              const pid = parts[parts.length - 1];
-              if (pid && pid !== '0' && /^\d+$/.test(pid)) {
-                processesOnPort.push(pid);
-              }
-            }
-          }
-          
-          // Kill processes found on our ports
-          for (const pid of processesOnPort) {
-            try {
-              spawn('taskkill', ['/F', '/PID', pid], { stdio: 'ignore' });
-              log.info(`Cleaned up stale process on port: PID ${pid}`);
-            } catch (killError) {
-              log.debug(`Could not kill PID ${pid}: ${killError.message}`);
-            }
-          }
-          
-        } catch (netstatError) {
-          log.debug('Netstat cleanup failed:', netstatError.message);
-        }
-        
-        // Also try to kill by process name as backup
-        try {
-          spawn('taskkill', ['/F', '/IM', 'llama-server.exe'], { stdio: 'ignore' });
-          spawn('taskkill', ['/F', '/IM', 'llama-swap.exe'], { stdio: 'ignore' });
-          spawn('taskkill', ['/F', '/IM', 'llama-swap-win32-x64.exe'], { stdio: 'ignore' });
-          log.debug('Attempted cleanup of llama processes by name');
-        } catch (cleanupError) {
-          log.debug('Process name cleanup failed:', cleanupError.message);
-        }
+        await this.cleanupWindowsProcessesEfficiently();
+      } else {
+        await this.cleanupUnixProcessesEfficiently();
       }
       
-      // Unix-like systems (macOS, Linux)
-      else if (process.platform === 'darwin' || process.platform === 'linux') {
-        const { spawn } = require('child_process');
-        
-        try {
-          // Kill processes using our ports
-          spawn('pkill', ['-f', 'llama-server'], { stdio: 'ignore' });
-          spawn('pkill', ['-f', 'llama-swap'], { stdio: 'ignore' });
-          log.debug('Attempted cleanup of llama processes on Unix-like system');
-        } catch (cleanupError) {
-          log.debug('Unix process cleanup failed:', cleanupError.message);
-        }
-      }
-      
-      // Wait a moment for cleanup to complete
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Increased wait time
+      // Reduced wait time for faster startup
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       log.info('✅ Stale process cleanup completed');
       
@@ -4944,6 +4881,100 @@ ${cmdLine}`;
       log.warn('Stale process cleanup encountered error:', error.message);
       // Don't fail startup if cleanup fails
     }
+  }
+
+  /**
+   * Efficient Windows process cleanup to minimize system impact
+   */
+  async cleanupWindowsProcessesEfficiently() {
+    const { spawn } = require('child_process');
+    
+    try {
+      // Only kill processes by name as backup - avoid duplicate netstat calls
+      const processNames = [
+        'llama-server.exe',
+        'llama-swap.exe', 
+        'llama-swap-win32-x64.exe'
+      ];
+      
+      // Run cleanup in parallel for speed
+      const cleanupPromises = processNames.map(processName => 
+        this.killWindowsProcessByName(processName).catch(err => 
+          log.debug(`Could not kill ${processName}: ${err.message}`)
+        )
+      );
+      
+      await Promise.allSettled(cleanupPromises);
+      log.debug('Windows process name cleanup completed');
+      
+    } catch (error) {
+      log.debug('Windows efficient cleanup failed:', error.message);
+    }
+  }
+
+  /**
+   * Kill a specific Windows process by name
+   */
+  async killWindowsProcessByName(processName) {
+    const { spawn } = require('child_process');
+    return new Promise((resolve, reject) => {
+      const killProcess = spawn('taskkill', ['/F', '/IM', processName], { 
+        stdio: 'ignore',
+        timeout: 5000 // Prevent hanging
+      });
+      
+      killProcess.on('close', (code) => {
+        if (code === 0) {
+          log.debug(`Successfully killed ${processName}`);
+        }
+        resolve(); // Don't fail on non-zero exit codes
+      });
+      
+      killProcess.on('error', () => resolve()); // Don't fail on errors
+    });
+  }
+
+  /**
+   * Efficient Unix process cleanup to minimize system impact  
+   */
+  async cleanupUnixProcessesEfficiently() {
+    const { spawn } = require('child_process');
+    
+    try {
+      // Use targeted pkill with timeout
+      const processPatterns = ['llama-server', 'llama-swap'];
+      
+      const cleanupPromises = processPatterns.map(pattern =>
+        this.killUnixProcessByPattern(pattern).catch(err =>
+          log.debug(`Could not kill ${pattern}: ${err.message}`)
+        )
+      );
+      
+      await Promise.allSettled(cleanupPromises);
+      log.debug('Unix process cleanup completed');
+      
+    } catch (error) {
+      log.debug('Unix efficient cleanup failed:', error.message);
+    }
+  }
+
+  /**
+   * Kill Unix processes by pattern with timeout
+   */
+  async killUnixProcessByPattern(pattern) {
+    const { spawn } = require('child_process');
+    return new Promise((resolve) => {
+      const killProcess = spawn('pkill', ['-f', pattern], { 
+        stdio: 'ignore',
+        timeout: 3000 // Prevent hanging
+      });
+      
+      killProcess.on('close', () => resolve());
+      killProcess.on('error', () => resolve()); // Don't fail on errors
+      
+      // Fallback timeout
+      setTimeout(() => resolve(), 3000);
+    });
   }
 
   /**

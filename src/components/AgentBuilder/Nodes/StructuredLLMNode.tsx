@@ -1,13 +1,13 @@
-import React, { memo, useState } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { NodeProps } from 'reactflow';
 import { FileJson, Brain, Settings, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import BaseNode from './BaseNode';
 
 const StructuredLLMNode = memo<NodeProps>((props) => {
   const { data } = props;
-  const [apiBaseUrl, setApiBaseUrl] = useState(data.apiBaseUrl || 'https://api.openai.com/v1');
+  const [apiBaseUrl, setApiBaseUrl] = useState(data.apiBaseUrl || 'http://localhost:8091/v1');
   const [apiKey, setApiKey] = useState(data.apiKey || '');
-  const [model, setModel] = useState(data.model || 'gpt-4o-mini');
+  const [model, setModel] = useState(data.model || '');
   const [temperature, setTemperature] = useState(data.temperature || 0.7);
   const [maxTokens, setMaxTokens] = useState(data.maxTokens || 1000);
   const [showConfig, setShowConfig] = useState(false);
@@ -15,26 +15,15 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
-  const [isConfigSaved, setIsConfigSaved] = useState(false);
-
-  // Default models (fallback) - only used for initial state, not displayed
-  const defaultModels = [
-    { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-    { label: 'GPT-4o', value: 'gpt-4o' },
-    { label: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' },
-    { label: 'GPT-4', value: 'gpt-4' }
-  ];
 
   const handleApiBaseUrlChange = (value: string) => {
     setApiBaseUrl(value);
-    setIsConfigSaved(false);
     updateConfig({ apiBaseUrl: value });
     validateConfig(apiKey, value);
   };
 
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
-    setIsConfigSaved(false);
     updateConfig({ apiKey: value });
     validateConfig(value, apiBaseUrl);
   };
@@ -60,13 +49,13 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
     }
   };
 
-  const validateConfig = (key: string, url: string) => {
+  const validateConfig = (_key: string, url: string) => {
     // Only require base URL - API key is optional for some APIs
     const isValid = url.trim().length > 0;
     setIsValidConfig(isValid);
   };
 
-  const loadModelsFromAPI = async () => {
+  const loadModelsFromAPI = useCallback(async () => {
     if (!apiBaseUrl) {
       setModelLoadError('API Base URL is required');
       return;
@@ -91,30 +80,31 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
       });
 
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error('Authentication failed - API key may be required or invalid');
+        } else if (response.status === 403) {
+          throw new Error('Access forbidden - check API key permissions');
+        } else {
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
       
-      if (data.data && Array.isArray(data.data)) {
+      if (responseData.data && Array.isArray(responseData.data)) {
         // Extract all model IDs - show everything available
-        const apiModels = data.data
+        const apiModels = responseData.data
           .map((model: any) => model.id)
           .filter((id: string) => id && typeof id === 'string')
           .sort();
         
-        // Use ALL available models - no filtering needed since our backend supports any model
+        // Use ALL available models from API
         if (apiModels.length > 0) {
-          // Create a merged list: keep defaults if they're not in API, add all API models
-          const defaultModelValues = defaultModels.map(m => m.value);
-          const mergedModels = [...new Set([...defaultModelValues, ...apiModels])];
-          setAvailableModels(mergedModels);
-          setIsConfigSaved(true);
+          setAvailableModels(apiModels);
           
-          // Only change the model if it's not in either defaults or API models
-          // This preserves user's selection as long as it's valid
-          if (!mergedModels.includes(model)) {
-            // Only change if the current model is truly invalid
+          // Set the first model as default if no model is currently selected
+          if (!model || !apiModels.includes(model)) {
             const firstModel = apiModels[0];
             setModel(firstModel);
             updateConfig({ model: firstModel });
@@ -135,7 +125,14 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
     } finally {
       setIsLoadingModels(false);
     }
-  };
+  }, [apiBaseUrl, apiKey, model]);
+
+  // Auto-load models on component mount if using default localhost URL
+  useEffect(() => {
+    if (apiBaseUrl === 'http://localhost:8091/v1' && availableModels.length === 0) {
+      loadModelsFromAPI();
+    }
+  }, [apiBaseUrl, availableModels.length, loadModelsFromAPI]);
 
   const handleSaveAndLoadModels = async () => {
     // Save current config first
@@ -210,7 +207,7 @@ const StructuredLLMNode = memo<NodeProps>((props) => {
                 type="text"
                 value={apiBaseUrl}
                 onChange={(e) => handleApiBaseUrlChange(e.target.value)}
-                placeholder="https://api.openai.com/v1 or http://localhost:11434/v1"
+                placeholder="http://localhost:8091/v1 or https://api.openai.com/v1"
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
               />
             </div>

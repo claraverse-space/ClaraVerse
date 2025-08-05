@@ -29,6 +29,9 @@ const CentralServiceManager = require('./centralServiceManager.cjs');
 const ServiceConfigurationManager = require('./serviceConfiguration.cjs');
 const { getPlatformCompatibility, getCompatibleServices } = require('./serviceDefinitions.cjs');
 
+// Network Service Manager to prevent UI refreshes during crashes
+const NetworkServiceManager = require('./networkServiceManager.cjs');
+
 /**
  * Helper function to show dialogs properly during startup when loading screen is active
  * Temporarily disables alwaysOnTop to allow dialogs to appear above loading screen
@@ -112,6 +115,10 @@ ipcMain.on = function(channel, handler) {
 app.whenReady().then(() => {
   ipcLogger = new IPCLogger();
   ipcLogger.logSystem('Application started');
+  
+  // Initialize Network Service Manager to prevent UI refreshes during crashes
+  networkServiceManager = new NetworkServiceManager();
+  log.info('🛡️ Network Service Manager initialized');
 });
 
 // macOS Security Configuration - Prevent unnecessary firewall prompts
@@ -142,6 +149,9 @@ let widgetService;
 // NEW: Enhanced service management (Coexists with existing services)
 let serviceConfigManager;
 let centralServiceManager;
+
+// Network Service Manager to prevent UI refreshes
+let networkServiceManager;
 
 // Track active downloads for stop functionality
 const activeDownloads = new Map();
@@ -1970,6 +1980,29 @@ function registerMCPHandlers() {
     return mcpService;
   }
 
+  // Helper function to ensure Service Config Manager is initialized
+  function ensureServiceConfigManager() {
+    if (!serviceConfigManager) {
+      log.info('Service config manager not initialized, creating new instance...');
+      try {
+        serviceConfigManager = new ServiceConfigurationManager();
+        if (!centralServiceManager) {
+          centralServiceManager = new CentralServiceManager(serviceConfigManager);
+          
+          const { SERVICE_DEFINITIONS } = require('./serviceDefinitions.cjs');
+          Object.keys(SERVICE_DEFINITIONS).forEach(serviceName => {
+            const serviceDefinition = SERVICE_DEFINITIONS[serviceName];
+            centralServiceManager.registerService(serviceName, serviceDefinition);
+          });
+        }
+      } catch (error) {
+        log.warn('Failed to initialize service config manager:', error);
+        return null;
+      }
+    }
+    return serviceConfigManager;
+  }
+
   // Get all MCP servers
   ipcMain.handle('mcp-get-servers', async () => {
     try {
@@ -2199,7 +2232,7 @@ function registerServiceConfigurationHandlers() {
   // Get all service configurations
   ipcMain.handle('service-config:get-all-configs', async () => {
     try {
-      if (!serviceConfigManager) {
+      if (!serviceConfigManager || typeof serviceConfigManager.getConfigSummary !== 'function') {
         return {};
       }
       return serviceConfigManager.getConfigSummary();
@@ -2212,8 +2245,8 @@ function registerServiceConfigurationHandlers() {
   // Set service configuration (mode and URL)
   ipcMain.handle('service-config:set-config', async (event, serviceName, mode, url = null) => {
     try {
-      if (!serviceConfigManager) {
-        throw new Error('Service configuration manager not initialized');
+      if (!serviceConfigManager || typeof serviceConfigManager.setServiceConfig !== 'function') {
+        throw new Error('Service configuration manager not initialized or setServiceConfig method not available');
       }
       
       serviceConfigManager.setServiceConfig(serviceName, mode, url);
@@ -2229,8 +2262,8 @@ function registerServiceConfigurationHandlers() {
   // Alias for onboarding compatibility
   ipcMain.handle('service-config:set-manual-url', async (event, serviceName, url) => {
     try {
-      if (!serviceConfigManager) {
-        throw new Error('Service configuration manager not initialized');
+      if (!serviceConfigManager || typeof serviceConfigManager.setServiceConfig !== 'function') {
+        throw new Error('Service configuration manager not initialized or setServiceConfig method not available');
       }
       
       serviceConfigManager.setServiceConfig(serviceName, 'manual', url);
@@ -2246,8 +2279,8 @@ function registerServiceConfigurationHandlers() {
   // Test manual service connectivity
   ipcMain.handle('service-config:test-manual-service', async (event, serviceName, url, healthEndpoint = '/') => {
     try {
-      if (!serviceConfigManager) {
-        throw new Error('Service configuration manager not initialized');
+      if (!serviceConfigManager || typeof serviceConfigManager.testManualService !== 'function') {
+        throw new Error('Service configuration manager not initialized or testManualService method not available');
       }
       
       const result = await serviceConfigManager.testManualService(serviceName, url, healthEndpoint);
@@ -2265,7 +2298,7 @@ function registerServiceConfigurationHandlers() {
   // Get supported deployment modes for a service
   ipcMain.handle('service-config:get-supported-modes', async (event, serviceName) => {
     try {
-      if (!serviceConfigManager) {
+      if (!serviceConfigManager || typeof serviceConfigManager.getSupportedModes !== 'function') {
         return ['docker']; // Default fallback
       }
       
@@ -2279,8 +2312,8 @@ function registerServiceConfigurationHandlers() {
   // Reset service configuration to defaults
   ipcMain.handle('service-config:reset-config', async (event, serviceName) => {
     try {
-      if (!serviceConfigManager) {
-        throw new Error('Service configuration manager not initialized');
+      if (!serviceConfigManager || typeof serviceConfigManager.removeServiceConfig !== 'function') {
+        throw new Error('Service configuration manager not initialized or removeServiceConfig method not available');
       }
       
       serviceConfigManager.removeServiceConfig(serviceName);
@@ -2512,22 +2545,31 @@ function registerN8NHandlers() {
       let n8nRunning = false;
       let serviceUrl = 'http://localhost:5678';
       
-      if (serviceConfigManager) {
-        const n8nMode = serviceConfigManager.getServiceMode('n8n');
-        if (n8nMode === 'manual') {
-          const n8nUrl = serviceConfigManager.getServiceUrl('n8n');
-          if (n8nUrl) {
-            serviceUrl = n8nUrl;
-            try {
-              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
-              const healthCheck = createManualHealthCheck(n8nUrl, '/');
-              n8nRunning = await healthCheck();
-            } catch (error) {
-              log.debug(`N8N manual health check failed: ${error.message}`);
-              n8nRunning = false;
+      if (serviceConfigManager && typeof serviceConfigManager.getServiceMode === 'function') {
+        try {
+          const n8nMode = serviceConfigManager.getServiceMode('n8n');
+          if (n8nMode === 'manual' && typeof serviceConfigManager.getServiceUrl === 'function') {
+            const n8nUrl = serviceConfigManager.getServiceUrl('n8n');
+            if (n8nUrl) {
+              serviceUrl = n8nUrl;
+              try {
+                const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+                const healthCheck = createManualHealthCheck(n8nUrl, '/');
+                n8nRunning = await healthCheck();
+              } catch (error) {
+                log.debug(`N8N manual health check failed: ${error.message}`);
+                n8nRunning = false;
+              }
+            }
+          } else {
+            const healthResult = await dockerSetup.checkN8NHealth();
+            n8nRunning = healthResult.success;
+            if (dockerSetup.ports && dockerSetup.ports.n8n) {
+              serviceUrl = `http://localhost:${dockerSetup.ports.n8n}`;
             }
           }
-        } else {
+        } catch (configError) {
+          log.warn('Error getting N8N service config, using default mode:', configError.message);
           const healthResult = await dockerSetup.checkN8NHealth();
           n8nRunning = healthResult.success;
           if (dockerSetup.ports && dockerSetup.ports.n8n) {
@@ -2631,22 +2673,31 @@ function registerComfyUIHandlers() {
       let comfyuiRunning = false;
       let serviceUrl = 'http://localhost:8188';
       
-      if (serviceConfigManager) {
-        const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
-        if (comfyuiMode === 'manual') {
-          const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
-          if (comfyuiUrl) {
-            serviceUrl = comfyuiUrl;
-            try {
-              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
-              const healthCheck = createManualHealthCheck(comfyuiUrl, '/');
-              comfyuiRunning = await healthCheck();
-            } catch (error) {
-              log.debug(`ComfyUI manual health check failed: ${error.message}`);
-              comfyuiRunning = false;
+      if (serviceConfigManager && typeof serviceConfigManager.getServiceMode === 'function') {
+        try {
+          const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
+          if (comfyuiMode === 'manual' && typeof serviceConfigManager.getServiceUrl === 'function') {
+            const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
+            if (comfyuiUrl) {
+              serviceUrl = comfyuiUrl;
+              try {
+                const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+                const healthCheck = createManualHealthCheck(comfyuiUrl, '/');
+                comfyuiRunning = await healthCheck();
+              } catch (error) {
+                log.debug(`ComfyUI manual health check failed: ${error.message}`);
+                comfyuiRunning = false;
+              }
+            }
+          } else {
+            const healthResult = await dockerSetup.isComfyUIRunning();
+            comfyuiRunning = healthResult;
+            if (dockerSetup.ports && dockerSetup.ports.comfyui) {
+              serviceUrl = `http://localhost:${dockerSetup.ports.comfyui}`;
             }
           }
-        } else {
+        } catch (configError) {
+          log.warn('Error getting ComfyUI service config, using default mode:', configError.message);
           const healthResult = await dockerSetup.isComfyUIRunning();
           comfyuiRunning = healthResult;
           if (dockerSetup.ports && dockerSetup.ports.comfyui) {
@@ -2746,9 +2797,21 @@ function registerPythonBackendHandlers() {
         return { isHealthy: false, serviceUrl: null, mode: 'docker', error: 'Docker setup not initialized' };
       }
 
-      // Get service configuration to determine mode
-      const config = await serviceConfigManager.getServiceConfig('notebooks');
-      const mode = config?.deploymentMode || 'docker';
+      // Get service configuration to determine mode (with fallback if service config manager is not available)
+      let config = null;
+      let mode = 'docker'; // Default mode
+      
+      if (serviceConfigManager && typeof serviceConfigManager.getServiceConfig === 'function') {
+        try {
+          config = await serviceConfigManager.getServiceConfig('notebooks');
+          mode = config?.deploymentMode || 'docker';
+        } catch (configError) {
+          log.warn('Error getting service config, using default mode:', configError.message);
+        }
+      } else {
+        log.warn('Service config manager not available or getServiceConfig method not found, using default mode');
+      }
+      
       let serviceUrl = null;
 
       if (mode === 'docker') {
@@ -3066,42 +3129,49 @@ function registerHandlers() {
       let n8nRunning = false;
       let comfyuiRunning = false;
       
-      if (serviceConfigManager) {
-        // N8N health check
-        const n8nMode = serviceConfigManager.getServiceMode('n8n');
-        if (n8nMode === 'manual') {
-          const n8nUrl = serviceConfigManager.getServiceUrl('n8n');
-          if (n8nUrl) {
-            try {
-              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
-              const healthCheck = createManualHealthCheck(n8nUrl, '/');
-              n8nRunning = await healthCheck();
-              log.debug(`🔗 N8N manual service health: ${n8nRunning}`);
-            } catch (error) {
-              log.debug(`N8N manual health check failed: ${error.message}`);
-              n8nRunning = false;
+      if (serviceConfigManager && typeof serviceConfigManager.getServiceMode === 'function') {
+        try {
+          // N8N health check
+          const n8nMode = serviceConfigManager.getServiceMode('n8n');
+          if (n8nMode === 'manual' && typeof serviceConfigManager.getServiceUrl === 'function') {
+            const n8nUrl = serviceConfigManager.getServiceUrl('n8n');
+            if (n8nUrl) {
+              try {
+                const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+                const healthCheck = createManualHealthCheck(n8nUrl, '/');
+                n8nRunning = await healthCheck();
+                log.debug(`🔗 N8N manual service health: ${n8nRunning}`);
+              } catch (error) {
+                log.debug(`N8N manual health check failed: ${error.message}`);
+                n8nRunning = false;
+              }
             }
+          } else {
+            n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
           }
-        } else {
+          
+          // ComfyUI health check  
+          const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
+          if (comfyuiMode === 'manual' && typeof serviceConfigManager.getServiceUrl === 'function') {
+            const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
+            if (comfyuiUrl) {
+              try {
+                const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
+                const healthCheck = createManualHealthCheck(comfyuiUrl, '/');
+                comfyuiRunning = await healthCheck();
+                log.debug(`🔗 ComfyUI manual service health: ${comfyuiRunning}`);
+              } catch (error) {
+                log.debug(`ComfyUI manual health check failed: ${error.message}`);
+                comfyuiRunning = false;
+              }
+            }
+          } else {
+            comfyuiRunning = await dockerSetup.isComfyUIRunning().catch(() => false);
+          }
+        } catch (configError) {
+          log.warn('Error getting service configs, using Docker fallback:', configError.message);
+          // Fallback to Docker checks
           n8nRunning = await dockerSetup.checkN8NHealth().then(result => result.success).catch(() => false);
-        }
-        
-        // ComfyUI health check  
-        const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
-        if (comfyuiMode === 'manual') {
-          const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
-          if (comfyuiUrl) {
-            try {
-              const { createManualHealthCheck } = require('./serviceDefinitions.cjs');
-              const healthCheck = createManualHealthCheck(comfyuiUrl, '/');
-              comfyuiRunning = await healthCheck();
-              log.debug(`🔗 ComfyUI manual service health: ${comfyuiRunning}`);
-            } catch (error) {
-              log.debug(`ComfyUI manual health check failed: ${error.message}`);
-              comfyuiRunning = false;
-            }
-          }
-        } else {
           comfyuiRunning = await dockerSetup.isComfyUIRunning().catch(() => false);
         }
       } else {
@@ -3165,9 +3235,9 @@ function registerHandlers() {
   ipcMain.handle('comfyui-status', async () => {
     try {
       // NEW: Check if ComfyUI is configured for manual mode
-      if (serviceConfigManager) {
+      if (serviceConfigManager && typeof serviceConfigManager.getServiceMode === 'function') {
         const comfyuiMode = serviceConfigManager.getServiceMode('comfyui');
-        if (comfyuiMode === 'manual') {
+        if (comfyuiMode === 'manual' && typeof serviceConfigManager.getServiceUrl === 'function') {
           const comfyuiUrl = serviceConfigManager.getServiceUrl('comfyui');
           log.info(`🔗 ComfyUI in manual mode, checking ${comfyuiUrl} instead of Docker`);
           
@@ -3738,10 +3808,29 @@ function registerHandlers() {
   });
 
   // Handle React app ready signal
-  ipcMain.on('react-app-ready', () => {
+  ipcMain.on('react-app-ready', async () => {
     log.info('React app fully initialized and ready');
     if (loadingScreen && loadingScreen.isValid()) {
       loadingScreen.notifyMainWindowReady();
+    }
+    
+    // Auto-restore MCP servers when React app is ready (if not already restored)
+    if (mcpService && !global.mcpServersRestored) {
+      try {
+        log.info('React app ready - attempting to restore previously running MCP servers...');
+        const restoreResults = await mcpService.startPreviouslyRunningServers();
+        const successCount = restoreResults.filter(r => r.success).length;
+        const totalCount = restoreResults.length;
+        
+        if (totalCount > 0) {
+          log.info(`MCP restoration on app ready: ${successCount}/${totalCount} servers restored`);
+        } else {
+          log.info('MCP restoration on app ready: No servers to restore');
+        }
+        global.mcpServersRestored = true;
+      } catch (error) {
+        log.error('Error auto-restoring MCP servers on app ready:', error);
+      }
     }
   });
 
@@ -4880,6 +4969,7 @@ async function initializeLightweightServicesInBackground() {
         } else {
           sendStatus('MCP', 'No MCP servers to restore', 'info');
         }
+        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
         sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
@@ -4991,6 +5081,7 @@ async function initializeServicesInBackground() {
         } else {
           sendStatus('MCP', 'No MCP servers to restore', 'info');
         }
+        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
         sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
@@ -6377,6 +6468,7 @@ async function initializeServicesInBackground() {
         } else {
           sendStatus('MCP', 'No MCP servers to restore', 'info');
         }
+        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
         sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
@@ -6504,17 +6596,21 @@ async function startManualServicesInCentralManager() {
   try {
     log.info('🔄 Starting manual services in central service manager...');
     
-    const allConfigs = serviceConfigManager.getAllServiceConfigs();
-    
-    for (const [serviceName, config] of Object.entries(allConfigs)) {
-      if (config.mode === 'manual' && config.url) {
-        try {
-          await centralServiceManager.startService(serviceName);
-          log.info(`✅ Manual service ${serviceName} started via central manager`);
-        } catch (error) {
-          log.error(`❌ Failed to start manual service ${serviceName}:`, error);
+    if (serviceConfigManager && typeof serviceConfigManager.getAllServiceConfigs === 'function') {
+      const allConfigs = serviceConfigManager.getAllServiceConfigs();
+      
+      for (const [serviceName, config] of Object.entries(allConfigs)) {
+        if (config.mode === 'manual' && config.url) {
+          try {
+            await centralServiceManager.startService(serviceName);
+            log.info(`✅ Manual service ${serviceName} started via central manager`);
+          } catch (error) {
+            log.error(`❌ Failed to start manual service ${serviceName}:`, error);
+          }
         }
       }
+    } else {
+      log.warn('Service config manager not available, skipping manual services startup');
     }
     
     log.info('✅ Manual services startup completed');

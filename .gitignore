@@ -134,3 +134,9 @@ notarize-production.sh
 setup-notarization-env.sh
 mcp_workspace/*
 electron/llamacpp-binaries/*
+
+.bmad-core
+.claude
+.github
+.vscode
+web-bundles

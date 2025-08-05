@@ -166,6 +166,12 @@ export interface ClaraMessageMetadata {
   /** Whether this is a voice message */
   isVoiceMessage?: boolean;
   
+  /** Whether this message is related to image generation */
+  imageGeneration?: boolean;
+  
+  /** Settings used for image generation or other operations */
+  settings?: any;
+  
   /** NEW: Images extracted from tool results */
   extractedImages?: ClaraExtractedImage[];
   

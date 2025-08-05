@@ -2864,6 +2864,14 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
+  // Python backend status for voice functionality
+  const [pythonBackendStatus, setPythonBackendStatus] = useState<{
+    isHealthy: boolean;
+    serviceUrl: string | null;
+    error?: string;
+  }>({ isHealthy: false, serviceUrl: null });
+  const [isPythonStarting, setIsPythonStarting] = useState(false);
+
   // Image generation state
   const [showImageGenWidget, setShowImageGenWidget] = useState(false);
   const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
@@ -4119,6 +4127,16 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
   // Simple voice mode toggle
   const handleVoiceModeToggle = useCallback(() => {
+    // Check if Python backend is available
+    if (!pythonBackendStatus.isHealthy) {
+      addErrorNotification(
+        'Python Backend Required',
+        'Voice functionality requires Python backend. Please start the Python backend first.',
+        5000
+      );
+      return;
+    }
+
     if (isVoiceChatEnabled) {
       // Deactivate voice mode
       setIsVoiceChatEnabled(false);
@@ -4129,12 +4147,83 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       setIsVoiceChatEnabled(true);
       setShowVoiceChat(true);
       console.log('🎤 Voice mode activated - ready to listen');
+      addInfoNotification('Voice mode activated! Click and hold the microphone to speak.', 'Voice input is now ready for use.', 4000);
     }
-  }, [isVoiceChatEnabled]);
+  }, [isVoiceChatEnabled, pythonBackendStatus.isHealthy, addErrorNotification, addInfoNotification]);
 
   const handleVoiceToggle = useCallback(() => {
     setIsVoiceChatEnabled(!isVoiceChatEnabled);
   }, [isVoiceChatEnabled]);
+
+  // Python backend handlers for voice functionality
+  const checkPythonBackendStatus = useCallback(async () => {
+    try {
+      if (!(window as any).electronAPI) {
+        setPythonBackendStatus({ isHealthy: false, serviceUrl: null, error: 'Electron API not available' });
+        return;
+      }
+
+      const status = await (window as any).electronAPI.invoke('check-python-status');
+      setPythonBackendStatus({
+        isHealthy: status.isHealthy || false,
+        serviceUrl: status.serviceUrl,
+        error: status.error
+      });
+    } catch (error) {
+      console.error('Error checking Python backend status:', error);
+      setPythonBackendStatus({ 
+        isHealthy: false, 
+        serviceUrl: null, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  }, []);
+
+  const handleStartPythonBackend = useCallback(async () => {
+    try {
+      if (!(window as any).electronAPI) {
+        addErrorNotification(
+          'Python Backend Error',
+          'Electron API not available'
+        );
+        return;
+      }
+
+      setIsPythonStarting(true);
+      console.log('🐍 Starting Python backend for voice functionality...');
+      
+      addInfoNotification(
+        'Starting Python Backend',
+        'Starting Python backend for voice functionality...',
+        3000
+      );
+
+      const result = await (window as any).electronAPI.invoke('start-python-container');
+      
+      if (result.success) {
+        console.log('✅ Python backend started successfully');
+        addInfoNotification('Python backend started successfully! Voice input is now available.', 'Voice functionality is now ready to use.', 5000);
+        // Recheck status after successful start
+        await checkPythonBackendStatus();
+      } else {
+        console.error('❌ Failed to start Python backend:', result.error);
+        addErrorNotification(
+          'Python Backend Failed',
+          `Failed to start Python backend: ${result.error}. Please ensure Docker is running.`, 
+          7000
+        );
+      }
+    } catch (error) {
+      console.error('Error starting Python backend:', error);
+      addErrorNotification(
+        'Python Backend Error',
+        `Error starting Python backend: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        7000
+      );
+    } finally {
+      setIsPythonStarting(false);
+    }
+  }, [checkPythonBackendStatus, addInfoNotification, addErrorNotification]);
 
   // Apps dropdown toggle handler
   const handleAppsToggle = useCallback(() => {
@@ -4392,18 +4481,17 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           return;
         }
         
-        // Get ComfyUI service status
-        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
-        const comfyuiStatus = status?.comfyui || {};
+        // Get ComfyUI service status using the specific ComfyUI status handler
+        const comfyuiStatus = await (window as any).electronAPI.invoke('comfyui-status');
         
         console.log('🎨 ComfyUI Status Check:', comfyuiStatus);
         
-        // Check if ComfyUI is running (state should be 'running')
-        if (comfyuiStatus.state === 'running') {
+        // Check if ComfyUI is running (status.running should be true)
+        if (comfyuiStatus.running) {
           // Try to connect to ComfyUI and get models
           try {
             const { Client } = await import('@stable-canvas/comfyui-client');
-            const url = comfyuiStatus.serviceUrl || 'http://localhost:8188';
+            const url = comfyuiStatus.url || `http://localhost:${comfyuiStatus.port || 8188}`;
             let processedUrl = url;
             if (url.includes('http://') || url.includes('https://')) {
               processedUrl = url.split('//')[1];
@@ -4451,7 +4539,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
             setAvailableImageModels([]);
           }
         } else {
-          console.log('⚠️ ComfyUI service not running, state:', comfyuiStatus.state);
+          console.log('⚠️ ComfyUI service not running, status:', comfyuiStatus.running, 'error:', comfyuiStatus.error);
           setImageGenEnabled(false);
           setAvailableImageModels([]);
         }
@@ -4472,6 +4560,18 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  // Check Python backend status for voice functionality
+  useEffect(() => {
+    // Check status immediately
+    checkPythonBackendStatus();
+    
+    // Set up periodic check every 30 seconds
+    const interval = setInterval(checkPythonBackendStatus, 30000);
+    
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+  }, [checkPythonBackendStatus]);
+
   // Debug function for troubleshooting image generation
   useEffect(() => {
     // Make debug functions available globally for troubleshooting
@@ -4484,7 +4584,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         if ((window as any).electronAPI) {
           const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
           console.log('Service Status:', status);
-          console.log('ComfyUI Status:', status?.comfyui);
+          
+          const comfyuiStatus = await (window as any).electronAPI.invoke('comfyui-status');
+          console.log('ComfyUI Status:', comfyuiStatus);
         } else {
           console.log('electronAPI not available');
         }
@@ -4496,13 +4598,12 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     (window as any).testImageGenConnection = async () => {
       console.log('=== Testing Image Generation Connection ===');
       try {
-        const status = await (window as any).electronAPI.invoke('service-config:get-enhanced-status');
-        const comfyuiStatus = status?.comfyui || {};
+        const comfyuiStatus = await (window as any).electronAPI.invoke('comfyui-status');
         console.log('ComfyUI Status:', comfyuiStatus);
         
-        if (comfyuiStatus.state === 'running') {
+        if (comfyuiStatus.running) {
           const { Client } = await import('@stable-canvas/comfyui-client');
-          const url = comfyuiStatus.serviceUrl || 'http://localhost:8188';
+          const url = comfyuiStatus.url || `http://localhost:${comfyuiStatus.port || 8188}`;
           console.log('Testing connection to:', url);
           
           let processedUrl = url;
@@ -5036,19 +5137,41 @@ You can right-click on the image to save it or use it in your projects.`;
                     </div>
 
                     {/* Voice Input */}
-                    <Tooltip content="Voice input" position="top">
-                      <button
-                        onClick={handleVoiceModeToggle}
-                        className={`p-2 rounded-lg transition-colors mr-3 ${
-                          isVoiceChatEnabled 
-                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                        disabled={isLoading}
-                      >
-                        <Mic className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
+                    <div className="relative">
+                      {pythonBackendStatus.isHealthy ? (
+                        <Tooltip content="Voice input" position="top">
+                          <button
+                            onClick={handleVoiceModeToggle}
+                            className={`p-2 rounded-lg transition-colors mr-3 ${
+                              isVoiceChatEnabled 
+                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                            }`}
+                            disabled={isLoading}
+                          >
+                            <Mic className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip content={
+                          pythonBackendStatus.error 
+                            ? `Voice unavailable: ${pythonBackendStatus.error}. Click to start Python backend.`
+                            : "Voice requires Python backend. Click to start."
+                        } position="top">
+                          <button
+                            onClick={handleStartPythonBackend}
+                            className="p-2 rounded-lg transition-colors mr-3 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-700"
+                            disabled={isLoading || isPythonStarting}
+                          >
+                            {isPythonStarting ? (
+                              <div className="w-4 h-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
+                            ) : (
+                              <Mic className="w-4 h-4" />
+                            )}
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
 
                     {/* Apps */}
                     <div className="relative">

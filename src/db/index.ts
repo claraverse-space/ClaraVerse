@@ -65,6 +65,11 @@ export interface PersonalInfo {
     checkForUpdates: boolean;
     restoreLastSession: boolean;
   };
+  ui_preferences?: {
+    font_scale: number; // Font size scaling factor (0.75 - 1.5)
+    accent_color: string; // Hex color code for accent color
+    font_family: string; // Font family name
+  };
 }
 
 export interface Provider {

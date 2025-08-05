@@ -463,7 +463,7 @@ const AgentRunnerContent: React.FC<AgentRunnerProps> = ({ agentId, onClose, onPa
           
           <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 min-h-0 overflow-hidden">
             {/* Agent Runner Header */}
-            <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-4 flex-shrink-0">
+            <div className="glassmorphic px-6 py-4 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3">
@@ -582,8 +582,8 @@ const AgentRunnerContent: React.FC<AgentRunnerProps> = ({ agentId, onClose, onPa
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden min-h-0">
               {/* Input Panel */}
-              <div className="w-80 glassmorphic border-r border-white/20 dark:border-gray-700/50 flex flex-col overflow-hidden min-h-0">
-                <div className="p-4 border-b border-white/20 dark:border-gray-700/50 flex-shrink-0">
+              <div className="w-80 glassmorphic flex flex-col overflow-hidden min-h-0">
+                <div className="p-4 flex-shrink-0">
                   <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2 flex items-center gap-2">
                     <Zap className="w-5 h-5 text-sakura-500" />
                     Agent Inputs
@@ -711,7 +711,7 @@ const AgentRunnerContent: React.FC<AgentRunnerProps> = ({ agentId, onClose, onPa
 
               {/* Results Panel */}
               <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                <div className="glassmorphic border-b border-white/20 dark:border-gray-700/50 px-6 py-3 flex-shrink-0">
+                <div className="glassmorphic px-6 py-3 flex-shrink-0">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                       <Bot className="w-5 h-5 text-sakura-500" />

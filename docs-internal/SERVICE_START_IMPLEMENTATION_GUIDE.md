@@ -1,0 +1,2 @@
+
+ #file:Settings.tsx  in system services - N8N and Comfyui never show their actual status they always show stopped check #file:main.cjs  which i pc they have to use to get the and also a uX expert make sure the whole thing is not confusing for the users

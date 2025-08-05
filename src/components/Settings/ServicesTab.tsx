@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Server, Wrench, AlertCircle, ExternalLink, Play, Square, RefreshCw } from 'lucide-react';
+import { Server, Wrench, AlertCircle, ExternalLink, Play, Square, RefreshCw, Image, Zap } from 'lucide-react';
 
 interface DockerServicesStatus {
   dockerAvailable: boolean;
@@ -30,6 +30,12 @@ interface LlamaSwapStatus {
   apiUrl: string | null;
 }
 
+interface ServiceStatus {
+  running: boolean;
+  serviceUrl?: string;
+  error?: string;
+}
+
 interface LlamaSwapModel {
   id: string;
   object: string;
@@ -51,6 +57,19 @@ const ServicesTab: React.FC = () => {
   });
   const [llamaSwapModels, setLlamaSwapModels] = useState<LlamaSwapModel[]>([]);
   const [llamaSwapLoading, setLlamaSwapLoading] = useState(false);
+  
+  // N8N and ComfyUI service status
+  const [n8nStatus, setN8nStatus] = useState<ServiceStatus>({
+    running: false,
+    serviceUrl: 'http://localhost:5678'
+  });
+  const [comfyuiStatus, setComfyuiStatus] = useState<ServiceStatus>({
+    running: false,
+    serviceUrl: 'http://localhost:8188'
+  });
+  const [n8nLoading, setN8nLoading] = useState(false);
+  const [comfyuiLoading, setComfyuiLoading] = useState(false);
+  
   const [dockerServiceLoading, setDockerServiceLoading] = useState<{ [key: string]: boolean }>({});
   const expectedServiceStatesRef = useRef<{ [key: string]: boolean }>({});
 
@@ -116,8 +135,126 @@ const ServicesTab: React.FC = () => {
     // Also fetch llama-swap status
     fetchLlamaSwapStatus();
     
+    // Fetch N8N and ComfyUI service status
+    fetchN8nStatus();
+    fetchComfyuiStatus();
+    
     return () => clearInterval(interval);
   }, []);
+
+  // N8N service management functions
+  const fetchN8nStatus = async () => {
+    try {
+      const result = await (window as any).electronAPI.invoke('n8n:check-service-status');
+      console.log('N8N Service Status:', result);
+      setN8nStatus({
+        running: result.running || false,
+        serviceUrl: result.serviceUrl || 'http://localhost:5678',
+        error: result.error
+      });
+    } catch (error) {
+      console.error('Error fetching N8N status:', error);
+      setN8nStatus({
+        running: false,
+        serviceUrl: 'http://localhost:5678',
+        error: 'Failed to check status'
+      });
+    }
+  };
+
+  const fetchComfyuiStatus = async () => {
+    try {
+      const result = await (window as any).electronAPI.invoke('comfyui:check-service-status');
+      console.log('ComfyUI Service Status:', result);
+      setComfyuiStatus({
+        running: result.running || false,
+        serviceUrl: result.serviceUrl || 'http://localhost:8188',
+        error: result.error
+      });
+    } catch (error) {
+      console.error('Error fetching ComfyUI status:', error);
+      setComfyuiStatus({
+        running: false,
+        serviceUrl: 'http://localhost:8188',
+        error: 'Failed to check status'
+      });
+    }
+  };
+
+  const handleN8nAction = async (action: 'start' | 'stop' | 'restart') => {
+    setN8nLoading(true);
+    try {
+      let result;
+      if (action === 'start' && (window as any).electronAPI) {
+        result = await (window as any).electronAPI.invoke('n8n:start-container');
+      } else if (action === 'stop' && (window as any).electronAPI) {
+        // For stop, we'll use docker service control as fallback
+        await handleDockerServiceAction('n8n', 'stop');
+        result = { success: true };
+      } else if (action === 'restart' && (window as any).electronAPI) {
+        // For restart, use docker service control
+        await handleDockerServiceAction('n8n', 'restart');
+        result = { success: true };
+      }
+      
+      if (result?.success) {
+        // Wait a moment for service to start/stop
+        setTimeout(() => {
+          fetchN8nStatus();
+        }, 2000);
+      } else {
+        console.error('N8N action failed:', result?.error);
+      }
+    } catch (error) {
+      console.error('Error performing N8N action:', error);
+    } finally {
+      setN8nLoading(false);
+    }
+  };
+
+  const handleComfyuiAction = async (action: 'start' | 'stop' | 'restart') => {
+    setComfyuiLoading(true);
+    try {
+      let result;
+      if (action === 'start' && (window as any).electronAPI) {
+        // Use both container start and comfyui-start for better compatibility
+        result = await (window as any).electronAPI.invoke('comfyui-start');
+        // ComfyUI takes longer to start, so wait more and check status multiple times
+        if (result?.success) {
+          // Check status after 5 seconds, then again after 15 seconds
+          setTimeout(() => {
+            fetchComfyuiStatus();
+          }, 5000);
+          setTimeout(() => {
+            fetchComfyuiStatus();
+          }, 15000);
+        }
+      } else if (action === 'stop' && (window as any).electronAPI) {
+        result = await (window as any).electronAPI.invoke('comfyui-stop');
+      } else if (action === 'restart' && (window as any).electronAPI) {
+        result = await (window as any).electronAPI.invoke('comfyui-restart');
+        // ComfyUI restart takes longer, check status multiple times
+        if (result?.success) {
+          setTimeout(() => {
+            fetchComfyuiStatus();
+          }, 8000);
+          setTimeout(() => {
+            fetchComfyuiStatus();
+          }, 20000);
+        }
+      }
+      
+      if (result?.success) {
+        console.log(`ComfyUI ${action} initiated successfully`);
+      } else {
+        console.error('ComfyUI action failed:', result?.error);
+      }
+    } catch (error) {
+      console.error('Error performing ComfyUI action:', error);
+    } finally {
+      setComfyuiLoading(false);
+    }
+  };
 
   // Llama-swap service management functions
   const fetchLlamaSwapStatus = async () => {
@@ -682,6 +819,218 @@ const ServicesTab: React.FC = () => {
                  <p className="text-gray-500 dark:text-gray-400">
                    {llamaSwapStatus.isRunning ? 'No models available' : 'Service not running'}
                  </p>
+               </div>
+             )}
+           </div>
+         </div>
+       </div>
+
+       {/* AI Services (N8N and ComfyUI) */}
+       <div className="glassmorphic rounded-xl p-6">
+         <div className="flex items-center gap-3 mb-6">
+           <Server className="w-6 h-6 text-emerald-500" />
+           <div>
+             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+               AI Services
+             </h3>
+             <p className="text-sm text-gray-600 dark:text-gray-400">
+               N8N workflows and ComfyUI image generation services
+             </p>
+           </div>
+           <button
+             onClick={() => {
+               fetchN8nStatus();
+               fetchComfyuiStatus();
+             }}
+             className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+           >
+             <RefreshCw className="w-3 h-3" />
+             Refresh
+           </button>
+         </div>
+
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+           {/* N8N Workflow Service */}
+           <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+             <div className="flex items-center gap-3 mb-4">
+               <Zap className="w-6 h-6 text-blue-500" />
+               <div>
+                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                   N8N Workflows
+                 </h4>
+                 <p className="text-sm text-gray-600 dark:text-gray-400">
+                   Visual workflow automation platform
+                 </p>
+               </div>
+             </div>
+
+             {/* Status Grid */}
+             <div className="grid grid-cols-2 gap-4 mb-4">
+               <div className="bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg">
+                 <h5 className="text-blue-500 dark:text-blue-400 mb-1 text-sm">Status</h5>
+                 <div className="flex items-center gap-2">
+                   <div className={`w-3 h-3 rounded-full ${
+                     n8nLoading 
+                       ? 'bg-yellow-500 animate-pulse' 
+                       : n8nStatus.running 
+                         ? 'bg-green-500' 
+                         : 'bg-red-500'
+                   }`}></div>
+                   <span className="text-gray-800 dark:text-gray-100 text-sm">
+                     {n8nLoading 
+                       ? 'Starting...' 
+                       : n8nStatus.running 
+                         ? 'Running' 
+                         : 'Stopped'}
+                   </span>
+                 </div>
+               </div>
+               <div className="bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg">
+                 <h5 className="text-blue-500 dark:text-blue-400 mb-1 text-sm">Service URL</h5>
+                 <p className="text-gray-800 dark:text-gray-100 font-mono text-xs">
+                   {n8nStatus.serviceUrl || 'N/A'}
+                 </p>
+               </div>
+             </div>
+
+             {/* Control Buttons */}
+             <div className="flex gap-2">
+               {n8nStatus.running ? (
+                 <>
+                   <button
+                     onClick={() => handleN8nAction('stop')}
+                     disabled={n8nLoading}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                   >
+                     {n8nLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+                     {n8nLoading ? 'Stopping...' : 'Stop'}
+                   </button>
+                   <button
+                     onClick={() => handleN8nAction('restart')}
+                     disabled={n8nLoading}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                   >
+                     <RefreshCw className={`w-3 h-3 ${n8nLoading ? 'animate-spin' : ''}`} />
+                     {n8nLoading ? 'Restarting...' : 'Restart'}
+                   </button>
+                   <button
+                     onClick={() => window.open(n8nStatus.serviceUrl || 'http://localhost:5678', '_blank')}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                   >
+                     <ExternalLink className="w-3 h-3" />
+                     Open
+                   </button>
+                 </>
+               ) : (
+                 <button
+                   onClick={() => handleN8nAction('start')}
+                   disabled={n8nLoading}
+                   className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                 >
+                   {n8nLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                   {n8nLoading ? 'Starting...' : 'Start'}
+                 </button>
+               )}
+             </div>
+
+             {n8nStatus.error && (
+               <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
+                 {n8nStatus.error}
+               </div>
+             )}
+           </div>
+
+           {/* ComfyUI Image Generation Service */}
+           <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+             <div className="flex items-center gap-3 mb-4">
+               <Image className="w-6 h-6 text-purple-500" />
+               <div>
+                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                   ComfyUI Image Generation
+                 </h4>
+                 <p className="text-sm text-gray-600 dark:text-gray-400">
+                   AI image generation with Stable Diffusion
+                 </p>
+               </div>
+             </div>
+
+             {/* Status Grid */}
+             <div className="grid grid-cols-2 gap-4 mb-4">
+               <div className="bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg">
+                 <h5 className="text-purple-500 dark:text-purple-400 mb-1 text-sm">Status</h5>
+                 <div className="flex items-center gap-2">
+                   <div className={`w-3 h-3 rounded-full ${
+                     comfyuiLoading 
+                       ? 'bg-yellow-500 animate-pulse' 
+                       : comfyuiStatus.running 
+                         ? 'bg-green-500' 
+                         : 'bg-red-500'
+                   }`}></div>
+                   <span className="text-gray-800 dark:text-gray-100 text-sm">
+                     {comfyuiLoading 
+                       ? 'Starting...' 
+                       : comfyuiStatus.running 
+                         ? 'Running' 
+                         : 'Stopped'}
+                   </span>
+                 </div>
+                 {comfyuiLoading && (
+                   <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                     ComfyUI may take 30-60 seconds to fully start
+                   </p>
+                 )}
+               </div>
+               <div className="bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg">
+                 <h5 className="text-purple-500 dark:text-purple-400 mb-1 text-sm">Service URL</h5>
+                 <p className="text-gray-800 dark:text-gray-100 font-mono text-xs">
+                   {comfyuiStatus.serviceUrl || 'N/A'}
+                 </p>
+               </div>
+             </div>
+
+             {/* Control Buttons */}
+             <div className="flex gap-2">
+               {comfyuiStatus.running ? (
+                 <>
+                   <button
+                     onClick={() => handleComfyuiAction('stop')}
+                     disabled={comfyuiLoading}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                   >
+                     {comfyuiLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+                     {comfyuiLoading ? 'Stopping...' : 'Stop'}
+                   </button>
+                   <button
+                     onClick={() => handleComfyuiAction('restart')}
+                     disabled={comfyuiLoading}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                   >
+                     <RefreshCw className={`w-3 h-3 ${comfyuiLoading ? 'animate-spin' : ''}`} />
+                     {comfyuiLoading ? 'Restarting...' : 'Restart'}
+                   </button>
+                   <button
+                     onClick={() => window.open(comfyuiStatus.serviceUrl || 'http://localhost:8188', '_blank')}
+                     className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+                   >
+                     <ExternalLink className="w-3 h-3" />
+                     Open
+                   </button>
+                 </>
+               ) : (
+                 <button
+                   onClick={() => handleComfyuiAction('start')}
+                   disabled={comfyuiLoading}
+                   className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                 >
+                   {comfyuiLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                   {comfyuiLoading ? 'Starting...' : 'Start'}
+                 </button>
+               )}
+             </div>
+
+             {comfyuiStatus.error && (
+               <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
+                 {comfyuiStatus.error}
                </div>
              )}
            </div>

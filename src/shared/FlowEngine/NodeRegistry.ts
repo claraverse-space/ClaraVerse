@@ -152,10 +152,6 @@ export class NodeRegistry {
       const memory = inputs.memory || [];
       const imageData = inputs.image || '';
       
-      if (!apiKey) {
-        throw new Error('API key is required for LLM node');
-      }
-      
       if (!userMessage) {
         throw new Error('User message is required for LLM node');
       }
@@ -207,12 +203,18 @@ export class NodeRegistry {
           content: userMessageContent.length === 1 ? userMessage : userMessageContent
         });
         
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        // Only add Authorization header if API key is provided
+        if (apiKey && apiKey.trim()) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         const response = await fetch(`${apiBaseUrl}/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
+          headers,
           body: JSON.stringify({
             model,
             messages,
@@ -222,7 +224,13 @@ export class NodeRegistry {
         });
         
         if (!response.ok) {
-          throw new Error(`LLM API Error: ${response.status} ${response.statusText}`);
+          if (response.status === 401) {
+            throw new Error('Authentication failed - API key may be required or invalid');
+          } else if (response.status === 403) {
+            throw new Error('Access forbidden - check API key permissions');
+          } else {
+            throw new Error(`LLM API Error: ${response.status} ${response.statusText}`);
+          }
         }
         
         const data = await response.json();
@@ -248,10 +256,6 @@ export class NodeRegistry {
       const prompt = inputs.prompt || '';
       const jsonExample = inputs.jsonExample || '';
       const context = inputs.context || '';
-      
-      if (!apiKey) {
-        throw new Error('API key is required for Structured LLM node');
-      }
       
       if (!prompt) {
         throw new Error('Prompt is required for Structured LLM node');
@@ -290,12 +294,18 @@ export class NodeRegistry {
         messages.push({ role: 'user', content: userMessage });
         
         // Make API call with structured output
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        // Only add Authorization header if API key is provided
+        if (apiKey && apiKey.trim()) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         const response = await fetch(`${apiBaseUrl}/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
+          headers,
           body: JSON.stringify({
             model,
             messages,
@@ -314,7 +324,13 @@ export class NodeRegistry {
         });
         
         if (!response.ok) {
-          throw new Error(`Structured LLM API Error: ${response.status} ${response.statusText}`);
+          if (response.status === 401) {
+            throw new Error('Authentication failed - API key may be required or invalid');
+          } else if (response.status === 403) {
+            throw new Error('Access forbidden - check API key permissions');
+          } else {
+            throw new Error(`Structured LLM API Error: ${response.status} ${response.statusText}`);
+          }
         }
         
         const data = await response.json();

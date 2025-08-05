@@ -1,12 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Wrench, Download, RotateCcw, AlertCircle, ExternalLink, HelpCircle, Brain, Puzzle, Hammer, RefreshCw, Power, Code, Monitor, FileText } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
 import MCPSettings from './MCPSettings';
 import ModelManager from './ModelManager';
 import ToolBelt from './ToolBelt';
+import UnifiedServiceManager from './Settings/UnifiedServiceManager';
 import GPUDiagnostics from './GPUDiagnostics';
+import { 
+  DEFAULT_UI_PREFERENCES, 
+  FONT_SCALE_OPTIONS, 
+  ACCENT_COLOR_OPTIONS, 
+  applyUIPreferences,
+  detectSystemFonts
+} from '../utils/uiPreferences';
 
 // Type for llama.cpp update info
 interface LlamacppUpdateInfo {
@@ -45,8 +53,38 @@ interface StartupConfig {
 }
 
 const Settings = () => {
+  // Main category tabs
+  const [activeMainTab, setActiveMainTab] = useState<'interface' | 'ai-models' | 'system' | 'profile'>('ai-models');
+  
+  // Sub-tabs for each main category
+  const [activeInterfaceTab, setActiveInterfaceTab] = useState<'appearance' | 'ui-preferences'>('appearance');
+  const [activeAITab, setActiveAITab] = useState<'api' | 'models' | 'mcp'>('api');
+  const [activeSystemTab, setActiveSystemTab] = useState<'services' | 'toolbelt' | 'updates'>('services');
+  
+  // Keep legacy activeTab for backward compatibility during transition
   const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers' >('api');
   const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
+
+  // Function to get the effective active tab based on new structure
+  const getEffectiveActiveTab = (): typeof activeTab => {
+    if (activeMainTab === 'profile') return 'personal';
+    if (activeMainTab === 'interface') {
+      if (activeInterfaceTab === 'appearance' || activeInterfaceTab === 'ui-preferences') {
+        return 'preferences';
+      }
+    }
+    if (activeMainTab === 'ai-models') {
+      return activeAITab as 'api' | 'models' | 'mcp';
+    }
+    if (activeMainTab === 'system') {
+      if (activeSystemTab === 'services') return 'servers';
+      return activeSystemTab as 'toolbelt' | 'updates';
+    }
+    return 'api'; // default
+  };
+
+  // Get current effective tab
+  const effectiveActiveTab = getEffectiveActiveTab();
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: '',
     email: '',
@@ -59,7 +97,8 @@ const Settings = () => {
       startFullscreen: false,
       checkForUpdates: true,
       restoreLastSession: true
-    }
+    },
+    ui_preferences: DEFAULT_UI_PREFERENCES
   });
 
   const [apiConfig, setApiConfig] = useState<APIConfig>({
@@ -116,6 +155,10 @@ const Settings = () => {
   const [featureConfigLoaded, setFeatureConfigLoaded] = useState(false);
   const [savingFeatureConfig, setSavingFeatureConfig] = useState(false);
 
+  // Available system fonts state
+  const [availableFonts, setAvailableFonts] = useState<{ value: string; label: string; description: string }[]>([]);
+  const [fontsLoading, setFontsLoading] = useState(true);
+
   // Type for update info to fix TypeScript errors
   interface UpdateInfo {
     hasUpdate: boolean;
@@ -168,8 +211,19 @@ const Settings = () => {
       const savedApiConfig = await db.getAPIConfig();
 
       if (savedPersonalInfo) {
-        setPersonalInfo(savedPersonalInfo);
+        // Merge with default UI preferences if they don't exist
+        const mergedPersonalInfo = {
+          ...savedPersonalInfo,
+          ui_preferences: {
+            ...DEFAULT_UI_PREFERENCES,
+            ...savedPersonalInfo.ui_preferences
+          }
+        };
+        setPersonalInfo(mergedPersonalInfo);
         setTheme(savedPersonalInfo.theme_preference as ThemeMode);
+        
+        // Apply UI preferences
+        applyUIPreferences(mergedPersonalInfo);
       }
 
       if (savedApiConfig) {
@@ -310,24 +364,24 @@ const Settings = () => {
 
   // Check for updates when updates tab is first opened
   useEffect(() => {
-    if (activeTab === 'updates' && !updateInfo && !checkingUpdates) {
+    if (effectiveActiveTab === 'updates' && !updateInfo && !checkingUpdates) {
       checkForUpdates();
     }
-  }, [activeTab]);
+  }, [effectiveActiveTab, updateInfo, checkingUpdates]);
 
   // Auto-check for llama.cpp updates when updates tab is opened
   useEffect(() => {
-    if (activeTab === 'updates' && !llamacppUpdateInfo && !checkingLlamacppUpdates) {
+    if (effectiveActiveTab === 'updates' && !llamacppUpdateInfo && !checkingLlamacppUpdates) {
       // Small delay to avoid overwhelming the UI
       setTimeout(() => {
         checkForLlamacppUpdates();
       }, 500);
     }
-  }, [activeTab]);
+  }, [effectiveActiveTab, llamacppUpdateInfo, checkingLlamacppUpdates]);
 
   // Add auto-detection when API tab is opened
   useEffect(() => {
-    if (activeTab === 'api' && !providersLoading) {
+    if (effectiveActiveTab === 'api' && !providersLoading) {
       // Only auto-detect if no providers exist or only Clara's Core exists
       const nonCoreProviders = providers.filter(p => p.type !== 'claras-pocket');
       if (nonCoreProviders.length === 0) {
@@ -384,10 +438,34 @@ const Settings = () => {
       }
     };
 
-    if (activeTab === 'servers') {
+    if (effectiveActiveTab === 'servers') {
       loadPythonBackendInfo();
     }
-  }, [activeTab]);
+  }, [effectiveActiveTab]);
+
+  // Load available system fonts
+  useEffect(() => {
+    const loadFonts = async () => {
+      try {
+        setFontsLoading(true);
+        const fonts = await detectSystemFonts();
+        setAvailableFonts(fonts);
+      } catch (error) {
+        console.error('Failed to detect system fonts:', error);
+        // Fall back to a basic set of fonts if detection fails
+        setAvailableFonts([
+          { value: 'system-ui', label: 'System Default', description: 'Your system\'s default font' },
+          { value: 'Arial, sans-serif', label: 'Arial', description: 'Classic sans-serif' },
+          { value: 'Georgia, serif', label: 'Georgia', description: 'Readable serif font' },
+          { value: 'Monaco, Consolas, monospace', label: 'Monaco', description: 'Code editor font' },
+        ]);
+      } finally {
+        setFontsLoading(false);
+      }
+    };
+
+    loadFonts();
+  }, []);
 
   // Update checking functionality - Enhanced with bulletproof error handling
   const checkForUpdates = async () => {
@@ -580,6 +658,10 @@ const Settings = () => {
         await db.updatePersonalInfo(personalInfo);
         await db.updateAPIConfig(apiConfig);
         setSaveStatus('success');
+        
+        // Apply UI preferences whenever personal info changes
+        applyUIPreferences(personalInfo);
+        
         // Hide success message after 2 seconds
         setTimeout(() => {
           setSaveStatus('idle');
@@ -604,6 +686,22 @@ const Settings = () => {
     const value = e.target.value as ThemeMode;
     setPersonalInfo(prev => ({ ...prev, theme_preference: value }));
     setTheme(value);
+  };
+
+  // Handle UI preference changes
+  const handleUIPreferenceChange = (updates: Partial<PersonalInfo['ui_preferences']>) => {
+    const newPersonalInfo = {
+      ...personalInfo,
+      ui_preferences: {
+        ...personalInfo.ui_preferences,
+        ...DEFAULT_UI_PREFERENCES,
+        ...updates
+      }
+    };
+    setPersonalInfo(newPersonalInfo);
+    
+    // Apply changes immediately
+    applyUIPreferences(newPersonalInfo);
   };
 
   // Handle setting wallpaper
@@ -658,7 +756,49 @@ const Settings = () => {
     ];
   }
 
-  // Tab component
+  // Tab component - Main category tabs
+  const MainTabItem = ({ id, label, icon, isActive }: { 
+    id: 'interface' | 'ai-models' | 'system' | 'profile', 
+    label: string, 
+    icon: React.ReactNode, 
+    isActive: boolean 
+  }) => (
+    <button
+      onClick={() => setActiveMainTab(id)}
+      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${isActive
+          ? 'bg-sakura-500 text-white'
+          : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
+        }`}
+    >
+      {icon}
+      <span className="font-medium">{label}</span>
+    </button>
+  );
+
+  // Sub-tab components
+  const SubTabItem = ({ 
+    id, 
+    label, 
+    isActive, 
+    onClick 
+  }: { 
+    id: string, 
+    label: string, 
+    isActive: boolean,
+    onClick: () => void
+  }) => (
+    <button
+      onClick={onClick}
+      className={`px-3 py-2 rounded-lg transition-colors text-sm font-medium ${isActive
+          ? 'bg-sakura-100 text-sakura-700 dark:bg-sakura-900/30 dark:text-sakura-300'
+          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+        }`}
+    >
+      {label}
+    </button>
+  );
+
+  // Legacy tab component (keeping for backward compatibility during transition)
   const TabItem = ({ id, label, icon, isActive }: { id: typeof activeTab, label: string, icon: React.ReactNode, isActive: boolean }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -995,10 +1135,10 @@ const Settings = () => {
 
   // Load service configurations when Services tab is opened
   useEffect(() => {
-    if (activeTab === 'servers') {
+    if (effectiveActiveTab === 'servers') {
       loadServiceConfigurations();
     }
-  }, [activeTab]);
+  }, [effectiveActiveTab]);
 
   // Load service configurations
   const loadServiceConfigurations = async () => {
@@ -1213,67 +1353,134 @@ const Settings = () => {
       <div className="p-6 flex max-w-7xl mx-auto gap-6 relative z-10 h-[calc(100vh-3rem)]">
         {/* Sidebar with tabs */}
         <div className="w-64 shrink-0">
-          <div className="glassmorphic rounded-xl p-4 space-y-2 sticky top-4">
+          <div className="glassmorphic rounded-xl p-4 space-y-4 sticky top-4">
             <h2 className="flex items-center gap-2 px-4 py-3 text-lg font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 mb-2">
               <SettingsIcon className="w-5 h-5 text-sakura-500" />
               Settings
             </h2>
 
-            <TabItem
-              id="api"
-              label="AI Services"
-              icon={<Bot className="w-5 h-5" />}
-              isActive={activeTab === 'api'}
-            />
+            {/* Main Category Tabs */}
+            <div className="space-y-2">
+              <MainTabItem
+                id="interface"
+                label="Interface"
+                icon={<Palette className="w-5 h-5" />}
+                isActive={activeMainTab === 'interface'}
+              />
 
-            <TabItem
-              id="models"
-              label="Local Models"
-              icon={<Brain className="w-5 h-5" />}
-              isActive={activeTab === 'models'}
-            />
+              <MainTabItem
+                id="ai-models"
+                label="AI & Models"
+                icon={<Bot className="w-5 h-5" />}
+                isActive={activeMainTab === 'ai-models'}
+              />
 
-            <TabItem
-              id="mcp"
-              label="MCP Servers"
-              icon={<Puzzle className="w-5 h-5" />}
-              isActive={activeTab === 'mcp'}
-            />
+              <MainTabItem
+                id="system"
+                label="System"
+                icon={<Server className="w-5 h-5" />}
+                isActive={activeMainTab === 'system'}
+              />
 
-            <TabItem
-              id="toolbelt"
-              label="Tools"
-              icon={<Hammer className="w-5 h-5" />}
-              isActive={activeTab === 'toolbelt'}
-            />
+              <MainTabItem
+                id="profile"
+                label="Profile"
+                icon={<User className="w-5 h-5" />}
+                isActive={activeMainTab === 'profile'}
+              />
+            </div>
 
-            <TabItem
-              id="servers"
-              label="Services"
-              icon={<Server className="w-5 h-5" />}
-              isActive={activeTab === 'servers'}
-            />
+            {/* Sub-tabs based on active main tab */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              {activeMainTab === 'interface' && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
+                    Interface
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <SubTabItem
+                      id="appearance"
+                      label="Appearance"
+                      isActive={activeInterfaceTab === 'appearance'}
+                      onClick={() => setActiveInterfaceTab('appearance')}
+                    />
+                    <SubTabItem
+                      id="ui-preferences"
+                      label="Customize"
+                      isActive={activeInterfaceTab === 'ui-preferences'}
+                      onClick={() => setActiveInterfaceTab('ui-preferences')}
+                    />
+                  </div>
+                </div>
+              )}
 
-            <TabItem
-              id="preferences"
-              label="General"
-              icon={<SettingsIcon className="w-5 h-5" />}
-              isActive={activeTab === 'preferences'}
-            />
+              {activeMainTab === 'ai-models' && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
+                    AI & Models
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <SubTabItem
+                      id="api"
+                      label="AI Services"
+                      isActive={activeAITab === 'api'}
+                      onClick={() => setActiveAITab('api')}
+                    />
+                    <SubTabItem
+                      id="models"
+                      label="Local Models"
+                      isActive={activeAITab === 'models'}
+                      onClick={() => setActiveAITab('models')}
+                    />
+                    <SubTabItem
+                      id="mcp"
+                      label="MCP Servers"
+                      isActive={activeAITab === 'mcp'}
+                      onClick={() => setActiveAITab('mcp')}
+                    />
+                  </div>
+                </div>
+              )}
 
-            <TabItem
-              id="personal"
-              label="Profile"
-              icon={<User className="w-5 h-5" />}
-              isActive={activeTab === 'personal'}
-            />
+              {activeMainTab === 'system' && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
+                    System
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <SubTabItem
+                      id="services"
+                      label="Services"
+                      isActive={activeSystemTab === 'services'}
+                      onClick={() => setActiveSystemTab('services')}
+                    />
+                    <SubTabItem
+                      id="toolbelt"
+                      label="Tools"
+                      isActive={activeSystemTab === 'toolbelt'}
+                      onClick={() => setActiveSystemTab('toolbelt')}
+                    />
+                    <SubTabItem
+                      id="updates"
+                      label="Updates"
+                      isActive={activeSystemTab === 'updates'}
+                      onClick={() => setActiveSystemTab('updates')}
+                    />
+                  </div>
+                </div>
+              )}
 
-            <TabItem
-              id="updates"
-              label="Updates"
-              icon={<RefreshCw className="w-5 h-5" />}
-              isActive={activeTab === 'updates'}
-            />
+              {activeMainTab === 'profile' && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
+                    Profile
+                  </p>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 px-3">
+                    Personal information and account settings
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Save Status - Only visible when saving/saved/error */}
             {(isSaving || saveStatus !== 'idle') && (
@@ -1293,10 +1500,10 @@ const Settings = () => {
         </div>
 
         {/* Content area */}
-        <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${activeTab === 'models' ? '' : 'max-w-4xl'
+        <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${effectiveActiveTab === 'models' ? '' : 'max-w-4xl'
           }`}>
           {/* Profile Tab */}
-          {activeTab === 'personal' && (
+          {effectiveActiveTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">
               <div className="flex items-center gap-3 mb-6">
                 <User className="w-6 h-6 text-sakura-500" />
@@ -1344,35 +1551,12 @@ const Settings = () => {
                     placeholder="https://example.com/avatar.jpg"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Wallpaper
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSetWallpaper}
-                      className="px-4 py-2 bg-sakura-500 text-white rounded-lg flex items-center gap-2"
-                    >
-                      <Image className="w-4 h-4" />
-                      {wallpaperUrl ? 'Change Wallpaper' : 'Set Wallpaper'}
-                    </button>
-                    {wallpaperUrl && (
-                      <button
-                        onClick={handleClearWallpaper}
-                        className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-lg"
-                      >
-                        Clear Wallpaper
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
           )}
 
           {/* AI Services Tab */}
-          {activeTab === 'api' && (
+          {effectiveActiveTab === 'api' && (
             <div className="space-y-6">
               {/* Providers Section */}
               <div className="glassmorphic rounded-xl p-6">
@@ -1590,52 +1774,280 @@ const Settings = () => {
             </div>
           )}
 
-          {/* General Preferences Tab */}
-          {activeTab === 'preferences' && (
+          {/* Interface Preferences Tab - split into appearance and customization */}
+          {effectiveActiveTab === 'preferences' && (
             <div className="space-y-6">
-              {/* General Settings */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <SettingsIcon className="w-6 h-6 text-sakura-500" />
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    General Settings
-                  </h2>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Theme
-                    </label>
-                    <select
-                      value={personalInfo.theme_preference}
-                      onChange={handleThemeChange}
-                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                    >
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                      <option value="system">System</option>
-                    </select>
+              {/* Show Appearance settings when appearance sub-tab is active */}
+              {(activeMainTab !== 'interface' || activeInterfaceTab === 'appearance') && (
+                <div className="glassmorphic rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <SettingsIcon className="w-6 h-6 text-sakura-500" />
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      {activeMainTab === 'interface' ? 'Appearance' : 'General Settings'}
+                    </h2>
                   </div>
 
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Theme
+                      </label>
+                      <select
+                        value={personalInfo.theme_preference}
+                        onChange={handleThemeChange}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="system">System</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Timezone
+                      </label>
+                      <select
+                        value={personalInfo.timezone}
+                        onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        {timezoneOptions.map((tz: string) => (
+                          <option key={tz} value={tz}>{tz}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Show UI Customization when either not in interface mode, or ui-preferences sub-tab is active */}
+              {(activeMainTab !== 'interface' || activeInterfaceTab === 'ui-preferences') && (
+                <div className="glassmorphic rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Type className="w-6 h-6 text-purple-500" />
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      {activeMainTab === 'interface' ? 'UI Customization' : 'UI Preferences'}
+                    </h2>
+                  </div>
+
+                  <div className="space-y-6">
+                  {/* Font Size Scaling */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Timezone
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Font Size
                     </label>
-                    <select
-                      value={personalInfo.timezone}
-                      onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
-                      className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                    >
-                      {timezoneOptions.map((tz: string) => (
-                        <option key={tz} value={tz}>{tz}</option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <select
+                        value={personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale}
+                        onChange={(e) => handleUIPreferenceChange({ font_scale: parseFloat(e.target.value) })}
+                        className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                      >
+                        {FONT_SCALE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {FONT_SCALE_OPTIONS.find(opt => opt.value === (personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale))?.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Accent Color */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Accent Color
+                    </label>
+                    <div className="space-y-3">
+                      {/* Color Picker Grid */}
+                      <div className="grid grid-cols-4 gap-3">
+                        {ACCENT_COLOR_OPTIONS.map((color) => (
+                          <button
+                            key={color.value}
+                            onClick={() => handleUIPreferenceChange({ accent_color: color.value })}
+                            className={`group relative p-3 rounded-lg border transition-all ${
+                              (personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color) === color.value
+                                ? 'border-gray-400 dark:border-gray-500 ring-2 ring-offset-2 ring-gray-300 dark:ring-gray-600'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                            }`}
+                          >
+                            <div
+                              className="w-8 h-8 rounded-full mx-auto mb-2 shadow-md"
+                              style={{ backgroundColor: color.value }}
+                            />
+                            <div className="text-center">
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                {color.label}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                {color.description}
+                              </p>
+                            </div>
+                            {(personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color) === color.value && (
+                              <div className="absolute top-1 right-1">
+                                <Check className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Custom Color Input */}
+                      <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Custom Color
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="color"
+                            value={personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color}
+                            onChange={(e) => handleUIPreferenceChange({ accent_color: e.target.value })}
+                            className="w-12 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (/^#[0-9A-Fa-f]{6}$/.test(value) || value === '') {
+                                handleUIPreferenceChange({ accent_color: value });
+                              }
+                            }}
+                            placeholder="#ec4899"
+                            className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Enter a hex color code (e.g., #ec4899) to use a custom accent color
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Font Family Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Font Family
+                    </label>
+                    <div className="space-y-2">
+                      {fontsLoading ? (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/50 border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700">
+                          <div className="animate-spin w-4 h-4 border-2 border-sakura-500 border-t-transparent rounded-full"></div>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Loading fonts...</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family}
+                          onChange={(e) => handleUIPreferenceChange({ font_family: e.target.value })}
+                          className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                        >
+                          {availableFonts.map((font) => (
+                            <option key={font.value} value={font.value}>
+                              {font.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {!fontsLoading && availableFonts.find(font => font.value === (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family))?.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                      Preview
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-6 h-6 rounded-full"
+                          style={{ backgroundColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color }}
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          This is how your accent color will appear
+                        </span>
+                      </div>
+                      <div 
+                        style={{ 
+                          fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
+                          fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`
+                        }}
+                        className="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                      >
+                        <p className="text-gray-800 dark:text-gray-200 font-medium mb-2">
+                          Sample Text with Selected Font
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          This preview shows your selected font family "{availableFonts.find(f => f.value === (personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family))?.label || 'System Default'}" at {Math.round((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 100)}% scale.
+                        </p>
+                      </div>
+                      <button 
+                        className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                        style={{ 
+                          backgroundColor: personalInfo.ui_preferences?.accent_color || DEFAULT_UI_PREFERENCES.accent_color,
+                          fontFamily: personalInfo.ui_preferences?.font_family || DEFAULT_UI_PREFERENCES.font_family,
+                          fontSize: `${((personalInfo.ui_preferences?.font_scale || DEFAULT_UI_PREFERENCES.font_scale) * 14)}px`
+                        }}
+                      >
+                        Sample Button
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Feature Configuration */}
+              {/* Show Wallpaper section when either not in interface mode, or appearance sub-tab is active */}
+              {(activeMainTab !== 'interface' || activeInterfaceTab === 'appearance') && (
+              <div className="glassmorphic rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <Image className="w-6 h-6 text-purple-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Wallpaper
+                  </h2>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Background Image
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSetWallpaper}
+                      className="px-4 py-2 bg-sakura-500 text-white rounded-lg flex items-center gap-2 hover:bg-sakura-600 transition-colors"
+                    >
+                      <Image className="w-4 h-4" />
+                      {wallpaperUrl ? 'Change Wallpaper' : 'Set Wallpaper'}
+                    </button>
+                    {wallpaperUrl && (
+                      <button
+                        onClick={handleClearWallpaper}
+                        className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        Clear Wallpaper
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Upload an image to use as your application background
+                  </p>
+                  {wallpaperUrl && (
+                    <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <p className="text-sm text-green-700 dark:text-green-300">
+                        ✓ Wallpaper is currently set and active
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              )}
+
+              {/* Show Feature Configuration when not in interface mode */}
+              {activeMainTab !== 'interface' && (
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-6">
                   <Puzzle className="w-6 h-6 text-purple-500" />
@@ -1788,8 +2200,10 @@ const Settings = () => {
                   </div>
                 )}
               </div>
+              )}
 
-              {/* Startup Options */}
+              {/* Show Startup Options when not in interface mode */}
+              {activeMainTab !== 'interface' && (
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-6">
                   <Power className="w-6 h-6 text-blue-500" />
@@ -1900,11 +2314,12 @@ const Settings = () => {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
 
           {/* Local Models Tab */}
-          {activeTab === 'models' && (
+          {effectiveActiveTab === 'models' && (
             <div className="space-y-6">
               {/* Model Manager Header with Sub-tabs */}
               <div className="glassmorphic rounded-xl p-6">
@@ -1964,690 +2379,18 @@ const Settings = () => {
           )}
 
           {/* Extensions Tab */}
-          {activeTab === 'mcp' && (
+          {effectiveActiveTab === 'mcp' && (
             <MCPSettings />
           )}
 
           {/* Tools Tab */}
-          {activeTab === 'toolbelt' && (
+          {effectiveActiveTab === 'toolbelt' && (
             <ToolBelt />
           )}
 
           {/* Services Tab */}
-          {activeTab === 'servers' && (
-            <div className="space-y-6">
-              {/* Service Management Header */}
-              <div className="glassmorphic rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <Server className="w-6 h-6 text-blue-500" />
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Service Management
-                    </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Monitor and configure all ClaraVerse services
-                    </p>
-                  </div>
-                </div>
-
-                {/* Platform Info */}
-                <div className="bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <Monitor className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    <div>
-                      <h4 className="font-medium text-blue-900 dark:text-blue-100">
-                        Platform: {getPlatformName(currentPlatform)}
-                      </h4>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        {currentPlatform === 'win32' 
-                          ? 'All services support both Docker and Manual deployment modes'
-                          : 'ComfyUI requires manual setup on macOS/Linux for optimal performance'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                                {loadingServiceConfigs ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Clara Core Service - Always running */}
-                    <div className="p-6 bg-gradient-to-r from-emerald-50/50 to-green-50/50 dark:from-emerald-900/20 dark:to-green-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/40 border-2 border-emerald-200 dark:border-emerald-700 rounded-xl flex items-center justify-center">
-                            <Bot className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                              Clara Core
-                              <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
-                                Built-in
-                              </span>
-                            </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              AI engine with local model management and llama.cpp
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
-                            Always Running
-                          </span>
-                          <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full">
-                            Built-in
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              Status: Running on <span className="font-mono text-xs">localhost:8091</span>
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => window.open('http://localhost:8091', '_blank')}
-                            className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600 transition-colors flex items-center gap-1"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Open
-                          </button>
-                        </div>
-                        
-                        {/* Configuration Details */}
-                        <div className="pt-3 border-t border-emerald-200 dark:border-emerald-700">
-                          <div className="grid grid-cols-2 gap-4 text-xs">
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
-                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">Native Binary</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Engine:</span>
-                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">llama.cpp</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Auto-Start:</span>
-                              <span className="ml-1 text-emerald-700 dark:text-emerald-300 font-medium">Yes</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
-                              <span className="ml-1 text-gray-500 dark:text-gray-400 font-medium">No</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Python Backend Service */}
-                    <div className={`p-6 rounded-xl border ${
-                      enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
-                        ? 'bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-700'
-                        : 'bg-gradient-to-r from-gray-50/50 to-gray-50/50 dark:from-gray-800/50 dark:to-gray-800/50 border-gray-200 dark:border-gray-700'
-                    }`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-14 h-14 rounded-xl flex items-center justify-center border-2 ${
-                            enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable
-                              ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-200 dark:border-blue-700'
-                              : 'bg-gray-100 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'
-                          }`}>
-                            <Code className={`w-7 h-7 ${
-                              enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
-                                ? 'text-blue-600 dark:text-blue-400' 
-                                : 'text-gray-500 dark:text-gray-400'
-                            }`} />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                              Python Backend
-                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
-                                Critical
-                              </span>
-                            </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              RAG, TTS, STT, and document processing services
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                          }`}>
-                            {enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'Running' : 'Stopped'}
-                          </span>
-                          <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
-                            Docker
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${
-                              enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'bg-green-500' : 'bg-red-500'
-                            }`}></div>
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              Status: {enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'Running' : 'Stopped'}
-                              {(enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable) && (
-                                <span className="ml-2 font-mono text-xs">
-                                  {enhancedServiceStatus?.['python-backend']?.serviceUrl || 'localhost:5001'}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          {(enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable) && (
-                            <button
-                              onClick={() => window.open(enhancedServiceStatus?.['python-backend']?.serviceUrl || 'http://localhost:5001', '_blank')}
-                              className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Open
-                            </button>
-                          )}
-                        </div>
-                        
-                        {/* Configuration Details */}
-                        <div className="pt-3 border-t border-blue-200 dark:border-blue-700">
-                          <div className="grid grid-cols-2 gap-4 text-xs">
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
-                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">Docker Container</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Services:</span>
-                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">RAG, TTS, STT</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Auto-Start:</span>
-                              <span className="ml-1 text-blue-700 dark:text-blue-300 font-medium">Yes</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
-                              <span className="ml-1 text-gray-500 dark:text-gray-400 font-medium">No</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* All Configurable Services: N8N and ComfyUI */}
-                    {['n8n', 'comfyui'].map((serviceName) => {
-                      const config = serviceConfigs[serviceName] || { mode: 'docker', url: null };
-                      const compatibility = platformCompatibility[serviceName] || {};
-                      const status = enhancedServiceStatus[serviceName] || {};
-                      const testResult = serviceTestResults[serviceName];
-                      const isComfyUI = serviceName === 'comfyui';
-                      const isManualOnly = isComfyUI && currentPlatform !== 'win32';
-                      
-                      // Debug logging for each service
-                      console.log(`🔍 Service ${serviceName}:`, { status, config, serviceUrl: status.serviceUrl });
-
-                                                return (
-                        <div key={serviceName} className="p-6 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-                          {/* Service Header */}
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                status.state === 'running' 
-                                  ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-200 dark:border-green-700'
-                                  : 'bg-gray-100 dark:bg-gray-700/50 border-2 border-gray-200 dark:border-gray-600'
-                              }`}>
-                                {isComfyUI ? (
-                                  <Image className={`w-6 h-6 ${status.state === 'running' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`} />
-                                ) : (
-                                  <Zap className={`w-6 h-6 ${status.state === 'running' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`} />
-                                )}
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-gray-900 dark:text-white">
-                                  {serviceName === 'comfyui' ? 'ComfyUI Image Generation' : 'N8N Workflow Automation'}
-                                </h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                  {serviceName === 'comfyui' 
-                                    ? 'AI image generation with Stable Diffusion'
-                                    : 'Visual workflow builder and automation platform'
-                                  }
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                status.state === 'running' 
-                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                              }`}>
-                                {status.state === 'running' ? 'Running' : 'Stopped'}
-                              </span>
-                              {config.mode && (
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                  config.mode === 'docker' 
-                                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                                    : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                                }`}>
-                                  {config.mode === 'docker' ? 'Docker' : 'Manual'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Platform Restriction Warning for ComfyUI */}
-                          {isManualOnly && (
-                            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                                <p className="text-sm text-amber-700 dark:text-amber-300">
-                                  <strong>Platform Limitation:</strong> ComfyUI Docker mode is only supported on Windows. 
-                                  {currentPlatform === 'darwin' ? ' On macOS, please use manual setup.' : ' On Linux, please use manual setup.'}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Service Configuration */}
-                          <div className="space-y-4">
-                            {/* Deployment Mode Selection */}
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Deployment Mode
-                              </label>
-                              <div className="flex gap-3">
-                                {/* Docker Mode */}
-                                <button
-                                  onClick={() => {
-                                    if (!isManualOnly) {
-                                      // Docker mode can be saved immediately since it doesn't need a URL
-                                      updateServiceConfig(serviceName, 'docker');
-                                    }
-                                  }}
-                                  disabled={isManualOnly}
-                                  className={`flex-1 p-3 rounded-lg border transition-all ${
-                                    config.mode === 'docker'
-                                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                                      : isManualOnly
-                                        ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800/50 text-gray-400 dark:text-gray-600 cursor-not-allowed'
-                                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <HardDrive className="w-4 h-4" />
-                                    <span className="font-medium">Docker</span>
-                                  </div>
-                                  <p className="text-xs mt-1 text-left">
-                                    Managed containers with automatic setup
-                                  </p>
-                                </button>
-
-                                {/* Manual Mode */}
-                                <button
-                                  onClick={() => {
-                                    // Update local state to show manual mode UI and prefill existing URL
-                                    setServiceConfigs((prev: any) => ({
-                                      ...prev,
-                                      [serviceName]: { ...prev[serviceName], mode: 'manual' }
-                                    }));
-                                    
-                                    // Prefill temp URL with existing saved URL if it exists
-                                    if (config.url && !tempServiceUrls[serviceName]) {
-                                      setTempServiceUrls(prev => ({
-                                        ...prev,
-                                        [serviceName]: config.url
-                                      }));
-                                    }
-                                  }}
-                                  className={`flex-1 p-3 rounded-lg border transition-all ${
-                                    config.mode === 'manual'
-                                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
-                                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <ExternalLink className="w-4 h-4" />
-                                    <span className="font-medium">Manual</span>
-                                  </div>
-                                  <p className="text-xs mt-1 text-left">
-                                    External service with custom URL
-                                  </p>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Manual Service URL Configuration */}
-                            {config.mode === 'manual' && (
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                  Service URL
-                                  {config.url ? (
-                                    <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">
-                                      ✓ Saved: <span className="font-mono">{config.url}</span>
-                                    </span>
-                                  ) : (
-                                    <span className="ml-2 text-xs text-orange-600 dark:text-orange-400 font-normal">
-                                      (Required - Enter URL and click Save)
-                                    </span>
-                                  )}
-                                </label>
-                                
-                                {/* URL Input */}
-                                <div className="space-y-3">
-                                  <div className="flex gap-2">
-                                    <input
-                                      type="url"
-                                      value={tempServiceUrls[serviceName] !== undefined && tempServiceUrls[serviceName] !== '' 
-                                        ? tempServiceUrls[serviceName] 
-                                        : config.url || ''
-                                      }
-                                      onChange={(e) => {
-                                        setTempServiceUrls(prev => ({
-                                          ...prev,
-                                          [serviceName]: e.target.value
-                                        }));
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          saveManualServiceUrl(serviceName);
-                                        }
-                                      }}
-                                      className="flex-1 px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-purple-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                                      placeholder={serviceName === 'comfyui' 
-                                        ? 'http://localhost:8188' 
-                                        : serviceName === 'n8n' 
-                                          ? 'http://localhost:5678'
-                                          : 'http://localhost:8080'
-                                      }
-                                    />
-                                    
-                                    {/* Save Button */}
-                                    <button
-                                      onClick={() => saveManualServiceUrl(serviceName)}
-                                      disabled={savingServiceConfig[serviceName] || 
-                                        !(tempServiceUrls[serviceName] !== undefined 
-                                          ? tempServiceUrls[serviceName].trim()
-                                          : config.url?.trim()
-                                        )
-                                      }
-                                      className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-medium ${
-                                        tempServiceUrls[serviceName] && tempServiceUrls[serviceName] !== config.url
-                                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-900/50'
-                                          : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-900/50'
-                                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                    >
-                                      {savingServiceConfig[serviceName] ? (
-                                        <>
-                                          <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                                          Saving...
-                                        </>
-                                      ) : tempServiceUrls[serviceName] && tempServiceUrls[serviceName] !== config.url ? (
-                                        <>
-                                          <Save className="w-4 h-4" />
-                                          Save Changes
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Save className="w-4 h-4" />
-                                          Save URL
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-
-                                  {/* Action Buttons */}
-                                  <div className="flex gap-2">
-                                    {/* Test Connection Button */}
-                                    {(config.url || tempServiceUrls[serviceName]) && (
-                                      <button
-                                        onClick={() => {
-                                          const urlToTest = tempServiceUrls[serviceName] || config.url;
-                                          testManualService(serviceName, urlToTest);
-                                        }}
-                                        disabled={testingServices[serviceName]}
-                                        className={`flex-1 px-3 py-2 rounded-lg transition-all flex items-center justify-center gap-2 font-medium ${
-                                          testResult?.success === true
-                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
-                                            : testResult?.success === false
-                                              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
-                                              : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700'
-                                        } disabled:opacity-50`}
-                                      >
-                                        {testingServices[serviceName] ? (
-                                          <>
-                                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                                            Testing Connection...
-                                          </>
-                                        ) : testResult?.success === true ? (
-                                          <>
-                                            <Check className="w-4 h-4" />
-                                            Connection Successful
-                                          </>
-                                        ) : testResult?.success === false ? (
-                                          <>
-                                            <X className="w-4 h-4" />
-                                            Connection Failed
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Server className="w-4 h-4" />
-                                            Test Connection
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-
-                                    {/* Clear Button */}
-                                    {(tempServiceUrls[serviceName] || config.url) && (
-                                      <button
-                                        onClick={async () => {
-                                          // Clear both temp URL and saved configuration
-                                          setTempServiceUrls(prev => ({ ...prev, [serviceName]: '' }));
-                                          await updateServiceConfig(serviceName, 'manual', '');
-                                          
-                                          // Show feedback
-                                          setServiceTestResults(prev => ({ 
-                                            ...prev, 
-                                            [serviceName]: { 
-                                              success: true, 
-                                              message: 'URL cleared successfully',
-                                              timestamp: Date.now()
-                                            }
-                                          }));
-                                          
-                                          // Clear feedback after 3 seconds
-                                          setTimeout(() => {
-                                            setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
-                                          }, 3000);
-                                        }}
-                                        className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-                                      >
-                                        <X className="w-3 h-3" />
-                                        Clear
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {/* Status Messages */}
-                                  {testResult && (
-                                    <div className={`p-2 rounded-lg text-sm ${
-                                      testResult.success === true
-                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
-                                        : testResult.success === false
-                                          ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
-                                          : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
-                                    }`}>
-                                      {testResult.success === true ? (
-                                        <div className="flex items-center gap-2">
-                                          <Check className="w-4 h-4" />
-                                          <span>{testResult.message || 'Service is accessible and responding correctly!'}</span>
-                                        </div>
-                                      ) : testResult.success === false ? (
-                                        <div className="flex items-center gap-2">
-                                          <X className="w-4 h-4" />
-                                          <span>Error: {testResult.error}</span>
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  )}
-
-                                  {/* URL Format Help */}
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    <p><strong>Expected format:</strong> http://localhost:port or https://your-domain.com</p>
-                                    <p><strong>Default ports:</strong> ComfyUI (8188), N8N (5678)</p>
-                                    <p><strong>Tip:</strong> Press Enter to save quickly</p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Service Status and Controls */}
-                            {config.mode && (
-                              <div className="pt-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${status.state === 'running' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                                      Status: {status.state === 'running' ? 'Running' : 'Stopped'}
-                                      {(status.serviceUrl || (config.mode === 'manual' && config.url)) && (
-                                        <span className="ml-2 font-mono text-xs">
-                                          {status.serviceUrl || config.url}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    {status.serviceUrl && status.state === 'running' && (
-                                      <button
-                                        onClick={() => window.open(status.serviceUrl, '_blank')}
-                                        className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                      >
-                                        <ExternalLink className="w-3 h-3" />
-                                        Open
-                                      </button>
-                                    )}
-                                    {/* Restart Button for Restartable Services */}
-                                    {status.canRestart && (
-                                      <button
-                                        onClick={async () => {
-                                          try {
-                                            setTestingServices(prev => ({ ...prev, [`${serviceName}_restart`]: true }));
-                                            
-                                            // Call restart service
-                                            const result = await (window as any).electron?.restartDockerService?.(
-                                              serviceName === 'comfyui' ? 'comfyui' : 
-                                              serviceName === 'n8n' ? 'n8n_workflowmanager' : serviceName
-                                            );
-                                            
-                                            if (result?.success) {
-                                              setServiceTestResults(prev => ({ 
-                                                ...prev, 
-                                                [serviceName]: { 
-                                                  success: true, 
-                                                  message: `${serviceName.toUpperCase()} restarted successfully!`,
-                                                  timestamp: Date.now()
-                                                }
-                                              }));
-                                              
-                                              // Reload service status after restart
-                                              setTimeout(() => {
-                                                loadServiceConfigurations();
-                                              }, 2000);
-                                            } else {
-                                              throw new Error(result?.error || 'Restart failed');
-                                            }
-                                          } catch (error) {
-                                            console.error(`Failed to restart ${serviceName}:`, error);
-                                            setServiceTestResults(prev => ({ 
-                                              ...prev, 
-                                              [serviceName]: { 
-                                                success: false, 
-                                                error: error instanceof Error ? error.message : String(error),
-                                                timestamp: Date.now()
-                                              }
-                                            }));
-                                          } finally {
-                                            setTestingServices(prev => ({ ...prev, [`${serviceName}_restart`]: false }));
-                                            
-                                            // Clear result after 5 seconds
-                                            setTimeout(() => {
-                                              setServiceTestResults(prev => ({ ...prev, [serviceName]: null }));
-                                            }, 5000);
-                                          }
-                                        }}
-                                        disabled={testingServices[`${serviceName}_restart`]}
-                                        className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-1 ${
-                                          status.state === 'running'
-                                            ? 'bg-orange-500 text-white hover:bg-orange-600'
-                                            : 'bg-green-500 text-white hover:bg-green-600'
-                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                      >
-                                        {testingServices[`${serviceName}_restart`] ? (
-                                          <>
-                                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                            Restarting...
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Power className="w-3 h-3" />
-                                            {status.state === 'running' ? 'Restart' : 'Start'}
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => resetServiceConfig(serviceName)}
-                                      className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center gap-1"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                      Reset
-                                    </button>
-                                  </div>
-                                </div>
-                                
-                                {/* Configuration Details */}
-                                <div className="grid grid-cols-2 gap-4 text-xs">
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">Deployment:</span>
-                                    <span className={`ml-1 font-medium ${
-                                      config.mode === 'docker' 
-                                        ? 'text-blue-700 dark:text-blue-300' 
-                                        : 'text-purple-700 dark:text-purple-300'
-                                    }`}>
-                                      {config.mode === 'docker' ? 'Docker Container' : 'Manual Setup'}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">Service Type:</span>
-                                    <span className="ml-1 text-gray-700 dark:text-gray-300 font-medium">
-                                      {serviceName === 'comfyui' ? 'Image Generation' : 'Workflow Automation'}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">URL Source:</span>
-                                    <span className="ml-1 text-gray-700 dark:text-gray-300 font-medium">
-                                      {config.mode === 'docker' ? 'Auto-detected' : (config.url ? `Manual: ${config.url}` : 'Not set')}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-500 dark:text-gray-400">Configurable:</span>
-                                    <span className="ml-1 text-green-700 dark:text-green-300 font-medium">Yes</span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-
-            </div>
+          {effectiveActiveTab === 'servers' && (
+            <UnifiedServiceManager />
           )}
 
           {/* SDK Code Export Demo Tab */}
@@ -2841,7 +2584,7 @@ const ProcessButton = () => {
           )}
 
           {/* Updates Tab */}
-          {activeTab === 'updates' && (
+          {effectiveActiveTab === 'updates' && (
             <div className="glassmorphic rounded-xl p-6">
               <div className="flex items-center gap-3 mb-6">
                 <Download className="w-6 h-6 text-sakura-500" />

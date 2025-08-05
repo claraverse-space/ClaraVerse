@@ -96,8 +96,8 @@ const BaseNode = memo<BaseNodeProps>(({
 
   return (
     <div className={`
-      relative bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg border-2
-      ${selected ? 'border-sakura-400 shadow-sakura-400/25' : 'border-gray-200 dark:border-gray-600'}
+      relative bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg
+      ${selected ? 'shadow-sakura-400/25' : ''}
       ${getStatusClass()}
       transition-all duration-200
       min-w-[360px] max-w-[580px] w-auto
@@ -113,7 +113,6 @@ const BaseNode = memo<BaseNodeProps>(({
           style={{
             top: `${((index + 1) * 100) / (safeInputs.length + 1)}%`,
             background: '#10b981',
-            borderColor: '#059669',
             width: '16px',
             height: '16px',
             left: '-8px',
@@ -122,7 +121,7 @@ const BaseNode = memo<BaseNodeProps>(({
             cursor: 'crosshair',
             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
           }}
-          className="border-2 hover:scale-125 transition-all shadow-lg hover:shadow-xl hover:shadow-green-500/50"
+          className="hover:scale-125 transition-all shadow-lg hover:shadow-xl hover:shadow-green-500/50"
           title={`Input: ${input.name} (${input.dataType})`}
         />
       ))}
@@ -137,7 +136,6 @@ const BaseNode = memo<BaseNodeProps>(({
           style={{
             top: `${((index + 1) * 100) / (safeOutputs.length + 1)}%`,
             background: '#6b7280',
-            borderColor: '#374151',
             width: '16px',
             height: '16px',
             right: '-8px',
@@ -146,7 +144,7 @@ const BaseNode = memo<BaseNodeProps>(({
             cursor: 'crosshair',
             boxShadow: '0 2px 8px rgba(107, 114, 128, 0.3)',
           }}
-          className="border-2 hover:scale-125 transition-all shadow-lg hover:shadow-xl hover:shadow-gray-500/50"
+          className="hover:scale-125 transition-all shadow-lg hover:shadow-xl hover:shadow-gray-500/50"
           title={`Output: ${output.name} (${output.dataType})`}
         />
       ))}
@@ -184,7 +182,7 @@ const BaseNode = memo<BaseNodeProps>(({
       </div>
 
       {/* Node Content */}
-      <div className="px-4 py-3.5 bg-gray-50 dark:bg-gray-700 rounded-b-lg select-none border-t border-gray-200 dark:border-gray-600 relative z-10">
+      <div className="px-4 py-3.5 bg-gray-50 dark:bg-gray-700 rounded-b-lg select-none relative z-10">
         {/* Input Labels */}
         {safeInputs.length > 0 && (
           <div className="mb-3.5">
@@ -207,7 +205,7 @@ const BaseNode = memo<BaseNodeProps>(({
 
         {/* Execution Status */}
         {isExecuting && (
-          <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg text-yellow-700 dark:text-yellow-300 text-xs">
+          <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-yellow-700 dark:text-yellow-300 text-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 bg-yellow-400 rounded-full animate-pulse"></div>
               <span className="font-medium">Executing...</span>
@@ -217,7 +215,7 @@ const BaseNode = memo<BaseNodeProps>(({
 
         {/* Success Status */}
         {isSuccess && !isExecuting && (
-          <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg text-green-700 dark:text-green-300 text-xs">
+          <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-700 dark:text-green-300 text-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 bg-green-400 rounded-full"></div>
               <span className="font-medium">Completed successfully</span>
@@ -227,7 +225,7 @@ const BaseNode = memo<BaseNodeProps>(({
 
         {/* Error Display */}
         {hasError && (
-          <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-xs">
+          <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-700 dark:text-red-300 text-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 bg-red-400 rounded-full"></div>
               <span className="font-medium">Error:</span>
