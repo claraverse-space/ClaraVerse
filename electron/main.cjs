@@ -552,6 +552,21 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Run llama optimizer
+  ipcMain.handle('run-llama-optimizer', async (event, preset) => {
+    try {
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      const result = await llamaSwapService.runLlamaOptimizer(preset);
+      return result;
+    } catch (error) {
+      log.error('Error running llama optimizer:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Debug binary paths (useful for troubleshooting production builds)
   ipcMain.handle('debug-binary-paths', async () => {
     try {

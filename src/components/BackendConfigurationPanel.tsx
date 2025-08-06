@@ -23,6 +23,7 @@ import {
   Database
 } from 'lucide-react';
 import { parseJsonConfiguration, ParsedModelConfig, updateCommandLineParameter, cleanCommandLine, getModelMaxContextSize, estimateModelTotalLayers } from '../utils/commandLineParser';
+import LLaMAOptimizerPanel from './LLaMAOptimizerPanel';
 
 interface Backend {
   id: string;
@@ -101,8 +102,9 @@ const BackendConfigurationPanel: React.FC = () => {
   const [modelMetadata, setModelMetadata] = useState<{[modelName: string]: {nativeContextSize?: number, estimatedLayers?: number}}>({});
   const [selectedModelForConfig, setSelectedModelForConfig] = useState<string | null>(null); // Track model selected for detailed configuration
   const [expandedSections, setExpandedSections] = useState<{[key: string]: boolean}>({
-    backends: true,
-    models: true,
+    backends: false,
+    optimizer: true,
+    models: false,
     configuration: false,
     advanced: false
   });
@@ -1000,6 +1002,67 @@ const BackendConfigurationPanel: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* ClaraCore Optimizer Section */}
+        <div className="space-y-4">
+          <button
+            onClick={() => toggleSection('optimizer')}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <div className="flex items-center gap-2">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">Configuration Optimization</h4>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                (Auto-optimize based on hardware)
+              </span>
+            </div>
+            {expandedSections.optimizer ? 
+              <ChevronUp className="w-5 h-5 text-gray-400" /> : 
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            }
+          </button>
+
+          {expandedSections.optimizer && (
+            <div className="glassmorphic rounded-lg p-6 bg-white/40 dark:bg-gray-800/30 backdrop-blur-sm">
+              <LLaMAOptimizerPanel
+                configPath={configInfo?.configPath || ''}
+                isServiceRunning={configInfo?.serviceStatus?.isRunning || false}
+                onOptimizationStart={() => {
+                  setOperationStatus({ type: 'saving', message: 'Starting optimization...' });
+                }}
+                onOptimizationComplete={(success, message) => {
+                  if (success) {
+                    setOperationStatus({ type: 'success', message });
+                    // Reload configuration after successful optimization with longer delay
+                    setTimeout(async () => {
+                      setOperationStatus({ type: 'saving', message: 'Refreshing configuration data...' });
+                      try {
+                        // Give the optimizer more time to finish writing the config file
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        await loadConfigurationInfo(); // This will refresh both configInfo and jsonConfig
+                        setOperationStatus({ type: 'success', message: 'Configuration refreshed successfully!' });
+                        setTimeout(() => {
+                          setOperationStatus({ type: 'idle', message: '' });
+                        }, 2000);
+                      } catch (error) {
+                        console.error('Failed to refresh configuration after optimization:', error);
+                        setOperationStatus({ type: 'error', message: 'Failed to refresh configuration. Please refresh manually.' });
+                        setTimeout(() => {
+                          setOperationStatus({ type: 'idle', message: '' });
+                        }, 5000);
+                      }
+                    }, 1500);
+                  } else {
+                    setOperationStatus({ type: 'error', message });
+                    setTimeout(() => {
+                      setOperationStatus({ type: 'idle', message: '' });
+                    }, 5000);
+                  }
+                }}
+                disabled={isOperationInProgress}
+              />
             </div>
           )}
         </div>

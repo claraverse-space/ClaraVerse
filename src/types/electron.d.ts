@@ -218,6 +218,7 @@ declare global {
       }>;
       saveMmprojMappings: (mappings: any[]) => Promise<{ success: boolean; error?: string }>;
       loadMmprojMappings: () => Promise<{ success: boolean; mappings?: any[]; error?: string }>;
+      runLlamaOptimizer: (preset: string) => Promise<{ success: boolean; message?: string; error?: string }>;
       restartLlamaSwap: () => Promise<{ success: boolean; error?: string }>;
     };
     mcpService: {

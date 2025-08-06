@@ -55,7 +55,9 @@ import {
   Grid3X3,
   Monitor,
   Cpu,
-  RefreshCw
+  RefreshCw,
+  Scale,
+  Rocket
 } from 'lucide-react';
 
 // Import types
@@ -844,19 +846,11 @@ const AdvancedOptions: React.FC<{
     features: false,
     mcp: false,
     autonomous: false,
-    artifacts: false,
-    gpuSettings: false
+    artifacts: false
   });
 
   // State for advanced parameters visibility
   const [showAdvancedParameters, setShowAdvancedParameters] = useState(false);
-
-  // State for GPU settings
-  const [availableBackends, setAvailableBackends] = useState<any[]>([]);
-  const [selectedBackend, setSelectedBackend] = useState<string>('auto');
-  const [actualBackend, setActualBackend] = useState<string>(''); // The backend actually being used
-  const [backendSaving, setBackendSaving] = useState(false);
-  const [backendRestarting, setBackendRestarting] = useState(false);
 
   // Load MCP servers when component mounts or when MCP is enabled
   useEffect(() => {
@@ -926,6 +920,81 @@ const AdvancedOptions: React.FC<{
       }
     };
   }, []);
+
+  // Load ClaraCore Optimizer state from localStorage
+  useEffect(() => {
+    const savedState = localStorage.getItem('claracore-optimizer-state');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        if (state.selectedPreset) {
+          setSelectedPreset(state.selectedPreset);
+        }
+        if (state.lastOptimized) {
+          setLastOptimized(state.lastOptimized);
+        }
+      } catch (error) {
+        console.error('Failed to load optimizer state from localStorage:', error);
+      }
+    }
+  }, []);
+
+  // Handle ClaraCore Optimizer preset selection
+  const handleOptimizerPresetSelection = async (preset: OptimizerPreset) => {
+    if (optimizerProcessing) return;
+
+    setOptimizerProcessing(true);
+    
+    try {
+      const llamaSwap = (window as any).llamaSwap;
+      if (!llamaSwap?.runLlamaOptimizer) {
+        console.error('ClaraCore Optimizer service not available');
+        return;
+      }
+
+      const result = await llamaSwap.runLlamaOptimizer(preset);
+      
+      if (result.success) {
+        setSelectedPreset(preset);
+        const timestamp = new Date().toISOString();
+        setLastOptimized(timestamp);
+        
+        // Save state to localStorage
+        const state = {
+          selectedPreset: preset,
+          lastOptimized: timestamp,
+          lastConfigPath: result.configPath || ''
+        };
+        localStorage.setItem('claracore-optimizer-state', JSON.stringify(state));
+
+        // Show success notification
+        addInfoNotification(
+          `ClaraCore Optimizer applied: ${preset.replace('_', ' ').toUpperCase()}`,
+          'Configuration optimized for better performance',
+          4000
+        );
+
+        // Restart service with skip config generation to preserve optimized settings
+        if (llamaSwap?.restart) {
+          await llamaSwap.restart(true); // skipConfigGeneration = true
+        }
+      } else {
+        console.error('Optimizer failed:', result.error);
+        addErrorNotification(
+          `ClaraCore Optimizer failed: ${result.error || 'Unknown error'}`,
+          'Please try again or check the logs'
+        );
+      }
+    } catch (error) {
+      console.error('Error running optimizer:', error);
+      addErrorNotification(
+        'Failed to run ClaraCore Optimizer',
+        'An unexpected error occurred'
+      );
+    } finally {
+      setOptimizerProcessing(false);
+    }
+  };
 
   // Handle backend change with restart
   const handleBackendChange = async (backendId: string) => {
@@ -2712,105 +2781,8 @@ when you are asked for something always resort to writing a python script and ru
             )}
           </div>
 
-          {/* GPU Settings Configuration */}
-          <div className="space-y-2">
-            <SectionHeader
-              title="GPU Settings"
-              icon={<Monitor className="w-4 h-4 text-sakura-500" />}
-              isExpanded={expandedSections.gpuSettings}
-              onToggle={() => toggleSection('gpuSettings')}
-              badge={selectedBackend === 'auto' ? (actualBackend || 'Auto') : selectedBackend}
-            />
-            {expandedSections.gpuSettings && (
-              <div className="p-4 bg-white/20 dark:bg-gray-800/30 backdrop-blur-sm rounded-lg border border-white/10 dark:border-gray-700/50 space-y-4">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <Cog className="w-4 h-4" />
-                    Backend Selection
-                  </h4>
-                  
-                  {/* Current Backend Display */}
-                  <div className="flex items-center justify-between p-3 bg-white/30 dark:bg-gray-700/20 rounded">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Current Backend:</span>
-                    <div className="flex items-center gap-2">
-                      <Monitor className="w-4 h-4 text-blue-500" />
-                      <span className="font-semibold text-gray-900 dark:text-white">
-                        {selectedBackend === 'auto' 
-                          ? (actualBackend ? `Auto-detect (${actualBackend})` : 'Auto-detect')
-                          : availableBackends.find(b => b.id === selectedBackend)?.name || selectedBackend}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Backend Options */}
-                  <div className="grid grid-cols-1 gap-2">
-                    {/* Auto-detect Option */}
-                    <button
-                      onClick={() => handleBackendChange('auto')}
-                      disabled={backendSaving || backendRestarting}
-                      className={`p-3 border-2 rounded-lg text-left transition-all ${
-                        selectedBackend === 'auto'
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                      } ${(backendSaving || backendRestarting) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Settings className="w-4 h-4 text-blue-500" />
-                        <span className="font-medium text-gray-900 dark:text-white">Auto-detect</span>
-                        {selectedBackend === 'auto' && !backendSaving && <span className="ml-auto text-blue-500 text-xs">Active</span>}
-                        {backendSaving && selectedBackend === 'auto' && <RefreshCw className="w-4 h-4 animate-spin ml-auto text-blue-500" />}
-                      </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        Automatically detect and use the best available backend
-                      </p>
-                    </button>
-
-                    {/* Available Backends */}
-                    {availableBackends
-                      .filter(backend => backend.isAvailable)
-                      .map((backend) => (
-                        <button
-                          key={backend.id}
-                          onClick={() => handleBackendChange(backend.id)}
-                          disabled={backendSaving || backendRestarting}
-                          className={`p-3 border-2 rounded-lg text-left transition-all ${
-                            selectedBackend === backend.id
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                          } ${(backendSaving || backendRestarting) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Cpu className="w-4 h-4 text-green-500" />
-                            <span className="font-medium text-gray-900 dark:text-white">{backend.name}</span>
-                            {selectedBackend === backend.id && !backendSaving && <span className="ml-auto text-blue-500 text-xs">Active</span>}
-                            {backendSaving && selectedBackend === backend.id && <RefreshCw className="w-4 h-4 animate-spin ml-auto text-blue-500" />}
-                          </div>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                            {backend.description}
-                          </p>
-                        </button>
-                      ))}
-                  </div>
-
-                  {/* Status Messages */}
-                  {(backendSaving || backendRestarting) && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                        <span className="text-sm text-blue-700 dark:text-blue-300">
-                          {backendSaving ? 'Applying backend changes...' : 'Restarting service with new backend...'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-xs text-gray-500 dark:text-gray-400 p-2 bg-white/20 dark:bg-gray-700/20 rounded">
-                    <strong>Note:</strong> Changing the backend will restart the AI service. This may take a moment to complete.
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* ClaraCore Optimizer Configuration */}
+          
         </div>
       </div>
     </div>

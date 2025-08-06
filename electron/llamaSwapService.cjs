@@ -3028,7 +3028,7 @@ ${cmdLine}`;
            normalized2.includes(normalized1);
   }
 
-  async start() {
+  async start(skipConfigGeneration = false) {
     if (this.ipcLogger) {
       this.ipcLogger.logServiceCall('LlamaSwapService', 'start');
     }
@@ -3185,15 +3185,20 @@ ${cmdLine}`;
       this.setStartupPhase('Setting up directories and models...');
       await this.ensureDirectories();
       
-      // Generate configuration and wait for it to be properly written
-      this.setStartupPhase('Generating configuration...');
-      log.info('⚙️ Generating llama-swap configuration...');
-      await this.generateConfig();
-      
-      // Wait a bit after config generation to ensure files are properly written to disk
-      this.setStartupPhase('Finalizing configuration...');
-      log.info('⏱️ Waiting for configuration to be fully written...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+      // Generate configuration and wait for it to be properly written (unless skipped)
+      if (!skipConfigGeneration) {
+        this.setStartupPhase('Generating configuration...');
+        log.info('⚙️ Generating llama-swap configuration...');
+        await this.generateConfig();
+        
+        // Wait a bit after config generation to ensure files are properly written to disk
+        this.setStartupPhase('Finalizing configuration...');
+        log.info('⏱️ Waiting for configuration to be fully written...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+      } else {
+        this.setStartupPhase('Using existing configuration...');
+        log.info('⏭️ Skipping configuration generation - using existing optimized config');
+      }
       
       // Additional verification that config file exists and is readable
       this.setStartupPhase('Verifying configuration...');
@@ -3569,7 +3574,7 @@ ${cmdLine}`;
     }
   }
 
-  async restart() {
+  async restart(skipConfigRegeneration = false) {
     log.info('Restarting llama-swap service...');
     await this.stop();
     
@@ -3580,21 +3585,25 @@ ${cmdLine}`;
     log.info('⏱️ Waiting for process cleanup after restart...');
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Regenerate config to ensure compatibility with updated binaries
-    try {
-      log.info('⚙️ Regenerating configuration for restart...');
-      await this.generateConfig();
-      
-      // Additional wait after config regeneration during restart
-      log.info('⏱️ Waiting for configuration regeneration to complete...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
-      
-      log.info('Configuration regenerated for updated binaries');
-    } catch (configError) {
-      log.warn('Config regeneration failed, using existing config:', configError.message);
+    // Regenerate config to ensure compatibility with updated binaries (unless skipped)
+    if (!skipConfigRegeneration) {
+      try {
+        log.info('⚙️ Regenerating configuration for restart...');
+        await this.generateConfig();
+        
+        // Additional wait after config regeneration during restart
+        log.info('⏱️ Waiting for configuration regeneration to complete...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+        
+        log.info('Configuration regenerated for updated binaries');
+      } catch (configError) {
+        log.warn('Config regeneration failed, using existing config:', configError.message);
+      }
+    } else {
+      log.info('⏭️ Skipping configuration regeneration - using existing optimized config');
     }
     
-    return await this.start();
+    return await this.start(skipConfigRegeneration);
   }
 
   /**
@@ -7578,6 +7587,163 @@ ${cmdLine}`;
     }
     
     return config;
+  }
+
+  /**
+   * Run LLaMA optimizer with specified preset
+   * @param {Object} options - Optimization options
+   * @param {string} options.configPath - Path to the configuration file
+   * @param {string} options.preset - Optimization preset
+   * @returns {Promise<Object>} Result of optimization
+   */
+  async runLlamaOptimizer(preset) {
+    try {
+      const { spawn } = require('child_process');
+      const os = require('os');
+      const path = require('path');
+      const fs = require('fs');
+      
+      // Use the default config path from the service
+      const configPath = this.configPath;
+      
+      // Determine the correct binary path based on platform
+      let binaryName;
+      switch (os.platform()) {
+        case 'win32':
+          binaryName = 'llama-optimizer-windows.exe';
+          break;
+        case 'darwin':
+          binaryName = os.arch() === 'arm64' ? 'llama-optimizer-darwin-arm64' : 'llama-optimizer-darwin-amd64';
+          break;
+        case 'linux':
+          binaryName = 'llama-optimizer-linux';
+          break;
+        default:
+          throw new Error(`Unsupported platform: ${os.platform()}`);
+      }
+      
+      const binaryPath = path.join(__dirname, 'services', binaryName);
+      
+      // Check if binary exists
+      if (!fs.existsSync(binaryPath)) {
+        throw new Error(`LLaMA Optimizer binary not found: ${binaryPath}`);
+      }
+      
+      log.info(`Running LLaMA Optimizer: ${binaryPath} -config "${configPath}" -preset ${preset}`);
+      
+      return new Promise((resolve) => {
+        const child = spawn(binaryPath, [
+          '-config', configPath,
+          '-preset', preset,
+          '-backup=true'
+        ], {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        child.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        child.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        child.on('close', (code) => {
+          if (code === 0) {
+            log.info('LLaMA Optimizer completed successfully');
+            log.info('Optimizer output:', stdout);
+            
+            // Instead of restarting (which regenerates config), read the optimized config
+            // and save it through the proper JSON pathway to preserve the changes
+            (async () => {
+              try {
+                const yaml = require('js-yaml');
+                const fs = require('fs').promises;
+                
+                // Read the optimized YAML configuration
+                const optimizedYaml = await fs.readFile(configPath, 'utf8');
+                const optimizedConfig = yaml.load(optimizedYaml);
+                
+                // Save the optimized config through the JSON pathway to preserve changes
+                const saveResult = await this.saveConfigFromJson(optimizedConfig);
+                
+                if (saveResult.success) {
+                  log.info('Optimized configuration saved through proper pathway');
+                  
+                  // Now restart the service (skip config regeneration since we already saved properly)
+                  this.restart(true).then(() => {
+                    resolve({
+                      success: true,
+                      message: `Configuration optimized with ${preset} preset and service restarted`,
+                      output: stdout,
+                      preset: preset
+                    });
+                  }).catch((restartError) => {
+                    log.error('Failed to restart after optimization:', restartError);
+                    resolve({
+                      success: true,
+                      message: `Configuration optimized with ${preset} preset, but restart failed: ${restartError.message}`,
+                      output: stdout,
+                      preset: preset
+                    });
+                  });
+                } else {
+                  log.error('Failed to save optimized config:', saveResult.error);
+                  resolve({
+                    success: false,
+                    error: `Optimization completed but failed to save: ${saveResult.error}`
+                  });
+                }
+              } catch (saveError) {
+                log.error('Error processing optimized configuration:', saveError);
+                // Fallback: just return success without restart
+                resolve({
+                  success: true,
+                  message: `Configuration optimized with ${preset} preset (manual restart required)`,
+                  output: stdout,
+                  preset: preset
+                });
+              }
+            })();
+          } else {
+            const errorMessage = stderr || stdout || `Process exited with code ${code}`;
+            log.error('LLaMA Optimizer failed:', errorMessage);
+            resolve({
+              success: false,
+              error: errorMessage
+            });
+          }
+        });
+        
+        child.on('error', (error) => {
+          log.error('Failed to start LLaMA Optimizer:', error);
+          resolve({
+            success: false,
+            error: error.message
+          });
+        });
+        
+        // Set a timeout for the operation (30 seconds)
+        setTimeout(() => {
+          child.kill();
+          resolve({
+            success: false,
+            error: 'LLaMA Optimizer timed out after 30 seconds'
+          });
+        }, 30000);
+      });
+      
+    } catch (error) {
+      log.error('Error running LLaMA Optimizer:', error);
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
   }
 }
 

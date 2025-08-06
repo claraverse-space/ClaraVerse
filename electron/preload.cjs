@@ -218,6 +218,9 @@ contextBridge.exposeInMainWorld('llamaSwap', {
   
   // NEW: Configuration saving and management
   saveConfigFromJson: (jsonConfig) => ipcRenderer.invoke('save-config-from-json', jsonConfig),
+  
+  // NEW: LLaMA Optimizer
+  runLlamaOptimizer: (preset) => ipcRenderer.invoke('run-llama-optimizer', preset),
   saveConfigAndRestart: (jsonConfig) => ipcRenderer.invoke('save-config-and-restart', jsonConfig),
   regenerateConfig: () => ipcRenderer.invoke('regenerate-config'),
   
