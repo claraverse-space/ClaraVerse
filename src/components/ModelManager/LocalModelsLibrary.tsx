@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { HardDrive, Cloud, Trash2, Eye, Link, AlertTriangle, FileIcon } from 'lucide-react';
 import { useProviders } from '../../contexts/ProvidersContext';
-import { LocalModel, VisionCompatibilityInfo } from './types';
+import { LocalModel, VisionCompatibilityInfo, Notification, Confirmation } from './types';
 import { formatFileSize } from './utils';
+import CustomModelPathManager from './CustomModelPathManager';
 
 interface LocalModelsLibraryProps {
   localModels: LocalModel[];
@@ -10,6 +11,8 @@ interface LocalModelsLibraryProps {
   deleting: Set<string>;
   onModelManagerTabChange: (tab: 'discover' | 'library') => void;
   onManageMmproj: (model: LocalModel) => void;
+  onNotification: (notification: Notification) => void;
+  onConfirmation: (confirmation: Confirmation) => void;
 }
 
 const LocalModelsLibrary: React.FC<LocalModelsLibraryProps> = ({
@@ -17,7 +20,9 @@ const LocalModelsLibrary: React.FC<LocalModelsLibraryProps> = ({
   onDeleteModel,
   deleting,
   onModelManagerTabChange,
-  onManageMmproj
+  onManageMmproj,
+  onNotification,
+  onConfirmation
 }) => {
   const { customModelPath } = useProviders();
   const [modelEmbeddingInfo, setModelEmbeddingInfo] = useState<Map<string, VisionCompatibilityInfo>>(new Map());
@@ -96,161 +101,167 @@ const LocalModelsLibrary: React.FC<LocalModelsLibraryProps> = ({
   };
 
   return (
-    <div className="glassmorphic rounded-xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      {/* Custom Model Path Manager */}
+      <CustomModelPathManager 
+        onNotification={onNotification}
+        onConfirmation={onConfirmation}
+      />
+
+     
+
+      {/* Models Table */}
+      <div className="glassmorphic rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Your Model Library
+            Model Library
           </h3>
-        </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-          {customModelPath && (
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-              <span>Custom: {localModels.filter(m => m.source === 'custom').length}</span>
+          {localModels.length > 0 && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Showing {localModels.length} models
             </div>
           )}
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            <span>Models: {localModels.filter(m => m.source === 'user').length}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-            <span>Embedding: {localModels.filter(m => isEmbeddingModel(m.file)).length}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-purple-600 rounded-full"></span>
-            <span>mmproj: {localModels.filter(m => isMmprojModel(m.file)).length}</span>
-          </div>
-          <span>Total Storage: {localModels.reduce((acc, model) => acc + model.size, 0) > 0 ? formatFileSize(localModels.reduce((acc, model) => acc + model.size, 0)) : '0 B'}</span>
         </div>
-      </div>
 
-      
-      {localModels.length > 0 ? (
-        <div className="grid gap-3">
-          {localModels.map((model) => (
-            <div key={model.path} className="flex items-center gap-4 p-4 bg-white/30 dark:bg-gray-800/30 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
-                model.source === 'custom' ? 'bg-gradient-to-br from-blue-400 to-blue-600' :
-                model.source === 'user' ? 'bg-gradient-to-br from-green-400 to-green-600' :
-                'bg-gradient-to-br from-purple-400 to-purple-600'
-              }`}>
-                <HardDrive className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h5 className="font-semibold text-gray-900 dark:text-white">{model.name}</h5>
-
+        {localModels.length > 0 ? (
+          <div className="space-y-3">
+            {localModels.map((model) => (
+              <div key={model.path} className="flex items-center gap-4 p-4 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-all duration-200 hover:shadow-sm">
+                {/* Model Icon & Type */}
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-white shadow-sm ${
+                  model.source === 'custom' ? 'bg-gradient-to-br from-blue-400 to-blue-600' :
+                  model.source === 'user' ? 'bg-gradient-to-br from-green-400 to-green-600' :
+                  'bg-gradient-to-br from-purple-400 to-purple-600'
+                }`}>
+                  <HardDrive className="w-7 h-7" />
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-300 font-mono">{model.file}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span className="flex items-center gap-1">
-                    <HardDrive className="w-3 h-3" />
-                    {formatFileSize(model.size)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Cloud className="w-3 h-3" />
-                    {model.source}
-                  </span>
-                  <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
-                  {model.source === 'custom' && customModelPath && (
-                    <span className="text-blue-600 dark:text-blue-400" title={model.path}>
-                      📁 {customModelPath}
-                    </span>
-                  )}
-                  
-                  {/* Model Type Tags */}
-                  {isMmprojModel(model.file) && (
-                    <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
-                      <FileIcon className="w-3 h-3" />
-                      mmproj
-                    </span>
-                  )}
-                  {isEmbeddingModel(model.file) && (
-                    <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                      </svg>
-                      embedding
-                    </span>
-                  )}
-                  {model.isVisionModel && !isMmprojModel(model.file) && (
-                    <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                      <Eye className="w-3 h-3" />
-                      Vision
-                    </span>
-                  )}
-                  {model.hasAssignedMmproj && !isMmprojModel(model.file) && (
-                    <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                      <Link className="w-3 h-3" />
-                      linked mmproj
-                    </span>
-                  )}
-                  {model.isVisionModel && !model.hasAssignedMmproj && !isMmprojModel(model.file) && (
-                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="w-3 h-3" />
-                      needs mmproj
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                
-                {/* mmproj Management Button - Only show for non-mmproj and non-embedding files */}
-                {!isMmprojModel(model.file) && !isEmbeddingModel(model.file) && (
-                  <button
-                    onClick={() => handleManageMmproj(model)}
-                    className="p-2 rounded-lg transition-colors text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                    title="Manage mmproj assignment"
-                  >
-                    <Link className="w-4 h-4" />
-                  </button>
-                )}
 
-                {deleting.has(model.path) ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white text-xs rounded-lg opacity-50 cursor-not-allowed">
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Removing...
+                {/* Model Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h5 className="font-semibold text-gray-900 dark:text-white text-lg truncate">
+                      {model.name}
+                    </h5>
+                    
+                    {/* Model Type Badges */}
+                    <div className="flex gap-1 shrink-0">
+                      {isMmprojModel(model.file) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                          <FileIcon className="w-3 h-3" />
+                          mmproj
+                        </span>
+                      )}
+                      {isEmbeddingModel(model.file) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-900/30 rounded-full">
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                          </svg>
+                          embedding
+                        </span>
+                      )}
+                      {model.isVisionModel && !isMmprojModel(model.file) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                          <Eye className="w-3 h-3" />
+                          Vision
+                        </span>
+                      )}
+                      {model.hasAssignedMmproj && !isMmprojModel(model.file) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/30 rounded-full">
+                          <Link className="w-3 h-3" />
+                          linked
+                        </span>
+                      )}
+                      {model.isVisionModel && !model.hasAssignedMmproj && !isMmprojModel(model.file) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                          <AlertTriangle className="w-3 h-3" />
+                          needs mmproj
+                        </span>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => onDeleteModel(model.path)}
-                    disabled={deleting.has(model.path) || model.source === 'bundled'}
-                    className={`p-2 rounded-lg transition-colors ${
-                      model.source === 'bundled' 
-                        ? 'text-gray-400 cursor-not-allowed' 
-                        : 'text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
-                    }`}
-                    title={model.source === 'bundled' ? 'Cannot delete bundled models' : 'Remove model'}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
+                  
+                  <p className="text-sm text-gray-600 dark:text-gray-400 font-mono mb-3 truncate">
+                    {model.file}
+                  </p>
+                  
+                  {/* Model Details Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-1">
+                      <HardDrive className="w-3 h-3" />
+                      <span>{formatFileSize(model.size)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Cloud className="w-3 h-3" />
+                      <span className="capitalize">{model.source}</span>
+                    </div>
+                    <div>
+                      <span>Added {new Date(model.lastModified).toLocaleDateString()}</span>
+                    </div>
+                    {model.source === 'custom' && customModelPath && (
+                      <div className="text-blue-600 dark:text-blue-400 truncate" title={model.path}>
+                        📁 Custom Dir
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* mmproj Management Button */}
+                  {!isMmprojModel(model.file) && !isEmbeddingModel(model.file) && (
+                    <button
+                      onClick={() => handleManageMmproj(model)}
+                      className="p-2 rounded-lg transition-colors text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      title="Manage mmproj assignment"
+                    >
+                      <Link className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Delete Button */}
+                  {deleting.has(model.path) ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white text-xs rounded-lg opacity-50 cursor-not-allowed">
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Removing...
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onDeleteModel(model.path)}
+                      disabled={deleting.has(model.path) || model.source === 'bundled'}
+                      className={`p-2 rounded-lg transition-colors ${
+                        model.source === 'bundled' 
+                          ? 'text-gray-400 cursor-not-allowed' 
+                          : 'text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
+                      }`}
+                      title={model.source === 'bundled' ? 'Cannot delete bundled models' : 'Remove model'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <HardDrive className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+            ))}
           </div>
-          <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No models in your library</h4>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Download models from the Discover tab or set a custom model directory to get started
-          </p>
-          <div className="flex gap-2 justify-center">
+        ) : (
+          <div className="text-center py-16">
+            <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-6">
+              <HardDrive className="w-10 h-10 text-gray-400 dark:text-gray-600" />
+            </div>
+            <h4 className="text-xl font-medium text-gray-900 dark:text-white mb-3">
+              No models in your library
+            </h4>
+            <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+              Download models from the Discover tab or set a custom model directory to get started with local AI models
+            </p>
             <button 
               onClick={() => onModelManagerTabChange('discover')}
-              className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+              className="px-6 py-3 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors font-medium"
             >
               Discover Models
             </button>
           </div>
-        </div>
-      )}
-
+        )}
+      </div>
     </div>
   );
 };

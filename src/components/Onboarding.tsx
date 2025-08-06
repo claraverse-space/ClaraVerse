@@ -17,8 +17,10 @@ import {
     Palette,
     Download,
     Server,
+    HardDrive,
 } from 'lucide-react';
 import {db} from '../db';
+import { useProviders } from '../contexts/ProvidersContext';
 
 interface OnboardingProps {
     onComplete: () => void;
@@ -72,6 +74,11 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         ragAndTts: true,
         claraCore: true
     });
+    
+    // Custom model path management - reuse from CustomModelPathManager logic
+    const { setCustomModelPath } = useProviders();
+    const [isSettingCustomPath, setIsSettingCustomPath] = useState(false);
+    const [folderPickerMessage, setFolderPickerMessage] = useState<string | null>(null);
 
     // Use claraStatus to avoid lint warning
     console.log('Clara status:', claraStatus);
@@ -136,6 +143,64 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         };
     }, []);
 
+    // Handler for folder picker (similar to CustomModelPathManager)
+    const handlePickCustomModelPath = async () => {
+        if (window.electron && window.electron.dialog) {
+            try {
+                const result = await window.electron.dialog.showOpenDialog({
+                    properties: ['openDirectory']
+                });
+                
+                if (result && result.filePaths && result.filePaths[0]) {
+                    const selectedPath = result.filePaths[0];
+                    
+                    // Show loading state
+                    setIsSettingCustomPath(true);
+                    setFolderPickerMessage(null); // Clear previous message
+                    
+                    // First, scan for models in the selected path
+                    if (window.llamaSwap?.scanCustomPathModels) {
+                        const scanResult = await window.llamaSwap.scanCustomPathModels(selectedPath);
+                        
+                        if (scanResult.success && scanResult.models && scanResult.models.length > 0) {
+                            // Models found, set the path and update form data
+                            await setCustomModelPath(selectedPath);
+                            setFormData(prev => ({...prev, model_folder_path: selectedPath}));
+                            
+                            // Update available models list
+                            const modelNames = scanResult.models.map((m: any) => m.file);
+                            setAvailableModels(modelNames);
+                            
+                            // Set success message
+                            setFolderPickerMessage(`✅ Found ${scanResult.models.length} GGUF model(s)`);
+                        } else if (scanResult.success && (!scanResult.models || scanResult.models.length === 0)) {
+                            // No models found, but still set the path
+                            await setCustomModelPath(selectedPath);
+                            setFormData(prev => ({...prev, model_folder_path: selectedPath}));
+                            setFolderPickerMessage('⚠️ No GGUF models found in this folder');
+                        } else {
+                            // Scan failed, show error
+                            console.error('Error scanning folder for models:', scanResult.error || 'Unknown error');
+                            setFolderPickerMessage('❌ Error scanning folder for models');
+                        }
+                    } else {
+                        // Fallback: just set the path without scanning
+                        await setCustomModelPath(selectedPath);
+                        setFormData(prev => ({...prev, model_folder_path: selectedPath}));
+                        setFolderPickerMessage('📁 Folder selected (scanning not available)');
+                    }
+                }
+            } catch (error) {
+                console.error('Error setting custom model path:', error);
+            } finally {
+                setIsSettingCustomPath(false);
+            }
+        } else {
+            // Web browser - show message that desktop app is required
+            alert('Folder picker is only available in the desktop app. You can manually enter the path.');
+        }
+    };
+
     const checkClaraCore = async () => {
         setClaraStatus('success'); // Clara Core is always available
         setCheckingModels(true);
@@ -190,8 +255,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         try {
             // Download the recommended Qwen 0.6B model
             // Using a popular small model that's good for onboarding
-            const modelId = 'Qwen/Qwen2.5-0.5B-Instruct-GGUF';
-            const fileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
+            const modelId = 'Qwen/Qwen3-0.6B-GGUF';
+            const fileName = 'Qwen3-0.6B-Q8_0.gguf';
             
             // Set up progress listener
             let progressUnsubscribe: (() => void) | null = null;
@@ -1009,10 +1074,10 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                             </p>                                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                                         <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 mb-3">
                                             <Download className="w-5 h-5"/>
-                                            <h4 className="font-medium">Recommended: Qwen2.5 0.5B</h4>
+                                            <h4 className="font-medium">Recommended: Qwen3 0.6B</h4>
                                         </div>
                                         <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">
-                                            Perfect starter model - fast, efficient, and great for conversations (~350MB)
+                                            Perfect starter model - fast, efficient, and great for conversations (<small>Note: You can always download better models in settings</small>) (~350MB)
                                         </p>
                                         <button 
                                             onClick={handleModelDownload}
@@ -1024,7 +1089,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                     <Loader className="w-4 h-4 animate-spin"/>
                                                     Downloading... {downloadProgress}%
                                                 </span>
-                                            ) : 'Download Qwen2.5 0.5B'}
+                                            ) : 'Download Qwen3 0.6B'}
                                         </button>
                                         
                                         {downloadingModel && (
@@ -1048,13 +1113,39 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         <h5 className="font-medium text-gray-800 dark:text-gray-200 mb-2 text-sm">
                                             I have my own GGUF models
                                         </h5>
-                                        <input
-                                            type="text"
-                                            value={formData.model_folder_path}
-                                            onChange={(e) => setFormData(prev => ({...prev, model_folder_path: e.target.value}))}
-                                            placeholder="Browse for GGUF files or folder path..."
-                                            className="w-full px-3 py-2 rounded bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm"
-                                        />
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={formData.model_folder_path}
+                                                    onChange={(e) => {
+                                                        setFormData(prev => ({...prev, model_folder_path: e.target.value}));
+                                                        setFolderPickerMessage(null); // Clear message when typing manually
+                                                    }}
+                                                    placeholder="Select folder path or type manually..."
+                                                    className="flex-1 px-3 py-2 rounded bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm"
+                                                />
+                                                <button
+                                                    onClick={handlePickCustomModelPath}
+                                                    disabled={isSettingCustomPath}
+                                                    className="px-3 py-2 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center gap-2"
+                                                >
+                                                    {isSettingCustomPath && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                                                    <HardDrive className="w-4 h-4" />
+                                                    {isSettingCustomPath ? 'Scanning...' : 'Browse'}
+                                                </button>
+                                            </div>
+                                            {formData.model_folder_path && (
+                                                <p className="text-xs text-gray-600 dark:text-gray-400">
+                                                    Selected: <span className="font-mono">{formData.model_folder_path}</span>
+                                                </p>
+                                            )}
+                                            {folderPickerMessage && (
+                                                <p className="text-xs text-gray-700 dark:text-gray-300">
+                                                    {folderPickerMessage}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ) : (

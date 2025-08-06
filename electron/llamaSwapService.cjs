@@ -68,6 +68,9 @@ class LlamaSwapService {
     // Ensure models directory exists
     this.ensureDirectories();
     
+    // Initialize custom model paths from saved settings
+    this.initializeCustomModelPaths();
+    
     if (this.ipcLogger) {
       this.ipcLogger.logServiceCall('LlamaSwapService', 'constructor', null, 'initialized');
     }
@@ -5315,6 +5318,34 @@ ${cmdLine}`;
     } catch (error) {
       log.error('Static binary repair failed:', error.message);
       return false;
+    }
+  }
+
+  /**
+   * Initialize custom model paths from saved settings
+   */
+  initializeCustomModelPaths() {
+    try {
+      // Import required modules
+      const fsSync = require('fs');
+      const app = require('electron').app;
+      
+      // Try to load custom model paths from file storage
+      const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+      if (fsSync.existsSync(settingsPath)) {
+        const settings = JSON.parse(fsSync.readFileSync(settingsPath, 'utf8'));
+        if (settings.customModelPath) {
+          // Validate that the path still exists before setting it
+          if (fsSync.existsSync(settings.customModelPath)) {
+            this.customModelPaths = [settings.customModelPath];
+            log.info('Loaded custom model path from settings:', settings.customModelPath);
+          } else {
+            log.warn('Custom model path from settings no longer exists:', settings.customModelPath);
+          }
+        }
+      }
+    } catch (error) {
+      log.warn('Could not load custom model path from settings:', error.message);
     }
   }
 

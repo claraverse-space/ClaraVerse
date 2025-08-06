@@ -1411,8 +1411,7 @@ const Settings = () => {
             backgroundImage: `url(${wallpaperUrl})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            opacity: 0.1,
-            filter: 'blur(1px)',
+            opacity: 0.15, // Subtle background opacity for readability
             pointerEvents: 'none'
           }}
         />
@@ -2438,10 +2437,9 @@ const Settings = () => {
                           className="w-full h-full bg-cover bg-center relative"
                           style={{
                             backgroundImage: `url(${wallpaperUrl})`,
-                            opacity: personalInfo.ui_preferences?.wallpaper_opacity || 0.1,
-                            filter: `blur(${personalInfo.ui_preferences?.wallpaper_blur || 1}px) brightness(${personalInfo.ui_preferences?.wallpaper_brightness || 1}) contrast(${personalInfo.ui_preferences?.wallpaper_contrast || 1}) saturate(${personalInfo.ui_preferences?.wallpaper_saturate || 1})`,
-                            backgroundSize: personalInfo.ui_preferences?.wallpaper_size || 'cover',
-                            backgroundPosition: personalInfo.ui_preferences?.wallpaper_position || 'center'
+                            opacity: 1.0, // Full opacity for clear visibility
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
                           }}
                         >
                           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
@@ -2513,9 +2511,11 @@ const Settings = () => {
                             <div 
                               className="aspect-video rounded-lg border-2 border-gray-200 dark:border-gray-600 overflow-hidden hover:border-purple-400 dark:hover:border-purple-500 transition-colors"
                               style={{
-                                background: wallpaper.preview || wallpaper.url,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center'
+                                background: wallpaper.category === 'Gradients' 
+                                  ? wallpaper.preview 
+                                  : `url(${wallpaper.url})`,
+                                backgroundSize: wallpaper.category === 'Gradients' ? 'auto' : 'cover',
+                                backgroundPosition: wallpaper.category === 'Gradients' ? 'center' : 'center'
                               }}
                             >
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -2562,13 +2562,12 @@ const Settings = () => {
                     
                     <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                       <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                        💡 Pro Tips
+                        💡 Wallpaper Tips
                       </h5>
                       <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
-                        <li>• Keep opacity low (5-15%) for better text readability</li>
-                        <li>• Use subtle blur to reduce visual distraction</li>
+                        <li>• Upload your own images or choose from built-in gradients</li>
                         <li>• High-contrast images work best as backgrounds</li>
-                        <li>• Consider your accent color when choosing wallpapers</li>
+                        <li>• The wallpaper appears subtly behind the interface for readability</li>
                       </ul>
                     </div>
                   </div>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive } from 'lucide-react';
 import { useProviders } from '../contexts/ProvidersContext';
-import CustomModelPathManager from './ModelManager/CustomModelPathManager';
 import SearchSection from './ModelManager/SearchSection';
 import PopularModelsSection from './ModelManager/PopularModelsSection';
 import LocalModelsLibrary from './ModelManager/LocalModelsLibrary';
@@ -131,7 +130,6 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
-      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModel(modelId, fileName, downloadPath);
       if (result.success) {
         // Refresh local models
@@ -189,7 +187,6 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
-      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
@@ -351,15 +348,15 @@ const ModelManager: React.FC = () => {
     console.log('Tag filter:', tag);
   };
 
-  // Handle confirmation with proper callback cleanup
-  const handleConfirmation = (confirmationData: Confirmation) => {
-    setConfirmation(confirmationData);
-  };
-
   // Handle opening mmproj selector for a specific model
   const handleManageMmproj = (model: LocalModel) => {
     setSelectedModelForMmproj(model);
     setShowMmprojSelector(true);
+  };
+
+  // Handle confirmation with proper callback cleanup
+  const handleConfirmation = (confirmationData: Confirmation) => {
+    setConfirmation(confirmationData);
   };
 
   // Handle closing mmproj selector
@@ -419,12 +416,6 @@ const ModelManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Custom Model Path Manager */}
-      <CustomModelPathManager 
-        onNotification={setNotification}
-        onConfirmation={handleConfirmation}
-      />
-
       {/* Main Model Manager Section */}
       <div className="glassmorphic rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
@@ -489,6 +480,8 @@ const ModelManager: React.FC = () => {
             deleting={deleting}
             onModelManagerTabChange={setModelManagerTab}
             onManageMmproj={handleManageMmproj}
+            onNotification={setNotification}
+            onConfirmation={handleConfirmation}
           />
         )}
       </div>
