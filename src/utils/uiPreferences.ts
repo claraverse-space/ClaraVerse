@@ -13,6 +13,14 @@ export const DEFAULT_UI_PREFERENCES = {
   interface_density: 'normal' as 'compact' | 'normal' | 'comfortable',
   border_radius: 'normal' as 'sharp' | 'normal' | 'rounded' | 'soft',
   glassmorphism_strength: 'medium' as 'none' | 'subtle' | 'medium' | 'strong',
+  // Enhanced wallpaper settings
+  wallpaper_opacity: 0.1,
+  wallpaper_blur: 1,
+  wallpaper_position: 'center' as 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
+  wallpaper_size: 'cover' as 'cover' | 'contain' | 'stretch' | 'tile',
+  wallpaper_brightness: 1.0,
+  wallpaper_contrast: 1.0,
+  wallpaper_saturate: 1.0,
 };
 
 // Font scale options
@@ -58,6 +66,103 @@ export const ACCENT_COLOR_OPTIONS = [
   { value: '#f59e0b', label: 'Amber', description: 'Warm amber' },
   { value: '#ef4444', label: 'Red', description: 'Vibrant red' },
   { value: '#84cc16', label: 'Lime', description: 'Fresh lime' },
+];
+
+// Wallpaper position options
+export const WALLPAPER_POSITION_OPTIONS = [
+  { value: 'center', label: 'Center', description: 'Centered positioning' },
+  { value: 'top', label: 'Top', description: 'Aligned to top' },
+  { value: 'bottom', label: 'Bottom', description: 'Aligned to bottom' },
+  { value: 'left', label: 'Left', description: 'Aligned to left' },
+  { value: 'right', label: 'Right', description: 'Aligned to right' },
+  { value: 'top-left', label: 'Top Left', description: 'Top-left corner' },
+  { value: 'top-right', label: 'Top Right', description: 'Top-right corner' },
+  { value: 'bottom-left', label: 'Bottom Left', description: 'Bottom-left corner' },
+  { value: 'bottom-right', label: 'Bottom Right', description: 'Bottom-right corner' },
+];
+
+// Wallpaper size options
+export const WALLPAPER_SIZE_OPTIONS = [
+  { value: 'cover', label: 'Cover', description: 'Scale to cover entire area' },
+  { value: 'contain', label: 'Contain', description: 'Scale to fit entirely within area' },
+  { value: 'stretch', label: 'Stretch', description: 'Stretch to fill exact dimensions' },
+  { value: 'tile', label: 'Tile', description: 'Repeat image as tiles' },
+];
+
+// Built-in wallpaper collection
+export const BUILTIN_WALLPAPERS = [
+  {
+    id: 'gradient-purple',
+    name: 'Purple Gradient',
+    description: 'Soft purple to pink gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzY2N2VlYSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzc2NGJhMiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjZykiLz48L3N2Zz4='
+  },
+  {
+    id: 'gradient-blue',
+    name: 'Ocean Blue',
+    description: 'Deep ocean blue gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzM2N2I5ZCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzI1NGU3MCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjZykiLz48L3N2Zz4='
+  },
+  {
+    id: 'gradient-green',
+    name: 'Forest Green',
+    description: 'Natural forest gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(135deg, #2d5016 0%, #3e7b27 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzJkNTAxNiIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzNlN2IyNyIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjZykiLz48L3N2Zz4='
+  },
+  {
+    id: 'gradient-sunset',
+    name: 'Sunset Glow',
+    description: 'Warm sunset colors',
+    category: 'Gradients',
+    preview: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZmN2U1ZiIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZlYjQ3YiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9InVybCgjZykiLz48L3N2Zz4='
+  },
+  {
+    id: 'solid-dark',
+    name: 'Deep Space',
+    description: 'Dark solid background',
+    category: 'Solid Colors',
+    preview: '#1f2937',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjEwODAiIGZpbGw9IiMxZjI5MzciLz48L3N2Zz4='
+  },
+  {
+    id: 'gradient-aurora',
+    name: 'Aurora Borealis',
+    description: 'Northern lights gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(45deg, #00b894 0%, #00cec9 25%, #6c5ce7 75%, #a29bfe 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzAwYjg5NCIvPjxzdG9wIG9mZnNldD0iMjUlIiBzdG9wLWNvbG9yPSIjMDBjZWM5Ii8+PHN0b3Agb2Zmc2V0PSI3NSUiIHN0b3AtY29sb3I9IiM2YzVjZTciLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNhMjliZmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiBmaWxsPSJ1cmwoI2cpIi8+PC9zdmc+'
+  },
+  {
+    id: 'gradient-fire',
+    name: 'Fire Glow',
+    description: 'Warm fire gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(45deg, #ff4757 0%, #ff6b35 50%, #ffa502 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZmNDc1NyIvPjxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjZmY2YjM1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZmZhNTAyIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg=='
+  },
+  {
+    id: 'gradient-ice',
+    name: 'Ice Crystal',
+    description: 'Cool ice gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(135deg, #74b9ff 0%, #0984e3 50%, #6c5ce7 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzc0YjlmZiIvPjxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjMDk4NGUzIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjNmM1Y2U3Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg=='
+  },
+  {
+    id: 'gradient-cosmic',
+    name: 'Cosmic Dust',
+    description: 'Deep space gradient',
+    category: 'Gradients',
+    preview: 'linear-gradient(225deg, #2d3436 0%, #636e72 50%, #74b9ff 100%)',
+    url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB2aWV3Qm94PSIwIDAgMTkyMCAxMDgwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzJkMzQzNiIvPjxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjNjM2ZTcyIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjNzRiOWZmIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjE5MjAiIGhlaWdodD0iMTA4MCIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg=='
+  },
 ];
 
 // Convert hex to RGB values for CSS custom properties

@@ -77,6 +77,14 @@ export interface PersonalInfo {
     interface_density?: 'compact' | 'normal' | 'comfortable'; // UI spacing
     border_radius?: 'sharp' | 'normal' | 'rounded' | 'soft'; // Corner rounding
     glassmorphism_strength?: 'none' | 'subtle' | 'medium' | 'strong'; // Glass effect intensity
+    // Enhanced wallpaper settings
+    wallpaper_opacity?: number; // 0.0 - 1.0
+    wallpaper_blur?: number; // 0 - 10px
+    wallpaper_position?: 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    wallpaper_size?: 'cover' | 'contain' | 'stretch' | 'tile';
+    wallpaper_brightness?: number; // 0.0 - 2.0 (1.0 = normal)
+    wallpaper_contrast?: number; // 0.0 - 2.0 (1.0 = normal)
+    wallpaper_saturate?: number; // 0.0 - 2.0 (1.0 = normal)
   };
 }
 

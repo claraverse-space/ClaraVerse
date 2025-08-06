@@ -16,9 +16,15 @@ import {
   LETTER_SPACING_OPTIONS,
   ACCENT_COLOR_OPTIONS, 
   FONT_PRESETS,
+  BUILTIN_WALLPAPERS,
   applyUIPreferences,
   detectSystemFonts
 } from '../utils/uiPreferences';
+import { 
+  createGradientWallpaper,
+  processWallpaper,
+  type ImageEffects
+} from '../utils/imageProcessing';
 
 // Type for llama.cpp update info
 interface LlamacppUpdateInfo {
@@ -162,6 +168,9 @@ const Settings = () => {
   // Available system fonts state
   const [availableFonts, setAvailableFonts] = useState<{ value: string; label: string; description: string; category: string }[]>([]);
   const [fontsLoading, setFontsLoading] = useState(true);
+
+  // Wallpaper gallery and processing state
+  const [showBuiltinGallery, setShowBuiltinGallery] = useState(false);
 
   // Type for update info to fix TypeScript errors
   interface UpdateInfo {
@@ -742,6 +751,61 @@ const Settings = () => {
       setWallpaperUrl(null);
     } catch (error) {
       console.error('Error clearing wallpaper:', error);
+    }
+  };
+
+  // Handle built-in wallpaper selection
+  const handleBuiltinWallpaperSelect = async (wallpaper: any) => {
+    try {
+      console.log(`🎨 Processing built-in wallpaper: ${wallpaper.name || 'Unknown'}`);
+      
+      let processedUrl = wallpaper.url;
+      
+      // If it's a gradient, create gradient wallpaper
+      if (wallpaper.category === 'Gradients' && wallpaper.preview) {
+        console.log('🌈 Creating gradient wallpaper...');
+        processedUrl = createGradientWallpaper(wallpaper.preview);
+      }
+      
+      // Apply current effects if any
+      const effects: ImageEffects = {
+        opacity: personalInfo.ui_preferences?.wallpaper_opacity || 0.1,
+        blur: personalInfo.ui_preferences?.wallpaper_blur || 1,
+        brightness: personalInfo.ui_preferences?.wallpaper_brightness || 1,
+        contrast: personalInfo.ui_preferences?.wallpaper_contrast || 1,
+        saturate: personalInfo.ui_preferences?.wallpaper_saturate || 1
+      };
+      
+      console.log('🎨 Applying effects:', effects);
+      const finalUrl = await processWallpaper({ imageUrl: processedUrl, effects });
+      
+      // Store processed wallpaper
+      await db.setWallpaper(finalUrl);
+      setWallpaperUrl(finalUrl);
+      setShowBuiltinGallery(false);
+      
+      console.log('✅ Successfully applied built-in wallpaper');
+      
+    } catch (error) {
+      console.error('💥 Error setting built-in wallpaper:', error);
+      
+      // Try without effects as fallback
+      try {
+        console.log('🔄 Trying without effects...');
+        let fallbackUrl = wallpaper.url;
+        
+        if (wallpaper.category === 'Gradients' && wallpaper.preview) {
+          fallbackUrl = createGradientWallpaper(wallpaper.preview);
+        }
+        
+        await db.setWallpaper(fallbackUrl);
+        setWallpaperUrl(fallbackUrl);
+        setShowBuiltinGallery(false);
+        console.log('✅ Applied built-in wallpaper without effects');
+      } catch (fallbackError) {
+        console.error('💥 Complete wallpaper application failed:', fallbackError);
+        alert('Failed to apply wallpaper. Please try a different one.');
+      }
     }
   };
 
@@ -2352,47 +2416,162 @@ const Settings = () => {
               </div>
               )}
 
-              {/* Show Wallpaper section when either not in interface mode, or appearance sub-tab is active */}
+              {/* Show Enhanced Wallpaper section when either not in interface mode, or appearance sub-tab is active */}
               {(activeMainTab !== 'interface' || activeInterfaceTab === 'appearance') && (
               <div className="glassmorphic rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-6">
                   <Image className="w-6 h-6 text-purple-500" />
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Wallpaper
+                    Background & Wallpaper
                   </h2>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Background Image
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSetWallpaper}
-                      className="px-4 py-2 bg-sakura-500 text-white rounded-lg flex items-center gap-2 hover:bg-sakura-600 transition-colors"
-                    >
-                      <Image className="w-4 h-4" />
-                      {wallpaperUrl ? 'Change Wallpaper' : 'Set Wallpaper'}
-                    </button>
-                    {wallpaperUrl && (
-                      <button
-                        onClick={handleClearWallpaper}
-                        className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        Clear Wallpaper
-                      </button>
-                    )}
+                <div className="space-y-6">
+                  {/* Current Wallpaper Status */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                      Current Background
+                    </label>
+                    <div className="relative h-32 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden">
+                      {wallpaperUrl ? (
+                        <div 
+                          className="w-full h-full bg-cover bg-center relative"
+                          style={{
+                            backgroundImage: `url(${wallpaperUrl})`,
+                            opacity: personalInfo.ui_preferences?.wallpaper_opacity || 0.1,
+                            filter: `blur(${personalInfo.ui_preferences?.wallpaper_blur || 1}px) brightness(${personalInfo.ui_preferences?.wallpaper_brightness || 1}) contrast(${personalInfo.ui_preferences?.wallpaper_contrast || 1}) saturate(${personalInfo.ui_preferences?.wallpaper_saturate || 1})`,
+                            backgroundSize: personalInfo.ui_preferences?.wallpaper_size || 'cover',
+                            backgroundPosition: personalInfo.ui_preferences?.wallpaper_position || 'center'
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                            <span className="text-white text-sm font-medium bg-black/50 px-3 py-1 rounded-full">
+                              Current Wallpaper Preview
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
+                          <div className="text-center">
+                            <Image className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No wallpaper set</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    Upload an image to use as your application background
-                  </p>
-                  {wallpaperUrl && (
-                    <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                      <p className="text-sm text-green-700 dark:text-green-300">
-                        ✓ Wallpaper is currently set and active
-                      </p>
+
+                  {/* Wallpaper Source Options */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                      Choose Background Source
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                      <button
+                        onClick={handleSetWallpaper}
+                        className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-purple-300 dark:hover:border-purple-600 transition-colors text-center"
+                      >
+                        <div className="w-8 h-8 mx-auto mb-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                          <Image className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Upload Image</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">From your device</p>
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          setShowBuiltinGallery(!showBuiltinGallery);
+                        }}
+                        className={`p-4 border rounded-lg transition-colors text-center ${
+                          showBuiltinGallery 
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                            : 'border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
+                        }`}
+                      >
+                        <div className="w-8 h-8 mx-auto mb-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                          <span className="text-sm">🎨</span>
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Gallery</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Built-in collection</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Built-in Gallery */}
+                  {showBuiltinGallery && (
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                        🎨 Built-in Gallery
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {BUILTIN_WALLPAPERS.map((wallpaper) => (
+                          <div
+                            key={wallpaper.id}
+                            className="relative group cursor-pointer"
+                            onClick={() => handleBuiltinWallpaperSelect(wallpaper)}
+                          >
+                            <div 
+                              className="aspect-video rounded-lg border-2 border-gray-200 dark:border-gray-600 overflow-hidden hover:border-purple-400 dark:hover:border-purple-500 transition-colors"
+                              style={{
+                                background: wallpaper.preview || wallpaper.url,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center'
+                              }}
+                            >
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium bg-black/50 px-2 py-1 rounded">
+                                  Select
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-center text-gray-600 dark:text-gray-400 mt-1 truncate">
+                              {wallpaper.name}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
+
+                  {/* Clear Wallpaper and Actions */}
+                  {wallpaperUrl && (
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleClearWallpaper}
+                          className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors text-sm"
+                        >
+                          Remove Wallpaper
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status and Tips */}
+                  <div className="space-y-3">
+                    {wallpaperUrl && (
+                      <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600 dark:text-green-400">✅</span>
+                          <p className="text-sm text-green-700 dark:text-green-300">
+                            <strong>Wallpaper Active</strong> - Your background is applied with current settings
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                        💡 Pro Tips
+                      </h5>
+                      <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                        <li>• Keep opacity low (5-15%) for better text readability</li>
+                        <li>• Use subtle blur to reduce visual distraction</li>
+                        <li>• High-contrast images work best as backgrounds</li>
+                        <li>• Consider your accent color when choosing wallpapers</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
               )}
@@ -3160,7 +3339,7 @@ const ProcessButton = () => {
                         Current Llama.cpp Version
                       </h4>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Version {llamacppUpdateInfo?.currentVersion || 'Unknown'} on {llamacppUpdateInfo && llamacppUpdateInfo.platform ? getPlatformName(llamacppUpdateInfo.platform) : 'Unknown Platform'}
+                        Version {llamacppUpdateInfo?.currentVersion || 'Unknown'} on {llamacppUpdateInfo?.platform ? getPlatformName(llamacppUpdateInfo.platform) : 'Unknown Platform'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                         Updates official binaries only (llama-server, llama-cli, etc.)
