@@ -1309,13 +1309,17 @@ function registerModelManagerHandlers() {
   }
 
   async function downloadSingleFile(modelId, fileName, modelsDir) {
+    return downloadSingleFileWithRename(modelId, fileName, fileName, modelsDir);
+  }
+
+  async function downloadSingleFileWithRename(modelId, sourceFileName, targetFileName, modelsDir) {
     const fs = require('fs');
     const https = require('https');
     const http = require('http');
     const path = require('path');
     
-    const downloadUrl = `https://huggingface.co/${modelId}/resolve/main/${fileName}`;
-    const filePath = path.join(modelsDir, fileName);
+    const downloadUrl = `https://huggingface.co/${modelId}/resolve/main/${sourceFileName}`;
+    const filePath = path.join(modelsDir, targetFileName);
     
     // Check if file already exists
     if (fs.existsSync(filePath)) {
@@ -1329,17 +1333,17 @@ function registerModelManagerHandlers() {
       const file = fs.createWriteStream(filePath);
       let stopped = false;
       
-      // Store download info for stop functionality
+      // Store download info for stop functionality (use target filename for tracking)
       const downloadInfo = {
         request: null,
         file,
         filePath,
         stopped: false
       };
-      activeDownloads.set(fileName, downloadInfo);
+      activeDownloads.set(targetFileName, downloadInfo);
       
       const cleanup = () => {
-        activeDownloads.delete(fileName);
+        activeDownloads.delete(targetFileName);
         if (file && !file.destroyed) {
           file.close();
         }
@@ -1397,10 +1401,10 @@ function registerModelManagerHandlers() {
                 downloadedSize += chunk.length;
                 const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
                 
-                // Send progress update to renderer
+                // Send progress update to renderer (use targetFileName for UI tracking)
                 if (mainWindow) {
                   mainWindow.webContents.send('download-progress', {
-                    fileName,
+                    fileName: targetFileName,
                     progress: Math.round(progress),
                     downloadedSize,
                     totalSize
@@ -1416,13 +1420,13 @@ function registerModelManagerHandlers() {
                 }
                 
                 file.close(() => {
-                  activeDownloads.delete(fileName);
+                  activeDownloads.delete(targetFileName);
                   log.info(`Download completed: ${filePath}`);
                   
-                  // Send final progress update
+                  // Send final progress update (use targetFileName for UI tracking)
                   if (mainWindow) {
                     mainWindow.webContents.send('download-progress', {
-                      fileName,
+                      fileName: targetFileName,
                       progress: 100,
                       downloadedSize: totalSize,
                       totalSize
@@ -1467,10 +1471,10 @@ function registerModelManagerHandlers() {
             downloadedSize += chunk.length;
             const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
             
-            // Send progress update to renderer
+            // Send progress update to renderer (use targetFileName for UI tracking)
             if (mainWindow) {
               mainWindow.webContents.send('download-progress', {
-                fileName,
+                fileName: targetFileName,
                 progress: Math.round(progress),
                 downloadedSize,
                 totalSize
@@ -1486,13 +1490,13 @@ function registerModelManagerHandlers() {
             }
             
             file.close(() => {
-              activeDownloads.delete(fileName);
+              activeDownloads.delete(targetFileName);
               log.info(`Download completed: ${filePath}`);
               
-              // Send final progress update
+              // Send final progress update (use targetFileName for UI tracking)
               if (mainWindow) {
                 mainWindow.webContents.send('download-progress', {
-                  fileName,
+                  fileName: targetFileName,
                   progress: 100,
                   downloadedSize: totalSize,
                   totalSize
@@ -1619,15 +1623,41 @@ function registerModelManagerHandlers() {
       const results = [];
       for (const file of filesToDownload) {
         try {
-          const result = await downloadSingleFile(modelId, file, modelsDir);
-          results.push({ file, success: result.success, error: result.error });
+          // Check if this is an mmproj file and we need to rename it
+          let targetFileName = file;
+          let originalFileName = file;
+          
+          if (file.toLowerCase().includes('mmproj') && file !== fileName) {
+            // This is an mmproj file, rename it to include the model context
+            const modelBaseName = fileName
+              .replace(/\.(gguf|bin|safetensors)$/i, '') // Remove file extension
+              .replace(/-(q4_k_m|q4_k_s|q4_0|q4_1|q5_k_m|q5_k_s|q6_k|q8_0|f16|fp16|instruct).*$/i, ''); // Remove quantization suffix
+            
+            // Get the file extension from the mmproj file
+            const fileExtension = file.substring(file.lastIndexOf('.'));
+            
+            // Create new filename: modelname_mmproj.gguf
+            targetFileName = `${modelBaseName}_mmproj${fileExtension}`;
+            
+            log.info(`Renaming mmproj file: ${file} -> ${targetFileName}`);
+          }
+          
+          const result = await downloadSingleFileWithRename(modelId, originalFileName, targetFileName, modelsDir);
+          
+          // For results tracking, use original filename for main model, target filename for mmproj
+          const resultFileName = (file === fileName) ? fileName : targetFileName;
+          results.push({ file: resultFileName, success: result.success, error: result.error });
         } catch (error) {
+          log.error('Error in download loop for file:', file, error);
           results.push({ file, success: false, error: error.message });
         }
       }
       
-      // Check if main model downloaded successfully
+      // Check if main model downloaded successfully (it should still have original fileName)
       const mainResult = results.find(r => r.file === fileName);
+      log.info(`Main result check: looking for ${fileName} in results:`, results.map(r => r.file));
+      log.info(`Main result found:`, mainResult);
+      
       if (mainResult?.success) {
         // Restart llama-swap service to load new models
         try {
@@ -1641,15 +1671,19 @@ function registerModelManagerHandlers() {
         }
       }
       
-      return { 
+      const returnValue = { 
         success: mainResult?.success || false, 
         results,
         downloadedFiles: results.filter(r => r.success).map(r => r.file)
       };
       
+      log.info(`Returning from download-model-with-dependencies:`, returnValue);
+      return returnValue;
+      
     } catch (error) {
       log.error('Error downloading model with dependencies:', error);
-      return { success: false, error: error.message };
+      log.error('Error stack:', error.stack);
+      return { success: false, error: error.message || 'Unknown error occurred' };
     }
   });
 

@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Search, HardDrive, Zap, CheckCircle, TrendingUp, Clock, Star, RefreshCw, AlertCircle } from 'lucide-react';
+import { Search, HardDrive, Zap, CheckCircle, TrendingUp, Clock, Star, RefreshCw, AlertCircle, Download, ExternalLink, FolderOpen, PlayCircle, PauseCircle, Trash2 } from 'lucide-react';
 import { HuggingFaceModel, DownloadProgress } from './types';
 import EnhancedModelCard from './EnhancedModelCard';
+import e from 'express';
+import { b } from 'vitest/dist/suite-dWqIFb_-.js';
 
 interface EnhancedModelDiscoveryProps {
   onDownload: (modelId: string, fileName: string) => void;
   onDownloadWithDependencies?: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => void;
   downloading: Set<string>;
   downloadProgress: { [fileName: string]: DownloadProgress };
+}
+
+interface QueuedDownload {
+  id: string;
+  modelId: string;
+  modelName: string;
+  fileName: string;
+  allFiles?: Array<{ rfilename: string; size?: number }>;
+  status: 'queued' | 'retrying' | 'failed' | 'manual';
+  addedAt: Date;
+  retryCount: number;
+  downloadUrl?: string;
 }
 
 interface SystemInfo {
@@ -35,6 +49,8 @@ interface EnhancedModel extends HuggingFaceModel {
     contextLength?: number;
     isVisionModel?: boolean;
     needsMmproj?: boolean;
+    hasMmproj?: boolean;
+    mmprojFiles?: Array<{ rfilename: string; size?: number }>;
     availableQuantizations?: Array<{
       type: string;
       files: Array<{ rfilename: string; size?: number }>;
@@ -57,6 +73,11 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
   const [activeFilter, setActiveFilter] = useState<'recommended' | 'latest' | 'popular' | 'trending'>('recommended');
   const [apiError, setApiError] = useState<string | null>(null);
   const [isRateLimited, setIsRateLimited] = useState(false);
+  
+  // Download Queue Management
+  const [downloadQueue, setDownloadQueue] = useState<QueuedDownload[]>([]);
+  const [showDownloadQueue, setShowDownloadQueue] = useState(false);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
 
   // Load system information
   useEffect(() => {
@@ -306,13 +327,22 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
         return false;
       }
       
-      // Only include GGUF files
-      return filename.includes('.gguf') || filename.includes('.bin') || filename.includes('.safetensors');
+      // Include GGUF files and mmproj files (mmproj are essential for vision models)
+      return filename.includes('.gguf') || filename.includes('.bin') || 
+             filename.includes('.safetensors') || filename.includes('mmproj');
     });
     
-    console.log(`Model ${model.name}: Original files: ${model.files.length}, Filtered GGUF files: ${filteredFiles.length}`);
+    // Separate main model files from mmproj files
+    const modelFiles = filteredFiles.filter(file => 
+      !file.rfilename.toLowerCase().includes('mmproj')
+    );
+    const mmprojFiles = filteredFiles.filter(file => 
+      file.rfilename.toLowerCase().includes('mmproj')
+    );
     
-    if (filteredFiles.length === 0) {
+    console.log(`Model ${model.name}: Original files: ${model.files.length}, Filtered model files: ${modelFiles.length}, MMProj files: ${mmprojFiles.length}`);
+    
+    if (modelFiles.length === 0) {
       console.warn(`No compatible GGUF files found for ${model.name}`);
       // Return minimal model info if no compatible files
       return {
@@ -327,12 +357,18 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
           architecture: 'Unknown',
           fitAnalysis: null
         },
-        metadata: {}
+        metadata: {
+          hasMmproj: mmprojFiles.length > 0,
+          mmprojFiles: mmprojFiles,
+          needsMmproj: false,
+          isVisionModel: false
+        }
       } as any;
     }
     
-    // Fetch actual file sizes if they're missing (0 B)
-    const filesWithSizes = await Promise.all(filteredFiles.map(async (file) => {
+    // Fetch actual file sizes if they're missing (0 B) for both model and mmproj files
+    const allFilesToProcess = [...modelFiles, ...mmprojFiles];
+    const filesWithSizes = await Promise.all(allFilesToProcess.map(async (file) => {
       if (!file.size || file.size === 0) {
         try {
           // Try to fetch file metadata from Hugging Face API
@@ -352,7 +388,14 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
           console.warn(`Failed to fetch size for ${file.rfilename}:`, error);
         }
         
-        // Fallback: estimate size based on model parameters and quantization
+        // For mmproj files, use a default estimate if size fetch fails
+        if (file.rfilename.toLowerCase().includes('mmproj')) {
+          const estimatedMmprojSize = 600 * 1024 * 1024; // ~600MB typical for mmproj
+          console.log(`Estimated size for mmproj ${file.rfilename}: ${estimatedMmprojSize} bytes`);
+          return { ...file, size: estimatedMmprojSize };
+        }
+        
+        // Fallback: estimate size based on model parameters and quantization for model files
         const nameParamMatch = model.name.match(/(\d+\.?\d*)[bB]/i);
         const paramCount = nameParamMatch ? parseFloat(nameParamMatch[1]) : 0;
         
@@ -376,11 +419,20 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       return file;
     }));
     
-    console.log('Files with sizes:', filesWithSizes.map(f => ({ name: f.rfilename, size: f.size })));
+    // Separate processed files back into model files and mmproj files
+    const processedModelFiles = filesWithSizes.filter(file => 
+      !file.rfilename.toLowerCase().includes('mmproj')
+    );
+    const processedMmprojFiles = filesWithSizes.filter(file => 
+      file.rfilename.toLowerCase().includes('mmproj')
+    );
     
-    // Group files by quantization type for smart selection
-    const quantGroups = new Map<string, typeof filesWithSizes>();
-    filesWithSizes.forEach(file => {
+    console.log('Model files with sizes:', processedModelFiles.map(f => ({ name: f.rfilename, size: f.size })));
+    console.log('MMProj files with sizes:', processedMmprojFiles.map(f => ({ name: f.rfilename, size: f.size })));
+    
+    // Group files by quantization type for smart selection (only for model files, not mmproj)
+    const quantGroups = new Map<string, typeof processedModelFiles>();
+    processedModelFiles.forEach(file => {
       const filename = file.rfilename.toLowerCase();
       let quantType = 'unknown';
       
@@ -406,15 +458,15 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     
     // Find the best quantization that fits the system
     const cachedSystemInfo = (window as any).__systemInfo; // Get cached system info
-    let bestQuantGroup: typeof filesWithSizes = [];
+    let bestQuantGroup: typeof processedModelFiles = [];
     
     if (cachedSystemInfo?.gpu?.vram && cachedSystemInfo.availableRAM) {
       const gpuVRAM = cachedSystemInfo.gpu.vram;
       const availableRAM = cachedSystemInfo.availableRAM;
       const totalMemory = gpuVRAM + (availableRAM * 0.6); // Hybrid approach
       
-      // Priority order: try to fit in GPU first, then hybrid, then smallest available
-      const quantPriority = ['q4_k_s', 'q4_k_m', 'q4_0', 'q4_1', 'q4', 'q5_k_s', 'q5_k_m', 'q5_0', 'q5_1', 'q5', 'q6_k', 'q8_0', 'q8'];
+      // Priority order: try to fit in GPU first, then hybrid, then smallest available and with uppercase
+      const quantPriority = ['q4_k_s', 'q4_k_m', 'q4_0', 'q4_1', 'q4', 'q5_k_s', 'q5_k_m', 'q5_0', 'q5_1', 'q5', 'q6_k', 'q8_0', 'q8', 'fp16', 'fp32', 'F16', 'F32', 'Q4_K_S', 'Q4_K_M', 'Q4_0', 'Q4_1', 'Q4', 'Q5_K_S', 'Q5_K_M', 'Q5_0', 'Q5_1', 'Q5', 'Q6_K', 'Q8_0', 'Q8', 'BF16', 'BF32','mmproj', 'IQ1', 'IQ2', 'IQ3', 'IQ4', 'IQ5', 'IQ6', 'IQ7', 'IQ8'];
       
       for (const quantType of quantPriority) {
         const group = quantGroups.get(quantType);
@@ -453,7 +505,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     bestQuantGroup.sort((a, b) => (a.size || 0) - (b.size || 0));
     
     // Use the best quantization group for analysis
-    const analysisFiles = bestQuantGroup.length > 0 ? bestQuantGroup : filesWithSizes;
+    const analysisFiles = bestQuantGroup.length > 0 ? bestQuantGroup : processedModelFiles;
     
     // Extract parameter count from name or description
     const nameParamMatch = model.name.match(/(\d+\.?\d*)[bB]/i);
@@ -466,7 +518,8 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     let quantization = 'Unknown';
     if (primaryFile?.rfilename) {
       const filename = primaryFile.rfilename.toLowerCase();
-      
+      //   const quantPriority = ['q4_k_s', 'q4_k_m', 'q4_0', 'q4_1', 'q4', 'q5_k_s', 'q5_k_m', 'q5_0', 'q5_1', 'q5', 'q6_k', 'q8_0', 'q8', 'fp16', 'fp32', 'F16', 'F32', 'Q4_K_S', 'Q4_K_M', 'Q4_0', 'Q4_1', 'Q4', 'Q5_K_S', 'Q5_K_M', 'Q5_0', 'Q5_1', 'Q5', 'Q6_K', 'Q8_0', 'Q8', 'BF16', 'BF32','mmproj', 'IQ1', 'IQ2', 'IQ3', 'IQ4', 'IQ5', 'IQ6', 'IQ7', 'IQ8'];
+      //   write regex to match more stuff
       // Look for specific quantization patterns with improved regex
       const q4k_mMatch = filename.match(/q4[_-]?k[_-]?m\b/i);
       const q4k_sMatch = filename.match(/q4[_-]?k[_-]?s\b/i);
@@ -480,6 +533,26 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       const q8_0Match = filename.match(/q8[_-]?0\b/i);
       const fp16Match = filename.match(/fp16|f16\b/i);
       const fp32Match = filename.match(/fp32|f32\b/i);
+        const bf16Match = filename.match(/bf16|b16\b/i);
+        const bf32Match = filename.match(/bf32|b32\b/i);
+        const iq1Match = filename.match(/iq1\b/i);
+        const iq2Match = filename.match(/iq2\b/i);
+        const iq3Match = filename.match(/iq3\b/i);
+        const iq4Match = filename.match(/iq4\b/i);
+        const iq5Match = filename.match(/iq5\b/i);
+        const iq6Match = filename.match(/iq6\b/i);
+        const iq7Match = filename.match(/iq7\b/i);
+        const iq8Match = filename.match(/iq8\b/i);
+        const mmprojMatch = filename.match(/mmproj\b/i);
+        const q4Match = filename.match(/q4\b/i);
+        const q5Match = filename.match(/q5\b/i);
+        const q6Match = filename.match(/q6\b/i);
+        const q8Match = filename.match(/q8\b/i);
+        const f16Match = filename.match(/f16\b/i);
+        const f32Match = filename.match(/f32\b/i);
+        
+    
+    
       
       // Map to specific quantization types
       if (q4k_mMatch) quantization = 'Q4_K_M';
@@ -497,6 +570,23 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       else if (filename.includes('q8')) quantization = 'Q8';
       else if (fp16Match) quantization = 'FP16';
       else if (fp32Match) quantization = 'FP32';
+      else if (bf16Match) quantization = 'BF16';
+      else if (bf32Match) quantization = 'BF32';
+      else if (iq1Match) quantization = 'IQ1';
+      else if (iq2Match) quantization = 'IQ2';
+      else if (iq3Match) quantization = 'IQ3';
+      else if (iq4Match) quantization = 'IQ4';
+      else if (iq5Match) quantization = 'IQ5';
+      else if (iq6Match) quantization = 'IQ6';
+      else if (iq7Match) quantization = 'IQ7';
+      else if (iq8Match) quantization = 'IQ8';
+      else if (mmprojMatch) quantization = 'MMProj'; // Special case for mmproj files
+      else if (q4Match) quantization = 'Q4'; // Generic Q4
+      else if (q5Match) quantization = 'Q5'; // Generic Q5
+      else if (q6Match) quantization = 'Q6'; // Generic Q6
+      else if (q8Match) quantization = 'Q8'; // Generic Q8
+      else if (f16Match) quantization = 'F16'; // Generic F16
+      else if (f32Match) quantization = 'F32'; // Generic F32
       else {
         // Advanced inference from file size and parameter count
         const fileSize = primaryFile.size || 0;
@@ -547,6 +637,42 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       case 'FP32':
         ramMultiplier = 1.6; // FP32 needs more overhead
         break;
+      case 'BF16':
+        ramMultiplier = 1.55; // BF16 is similar to FP16 but slightly more efficient
+        break;
+      case 'BF32':    
+        ramMultiplier = 1.65; // BF32 is similar to FP32 but slightly more efficient
+        break;
+      case 'IQ1':   
+        ramMultiplier = 1.2; // IQ1 is very efficient
+        break;
+      case 'IQ2':
+        ramMultiplier = 1.25; // IQ2 is efficient
+        break;
+      case 'IQ3':
+        ramMultiplier = 1.3; // IQ3 is efficient
+        break;
+      case 'IQ4':
+        ramMultiplier = 1.35; // IQ4 is efficient
+        break;
+      case 'IQ5':
+        ramMultiplier = 1.4; // IQ5 is efficient
+        break;
+      case 'IQ6':
+        ramMultiplier = 1.45; // IQ6 is efficient
+        break;
+      case 'IQ7':
+        ramMultiplier = 1.5; // IQ7 is efficient
+        break;
+      case 'IQ8':
+        ramMultiplier = 1.55; // IQ8 is efficient
+        break;
+      case 'MMProj':
+            ramMultiplier = 1.6; // MMProj is efficient
+        break;
+      default:
+        ramMultiplier = 1.4; // Default for unknown quantization
+        break;
     }
     
     const estimatedRAMUsage = modelSize * ramMultiplier;
@@ -566,6 +692,23 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     else if (nameAndDesc.includes('internlm')) architecture = 'InternLM';
     else if (nameAndDesc.includes('codellama')) architecture = 'CodeLlama';
     else if (nameAndDesc.includes('deepseek')) architecture = 'DeepSeek';
+    else if (nameAndDesc.includes('internvl')) architecture = 'InternVL';
+    else if (nameAndDesc.includes('llava')) architecture = 'Llava';
+    else if (nameAndDesc.includes('clip')) architecture = 'CLIP';
+    else if (nameAndDesc.includes('minicpm')) architecture = 'MiniCPM';
+    else if (nameAndDesc.includes('cogvlm')) architecture = 'CogVLM';
+    else if (nameAndDesc.includes('qwen-vl')) architecture = 'Qwen-VL';
+    else if (nameAndDesc.includes('vila')) architecture = 'VILA';
+    else if (nameAndDesc.includes('blip')) architecture = 'BLIP';
+    else if (nameAndDesc.includes('instructblip')) architecture = 'InstructBLIP';
+    else if (nameAndDesc.includes('flamingo')) architecture = 'Flamingo';
+    else if (nameAndDesc.includes('gpt')) architecture = 'GPT';
+    else if (nameAndDesc.includes('gpt-neo')) architecture = 'GPT-Neo';
+    else if (nameAndDesc.includes('gpt-j')) architecture = 'GPT-J';
+    else if (nameAndDesc.includes('gpt-2')) architecture = 'GPT-2';
+    else if (nameAndDesc.includes('gpt-3')) architecture = 'GPT-3';
+    else if (nameAndDesc.includes('gpt-4')) architecture = 'GPT-4';
+    
     
     // Enhanced compatibility assessment with smart RAM+GPU logic
     // Use cached system info if state systemInfo is not yet available (during initial load)
@@ -608,15 +751,31 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       } : null
     } as any;
 
-    // Enhanced metadata detection
+    // Enhanced metadata detection - primary detection based on actual mmproj file presence
+    const hasMmprojFiles = model.files.some(f => f.rfilename.toLowerCase().includes('mmproj'));
+    const mmprojFilesList = model.files.filter(f => f.rfilename.toLowerCase().includes('mmproj'));
+    
+    // Secondary detection via tags and name patterns (as fallback)
+    const hasVisionTags = model.tags?.some(tag => 
+      ['vision', 'multimodal', 'vl', 'llava', 'clip', 'minicpm', 'cogvlm', 'qwen-vl', 'internvl'].includes(tag.toLowerCase())
+    );
+    const hasVisionKeywords = nameAndDesc.includes('vision') || nameAndDesc.includes('multimodal') || 
+                             nameAndDesc.includes('llava') || nameAndDesc.includes('llama-vision') ||
+                             nameAndDesc.includes('minicpm-v') || nameAndDesc.includes('cogvlm') ||
+                             nameAndDesc.includes('qwen-vl') || nameAndDesc.includes('internvl') ||
+                             nameAndDesc.includes('vila') || nameAndDesc.includes('blip') ||
+                             nameAndDesc.includes('instructblip') || nameAndDesc.includes('flamingo');
+    
     const metadata = {
-      isVisionModel: model.tags?.some(tag => 
-        ['vision', 'multimodal', 'vl', 'llava', 'clip'].includes(tag.toLowerCase())
-      ) || nameAndDesc.includes('vision') || nameAndDesc.includes('multimodal'),
+      // Primary indicator: if repo has mmproj files, it's definitely a vision model
+      isVisionModel: hasMmprojFiles || hasVisionTags || hasVisionKeywords,
       
-      needsMmproj: (model.tags?.some(tag => tag.toLowerCase() === 'vision') || 
-                   nameAndDesc.includes('llava')) && 
-                   !model.files.some(f => f.rfilename.toLowerCase().includes('mmproj')),
+      // Need mmproj if it's detected as vision model but doesn't have mmproj files yet
+      needsMmproj: (hasVisionTags || hasVisionKeywords) && !hasMmprojFiles,
+                   
+      hasMmproj: hasMmprojFiles,
+      
+      mmprojFiles: mmprojFilesList,
                    
       contextLength: (() => {
         const contextMatch = nameAndDesc.match(/(\d+)k\s*context|context\s*(\d+)k/i);
@@ -626,10 +785,15 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
 
     return {
       ...model,
-      files: analysisFiles, // Use best-fit quantization files
+      files: analysisFiles, // Use best-fit quantization files (main model files only)
       compatibility,
       metadata: {
         ...metadata,
+        // Override with processed mmproj files that have correct sizes
+        hasMmproj: processedMmprojFiles.length > 0,
+        mmprojFiles: processedMmprojFiles,
+        // Update isVisionModel based on actual mmproj presence (most reliable indicator)
+        isVisionModel: processedMmprojFiles.length > 0 || metadata.isVisionModel,
         availableQuantizations: Array.from(quantGroups.entries()).map(([type, files]) => ({
           type,
           files,
@@ -644,6 +808,8 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
   const loadModels = async (filter: typeof activeFilter, query: string = '') => {
     if (!window.modelManager?.searchHuggingFaceModels) return;
     
+    console.log(`Loading models - Filter: ${filter}, Query: "${query}"`);
+    
     setIsLoading(true);
     setApiError(null);
     setIsRateLimited(false);
@@ -654,21 +820,32 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       
       switch (filter) {
         case 'recommended':
-          // Focus on smaller, efficient models for recommendations
-          searchQueries = ['7b q4', '3b q4', '1.5b q4', 'instruct q4'];
-          sortParam = 'downloads';
+          // For recommended, if there's a search query, use it, otherwise use default efficient model queries
+          if (query && query.trim()) {
+            searchQueries = [query];
+            sortParam = 'downloads'; // Sort by popularity for search results
+            console.log('Using search query for recommended:', query);
+          } else {
+            // Focus on smaller, efficient models for recommendations
+            searchQueries = ['7b q4', '3b q4', '1.5b q4', 'instruct q4'];
+            sortParam = 'downloads';
+            console.log('Using default recommended queries');
+          }
           break;
         case 'latest':
-          searchQueries = [query || ''];
+          searchQueries = [query || 'gguf'];
           sortParam = 'lastModified';
+          console.log('Latest query:', searchQueries[0]);
           break;
         case 'popular':
-          searchQueries = [query || ''];
+          searchQueries = [query || 'gguf'];
           sortParam = 'downloads';
+          console.log('Popular query:', searchQueries[0]);
           break;
         case 'trending':
-          searchQueries = [query || ''];
+          searchQueries = [query || 'gguf'];
           sortParam = 'trending';
+          console.log('Trending query:', searchQueries[0]);
           break;
       }
 
@@ -740,26 +917,30 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     }
   };
 
-  // Load models when filter or search changes, but wait for system info on initial load
+  // Load models when filter changes, but wait for system info on initial load
   useEffect(() => {
-    // For initial load (recommended filter), wait for system info to be available
-    if (activeFilter === 'recommended' && !systemInfo && !(window as any).__systemInfo) {
-      console.log('Waiting for system info before loading models...');
+    // For initial load of recommended filter without search query, wait for system info
+    if (activeFilter === 'recommended' && !searchQuery.trim() && !systemInfo && !(window as any).__systemInfo) {
+      console.log('Waiting for system info before loading recommended models...');
       return;
     }
     
-    loadModels(activeFilter, searchQuery);
-  }, [activeFilter, systemInfo]);
+    // For all other cases (search queries, other filters, or when system info is available), load immediately
+    console.log('Loading models for filter change:', activeFilter, 'query:', searchQuery);
+    loadModels(activeFilter, ''); // Don't pass searchQuery here, let the filter handle its own defaults
+  }, [activeFilter]);
 
-  // Trigger initial model load when system info becomes available
+  // Trigger initial model load when system info becomes available (for recommended tab only)
   useEffect(() => {
-    if (systemInfo && models.length === 0 && !isLoading) {
-      console.log('System info available, loading initial models...');
-      loadModels(activeFilter, searchQuery);
+    if (systemInfo && models.length === 0 && !isLoading && activeFilter === 'recommended' && !searchQuery.trim()) {
+      console.log('System info available, loading initial recommended models...');
+      loadModels(activeFilter, '');
     }
   }, [systemInfo]);
 
   const handleSearch = () => {
+    // Always perform search when user clicks search or presses Enter
+    console.log('Performing search with query:', searchQuery);
     loadModels(activeFilter, searchQuery);
   };
 
@@ -768,6 +949,101 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     if (bytes === 0) return '0 B';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Download Queue Management Functions
+  const addToDownloadQueue = (modelId: string, modelName: string, fileName: string, allFiles?: Array<{ rfilename: string; size?: number }>) => {
+    const queueItem: QueuedDownload = {
+      id: `${modelId}-${fileName}-${Date.now()}`,
+      modelId,
+      modelName,
+      fileName,
+      allFiles,
+      status: 'queued',
+      addedAt: new Date(),
+      retryCount: 0,
+      downloadUrl: `https://huggingface.co/${modelId}/resolve/main/${fileName}`
+    };
+    
+    setDownloadQueue(prev => [...prev, queueItem]);
+    setShowDownloadQueue(true);
+  };
+
+  const removeFromQueue = (queueId: string) => {
+    setDownloadQueue(prev => prev.filter(item => item.id !== queueId));
+  };
+
+  const retryQueuedDownload = async (queueId: string) => {
+    const queueItem = downloadQueue.find(item => item.id === queueId);
+    if (!queueItem) return;
+
+    setDownloadQueue(prev => prev.map(item => 
+      item.id === queueId 
+        ? { ...item, status: 'retrying', retryCount: item.retryCount + 1 }
+        : item
+    ));
+
+    try {
+      if (queueItem.allFiles && onDownloadWithDependencies) {
+        await onDownloadWithDependencies(queueItem.modelId, queueItem.fileName, queueItem.allFiles);
+      } else {
+        await onDownload(queueItem.modelId, queueItem.fileName);
+      }
+      
+      // If successful, remove from queue
+      removeFromQueue(queueId);
+    } catch (error) {
+      console.error('Retry download failed:', error);
+      
+      // Check if it's still a rate limit error
+      if (error instanceof Error && (error.message.includes('429') || error.message.toLowerCase().includes('rate limit'))) {
+        setDownloadQueue(prev => prev.map(item => 
+          item.id === queueId 
+            ? { ...item, status: 'queued' }
+            : item
+        ));
+      } else {
+        setDownloadQueue(prev => prev.map(item => 
+          item.id === queueId 
+            ? { ...item, status: 'failed' }
+            : item
+        ));
+      }
+    }
+  };
+
+  const processQueue = async () => {
+    if (isProcessingQueue) return;
+    
+    setIsProcessingQueue(true);
+    const queuedItems = downloadQueue.filter(item => item.status === 'queued');
+    
+    for (const item of queuedItems) {
+      try {
+        // Wait 2 seconds between attempts to avoid hitting rate limits again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        await retryQueuedDownload(item.id);
+      } catch (error) {
+        console.error('Queue processing error:', error);
+        break; // Stop processing if we hit another error
+      }
+    }
+    
+    setIsProcessingQueue(false);
+  };
+
+  const openModelFolder = async () => {
+    try {
+      // Try to open the models folder using electron API
+      if ((window as any).electronAPI?.openModelsFolder) {
+        await (window as any).electronAPI.openModelsFolder();
+      } else {
+        console.warn('Electron API not available for opening folder');
+      }
+    } catch (error) {
+      console.error('Failed to open models folder:', error);
+    }
   };
 
   return (
@@ -814,18 +1090,37 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Model Discovery Hub
           </h3>
+          {searchQuery.trim() && (
+            <span className="px-3 py-1 bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-300 rounded-full text-sm">
+              Searching: "{searchQuery}"
+            </span>
+          )}
         </div>
 
         {/* Search Bar */}
         <div className="flex gap-2 mb-4">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search models, authors, capabilities..."
-            className="flex-1 px-4 py-3 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-          />
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Search models, authors, capabilities..."
+              className="w-full px-4 py-3 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+            />
+            {searchQuery.trim() && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  loadModels(activeFilter, '');
+                }}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button
             onClick={handleSearch}
             disabled={isLoading}
@@ -927,6 +1222,9 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
               model={model}
               onDownload={onDownload}
               onDownloadWithDependencies={onDownloadWithDependencies}
+              onAddToQueue={(modelId: string, fileName: string, allFiles?: Array<{ rfilename: string; size?: number }>) => 
+                addToDownloadQueue(modelId, model.name, fileName, allFiles)
+              }
               downloading={downloading}
               downloadProgress={downloadProgress}
               systemInfo={systemInfo}
@@ -954,11 +1252,184 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
               Powered by Hugging Face Public API
             </span>
           </div>
-          <div className="text-gray-500 dark:text-gray-400">
-            {models.length} models analyzed
+          <div className="flex items-center gap-4">
+            {downloadQueue.length > 0 && (
+              <button
+                onClick={() => setShowDownloadQueue(!showDownloadQueue)}
+                className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Queue ({downloadQueue.length})
+              </button>
+            )}
+            <div className="text-gray-500 dark:text-gray-400">
+              {models.length} models analyzed
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Download Queue Modal */}
+      {showDownloadQueue && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glassmorphic rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Download className="w-6 h-6 text-blue-500" />
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Download Queue
+                  </h3>
+                  <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm">
+                    {downloadQueue.length} items
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {downloadQueue.some(item => item.status === 'queued') && (
+                    <button
+                      onClick={processQueue}
+                      disabled={isProcessingQueue}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors"
+                    >
+                      {isProcessingQueue ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                      {isProcessingQueue ? 'Processing...' : 'Process Queue'}
+                    </button>
+                  )}
+                  <button
+                    onClick={openModelFolder}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    Open Folder
+                  </button>
+                  <button
+                    onClick={() => setShowDownloadQueue(false)}
+                    className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 max-h-96 overflow-y-auto">
+              {downloadQueue.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  No downloads in queue
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {downloadQueue.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        item.status === 'queued' 
+                          ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20'
+                          : item.status === 'retrying'
+                          ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20'
+                          : item.status === 'failed'
+                          ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'
+                          : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900 dark:text-white mb-1">
+                            {item.modelName}
+                          </h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                            {item.fileName}
+                            {item.allFiles && item.allFiles.length > 1 && (
+                              <span className="ml-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
+                                + {item.allFiles.length - 1} vision files
+                              </span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-4 text-xs">
+                            <span className={`px-2 py-1 rounded-full font-medium ${
+                              item.status === 'queued' 
+                                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+                                : item.status === 'retrying'
+                                ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
+                                : item.status === 'failed'
+                                ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                            }`}>
+                              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                            </span>
+                            <span className="text-gray-500 dark:text-gray-400">
+                              Added: {item.addedAt.toLocaleTimeString()}
+                            </span>
+                            {item.retryCount > 0 && (
+                              <span className="text-gray-500 dark:text-gray-400">
+                                Retries: {item.retryCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 ml-4">
+                          {/* Manual Download Link */}
+                          <a
+                            href={item.downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors text-sm"
+                            title="Download manually via browser"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Manual
+                          </a>
+                          
+                          {/* Retry Button */}
+                          {(item.status === 'queued' || item.status === 'failed') && (
+                            <button
+                              onClick={() => retryQueuedDownload(item.id)}
+                              className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm"
+                              title="Retry download"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Retry
+                            </button>
+                          )}
+                          
+                          {/* Remove Button */}
+                          <button
+                            onClick={() => removeFromQueue(item.id)}
+                            className="flex items-center gap-1 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm"
+                            title="Remove from queue"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-gray-600 dark:text-gray-400">
+                  <p className="font-medium mb-1">📋 Download Options:</p>
+                  <ul className="text-xs space-y-1">
+                    <li>• <strong>Process Queue:</strong> Retry all queued downloads automatically</li>
+                    <li>• <strong>Manual:</strong> Download via browser and place in models folder</li>
+                    <li>• <strong>Open Folder:</strong> Access your local models directory</li>
+                  </ul>
+                </div>
+                <div className="text-right">
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">
+                    Rate limits usually reset in 1-5 minutes
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

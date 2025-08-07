@@ -22,6 +22,8 @@ interface EnhancedModel extends HuggingFaceModel {
     contextLength?: number;
     isVisionModel?: boolean;
     needsMmproj?: boolean;
+    hasMmproj?: boolean;
+    mmprojFiles?: Array<{ rfilename: string; size?: number }>;
     availableQuantizations?: Array<{
       type: string;
       files: Array<{ rfilename: string; size?: number }>;
@@ -46,6 +48,7 @@ interface EnhancedModelCardProps {
   model: EnhancedModel;
   onDownload: (modelId: string, fileName: string) => void;
   onDownloadWithDependencies?: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => void;
+  onAddToQueue?: (modelId: string, fileName: string, allFiles?: Array<{ rfilename: string; size?: number }>) => void;
   downloading: Set<string>;
   downloadProgress: { [fileName: string]: DownloadProgress };
   systemInfo: SystemInfo | null;
@@ -55,6 +58,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
   model,
   onDownload,
   onDownloadWithDependencies,
+  onAddToQueue,
   downloading,
   downloadProgress,
   systemInfo
@@ -66,6 +70,32 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
     totalSize: number;
     displayName: string;
   } | null>(null);
+
+  // Helper function to handle downloads with error handling
+  const handleDownloadWithQueue = async (
+    downloadFn: () => Promise<void> | void,
+    modelId: string,
+    fileName: string,
+    allFiles?: Array<{ rfilename: string; size?: number }>
+  ) => {
+    try {
+      await downloadFn();
+    } catch (error) {
+      console.error('Download failed:', error);
+      
+      // Check if it's a rate limit error (HTTP 429)
+      if (error instanceof Error && (error.message.includes('429') || error.message.toLowerCase().includes('rate limit'))) {
+        // Add to queue if rate limited
+        if (onAddToQueue) {
+          onAddToQueue(modelId, fileName, allFiles);
+        }
+      } else {
+        // Re-throw other errors
+        throw error;
+      }
+    }
+  };
+
   const formatBytes = (bytes: number): string => {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     if (bytes === 0) return '0 B';
@@ -306,7 +336,11 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
           {model.metadata?.needsMmproj && (
             <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border-l-4 border-yellow-500">
               <p className="text-xs text-yellow-700 dark:text-yellow-400">
-                ℹ️ This vision model requires a separate mmproj file for multimodal capabilities.
+                {model.metadata?.hasMmproj ? (
+                  <>🖼️ This vision model supports images and includes required mmproj files. Download will automatically include vision components.</>
+                ) : (
+                  <>⚠️ This vision model requires mmproj files for image support, but they're not available in this repository. Image features may not work properly.</>
+                )}
               </p>
             </div>
           )}
@@ -509,36 +543,82 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
             {/* Download Selected Quantization */}
             {selectedQuantization && (
               <button
-                onClick={() => {
-                  if (onDownloadWithDependencies) {
-                    onDownloadWithDependencies(model.id, selectedQuantization.files[0]?.rfilename || '', selectedQuantization.files);
-                  }
-                  setSelectedQuantization(null);
-                }}
+                onClick={() => handleDownloadWithQueue(
+                  () => {
+                    if (onDownloadWithDependencies) {
+                      // Include mmproj files if this is a vision model
+                      const filesToDownload = [...selectedQuantization.files];
+                      if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                        filesToDownload.push(...model.metadata.mmprojFiles);
+                        console.log('Including mmproj files for vision model:', model.metadata.mmprojFiles.map(f => f.rfilename));
+                      }
+                      onDownloadWithDependencies(model.id, selectedQuantization.files[0]?.rfilename || '', filesToDownload);
+                    }
+                    setSelectedQuantization(null);
+                  },
+                  model.id,
+                  selectedQuantization.files[0]?.rfilename || '',
+                  (() => {
+                    const filesToDownload = [...selectedQuantization.files];
+                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                      filesToDownload.push(...model.metadata.mmprojFiles);
+                    }
+                    return filesToDownload;
+                  })()
+                )}
                 disabled={isDownloading}
                 className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
                 Download {selectedQuantization.displayName} ({formatBytes(selectedQuantization.totalSize)})
+                {model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length && (
+                  <span className="text-xs opacity-75">+ Vision Files</span>
+                )}
               </button>
             )}
             
             {/* Download All Files (when multiple files but no quantization options) */}
             {(!model.metadata?.availableQuantizations || model.metadata.availableQuantizations.length <= 1) && modelFiles.length > 1 && onDownloadWithDependencies && !selectedQuantization && (
               <button
-                onClick={() => onDownloadWithDependencies(model.id, primaryFile?.rfilename || '', modelFiles)}
+                onClick={() => handleDownloadWithQueue(
+                  () => {
+                    // Include mmproj files if this is a vision model
+                    const filesToDownload = [...modelFiles];
+                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                      filesToDownload.push(...model.metadata.mmprojFiles);
+                      console.log('Including mmproj files for vision model:', model.metadata.mmprojFiles.map((f: any) => f.rfilename));
+                    }
+                    onDownloadWithDependencies(model.id, primaryFile?.rfilename || '', filesToDownload);
+                  },
+                  model.id,
+                  primaryFile?.rfilename || '',
+                  (() => {
+                    const filesToDownload = [...modelFiles];
+                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                      filesToDownload.push(...model.metadata.mmprojFiles);
+                    }
+                    return filesToDownload;
+                  })()
+                )}
                 disabled={isDownloading}
                 className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
                 Download All ({modelFiles.length} files)
+                {model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length && (
+                  <span className="text-xs opacity-75">+ Vision Files</span>
+                )}
               </button>
             )}
             
             {/* Download Primary File */}
             {!selectedQuantization && (
               <button
-                onClick={() => onDownload(model.id, primaryFile?.rfilename || '')}
+                onClick={() => handleDownloadWithQueue(
+                  () => onDownload(model.id, primaryFile?.rfilename || ''),
+                  model.id,
+                  primaryFile?.rfilename || ''
+                )}
                 disabled={isDownloading || !primaryFile}
                 className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
               >

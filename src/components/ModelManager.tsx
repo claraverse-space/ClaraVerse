@@ -187,6 +187,8 @@ const ModelManager: React.FC = () => {
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
       const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
+      console.log('Download result:', result);
+      
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
         
@@ -245,7 +247,8 @@ const ModelManager: React.FC = () => {
             : 'Model with dependencies downloaded to default directory'
         });
       } else {
-        console.error('Download with dependencies failed:', result.error);
+        console.error('Download with dependencies failed:', result);
+        console.error('Error details:', result.error);
         setNotification({
           type: 'error',
           title: 'Download Failed',
