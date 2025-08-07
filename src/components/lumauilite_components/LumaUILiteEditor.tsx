@@ -636,6 +636,38 @@ export default defineConfig({
     
     // Add iframe-specific enhancements for better navigation handling
     const availableFiles = projectFiles.map(f => f.name).filter(name => name.endsWith('.html'));
+    
+    // CSS for proper iframe layout and scrolling
+    const iframeCSSFixes = `
+      <style>
+        /* Ensure proper scrolling and layout within iframe */
+        html, body {
+          margin: 0;
+          padding: 0;
+          overflow: auto !important;
+          height: auto !important;
+          min-height: 100vh;
+        }
+        * {
+          box-sizing: border-box;
+        }
+      </style>
+    `;
+    
+    // Add CSS to head if possible, otherwise add before body
+    if (htmlContent.includes('</head>')) {
+      htmlContent = htmlContent.replace('</head>', `${iframeCSSFixes}\n</head>`);
+    } else if (htmlContent.includes('<head>')) {
+      htmlContent = htmlContent.replace('<head>', `<head>\n${iframeCSSFixes}`);
+    } else {
+      // If no head tag, add after <html> or at the beginning
+      if (htmlContent.includes('<html>')) {
+        htmlContent = htmlContent.replace('<html>', `<html>\n<head>${iframeCSSFixes}</head>`);
+      } else {
+        htmlContent = `<head>${iframeCSSFixes}</head>\n` + htmlContent;
+      }
+    }
+    
     const iframeEnhancements = `
       <script>
         // Available HTML files in the project
@@ -1408,8 +1440,8 @@ interface HTMLElement {
             
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Preview Area */}
-              <div className={`${showTerminal ? 'flex-1' : 'flex-1'} p-4 overflow-hidden`}>
-                <div className="h-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden shadow-sm">
+              <div className={`${showTerminal ? 'flex-1' : 'flex-1'} flex flex-col min-h-0`}>
+                <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden shadow-sm m-4 min-h-0">
                   {previewMode === 'simple' ? (
                     /* Simple HTML/CSS/JS Preview */
                     <iframe
@@ -1421,7 +1453,9 @@ interface HTMLElement {
                       sandbox="allow-scripts allow-same-origin allow-forms"
                       style={{
                         colorScheme: 'light',
-                        backgroundColor: '#ffffff'
+                        backgroundColor: '#ffffff',
+                        minHeight: '100%',
+                        overflow: 'auto'
                       }}
                     />
                   ) : previewMode === 'webcontainer' ? (
@@ -1435,7 +1469,9 @@ interface HTMLElement {
                         title="WebContainer Preview"
                         style={{
                           colorScheme: 'light',
-                          backgroundColor: '#ffffff'
+                          backgroundColor: '#ffffff',
+                          minHeight: '100%',
+                          overflow: 'auto'
                         }}
                       />
                     ) : containerState.status === 'error' ? (

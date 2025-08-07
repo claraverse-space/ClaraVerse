@@ -401,7 +401,7 @@ const LumaUILiteChatWindow: React.FC<LumaUILiteChatWindowProps> = ({
   // Auto mode status tracking
   const [autoModeStatus, setAutoModeStatus] = useState({
     toolCalls: 0,
-    maxToolCalls: 10,
+    maxToolCalls: 50,
     currentTask: ''
   });
 
@@ -1189,7 +1189,7 @@ Now executing plan systematically...`,
         id: `planning_${Date.now()}`,
         status: 'planning',
         currentStep: 0,
-        totalSteps: parameters.maxIterations,
+        totalSteps: 50, // Match the maxToolCalls limit
         reflections: [],
         startTime: new Date()
       };
@@ -1198,8 +1198,8 @@ Now executing plan systematically...`,
       // STEP 2: Execute plan with auto tool calling
       let conversationIteration = 0;
       let totalToolCalls = 0;
-      const maxToolCalls = Math.min(50, Math.max(1, parameters.maxIterations));
-      const maxConversationTurns = Math.min(25, Math.max(3, Math.ceil(maxToolCalls / 2)));
+      const maxToolCalls = 50; // Fixed to 50 tool calls
+      const maxConversationTurns = 25; // Fixed to 25 conversation turns
 
       console.log('🎯 Auto mode limits:', {
         maxToolCalls,
