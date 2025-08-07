@@ -2875,7 +2875,7 @@ const Settings = () => {
                   />
                   <ModelTabItem
                     id="gpu-diagnostics"
-                    label="Hardware Acceleration"
+                    label="Advanced Settings"
                     isActive={activeModelTab === 'gpu-diagnostics'}
                   />
                 </div>
