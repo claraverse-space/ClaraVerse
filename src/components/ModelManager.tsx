@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive } from 'lucide-react';
 import { useProviders } from '../contexts/ProvidersContext';
-import SearchSection from './ModelManager/SearchSection';
-import PopularModelsSection from './ModelManager/PopularModelsSection';
+import EnhancedModelDiscovery from './ModelManager/EnhancedModelDiscovery';
 import LocalModelsLibrary from './ModelManager/LocalModelsLibrary';
 import NotificationModal from './ModelManager/NotificationModal';
 import ConfirmationModal from './ModelManager/ConfirmationModal';
@@ -74,7 +73,7 @@ const ModelManager: React.FC = () => {
         if (result.success) {
           // Enhance models with mmproj information
           const enhancedModels = await Promise.all(
-            result.models.map(async (model) => {
+            result.models.map(async (model: any) => {
               try {
                 // Get mmproj mapping for this model
                 const mapping = modelMmprojMappingService.getMappingForModel(model.path);
@@ -194,14 +193,14 @@ const ModelManager: React.FC = () => {
         // Save mmproj mappings for downloaded models with dependencies
         try {
           if (result.downloadedFiles && Array.isArray(result.downloadedFiles)) {
-            const mainModelFile = result.downloadedFiles.find(file => 
+            const mainModelFile = result.downloadedFiles.find((file: any) => 
               file.endsWith('.gguf') && 
               !file.toLowerCase().includes('mmproj') &&
               !file.toLowerCase().includes('mm-proj') &&
               !file.toLowerCase().includes('projection')
             );
             
-            const mmprojFile = result.downloadedFiles.find(file => 
+            const mmprojFile = result.downloadedFiles.find((file: any) => 
               file.endsWith('.gguf') && (
                 file.toLowerCase().includes('mmproj') ||
                 file.toLowerCase().includes('mm-proj') ||
@@ -342,12 +341,6 @@ const ModelManager: React.FC = () => {
     }
   };
 
-  // Handler for tag filtering - pass to search section
-  const handleTagFilter = async (tag: string) => {
-    // This will be handled by the SearchSection component
-    console.log('Tag filter:', tag);
-  };
-
   // Handle opening mmproj selector for a specific model
   const handleManageMmproj = (model: LocalModel) => {
     setSelectedModelForMmproj(model);
@@ -451,25 +444,12 @@ const ModelManager: React.FC = () => {
 
         {/* Discover Tab Content */}
         {modelManagerTab === 'discover' && (
-          <>
-            {/* Search Section */}
-            <SearchSection
-              onDownload={downloadModel}
-              onDownloadWithDependencies={downloadModelWithDependencies}
-              downloading={downloading}
-              downloadProgress={downloadProgress}
-              onTagClick={handleTagFilter}
-            />
-
-            {/* Popular Models Section */}
-            <PopularModelsSection
-              onDownload={downloadModel}
-              onDownloadWithDependencies={downloadModelWithDependencies}
-              downloading={downloading}
-              downloadProgress={downloadProgress}
-              onTagClick={handleTagFilter}
-            />
-          </>
+          <EnhancedModelDiscovery
+            onDownload={downloadModel}
+            onDownloadWithDependencies={downloadModelWithDependencies}
+            downloading={downloading}
+            downloadProgress={downloadProgress}
+          />
         )}
 
         {/* Library Tab Content */}
