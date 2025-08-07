@@ -1629,17 +1629,64 @@ function registerModelManagerHandlers() {
           
           if (file.toLowerCase().includes('mmproj') && file !== fileName) {
             // This is an mmproj file, rename it to include the model context
-            const modelBaseName = fileName
-              .replace(/\.(gguf|bin|safetensors)$/i, '') // Remove file extension
-              .replace(/-(q4_k_m|q4_k_s|q4_0|q4_1|q5_k_m|q5_k_s|q6_k|q8_0|f16|fp16|instruct).*$/i, ''); // Remove quantization suffix
+            // Extract base name intelligently, handling various naming conventions
+            
+            let modelBaseName = fileName.replace(/\.(gguf|bin|safetensors)$/i, ''); // Remove file extension
+            
+            // Try to detect and remove quantization patterns more flexibly
+            // Common quantization patterns with various separators (-, _, .)
+            const quantPatterns = [
+              // Specific quantization types with separators
+              /[-_.](q4_k_m|q4_k_s|q4_0|q4_1|q5_k_m|q5_k_s|q5_0|q5_1|q6_k|q8_0).*$/i,
+              /[-_.](iq[1-8]_[a-z]+|iq[1-8]).*$/i, // IQ quantizations
+              /[-_.](fp16|fp32|f16|f32|bf16|bf32).*$/i, // Float precisions
+              // Generic quantization patterns
+              /[-_.](q[0-9]+).*$/i, // Any Q followed by numbers
+              /[-_.](instruct|chat|code).*$/i, // Model variants
+              // Specific model suffixes
+              /[-_.]([0-9]+[kmb]|[0-9]+\.[0-9]+[kmb]).*$/i // Parameter counts like 7b, 3.5b, etc.
+            ];
+            
+            // Try each pattern to find the best match
+            let cleanedBaseName = modelBaseName;
+            for (const pattern of quantPatterns) {
+              const match = modelBaseName.match(pattern);
+              if (match) {
+                cleanedBaseName = modelBaseName.substring(0, match.index);
+                log.info(`Quantization pattern "${match[1]}" detected and removed from "${modelBaseName}"`);
+                break;
+              }
+            }
+            
+            // If no quantization pattern found, use the full name (minus extension)
+            if (cleanedBaseName === modelBaseName) {
+              log.info(`No quantization pattern detected in "${modelBaseName}", using full name`);
+            }
+            
+            // Detect the separator used in the original filename (prefer the last separator used)
+            let separator = '-'; // Default to dash
+            const lastDash = cleanedBaseName.lastIndexOf('-');
+            const lastUnderscore = cleanedBaseName.lastIndexOf('_');
+            const lastDot = cleanedBaseName.lastIndexOf('.');
+            
+            // Use the separator that appears last in the filename (most likely the pattern)
+            if (lastUnderscore > lastDash && lastUnderscore > lastDot) {
+              separator = '_';
+            } else if (lastDot > lastDash && lastDot > lastUnderscore) {
+              separator = '.';
+            } // else keep dash as default
             
             // Get the file extension from the mmproj file
             const fileExtension = file.substring(file.lastIndexOf('.'));
             
-            // Create new filename: modelname_mmproj.gguf
-            targetFileName = `${modelBaseName}_mmproj${fileExtension}`;
+            // Create new filename using the detected separator pattern
+            targetFileName = `${cleanedBaseName}${separator}mmproj${fileExtension}`;
             
-            log.info(`Renaming mmproj file: ${file} -> ${targetFileName}`);
+            log.info(`Intelligent mmproj renaming:`);
+            log.info(`  Original model file: "${fileName}"`);
+            log.info(`  Extracted base name: "${cleanedBaseName}"`);
+            log.info(`  Detected separator: "${separator}"`);
+            log.info(`  Final mmproj name: "${targetFileName}"`);
           }
           
           const result = await downloadSingleFileWithRename(modelId, originalFileName, targetFileName, modelsDir);
