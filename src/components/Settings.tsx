@@ -3331,38 +3331,7 @@ const ProcessButton = () => {
                 </div>
 
                 {/* Current Binary Version Info */}
-                <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white mb-1">
-                        Current Llama.cpp Version
-                      </h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Version {llamacppUpdateInfo?.currentVersion || 'Unknown'} on {llamacppUpdateInfo?.platform ? getPlatformName(llamacppUpdateInfo.platform) : 'Unknown Platform'}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                        Updates official binaries only (llama-server, llama-cli, etc.)
-                      </p>
-                    </div>
-                    <button
-                      onClick={checkForLlamacppUpdates}
-                      disabled={checkingLlamacppUpdates}
-                      className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                    >
-                      {checkingLlamacppUpdates ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Checking...
-                        </>
-                      ) : (
-                        <>
-                          <RotateCcw className="w-4 h-4" />
-                          Check for Updates
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+          
 
                 {/* Llama.cpp Update Status */}
              
