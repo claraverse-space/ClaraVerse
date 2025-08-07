@@ -23,6 +23,7 @@ interface EnhancedModel extends HuggingFaceModel {
     isVisionModel?: boolean;
     needsMmproj?: boolean;
     hasMmproj?: boolean;
+    hasMmprojAvailable?: boolean;
     mmprojFiles?: Array<{ rfilename: string; size?: number }>;
     availableQuantizations?: Array<{
       type: string;
@@ -47,6 +48,7 @@ interface SystemInfo {
 interface EnhancedModelCardProps {
   model: EnhancedModel;
   onDownload: (modelId: string, fileName: string) => void;
+  onDownloadWithCustomName?: (modelId: string, fileName: string, customSaveName: string) => void;
   onDownloadWithDependencies?: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => void;
   onAddToQueue?: (modelId: string, fileName: string, allFiles?: Array<{ rfilename: string; size?: number }>) => void;
   downloading: Set<string>;
@@ -57,6 +59,7 @@ interface EnhancedModelCardProps {
 const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
   model,
   onDownload,
+  onDownloadWithCustomName,
   onDownloadWithDependencies,
   onAddToQueue,
   downloading,
@@ -107,6 +110,28 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
+  };
+
+  // Extract quantization from filename
+  const extractQuantizationFromFilename = (filename: string): string => {
+    // Common quantization patterns
+    const patterns = [
+      /q(\d+)_k_[sml]/i,  // Q4_K_S, Q4_K_M, Q4_K_L
+      /q(\d+)_(\d+)/i,    // Q4_0, Q8_0
+      /q(\d+)/i,          // Q4, Q8
+      /fp(\d+)/i,         // FP16, FP32
+      /f(\d+)/i,          // F16, F32
+    ];
+    
+    for (const pattern of patterns) {
+      const match = filename.match(pattern);
+      if (match) {
+        return match[0].toUpperCase();
+      }
+    }
+    
+    // If no quantization found, return the original model compatibility quantization
+    return model.compatibility.quantization;
   };
 
   const getCompatibilityColor = (status: string) => {
@@ -218,7 +243,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
             <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Quantization</span>
           </div>
           <span className="text-sm font-semibold text-gray-900 dark:text-white">
-            {model.compatibility.quantization}
+            {extractQuantizationFromFilename(primaryFile?.rfilename || '')}
           </span>
         </div>
 
@@ -333,11 +358,11 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
             </div>
           )}
 
-          {model.metadata?.needsMmproj && (
+          {model.metadata?.isVisionModel && (
             <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border-l-4 border-yellow-500">
               <p className="text-xs text-yellow-700 dark:text-yellow-400">
-                {model.metadata?.hasMmproj ? (
-                  <>🖼️ This vision model supports images and includes required mmproj files. Download will automatically include vision components.</>
+                {model.metadata?.hasMmprojAvailable ? (
+                  <>🖼️ This vision model supports images and includes mmproj files. They will be downloaded automatically or can be downloaded separately.</>
                 ) : (
                   <>⚠️ This vision model requires mmproj files for image support, but they're not available in this repository. Image features may not work properly.</>
                 )}
@@ -548,7 +573,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
                     if (onDownloadWithDependencies) {
                       // Include mmproj files if this is a vision model
                       const filesToDownload = [...selectedQuantization.files];
-                      if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                      if (model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length) {
                         filesToDownload.push(...model.metadata.mmprojFiles);
                         console.log('Including mmproj files for vision model:', model.metadata.mmprojFiles.map(f => f.rfilename));
                       }
@@ -560,7 +585,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
                   selectedQuantization.files[0]?.rfilename || '',
                   (() => {
                     const filesToDownload = [...selectedQuantization.files];
-                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                    if (model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length) {
                       filesToDownload.push(...model.metadata.mmprojFiles);
                     }
                     return filesToDownload;
@@ -571,7 +596,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
               >
                 <Download className="w-4 h-4" />
                 Download {selectedQuantization.displayName} ({formatBytes(selectedQuantization.totalSize)})
-                {model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length && (
+                {model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length && (
                   <span className="text-xs opacity-75">+ Vision Files</span>
                 )}
               </button>
@@ -584,7 +609,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
                   () => {
                     // Include mmproj files if this is a vision model
                     const filesToDownload = [...modelFiles];
-                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                    if (model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length) {
                       filesToDownload.push(...model.metadata.mmprojFiles);
                       console.log('Including mmproj files for vision model:', model.metadata.mmprojFiles.map((f: any) => f.rfilename));
                     }
@@ -594,7 +619,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
                   primaryFile?.rfilename || '',
                   (() => {
                     const filesToDownload = [...modelFiles];
-                    if (model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length) {
+                    if (model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length) {
                       filesToDownload.push(...model.metadata.mmprojFiles);
                     }
                     return filesToDownload;
@@ -605,7 +630,7 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
               >
                 <Download className="w-4 h-4" />
                 Download All ({modelFiles.length} files)
-                {model.metadata?.needsMmproj && model.metadata?.mmprojFiles?.length && (
+                {model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length && (
                   <span className="text-xs opacity-75">+ Vision Files</span>
                 )}
               </button>
@@ -623,10 +648,72 @@ const EnhancedModelCard: React.FC<EnhancedModelCardProps> = ({
                 className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                {isDownloading ? 'Downloading...' : `Download ${model.compatibility.quantization} (${primaryFile ? formatBytes(primaryFile.size || 0) : '0 B'})`}
+                {isDownloading ? 'Downloading...' : `Download ${extractQuantizationFromFilename(primaryFile?.rfilename || '')} (${primaryFile ? formatBytes(primaryFile.size || 0) : '0 B'})`}
               </button>
             )}
           </div>
+
+          {/* Dedicated Mmproj Download Button */}
+          {model.metadata?.hasMmprojAvailable && model.metadata?.mmprojFiles?.length && (
+            <div className="mt-3 space-y-2">
+              {model.metadata.mmprojFiles.length === 1 ? (
+                <button
+                  onClick={() => handleDownloadWithQueue(
+                    () => {
+                      const safeModelName = model.name.replace(/[\/\\]/g, '-');
+                      const customSaveName = `${safeModelName} - ${model.metadata?.mmprojFiles?.[0]?.rfilename}`;
+                      if (onDownloadWithCustomName) {
+                        onDownloadWithCustomName(model.id, model.metadata?.mmprojFiles?.[0]?.rfilename || '', customSaveName);
+                      } else {
+                        onDownload(model.id, model.metadata?.mmprojFiles?.[0]?.rfilename || '');
+                      }
+                    },
+                    model.id,
+                    model.metadata?.mmprojFiles?.[0]?.rfilename || ''
+                  )}
+                  disabled={isDownloading}
+                  className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <span className="text-base">🖼️</span>
+                  Download Vision File: {model.name.replace(/[\/\\]/g, '-')} - {model.metadata.mmprojFiles[0].rfilename} ({formatBytes(model.metadata.mmprojFiles[0].size || 0)})
+                </button>
+              ) : (
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-700">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">🖼️</span>
+                    <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                      Vision Files for {model.name.replace(/[\/\\]/g, '-')} ({model.metadata.mmprojFiles.length} available)
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {model.metadata.mmprojFiles.map((mmprojFile, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleDownloadWithQueue(
+                          () => {
+                            const safeModelName = model.name.replace(/[\/\\]/g, '-');
+                            const customSaveName = `${safeModelName} - ${mmprojFile.rfilename}`;
+                            if (onDownloadWithCustomName) {
+                              onDownloadWithCustomName(model.id, mmprojFile.rfilename, customSaveName);
+                            } else {
+                              onDownload(model.id, mmprojFile.rfilename);
+                            }
+                          },
+                          model.id,
+                          mmprojFile.rfilename
+                        )}
+                        disabled={isDownloading}
+                        className="w-full px-3 py-2 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800/50 disabled:opacity-50 transition-colors text-sm text-left"
+                      >
+                        <div className="font-mono text-xs">{model.name} - {mmprojFile.rfilename}</div>
+                        <div className="text-xs opacity-75">{formatBytes(mmprojFile.size || 0)}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

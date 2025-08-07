@@ -7,6 +7,7 @@ import { b } from 'vitest/dist/suite-dWqIFb_-.js';
 
 interface EnhancedModelDiscoveryProps {
   onDownload: (modelId: string, fileName: string) => void;
+  onDownloadWithCustomName?: (modelId: string, fileName: string, customSaveName: string) => void;
   onDownloadWithDependencies?: (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => void;
   downloading: Set<string>;
   downloadProgress: { [fileName: string]: DownloadProgress };
@@ -50,6 +51,7 @@ interface EnhancedModel extends HuggingFaceModel {
     isVisionModel?: boolean;
     needsMmproj?: boolean;
     hasMmproj?: boolean;
+    hasMmprojAvailable?: boolean;
     mmprojFiles?: Array<{ rfilename: string; size?: number }>;
     availableQuantizations?: Array<{
       type: string;
@@ -62,6 +64,7 @@ interface EnhancedModel extends HuggingFaceModel {
 
 const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
   onDownload,
+  onDownloadWithCustomName,
   onDownloadWithDependencies,
   downloading,
   downloadProgress
@@ -708,7 +711,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     else if (nameAndDesc.includes('gpt-2')) architecture = 'GPT-2';
     else if (nameAndDesc.includes('gpt-3')) architecture = 'GPT-3';
     else if (nameAndDesc.includes('gpt-4')) architecture = 'GPT-4';
-    
+
     
     // Enhanced compatibility assessment with smart RAM+GPU logic
     // Use cached system info if state systemInfo is not yet available (during initial load)
@@ -772,6 +775,9 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       
       // Need mmproj if it's detected as vision model but doesn't have mmproj files yet
       needsMmproj: (hasVisionTags || hasVisionKeywords) && !hasMmprojFiles,
+      
+      // Has mmproj files available for download
+      hasMmprojAvailable: hasMmprojFiles,
                    
       hasMmproj: hasMmprojFiles,
       
@@ -791,6 +797,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
         ...metadata,
         // Override with processed mmproj files that have correct sizes
         hasMmproj: processedMmprojFiles.length > 0,
+        hasMmprojAvailable: processedMmprojFiles.length > 0,
         mmprojFiles: processedMmprojFiles,
         // Update isVisionModel based on actual mmproj presence (most reliable indicator)
         isVisionModel: processedMmprojFiles.length > 0 || metadata.isVisionModel,
@@ -1221,6 +1228,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
               key={model.id}
               model={model}
               onDownload={onDownload}
+              onDownloadWithCustomName={onDownloadWithCustomName}
               onDownloadWithDependencies={onDownloadWithDependencies}
               onAddToQueue={(modelId: string, fileName: string, allFiles?: Array<{ rfilename: string; size?: number }>) => 
                 addToDownloadQueue(modelId, model.name, fileName, allFiles)

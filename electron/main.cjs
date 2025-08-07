@@ -1597,106 +1597,82 @@ function registerModelManagerHandlers() {
         fs.mkdirSync(modelsDir, { recursive: true });
       }
 
-      // Check if this is a vision model
+      // Check if this is a vision model by name patterns
       const isVision = isVisionModelByName(fileName);
       
-      // Find required mmproj files
+      // Find required mmproj files from the repository
       const mmprojFiles = allFiles.filter(file => 
         file.rfilename.toLowerCase().includes('mmproj') ||
         file.rfilename.toLowerCase().includes('mm-proj') ||
         file.rfilename.toLowerCase().includes('projection')
       );
       
+      log.info(`🔍 Vision detection - isVision: ${isVision}, mmproj files found: ${mmprojFiles.length}`);
+      if (mmprojFiles.length > 0) {
+        log.info(`📁 Available mmproj files:`, mmprojFiles.map(f => f.rfilename));
+      }
+      
       const filesToDownload = [fileName];
       
-      // If it's a vision model and mmproj files exist, add them
-      if (isVision && mmprojFiles.length > 0) {
-        // Find the best matching mmproj file
-        const matchingMmproj = findBestMmprojMatch(fileName, mmprojFiles);
-        if (matchingMmproj) {
-          filesToDownload.push(matchingMmproj.rfilename);
-          log.info(`Vision model detected, will also download: ${matchingMmproj.rfilename}`);
-        }
+      // Download mmproj files if they exist (regardless of main model name detection)
+      // This ensures we don't miss vision capabilities due to naming variations
+      if (mmprojFiles.length > 0) {
+        // Always download all mmproj files when available
+        mmprojFiles.forEach(mmprojFile => {
+          filesToDownload.push(mmprojFile.rfilename);
+          log.info(`👁️ Adding mmproj file to download queue: ${mmprojFile.rfilename}`);
+        });
+        
+        log.info(`🎯 Total files to download: ${filesToDownload.length} (1 model + ${mmprojFiles.length} mmproj)`);
+      } else if (isVision) {
+        log.warn(`⚠️ Vision model detected by name but no mmproj files found in repository`);
       }
       
       // Download all required files
       const results = [];
       for (const file of filesToDownload) {
         try {
-          // Check if this is an mmproj file and we need to rename it
-          let targetFileName = file;
-          let originalFileName = file;
+          // Download file with its original name (no renaming needed)
+          log.info(`📥 Starting download: ${file}`);
           
-          if (file.toLowerCase().includes('mmproj') && file !== fileName) {
-            // This is an mmproj file, rename it to include the model context
-            // Extract base name intelligently, handling various naming conventions
-            
-            let modelBaseName = fileName.replace(/\.(gguf|bin|safetensors)$/i, ''); // Remove file extension
-            
-            // Try to detect and remove quantization patterns more flexibly
-            // Common quantization patterns with various separators (-, _, .)
-            const quantPatterns = [
-              // Specific quantization types with separators
-              /[-_.](q4_k_m|q4_k_s|q4_0|q4_1|q5_k_m|q5_k_s|q5_0|q5_1|q6_k|q8_0).*$/i,
-              /[-_.](iq[1-8]_[a-z]+|iq[1-8]).*$/i, // IQ quantizations
-              /[-_.](fp16|fp32|f16|f32|bf16|bf32).*$/i, // Float precisions
-              // Generic quantization patterns
-              /[-_.](q[0-9]+).*$/i, // Any Q followed by numbers
-              /[-_.](instruct|chat|code).*$/i, // Model variants
-              // Specific model suffixes
-              /[-_.]([0-9]+[kmb]|[0-9]+\.[0-9]+[kmb]).*$/i // Parameter counts like 7b, 3.5b, etc.
-            ];
-            
-            // Try each pattern to find the best match
-            let cleanedBaseName = modelBaseName;
-            for (const pattern of quantPatterns) {
-              const match = modelBaseName.match(pattern);
-              if (match) {
-                cleanedBaseName = modelBaseName.substring(0, match.index);
-                log.info(`Quantization pattern "${match[1]}" detected and removed from "${modelBaseName}"`);
-                break;
-              }
-            }
-            
-            // If no quantization pattern found, use the full name (minus extension)
-            if (cleanedBaseName === modelBaseName) {
-              log.info(`No quantization pattern detected in "${modelBaseName}", using full name`);
-            }
-            
-            // Detect the separator used in the original filename (prefer the last separator used)
-            let separator = '-'; // Default to dash
-            const lastDash = cleanedBaseName.lastIndexOf('-');
-            const lastUnderscore = cleanedBaseName.lastIndexOf('_');
-            const lastDot = cleanedBaseName.lastIndexOf('.');
-            
-            // Use the separator that appears last in the filename (most likely the pattern)
-            if (lastUnderscore > lastDash && lastUnderscore > lastDot) {
-              separator = '_';
-            } else if (lastDot > lastDash && lastDot > lastUnderscore) {
-              separator = '.';
-            } // else keep dash as default
-            
-            // Get the file extension from the mmproj file
-            const fileExtension = file.substring(file.lastIndexOf('.'));
-            
-            // Create new filename using the detected separator pattern
-            targetFileName = `${cleanedBaseName}${separator}mmproj${fileExtension}`;
-            
-            log.info(`Intelligent mmproj renaming:`);
-            log.info(`  Original model file: "${fileName}"`);
-            log.info(`  Extracted base name: "${cleanedBaseName}"`);
-            log.info(`  Detected separator: "${separator}"`);
-            log.info(`  Final mmproj name: "${targetFileName}"`);
+          // Send download start notification
+          if (mainWindow) {
+            mainWindow.webContents.send('download-started', {
+              fileName: file,
+              modelId,
+              isVisionFile: file.toLowerCase().includes('mmproj')
+            });
           }
           
-          const result = await downloadSingleFileWithRename(modelId, originalFileName, targetFileName, modelsDir);
+          const result = await downloadSingleFile(modelId, file, modelsDir);
+          results.push({ file, success: result.success, error: result.error });
           
-          // For results tracking, use original filename for main model, target filename for mmproj
-          const resultFileName = (file === fileName) ? fileName : targetFileName;
-          results.push({ file: resultFileName, success: result.success, error: result.error });
+          // Send download completion notification
+          if (mainWindow) {
+            mainWindow.webContents.send('download-completed', {
+              fileName: file,
+              modelId,
+              success: result.success,
+              error: result.error,
+              isVisionFile: file.toLowerCase().includes('mmproj')
+            });
+          }
+          
+          log.info(`📥 Download ${result.success ? 'completed' : 'failed'}: ${file}${result.error ? ` (${result.error})` : ''}`);
         } catch (error) {
           log.error('Error in download loop for file:', file, error);
           results.push({ file, success: false, error: error.message });
+          
+          // Send download error notification
+          if (mainWindow) {
+            mainWindow.webContents.send('download-completed', {
+              fileName: file,
+              modelId,
+              success: false,
+              error: error.message,
+              isVisionFile: file.toLowerCase().includes('mmproj')
+            });
+          }
         }
       }
       
@@ -1947,6 +1923,46 @@ function registerModelManagerHandlers() {
       });
     } catch (error) {
       log.error('Error downloading model:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Download model from Hugging Face with custom save name
+  ipcMain.handle('download-huggingface-model-with-custom-name', async (_event, { modelId, fileName, customSaveName, downloadPath }) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      
+      // Use custom download path if provided, otherwise use default
+      const modelsDir = downloadPath || path.join(os.homedir(), '.clara', 'llama-models');
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+
+      log.info(`🎯 Starting custom name download: ${fileName} → ${customSaveName}`);
+      
+      // Use the existing downloadSingleFileWithRename function
+      const result = await downloadSingleFileWithRename(modelId, fileName, customSaveName, modelsDir);
+      
+      if (result.success) {
+        log.info(`✅ Custom name download completed: ${customSaveName}`);
+        
+        // Restart llama-swap service to load new models
+        try {
+          if (llamaSwapService && llamaSwapService.getStatus().isRunning) {
+            log.info('Restarting llama-swap service to load new models...');
+            await llamaSwapService.restart();
+            log.info('llama-swap service restarted successfully');
+          }
+        } catch (restartError) {
+          log.warn('Failed to restart llama-swap service after download:', restartError);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      log.error('Error downloading model with custom name:', error);
       return { success: false, error: error.message };
     }
   });

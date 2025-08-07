@@ -176,6 +176,59 @@ const ModelManager: React.FC = () => {
     }
   };
 
+  const downloadModelWithCustomName = async (modelId: string, fileName: string, customSaveName: string) => {
+    if (!window.modelManager?.downloadModelWithCustomName) return;
+    
+    setDownloading(prev => new Set([...prev, fileName]));
+    try {
+      // Pass custom download path if enabled and custom path is set
+      const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
+      
+      const result = await window.modelManager.downloadModelWithCustomName(modelId, fileName, customSaveName, downloadPath);
+      if (result.success) {
+        // Refresh local models
+        const localResult = await window.modelManager.getLocalModels();
+        if (localResult.success) {
+          setLocalModels(localResult.models);
+        }
+        
+        // Show success notification with download location
+        const downloadLocation = (downloadToCustomPath && customModelPath) ? customModelPath : 'default location';
+        setNotification({
+          type: 'success',
+          title: 'Download Complete',
+          message: `Model downloaded successfully as "${customSaveName}" to ${downloadLocation}!`
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          title: 'Download Failed',
+          message: `Failed to download model: ${result.error}`
+        });
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      setNotification({
+        type: 'error',
+        title: 'Download Error',
+        message: `Download failed: ${error}`
+      });
+    } finally {
+      setDownloading(prev => {
+        const newDownloading = new Set(prev);
+        newDownloading.delete(fileName);
+        return newDownloading;
+      });
+      
+      // Clean up progress
+      setDownloadProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[fileName];
+        return newProgress;
+      });
+    }
+  };
+
   const downloadModelWithDependencies = async (modelId: string, fileName: string, allFiles: Array<{ rfilename: string; size?: number }>) => {
     if (!window.modelManager?.downloadModelWithDependencies) return;
     
@@ -449,6 +502,7 @@ const ModelManager: React.FC = () => {
         {modelManagerTab === 'discover' && (
           <EnhancedModelDiscovery
             onDownload={downloadModel}
+            onDownloadWithCustomName={downloadModelWithCustomName}
             onDownloadWithDependencies={downloadModelWithDependencies}
             downloading={downloading}
             downloadProgress={downloadProgress}
