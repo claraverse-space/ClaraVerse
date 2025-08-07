@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles, RotateCcw, History, Clock, AlertTriangle, User, ArrowDown } from 'lucide-react';
+import { Send, Loader2, Bot, Trash2, Settings, ChevronDown, Wand2, Scissors, Copy, CheckCircle, AlertCircle, Zap, Brain, Target, Sparkles, RotateCcw, History, Clock, AlertTriangle, User, ArrowDown, ChevronRight, Code2 } from 'lucide-react';
 import { LiteProjectFile } from '../LumaUILite';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -52,6 +52,62 @@ const defaultParameters: AIParameters = {
   frequencyPenalty: 0,
   presencePenalty: 0,
   maxIterations: 10
+};
+
+// Collapsible Code Block Component
+const CollapsibleCodeBlock: React.FC<{
+  language: string;
+  children: string;
+  isUserMessage: boolean;
+}> = ({ language, children, isUserMessage }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const codeLength = String(children).length;
+  const lineCount = String(children).split('\n').length;
+
+  return (
+    <div className="my-2">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
+          isUserMessage
+            ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+            : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <Code2 className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            {language.toUpperCase()} Code ({lineCount} lines, {Math.round(codeLength / 1024)}KB)
+          </span>
+        </div>
+        <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+      </button>
+      
+      {isExpanded && (
+        <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-600">
+          <div className="max-h-96 overflow-auto">
+            <SyntaxHighlighter
+              style={vscDarkPlus as any}
+              language={language}
+              PreTag="div"
+              className="text-sm"
+              wrapLongLines={true}
+              customStyle={{
+                margin: 0,
+                padding: '12px',
+                fontSize: '12px',
+                lineHeight: '1.4',
+                maxWidth: '100%',
+                width: '100%'
+              }}
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // Chat window props
@@ -2118,18 +2174,12 @@ Use this context to maintain continuity and understand the project's evolution. 
                         code: ({inline, className, children, ...props}: any) => {
                           const match = /language-(\w+)/.exec(className || '');
                           return !inline && match ? (
-                            <div className="overflow-x-auto my-2 rounded-lg max-w-full">
-                              <SyntaxHighlighter
-                                style={vscDarkPlus as any}
-                                language={match[1]}
-                                PreTag="div"
-                                className="rounded-lg text-sm max-w-full"
-                                wrapLongLines={true}
-                                {...props}
-                              >
-                                {String(children).replace(/\n$/, '')}
-                              </SyntaxHighlighter>
-                            </div>
+                            <CollapsibleCodeBlock
+                              language={match[1]}
+                              isUserMessage={message.type === 'user'}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </CollapsibleCodeBlock>
                           ) : (
                             <code className={`px-1 py-0.5 rounded text-sm font-mono break-all ${
                               message.type === 'user' 
