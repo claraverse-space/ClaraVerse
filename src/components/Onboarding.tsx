@@ -171,8 +171,22 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                             const modelNames = scanResult.models.map((m: any) => m.file);
                             setAvailableModels(modelNames);
                             
-                            // Set success message
-                            setFolderPickerMessage(`✅ Found ${scanResult.models.length} GGUF model(s)`);
+                            // Create detailed success message with folder information
+                            const folderGroups = scanResult.models.reduce((acc: any, model: any) => {
+                                const folder = model.folderHint || 'root';
+                                acc[folder] = (acc[folder] || 0) + 1;
+                                return acc;
+                            }, {});
+                            
+                            const folderInfo = Object.entries(folderGroups)
+                                .map(([folder, count]) => folder === 'root' ? `${count} in root` : `${count} in ${folder}`)
+                                .join(', ');
+                            
+                            const message = scanResult.models.length === 1 
+                                ? `✅ Found 1 GGUF model` 
+                                : `✅ Found ${scanResult.models.length} GGUF models${folderGroups && Object.keys(folderGroups).length > 1 ? ` (${folderInfo})` : ''}`;
+                            
+                            setFolderPickerMessage(message);
                         } else if (scanResult.success && (!scanResult.models || scanResult.models.length === 0)) {
                             // No models found, but still set the path
                             await setCustomModelPath(selectedPath);

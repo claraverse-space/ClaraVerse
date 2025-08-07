@@ -1,5 +1,5 @@
-import React from 'react';
-import { HardDrive } from 'lucide-react';
+import React, { useState } from 'react';
+import { HardDrive, Loader } from 'lucide-react';
 import { Confirmation } from './types';
 
 interface ConfirmationModalProps {
@@ -8,6 +8,8 @@ interface ConfirmationModalProps {
 }
 
 const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ confirmation, onClose }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  
   if (!confirmation) return null;
 
   return (
@@ -53,20 +55,37 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ confirmation, onC
                 confirmation.onCancel();
                 onClose();
               }}
-              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              disabled={isLoading}
+              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               onClick={async () => {
                 if (confirmation.onConfirm) {
-                  await confirmation.onConfirm();
+                  setIsLoading(true);
+                  try {
+                    await confirmation.onConfirm();
+                    onClose();
+                  } catch (error) {
+                    console.error('Error confirming directory selection:', error);
+                    // Don't close modal on error so user can see what happened
+                  } finally {
+                    setIsLoading(false);
+                  }
                 }
-                onClose();
               }}
-              className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+              disabled={isLoading}
+              className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Use This Directory
+              {isLoading ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  Setting Directory...
+                </>
+              ) : (
+                'Use This Directory'
+              )}
             </button>
           </div>
         </div>

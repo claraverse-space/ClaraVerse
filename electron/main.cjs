@@ -822,37 +822,76 @@ function registerLlamaSwapHandlers() {
       
       const models = [];
       
-      try {
-        if (await fs.access(path).then(() => true).catch(() => false)) {
-          const files = await fs.readdir(path);
-          const ggufFiles = files.filter(file => file.endsWith('.gguf'));
+      // Recursive function to scan directories for .gguf files
+      async function scanDirectoryRecursive(dirPath, maxDepth = 10, currentDepth = 0) {
+        // Prevent infinite recursion in case of symlinks or very deep folder structures
+        if (currentDepth >= maxDepth) {
+          log.warn(`Maximum depth (${maxDepth}) reached while scanning ${dirPath}`);
+          return;
+        }
+
+        try {
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
           
-          for (const file of ggufFiles) {
-            const fullPath = pathModule.join(path, file);
-            try {
-              const stats = await fs.stat(fullPath);
-              
-              models.push({
-                name: file.replace('.gguf', ''),
-                file: file,
-                path: fullPath,
-                size: stats.size,
-                source: 'custom',
-                lastModified: stats.mtime
-              });
-            } catch (error) {
-              log.warn(`Error reading stats for ${file}:`, error);
+          for (const entry of entries) {
+            const fullPath = pathModule.join(dirPath, entry.name);
+            
+            if (entry.isDirectory()) {
+              // Recursively scan subdirectories
+              await scanDirectoryRecursive(fullPath, maxDepth, currentDepth + 1);
+            } else if (entry.isFile() && entry.name.endsWith('.gguf')) {
+              // Found a .gguf file
+              try {
+                const stats = await fs.stat(fullPath);
+                
+                // Calculate relative path from the root scan directory for better organization
+                const relativePath = pathModule.relative(path, fullPath);
+                const folderHint = pathModule.dirname(relativePath) === '.' ? '' : `(${pathModule.dirname(relativePath)})`;
+                
+                models.push({
+                  name: entry.name.replace('.gguf', ''),
+                  file: entry.name,
+                  path: fullPath,
+                  relativePath: relativePath,
+                  folderHint: folderHint,
+                  size: stats.size,
+                  source: 'custom',
+                  lastModified: stats.mtime
+                });
+              } catch (error) {
+                log.warn(`Error reading stats for ${fullPath}:`, error);
+              }
             }
           }
+        } catch (error) {
+          // Log but don't fail completely if we can't read a specific directory
+          log.warn(`Error reading directory ${dirPath}:`, error);
+        }
+      }
+      
+      try {
+        // Check if the path exists and is accessible
+        if (await fs.access(path).then(() => true).catch(() => false)) {
+          await scanDirectoryRecursive(path);
+        } else {
+          return { success: false, error: 'Directory is not accessible' };
         }
       } catch (error) {
         log.warn(`Error scanning models in ${path}:`, error);
         return { success: false, error: error.message };
       }
 
+      // Sort models by folder structure and then by name for better organization
+      models.sort((a, b) => {
+        const folderCompare = (a.folderHint || '').localeCompare(b.folderHint || '');
+        if (folderCompare !== 0) return folderCompare;
+        return a.file.localeCompare(b.file);
+      });
+
       return { success: true, models };
     } catch (error) {
       log.error('Error scanning custom path models:', error);
+      return { success: false, error: error.message };
     }
   });
 

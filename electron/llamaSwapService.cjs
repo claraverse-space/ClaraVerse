@@ -2089,28 +2089,51 @@ class LlamaSwapService {
       sources.push({ path: customPath, source: 'custom' });
     });
 
-    for (const { path: modelPath, source } of sources) {
+    // Recursive function to scan directories for .gguf files
+    const scanDirectoryRecursive = async (dirPath, source, maxDepth = 10, currentDepth = 0) => {
+      // Prevent infinite recursion in case of symlinks or very deep folder structures
+      if (currentDepth >= maxDepth) {
+        log.warn(`Maximum depth (${maxDepth}) reached while scanning ${dirPath}`);
+        return;
+      }
+
       try {
-        if (await fs.access(modelPath).then(() => true).catch(() => false)) {
-          const files = await fs.readdir(modelPath);
-          const ggufFiles = files.filter(file => file.endsWith('.gguf'));
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
           
-          for (const file of ggufFiles) {
-            const fullPath = path.join(modelPath, file);
+          if (entry.isDirectory()) {
+            // Recursively scan subdirectories
+            await scanDirectoryRecursive(fullPath, source, maxDepth, currentDepth + 1);
+          } else if (entry.isFile() && entry.name.endsWith('.gguf')) {
+            // Found a .gguf file
             try {
               const stats = await fs.stat(fullPath);
               
               models.push({
-                file: file,
+                file: entry.name,
                 path: fullPath,
                 size: stats.size,
                 source: source,
                 lastModified: stats.mtime
               });
             } catch (error) {
-              log.warn(`Error reading stats for ${file}:`, error);
+              log.warn(`Error reading stats for ${fullPath}:`, error);
             }
           }
+        }
+      } catch (error) {
+        // Log but don't fail completely if we can't read a specific directory
+        log.warn(`Error reading directory ${dirPath}:`, error);
+      }
+    };
+
+    for (const { path: modelPath, source } of sources) {
+      try {
+        if (await fs.access(modelPath).then(() => true).catch(() => false)) {
+          // Use recursive scanning instead of just reading the root level
+          await scanDirectoryRecursive(modelPath, source);
         }
       } catch (error) {
         log.warn(`Error scanning models in ${modelPath}:`, error);

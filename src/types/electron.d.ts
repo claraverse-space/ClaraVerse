@@ -146,7 +146,20 @@ declare global {
       getGPUDiagnostics: () => Promise<{ success: boolean; gpuInfo?: any; modelInfo?: any[]; error?: string }>;
       setCustomModelPath: (path: string | null) => Promise<{ success: boolean; error?: string }>;
       getCustomModelPaths: () => Promise<string[]>;
-      scanCustomPathModels: (path: string) => Promise<{ success: boolean; models?: any[]; error?: string }>;
+      scanCustomPathModels: (path: string) => Promise<{ 
+        success: boolean; 
+        models?: {
+          name: string;
+          file: string;
+          path: string;
+          relativePath?: string;
+          folderHint?: string;
+          size: number;
+          source: string;
+          lastModified: Date;
+        }[]; 
+        error?: string;
+      }>;
       downloadHuggingFaceModel: (modelId: string, fileName: string, downloadPath: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       getModelEmbeddingInfo: (modelPath: string) => Promise<{ 
         success: boolean; 

@@ -79,7 +79,7 @@ export interface Confirmation {
   modelCount: number;
   modelNames: string[];
   selectedPath: string;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void> | void;
   onCancel: () => void;
 }
 

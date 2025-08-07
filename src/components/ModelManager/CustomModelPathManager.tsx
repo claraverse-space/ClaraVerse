@@ -62,21 +62,39 @@ const CustomModelPathManager: React.FC<CustomModelPathManagerProps> = ({
             
             if (scanResult.success && scanResult.models && scanResult.models.length > 0) {
               // Models found, show confirmation dialog with model details
+              // Create detailed model information
+              const folderGroups = scanResult.models.reduce((acc: any, model: any) => {
+                const folder = model.folderHint || 'root folder';
+                if (!acc[folder]) acc[folder] = [];
+                acc[folder].push(model.file);
+                return acc;
+              }, {});
+              
+              const folderSummary = Object.entries(folderGroups)
+                .map(([folder, models]: [string, any]) => `${models.length} in ${folder}`)
+                .join(', ');
+              
               onConfirmation({
                 title: 'Confirm Model Directory',
-                message: 'Do you want to use this folder as your custom model directory?',
+                message: scanResult.models.length === 1 
+                  ? 'Found 1 model. Do you want to use this folder as your custom model directory?'
+                  : `Found ${scanResult.models.length} models${Object.keys(folderGroups).length > 1 ? ` (${folderSummary})` : ''}. Do you want to use this folder as your custom model directory?`,
                 modelCount: scanResult.models.length,
-                modelNames: scanResult.models.map(m => m.file),
+                modelNames: scanResult.models.map((m: any) => m.file),
                 selectedPath,
                 onConfirm: async () => {
                   // Set the custom model path
                   await setCustomModelPath(selectedPath);
                   
-                  // Show success notification
+                  // Show detailed success notification
+                  const successMessage = scanResult.models.length === 1
+                    ? 'Found 1 model that will be available for use.'
+                    : `Found ${scanResult.models.length} models${Object.keys(folderGroups).length > 1 ? ` across ${Object.keys(folderGroups).length} folders` : ''} that will be available for use.`;
+                  
                   onNotification({
                     type: 'success',
                     title: 'Directory Set Successfully',
-                    message: `Found ${scanResult.models?.length || 0} model(s) that will be available for use.`
+                    message: successMessage
                   });
                 },
                 onCancel: () => {}
