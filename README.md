@@ -238,7 +238,6 @@ npm run electron:dev:hot
 
 ```bash
 # Coming soon!
-docker run -d -p 3000:3000 claraverse/claraverse:latest
 ```
 
 <br/>
