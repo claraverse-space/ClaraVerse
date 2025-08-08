@@ -109,7 +109,7 @@ ClaraVerse is our answer to that question.
   **Smart Assistant**
   
   `Advanced Chat` `Code Gen`
-  `Voice` `Files` `Memory`
+  `Voice` `Files` `Easy MCP` `Model Manager`
   
   <br/>
   
