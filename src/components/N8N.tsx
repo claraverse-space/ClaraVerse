@@ -920,30 +920,30 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                   </div>
                   <div className="flex-1 space-y-3">
                     <h5 className="font-semibold text-gray-900 dark:text-white">
-                      N8N + Local Models Base URL
+                      N8N + ClaraCore Models Base URL
                     </h5>
                     <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                      Use this URL to connect N8N with your local AI models:
+                      Use this URL to make your workflow requests to ClaraCore models:
                     </p>
                     <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
                       <code className="flex-1 text-sm font-mono text-gray-900 dark:text-gray-100">
-                        http://localhost:8091/v1
+                        Copy URL
                       </code>
-                      <button
-                        onClick={() => copyToClipboard('http://localhost:8091/v1')}
+                        <button
+                        onClick={() => copyToClipboard('http://host.docker.internal:8091/v1')}
                         className={`p-2 rounded-lg transition-all duration-200 ${
-                          copiedText === 'http://localhost:8091/v1'
-                            ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
+                          copiedText === 'http://host.docker.internal:8091/v1'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
                         }`}
-                        title={copiedText === 'http://localhost:8091/v1' ? 'Copied!' : 'Copy URL'}
-                      >
-                        {copiedText === 'http://localhost:8091/v1' ? (
+                        title={copiedText === 'http://host.docker.internal:8091/v1' ? 'Copied!' : 'Copy URL'}
+                        >
+                        {copiedText === 'http://host.docker.internal:8091/v1' ? (
                           <Check className="w-4 h-4" />
                         ) : (
                           <Copy className="w-4 h-4" />
                         )}
-                      </button>
+                        </button>
                     </div>
                     <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                       <p className="text-xs text-yellow-800 dark:text-yellow-300 flex items-center gap-2">

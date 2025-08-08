@@ -190,7 +190,7 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
                   </div>
                   {copiedLinks[workflow.name] && (
                     <div className="absolute -top-2 right-2 px-2 py-1 bg-green-500 text-white text-xs rounded-full shadow-lg animate-fade-in-down">
-                      Copied!
+                      Copied! & Paste it in the workflow editor
                     </div>
                   )}
                 </div>
