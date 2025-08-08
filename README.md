@@ -256,7 +256,7 @@ docker run -d -p 3000:3000 claraverse/claraverse:latest
 | **Open Source** | ✅ | ⚠️ |
 | **Offline Mode** | ✅ | ❌ |
 | **Custom Models** | ✅ | ⚠️ |
-| **Enterprise Ready** | ✅ | 💰 |
+| **Enterprise Ready** | ❌ | 💰 |
 
 </div>
 
