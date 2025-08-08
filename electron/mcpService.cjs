@@ -125,6 +125,44 @@ class MCPService {
     return true;
   }
 
+  // Helper method to resolve bundled executable paths
+  resolveBundledExecutablePath(command) {
+    // Check if this is a bundled Python MCP server request
+    if (command === 'python-mcp-server') {
+      const basePath = path.join(__dirname, 'services');
+      
+      let executableName;
+      switch (os.platform()) {
+        case 'win32':
+          executableName = 'python-mcp-server-windows.exe';
+          break;
+        case 'darwin':
+          // For macOS, choose based on architecture
+          if (os.arch() === 'arm64') {
+            executableName = 'python-mcp-server-mac-arm64';
+          } else if (os.arch() === 'x64') {
+            executableName = 'python-mcp-server-mac-intel';
+          } else {
+            // Fallback to universal binary
+            executableName = 'python-mcp-server-mac-universal';
+          }
+          break;
+        case 'linux':
+          executableName = 'python-mcp-server-linux';
+          break;
+        default:
+          throw new Error(`Unsupported platform: ${os.platform()}`);
+      }
+      
+      const resolvedPath = path.join(basePath, executableName);
+      log.info(`Resolved bundled executable path: ${command} -> ${resolvedPath}`);
+      return resolvedPath;
+    }
+    
+    // Return original command for non-bundled executables
+    return command;
+  }
+
   // Helper method to get enhanced PATH with common Node.js installation locations
   getEnhancedPath() {
     const currentPath = process.env.PATH || '';
@@ -292,8 +330,11 @@ class MCPService {
       // Handle stdio servers (existing logic)
       const { command, args = [], env = {} } = serverConfig;
       
-      // Check if command exists before trying to start
-      if (command === 'npx' || command === 'npm' || command === 'node') {
+      // Resolve bundled executable paths
+      const resolvedCommand = this.resolveBundledExecutablePath(command);
+      
+      // Check if command exists before trying to start (skip for bundled executables)
+      if ((command === 'npx' || command === 'npm' || command === 'node') && command === resolvedCommand) {
         const commandAvailable = await this.commandExists(command);
         if (!commandAvailable) {
           throw new Error(`Command '${command}' not found. Please ensure Node.js and npm are properly installed and available in your PATH.`);
@@ -307,10 +348,10 @@ class MCPService {
         ...env
       };
 
-      log.info(`Starting MCP server: ${name} with command: ${command} ${args.join(' ')}`);
+      log.info(`Starting MCP server: ${name} with command: ${resolvedCommand} ${args.join(' ')}`);
       log.info(`Using PATH: ${processEnv.PATH}`);
 
-      const serverProcess = spawn(command, args, {
+      const serverProcess = spawn(resolvedCommand, args, {
         env: processEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: process.platform === 'win32'
@@ -506,8 +547,20 @@ class MCPService {
       
       // For stdio servers, check if command exists
       const { command } = serverConfig;
+      const resolvedCommand = this.resolveBundledExecutablePath(command);
+      
+      // For bundled executables, check file existence instead of version command
+      if (command !== resolvedCommand) {
+        // This is a bundled executable, check if file exists
+        if (fs.existsSync(resolvedCommand)) {
+          return { success: true, message: 'Bundled executable is available' };
+        } else {
+          return { success: false, error: `Bundled executable not found at: ${resolvedCommand}` };
+        }
+      }
+      
       return new Promise((resolve) => {
-        const testProcess = spawn(command, ['--version'], {
+        const testProcess = spawn(resolvedCommand, ['--version'], {
           stdio: 'ignore',
           shell: process.platform === 'win32',
           env: {
@@ -518,7 +571,7 @@ class MCPService {
         
         testProcess.on('error', (error) => {
           if (error.code === 'ENOENT') {
-            resolve({ success: false, error: `Command '${command}' not found. Please ensure Node.js and npm are properly installed.` });
+            resolve({ success: false, error: `Command '${resolvedCommand}' not found. Please ensure Node.js and npm are properly installed.` });
           } else {
             resolve({ success: false, error: error.message });
           }

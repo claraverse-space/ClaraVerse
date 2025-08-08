@@ -152,63 +152,157 @@ func (s *PythonMCPServer) initVirtualEnv() error {
 	return nil
 }
 
-// createReadme creates a README file in workspace
+// createReadme creates a comprehensive README file in workspace
 func (s *PythonMCPServer) createReadme() {
 	readmePath := filepath.Join(s.workspaceDir, "README.txt")
 	if _, err := os.Stat(readmePath); os.IsNotExist(err) {
-		readme := `MCP Workspace Directory
-=====================
+		shellInfo := "Shell: Unix/Linux (/bin/sh)"
+		if runtime.GOOS == "windows" {
+			shellInfo = "Shell: Windows PowerShell"
+		}
 
-This is your MCP workspace with an isolated Python environment.
+		readme := `MCP Workspace Directory - Python Execution Environment
+======================================================
 
-Features:
-- Isolated Python virtual environment in .venv/
-- All packages are installed in this environment only
-- Your system Python remains untouched
-- Files saved here can be accessed with 'load' command
-- Python scripts run in this isolated environment
+Welcome to your isolated MCP (Model Context Protocol) workspace!
 
-You can:
-- Place files here to access them with the 'load' command
-- Files saved with 'save' command will appear here
-- All Python packages are isolated to this workspace
+OVERVIEW:
+This workspace provides a completely isolated Python environment where you can:
+- Execute Python code safely without affecting your system
+- Install packages that won't interfere with system Python
+- Save and load files in a dedicated workspace
+- Run shell commands with automatic Python/pip routing
 
-Use the 'open' command to open this folder in your file explorer.
+WORKSPACE FEATURES:
+✓ Isolated Python Virtual Environment (.venv/)
+✓ Clean workspace for file operations
+✓ Cross-platform shell command support
+✓ Automatic dependency management
+✓ Safe package installation
 
-Virtual Environment Location: .venv/
-Python Version: Check with py(code="import sys; print(sys.version)")
-Installed Packages: Check with sh(cmd="pip list")
+AVAILABLE TOOLS:
+
+1. py(code="...")
+   - Execute Python code in isolated environment
+   - Auto-prints last line expressions
+   - Supports multi-line code, imports, functions
+   - Examples:
+     py(code="import math; math.sqrt(16)")
+     py(code="[x**2 for x in range(5)]")
+     py(code="def greet(name): return f'Hello {name}!'")
+
+2. ` + shellInfo + `
+   - powershell(cmd="...") on Windows / sh(cmd="...") on Unix
+   - Execute system commands
+   - Auto-routes python/pip to virtual environment
+   - Examples:
+     powershell(cmd="Get-Process python")
+     sh(cmd="ps aux | grep python")
+
+3. pip(pkg="...")
+   - Install Python packages safely
+   - Only affects this workspace environment
+   - Examples:
+     pip(pkg="requests")
+     pip(pkg="numpy pandas matplotlib")
+     pip(pkg="beautifulsoup4==4.9.3")
+
+4. save(name="...", text="...")
+   - Save content to workspace files
+   - Persistent across MCP session
+   - Examples:
+     save(name="script.py", text="print('Hello World')")
+     save(name="data.json", text='{"key": "value"}')
+
+5. load(name="...")
+   - Read file content from workspace
+   - Access previously saved files
+   - Examples:
+     load(name="script.py")
+     load(name="data.json")
+
+6. ls()
+   - List all workspace files and directories
+   - Shows file sizes and types
+   - Excludes .venv for clarity
+
+7. open()
+   - Open workspace in system file manager
+   - Direct access to workspace folder
+   - Platform-specific file manager
+
+GETTING STARTED:
+1. Check Python version: py(code="import sys; print(sys.version)")
+2. Install a package: pip(pkg="requests")
+3. Test the package: py(code="import requests; print('Requests installed!')")
+4. Save a script: save(name="test.py", text="print('Hello from saved file')")
+5. List files: ls()
+6. Load and run: py(code=load(name="test.py"))
+
+WORKSPACE STRUCTURE:
+├── README.txt          (this file)
+├── .venv/             (Python virtual environment - hidden from ls())
+├── your_files.py      (files you save)
+├── data_files.json    (data you create)
+└── any_other_files    (content you work with)
+
+TIPS FOR AI MODELS:
+- Use py() for Python calculations, data processing, API calls
+- Use pip() to install libraries before using them in py()
+- Use save()/load() to persist code and data between operations
+- Use ls() to see what files are available
+- All operations are isolated and safe to experiment with
+- Files persist within the same MCP session
+
+VIRTUAL ENVIRONMENT DETAILS:
+- Location: .venv/
+- Python: Isolated Python 3.x installation
+- Packages: Separated from system Python
+- Activation: Automatic for all py() and python commands
+
+This workspace is your sandbox - experiment freely!
 `
 		ioutil.WriteFile(readmePath, []byte(readme), 0644)
 	}
 }
 
-// getTools returns simplified tool definitions
+// getTools returns detailed tool definitions with comprehensive descriptions
 func (s *PythonMCPServer) getTools() []Tool {
+	// Dynamic shell description based on OS
+	shellName := "sh"
+	shellDesc := "Execute shell commands in Unix/Linux environment. Runs commands using /bin/sh with full access to system utilities, file operations, and process management. Automatically routes 'python' and 'pip' commands to the isolated virtual environment."
+	cmdDesc := "Shell command to execute (e.g., 'ls -la', 'grep pattern file.txt', 'curl https://api.example.com')"
+
+	if runtime.GOOS == "windows" {
+		shellName = "powershell"
+		shellDesc = "Execute PowerShell commands in Windows environment. Runs commands using PowerShell with full access to Windows utilities, file system operations, registry access, and .NET framework. Automatically routes 'python' and 'pip' commands to the isolated virtual environment. Supports both PowerShell cmdlets and traditional Windows commands."
+		cmdDesc = "PowerShell command to execute (e.g., 'Get-ChildItem', 'Test-Path C:\\file.txt', 'Invoke-WebRequest https://api.example.com')"
+	}
+
 	return []Tool{
 		{
 			Name:        "py",
-			Description: "Run Python code",
+			Description: "Execute Python code in an isolated virtual environment. Runs Python 3.x code with automatic output handling - expressions on the last line are automatically printed for convenience. All code executes in a dedicated workspace directory with an isolated virtual environment, so system Python and packages remain untouched. Perfect for data analysis, calculations, file processing, API calls, and any Python scripting needs. Supports multi-line code blocks, imports, function definitions, and complex operations.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"code": map[string]interface{}{
 						"type":        "string",
-						"description": "Python code",
+						"description": "Python code to execute. Can be single expressions (e.g., '2+2'), multi-line scripts, import statements, function definitions, or complex programs. Last line expressions are automatically printed. Examples: 'import requests; requests.get(\"https://api.github.com\").json()', 'def factorial(n): return 1 if n <= 1 else n * factorial(n-1); factorial(5)', '[x**2 for x in range(10)]'",
 					},
 				},
 				"required": []string{"code"},
 			},
 		},
 		{
-			Name:        "sh",
-			Description: "Run shell command",
+			Name:        shellName,
+			Description: shellDesc,
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"cmd": map[string]interface{}{
 						"type":        "string",
-						"description": "Command to run",
+						"description": cmdDesc,
 					},
 				},
 				"required": []string{"cmd"},
@@ -216,13 +310,13 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "pip",
-			Description: "Install package",
+			Description: "Install Python packages into the isolated virtual environment. Safely installs Python packages using pip without affecting the system Python installation. All packages are installed only in the dedicated virtual environment created for this MCP session. Supports installing from PyPI, Git repositories, local files, and specific versions. Use this to add any Python libraries you need for your code execution.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"pkg": map[string]interface{}{
 						"type":        "string",
-						"description": "Package name",
+						"description": "Package name or specification to install. Examples: 'requests' (latest version), 'numpy==1.21.0' (specific version), 'git+https://github.com/user/repo.git' (from Git), 'package>=1.0,<2.0' (version range), 'requests beautifulsoup4 pandas' (multiple packages)",
 					},
 				},
 				"required": []string{"pkg"},
@@ -230,17 +324,17 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "save",
-			Description: "Save file",
+			Description: "Save text content to a file in the MCP workspace directory. Creates or overwrites files with the specified content. All files are saved to the isolated workspace directory and can be accessed later with the 'load' tool or referenced in Python/shell commands. Perfect for saving code, data, configuration files, logs, or any text-based content. Files persist across tool calls within the same MCP session.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "Filename",
+						"description": "Filename to save (e.g., 'script.py', 'data.json', 'config.txt', 'analysis.csv'). Extension determines file type. File will be saved in the MCP workspace directory.",
 					},
 					"text": map[string]interface{}{
 						"type":        "string",
-						"description": "Content",
+						"description": "Complete file content to save. Can be Python code, JSON data, CSV content, configuration text, or any text-based format. Use proper formatting and newlines as needed.",
 					},
 				},
 				"required": []string{"name", "text"},
@@ -248,13 +342,13 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "load",
-			Description: "Read file",
+			Description: "Read and return the complete content of a file from the MCP workspace directory. Retrieves text content from files previously saved with the 'save' tool or placed in the workspace directory. Returns the entire file content as text, which can then be processed, analyzed, or modified. Use this to access saved scripts, data files, configuration files, or any text-based content.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "Filename",
+						"description": "Filename to read from the workspace directory (e.g., 'script.py', 'data.json', 'results.txt'). Must be an existing file in the MCP workspace.",
 					},
 				},
 				"required": []string{"name"},
@@ -262,7 +356,7 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "ls",
-			Description: "List files",
+			Description: "List all files and directories in the MCP workspace directory. Shows file names, sizes (in bytes, KB, or MB), and indicates directories with [DIR] prefix. Excludes the .venv virtual environment directory from the listing for clarity. Use this to see what files are available for loading, understand the workspace structure, or verify that files were saved correctly. Helps you navigate and manage workspace contents.",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -270,7 +364,7 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "open",
-			Description: "Open workspace folder",
+			Description: "Open the MCP workspace directory in the system file manager for direct access. Launches the default file manager (Windows Explorer on Windows, Finder on macOS, or available file manager on Linux) showing the workspace folder. This allows you to manually inspect files, add external files to the workspace, or perform file operations outside the MCP tools. The workspace contains all saved files and the Python virtual environment.",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -551,7 +645,7 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 			"protocolVersion": "2024-11-05",
 			"serverInfo": map[string]interface{}{
 				"name":    "python-mcp",
-				"version": "5.0.0",
+				"version": "5.1.0",
 			},
 			"capabilities": map[string]interface{}{
 				"tools": map[string]interface{}{},
@@ -578,7 +672,7 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 		switch params.Name {
 		case "py":
 			result = s.py(params.Arguments)
-		case "sh":
+		case "sh", "powershell": // Support both for compatibility
 			result = s.sh(params.Arguments)
 		case "pip":
 			result = s.pip(params.Arguments)

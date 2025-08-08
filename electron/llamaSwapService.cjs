@@ -2100,29 +2100,116 @@ class LlamaSwapService {
       try {
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
         
+        // First pass: collect all .gguf files in current directory
+        const ggufFiles = [];
+        const subdirectories = [];
+        
         for (const entry of entries) {
           const fullPath = path.join(dirPath, entry.name);
           
           if (entry.isDirectory()) {
-            // Recursively scan subdirectories
-            await scanDirectoryRecursive(fullPath, source, maxDepth, currentDepth + 1);
+            subdirectories.push(fullPath);
           } else if (entry.isFile() && entry.name.endsWith('.gguf')) {
-            // Found a .gguf file
+            ggufFiles.push({ name: entry.name, path: fullPath });
+          }
+        }
+        
+        // Process multi-part models in current directory
+        const processedFiles = new Set();
+        const multiPartGroups = new Map();
+        
+        // Group multi-part files
+        ggufFiles.forEach(file => {
+          // Pattern: filename-00001-of-00002.gguf
+          const multiPartMatch = file.name.match(/^(.+)-(\d+)-of-(\d+)\.gguf$/);
+          if (multiPartMatch) {
+            const [, baseName, partNum, totalParts] = multiPartMatch;
+            const key = `${baseName}-${totalParts}`;
+            
+            if (!multiPartGroups.has(key)) {
+              multiPartGroups.set(key, {
+                baseName,
+                totalParts: parseInt(totalParts),
+                parts: new Map()
+              });
+            }
+            
+            multiPartGroups.get(key).parts.set(parseInt(partNum), file);
+          }
+        });
+        
+        // Validate and add complete multi-part models
+        for (const [key, group] of multiPartGroups) {
+          const { baseName, totalParts, parts } = group;
+          
+          // Check if all parts are present
+          let allPartsPresent = true;
+          for (let i = 1; i <= totalParts; i++) {
+            if (!parts.has(i)) {
+              allPartsPresent = false;
+              log.warn(`Multi-part model ${baseName} is incomplete: missing part ${i} of ${totalParts}`);
+              break;
+            }
+          }
+          
+          if (allPartsPresent) {
+            // Add only the first part as the model entry
+            const firstPart = parts.get(1);
             try {
-              const stats = await fs.stat(fullPath);
+              const stats = await fs.stat(firstPart.path);
               
               models.push({
-                file: entry.name,
-                path: fullPath,
+                file: firstPart.name,
+                path: firstPart.path,
                 size: stats.size,
                 source: source,
-                lastModified: stats.mtime
+                lastModified: stats.mtime,
+                isMultiPart: true,
+                totalParts: totalParts
               });
+              
+              // Mark all parts as processed
+              for (const part of parts.values()) {
+                processedFiles.add(part.name);
+              }
+              
+              log.info(`Added complete multi-part model: ${baseName} (${totalParts} parts)`);
             } catch (error) {
-              log.warn(`Error reading stats for ${fullPath}:`, error);
+              log.warn(`Error reading stats for multi-part model ${firstPart.path}:`, error);
+            }
+          } else {
+            // Mark incomplete multi-part files as processed (so they won't be added as single files)
+            for (const part of parts.values()) {
+              processedFiles.add(part.name);
             }
           }
         }
+        
+        // Add single-part .gguf files that aren't part of multi-part models
+        for (const file of ggufFiles) {
+          if (!processedFiles.has(file.name)) {
+            try {
+              const stats = await fs.stat(file.path);
+              
+              models.push({
+                file: file.name,
+                path: file.path,
+                size: stats.size,
+                source: source,
+                lastModified: stats.mtime,
+                isMultiPart: false
+              });
+            } catch (error) {
+              log.warn(`Error reading stats for ${file.path}:`, error);
+            }
+          }
+        }
+        
+        // Recursively scan subdirectories
+        for (const subdirPath of subdirectories) {
+          await scanDirectoryRecursive(subdirPath, source, maxDepth, currentDepth + 1);
+        }
+        
       } catch (error) {
         // Log but don't fail completely if we can't read a specific directory
         log.warn(`Error reading directory ${dirPath}:`, error);
