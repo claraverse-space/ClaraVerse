@@ -1,252 +1,189 @@
 <div align="center">
-  <img src="/public/logo.png" alt="ClaraVerse Logo" width="120" height="120" />
-  
-  # 🚀 ClaraVerse
-  
-  ### **The Complete Local AI Superstack**
-  ### **Privacy-First • Cloud-Free • Infinitely Capable**
-  
-  <p>
-    <img src="https://img.shields.io/github/v/release/badboysm890/ClaraVerse?style=for-the-badge&color=FFD700" alt="Latest Release" />
-    <img src="https://img.shields.io/github/stars/badboysm890/ClaraVerse?style=for-the-badge&color=gold" alt="GitHub Stars" />
-    <img src="https://img.shields.io/github/license/badboysm890/ClaraVerse?style=for-the-badge&color=blue" alt="License" />
-    <img src="https://img.shields.io/github/downloads/badboysm890/ClaraVerse/total?style=for-the-badge&color=green" alt="Total Downloads" />
-  </p>
-  
-  <p>
-    <a href="https://claraverse.space/" target="_blank">
-      <img src="https://img.shields.io/badge/🌐_Try_Clara_Online-4A90E2?style=for-the-badge&logo=web&logoColor=white" alt="Try Online" />
-    </a>
-    <a href="https://github.com/badboysm890/ClaraVerse/releases/latest" target="_blank">
-      <img src="https://img.shields.io/badge/⬇️_Download_Desktop-2ECC71?style=for-the-badge&logo=download&logoColor=white" alt="Download" />
-    </a>
-    <a href="https://discord.gg/j633fsrAne" target="_blank">
-      <img src="https://img.shields.io/badge/💬_Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" />
-    </a>
-    <a href="https://www.reddit.com/r/claraverse/" target="_blank">
-      <img src="https://img.shields.io/badge/🗨️_Reddit-FF4500?style=for-the-badge&logo=reddit&logoColor=white" alt="Reddit" />
-    </a>
-  </p>
-  
-  ---
-  
-  ### 🎯 **Our Mission**
-  
-  **To democratize AI development by making powerful AI tools accessible to everyone — without compromising privacy, requiring expensive cloud services, or sacrificing functionality.**
-  
-  ---
-  
-  <p>
-    <strong>🤖 AI Assistant • � Code Builder • 🔄 Automation • 🎨 Image Gen • � Agents • 🧱 Widgets</strong><br/>
-    <em>All running 100% on your machine — Your data, Your rules, Your AI</em>
-  </p>
 
-</div>
+<br/>
 
----
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="/public/logo.png">
+  <source media="(prefers-color-scheme: light)" srcset="/public/logo.png">
+  <img alt="ClaraVerse Logo" src="/public/logo.png" width="120">
+</picture>
 
-## ✨ **The Vision Behind ClaraVerse**
+<br/>
+<br/>
 
-> **What if you could have the power of a complete AI development studio — without ever sending your data to the cloud?**
+# **ClaraVerse**
 
-ClaraVerse is our answer to that question. Born from the belief that **AI should empower, not exploit**, we've built a complete AI ecosystem that:
+<h3>
+  <em>The Complete AI Ecosystem That <b>Actually</b> Respects Your Privacy</em>
+</h3>
 
-- 🔒 **Respects Your Privacy** — Everything runs locally, nothing leaves your machine
-- 💰 **Saves Your Money** — No API fees, no cloud bills, no subscription traps  
-- 🚀 **Maximizes Your Potential** — Professional-grade tools accessible to everyone
-- 🌍 **Builds Community** — Open-source, extensible, and collaborative
-
-## 🎯 **How ClaraVerse Works**
-
-<div align="center">
-
-### **Six Integrated AI Powerhouses — One Unified Experience**
-
-</div>
-
-<table>
-<tr>
-<td width="50%" align="center">
-
-### � **Clara AI Assistant**
-*Your intelligent coding companion*
-
-**What it does:**
-- Advanced conversations with context memory
-- Code generation, analysis & debugging  
-- File processing (docs, images, code)
-- Autonomous task execution
-- Voice-enabled interactions
-
-**How it works:**
-Powered by multiple AI providers (Ollama, OpenAI, Anthropic) with local-first architecture
-
-</td>
-<td width="50%" align="center">
-
-### 🧩 **LumaUI Code Builder**
-*Full-stack web development suite*
-
-**What it does:**
-- WebContainer-powered dev environment
-- Live preview with Monaco editor
-- AI-assisted code generation
-- React, Vue, Vanilla JS projects
-- Real-time collaboration
-
-**How it works:**
-Browser-based development environment with integrated AI assistance
-
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
-
-### 🔄 **N8N Automation Hub**
-*Visual workflow automation*
-
-**What it does:**
-- 1000+ service integrations
-- Drag-and-drop workflow builder
-- Webhook & API automation
-- Data processing pipelines
-- Scheduled task execution
-
-**How it works:**
-Native N8N integration running locally in your ClaraVerse instance
-
-</td>
-<td width="50%" align="center">
-
-### 🎨 **ComfyUI Image Studio**
-*Local Stable Diffusion powerhouse*
-
-**What it does:**
-- SDXL, SD 1.5, Flux model support
-- LoRA & ControlNet capabilities
-- Batch generation & upscaling
-- Prompt enhancement with AI
-- Image gallery with metadata
-
-**How it works:**
-ComfyUI integration running on your local GPU/CPU for complete privacy
-
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
-
-### 🧠 **Agent Builder Studio**
-*Visual AI agent creation*
-
-**What it does:**
-- React Flow-based visual editor
-- Custom node creation (auto & manual)
-- Real-time execution & debugging
-- Agent template library
-- Import/export workflows
-
-**How it works:**
-Drag-and-drop interface for creating complex AI agent workflows
-
-</td>
-<td width="50%" align="center">
-
-### 🧱 **Dynamic Widget System**
-*Customizable dashboard experience*
-
-**What it does:**
-- Draggable grid layout dashboard
-- Chat, Email, Flow, Webhook widgets
-- Persistent configurations
-- Context menu management
-- Real-time updates
-
-**How it works:**
-React-grid-layout powered dashboard with WebSocket real-time updates
-
-</td>
-</tr>
-</table>
-
-### 🔄 **The Integration Magic**
-
-All components share a unified API layer and communicate through:
-- **Shared Context**: Your conversations, projects, and preferences sync across all tools
-- **Cross-Feature Workflows**: Generate code with Clara → Build with LumaUI → Automate with N8N → Deploy
-- **Unified Settings**: One configuration system for all AI providers and preferences
-
----
-
-## 🎯 **Why ClaraVerse Over Alternatives?**
-
-<div align="center">
-
-| **Capability** | **🚀 ClaraVerse** | OpenWebUI | LibreChat | Ollama WebUI |
-|:---------------|:------------------|:----------|:----------|:-------------|
-| **🤖 Local AI Stack** | ✅ **Complete Ecosystem** | ✅ Basic Chat | ✅ Basic Chat | ✅ Basic Chat |
-| **🧩 Code Builder** | ✅ **Full IDE + AI** | ❌ None | ❌ None | ❌ None |
-| **🔄 Visual Automation** | ✅ **N8N Integrated** | ❌ None | ❌ None | ❌ None |
-| **🧠 Agent Builder** | ✅ **Visual Designer** | ❌ None | ❌ None | ❌ None |
-| **🎨 Image Generation** | ✅ **Full ComfyUI** | ❌ None | ❌ None | ❌ None |
-| **🧱 Widget Dashboard** | ✅ **Dynamic Layout** | ❌ None | ✅ Basic | ❌ None |
-| **📱 Desktop Apps** | ✅ **Cross-Platform** | ❌ Web Only | ❌ Web Only | ❌ Web Only |
-| **🔒 Privacy Guarantee** | ✅ **100% Local** | ✅ Yes | ✅ Yes | ✅ Yes |
-
-*ClaraVerse isn't just a chat interface — it's your complete AI development studio*
-
-</div>
-
----
-
-## 🚀 **Get Started in Minutes**
-
-<div align="center">
-
-### **Choose Your Experience**
-
-<table>
-<tr>
-<td align="center" width="33%">
-
-### 💻 **Desktop App**
-*Full-featured experience*
-
-<p>
-<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/windows8/windows8-original.svg" width="40"/>
-<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/apple/apple-original.svg" width="40"/>
-<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linux/linux-original.svg" width="40"/>
+<p align="center">
+  <a href="https://github.com/badboysm890/ClaraVerse/stargazers">
+    <img src="https://img.shields.io/badge/⭐_Star_us_on_GitHub-It_helps_a_lot!-gold?style=flat&labelColor=1e1e2e" alt="Star us" />
+  </a>
 </p>
 
-**[Download Latest Release](https://github.com/badboysm890/ClaraVerse/releases/latest)**
+<br/>
 
-`Windows • macOS • Linux`
+[![GitHub Stars](https://img.shields.io/github/stars/badboysm890/ClaraVerse?style=flat&logo=github&color=gold&labelColor=1e1e2e)](https://github.com/badboysm890/ClaraVerse/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/badboysm890/ClaraVerse/total?style=flat&logo=github&color=00D4AA&labelColor=1e1e2e)](https://github.com/badboysm890/ClaraVerse/releases)
+[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&labelColor=1e1e2e)](https://discord.gg/j633fsrAne)
+[![License](https://img.shields.io/github/license/badboysm890/ClaraVerse?style=flat&color=FF6B6B&labelColor=1e1e2e)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/badboysm890/ClaraVerse?style=flat&color=9333EA&labelColor=1e1e2e)](https://github.com/badboysm890/ClaraVerse/releases/latest)
+
+<br/>
+
+<p align="center">
+  <kbd><strong>6 AI Tools</strong></kbd> ×
+  <kbd><strong>1 App</strong></kbd> ×
+  <kbd><strong>100% Local</strong></kbd> =
+  <kbd><strong>∞ Possibilities</strong></kbd>
+</p>
+
+<br/>
+
+<a href="https://github.com/badboysm890/ClaraVerse/releases/latest">
+  <img src="https://img.shields.io/badge/Download_Now-🚀-FF4757?style=for-the-badge&labelColor=1e1e2e" alt="Download" height="40"/>
+</a>
+&nbsp;
+<a href="https://claraverse.space/">
+  <img src="https://img.shields.io/badge/Try_Demo-🌐-5352ED?style=for-the-badge&labelColor=1e1e2e" alt="Demo" height="40"/>
+</a>
+&nbsp;
+<a href="https://buymeacoffee.com/claraverse">
+  <img src="https://img.shields.io/badge/Support_Us-☕-FFDD00?style=for-the-badge&labelColor=1e1e2e" alt="Support" height="40"/>
+</a>
+
+</div>
+
+---
+
+<br/>
+
+## 💭 **The Story Behind ClaraVerse**
+
+> **"Why can't everything be in a single app? Why do we need to jump between different AI tools and pay multiple subscriptions?"**
+
+**Here's what happened to us (and probably you too):**
+
+We found ourselves constantly jumping between different AI apps — tired of paying for Claude subscriptions, then installing LM Studio for local models, then N8N for automation, then Ollama for model management, then OpenWebUI for a better chat interface...
+
+When using Ollama, downloading models was the only way to get started — but then we were stuck with limited chat features. LM Studio was good for models, but the chat experience felt basic. We'd end up running everything in the background while building UIs and generating images separately.
+
+**That's when it hit us: Why can't everything be in a single app?**
+
+ClaraVerse is our answer to that question.
+
+> ClaraVerse is not another OpenWebUI (which is excellent for chat) or Ollama - everything is just scattered around and I'm trying to build a single app where people can just install it and use it. 
+
+<br/>
+
+## 🎯 **The Problem**
+
+<div align="center">
+
+| **The Subscription Hell** 💸 | **The Context-Loss Nightmare** 🔄 |
+|:---|:---|
+| • Claude Pro: **$20/month**<br/>• ChatGPT Plus: **$20/month**<br/>• GitHub Copilot: **$10/month**<br/>• Midjourney: **$10/month**<br/>• N8N Cloud: **$20/month**<br/><br/>**Total: $960/year** 😱 | • Chat in Claude → Code in Cursor<br/>• Design in ComfyUI → Build in N8N<br/>• Deploy with Ollama → Debug in LM Studio<br/><br/>**Lost context with every switch** 🤦 |
+
+</div>
+
+<br/>
+
+## ✨ **The Solution: ClaraVerse**
+
+<div align="center">
+
+### **One App. Six Tools. Zero Compromises.**
+
+<br/>
+
+<table>
+<tr>
+<td align="center" width="33%">
+  
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Robot.png" width="60" />
+  
+  ### **Clara AI**
+  **Smart Assistant**
+  
+  `Advanced Chat` `Code Gen`
+  `Voice` `Files` `Memory`
+  
+  <br/>
+  
+</td>
+<td align="center" width="33%">
+
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Hammer%20and%20Wrench.png" width="60" />
+  
+  ### **LumaUI**
+  **Code Builder**
+  
+  `Live Preview` `WebContainer`
+  `React/Vue/JS` `Hot Reload`
+
+  <br/>
 
 </td>
 <td align="center" width="33%">
 
-### 🐳 **Docker Deployment**
-*One-command setup*
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Activities/Artist%20Palette.png" width="60" />
+  
+  ### **ComfyUI**
+  **Image Studio**
+  
+  `SDXL/Flux` `LoRA` 
+  `Batch Gen` `100% Private`
 
-```bash
-docker run -p 3000:3000 \
-  claraverse/claraverse:latest
-```
+  <br/>
 
-**Perfect for servers & teams**
+</td>
+</tr>
+<tr>
+<td align="center" width="33%">
+
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Gear.png" width="60" />
+  
+  ### **N8N**
+  **Automation**
+  
+  `Visual Workflows` `1000+ APIs`
+  `Scheduling` `Data Pipelines`
+
+  <br/>
 
 </td>
 <td align="center" width="33%">
 
-### 🛠️ **Development Build**
-*Latest features*
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Toolbox.png" width="60" />
+  
+  ### **Agent Builder**
+  **AI Agents**
+  
+  `Visual Designer` `Custom Nodes`
+  `Templates` `Debug Tools`
 
-```bash
-git clone https://github.com/badboysm890/ClaraVerse
-npm install && npm run dev
-```
+  <br/>
 
-**For contributors & early adopters**
+</td>
+<td align="center" width="33%">
+
+  <br/>
+  <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Card%20File%20Box.png" width="60" />
+  
+  ### **Widgets**
+  **Dashboard**
+  
+  `Drag & Drop` `Live Updates`
+  `Persistent` `Customizable`
+
+  <br/>
 
 </td>
 </tr>
@@ -254,233 +191,621 @@ npm install && npm run dev
 
 </div>
 
-### ⚡ **Quick Setup Guide**
+<br/>
 
-1. **Download** → Install ClaraVerse for your platform
-2. **Launch** → Complete the 2-minute onboarding
-3. **Configure** → Add your AI providers (optional - works offline!)
-4. **Create** → Start your first project or chat with Clara
-
-*🎉 You're ready to build amazing things!*
-
----
-
-## � **Privacy & Security Promise**
+## 🔐 **Privacy First, Always**
 
 <div align="center">
 
-### **Your Data, Your Rules — Always**
-
-| 🛡️ **Privacy Feature** | **Status** | **How We Ensure It** |
-|:----------------------|:-----------|:---------------------|
-| **🖥️ Local Processing** | ✅ **100%** | All AI models run exclusively on your machine |
-| **🚫 Zero Telemetry** | ✅ **Guaranteed** | No analytics, tracking, or data collection |
-| **🔓 Open Source** | ✅ **Fully Transparent** | Every line of code is auditable |
-| **🏠 Self-Hosted** | ✅ **Complete Control** | You own your entire AI infrastructure |
-| **🌐 Optional Cloud** | ✅ **Your Choice** | External APIs only when you explicitly enable them |
-| **🔐 Encrypted Storage** | ✅ **By Default** | All local data encrypted with industry standards |
+```diff
++ 100% Local Processing     Your data never leaves your machine
++ Zero Telemetry            We can't see what you're doing
++ Open Source               Every line of code is auditable
++ Works Offline             No internet? No problem!
+```
 
 </div>
 
-> **🌟 The ClaraVerse Promise**: We believe AI should enhance your capabilities without compromising your privacy. That's why everything runs locally by default — your conversations, files, and creative work never leave your machine unless you explicitly choose cloud providers.
+<br/>
 
----
+## 🚀 **Quick Start**
 
-## 🏗️ **Under the Hood: Architecture**
+### **Option 1: Desktop App** (Recommended)
+
+<div align="center">
+
+[![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/badboysm890/ClaraVerse/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/badboysm890/ClaraVerse/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/badboysm890/ClaraVerse/releases/latest)
+
+</div>
+
+### **Option 2: Development Build**
+
+```bash
+# Clone the repository
+git clone https://github.com/badboysm890/ClaraVerse.git
+cd ClaraVerse
+
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run electron:dev:hot
+```
+
+### **Option 3: Docker** 🐳
+
+```bash
+# Coming soon!
+docker run -d -p 3000:3000 claraverse/claraverse:latest
+```
+
+<br/>
+
+## 📊 **Why ClaraVerse?**
+
+<div align="center">
+
+| Feature | ClaraVerse | Others |
+|:--------|:----------:|:------:|
+| **All-in-One Platform** | ✅ | ❌ |
+| **100% Local Processing** | ✅ | ❌ |
+| **No Subscriptions** | ✅ | ❌ |
+| **Context Sharing** | ✅ | ❌ |
+| **Open Source** | ✅ | ⚠️ |
+| **Offline Mode** | ✅ | ❌ |
+| **Custom Models** | ✅ | ⚠️ |
+| **Enterprise Ready** | ✅ | 💰 |
+
+</div>
+
+<br/>
+
+## 🏗️ **Architecture**
 
 <div align="center">
 
 ```mermaid
-graph TB
-    subgraph "🖥️ ClaraVerse Desktop App"
-        UI[React Frontend<br/>Beautiful, Responsive Interface]
-        API[Unified API Layer<br/>Cross-Component Communication]
-        DB[(Local Database<br/>SQLite + File Storage)]
-    end
+graph LR
+    A[🎨 React UI] --> B[⚡ Unified API]
+    B --> C[🧠 Clara Core]
+    B --> D[🔧 LumaUI]
+    B --> E[🎨 ComfyUI]
+    B --> F[🔄 N8N]
+    B --> G[🤖 Agents]
+    B --> H[📊 Widgets]
     
-    subgraph "🧠 Local AI Stack"
-        LLM[Clara Core<br/>Llama.cpp Engine]
-        VISION[Vision Models<br/>Image Understanding]
-        TTS[Text-to-Speech<br/>Voice Generation]
-        STT[Speech-to-Text<br/>Voice Recognition]
-    end
+    C --> I[Llama.cpp]
+    C --> J[Vision]
+    C --> K[Voice]
     
-    subgraph "🔧 Development Tools"
-        LUMA[LumaUI<br/>WebContainer Environment]
-        AGENT[Agent Builder<br/>Visual Flow Designer]
-        WEB[Monaco Editor<br/>Live Preview System]
-    end
-    
-    subgraph "🎨 Creative & Automation"
-        COMFY[ComfyUI<br/>Stable Diffusion Engine]
-        N8N[N8N Workflows<br/>Automation Engine]
-        WIDGETS[Widget System<br/>Dynamic Dashboard]
-    end
-    
-    UI --> API
-    API --> LLM
-    API --> LUMA
-    API --> AGENT
-    API --> COMFY
-    API --> N8N
-    API --> WIDGETS
-    LLM --> VISION
-    LLM --> TTS
-    LLM --> STT
-    LUMA --> WEB
-    API --> DB
-    
-    style UI fill:#4A90E2,stroke:#fff,stroke-width:2px,color:#fff
-    style LLM fill:#FF6B6B,stroke:#fff,stroke-width:2px,color:#fff
-    style COMFY fill:#4ECDC4,stroke:#fff,stroke-width:2px,color:#fff
-    style N8N fill:#45B7D1,stroke:#fff,stroke-width:2px,color:#fff
+    style A fill:#4A90E2
+    style C fill:#FF6B6B
+    style E fill:#4ECDC4
 ```
 
-**Key Design Principles:**
-- 🔄 **Unified Communication**: All components share context through a central API
-- 🧩 **Modular Architecture**: Each tool operates independently but integrates seamlessly  
-- 🔒 **Security-First**: Local processing with optional cloud connectivity
-- ⚡ **Performance-Optimized**: Efficient resource usage and background processing
+</div>
+
+<br/>
+
+## 🌟 **Features Roadmap**
+
+<div align="center">
+
+| Status | Feature | ETA |
+|:-------|:--------|:----|
+| ✅ | Clara AI Assistant | **Released** |
+| ✅ | LumaUI Code Builder | **Released** |
+| ✅ | ComfyUI Integration | **Released** |
+| ✅ | N8N Workflows | **Released** |
+| ✅ | Agent Builder | **v0.1.26** |
+| 🚧 | Docker Image for Remote servers | Q3 2025 |
+| 🚧 | Mobile App with Offline Support | Q3 2025 |
+| 🚧 | Cloud Sync (Optional) | Q4 2025 |
+| 📋 | Plugin Marketplace | Q4 2025 |
+| 📋 | Team Collaboration | Q4 2025 |
+
+</div>
+  
+> **🚧 Development Status**  
+> ClaraVerse is actively evolving! While core features are stable, some components may change as we work toward v1.0. We prioritize stability but welcome your feedback on improvements and new features. Join our [Discord](https://discord.gg/j633fsrAne) to stay updated! 🚀
+
+<br/>
+
+## 🤝 **Community & Support**
+
+<div align="center">
+
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/j633fsrAne)
+[![Reddit](https://img.shields.io/badge/Reddit-FF4500?style=for-the-badge&logo=reddit&logoColor=white)](https://www.reddit.com/r/claraverse/)
+[![Twitter](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/claraverse)
+[![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com/@claraverse)
+
+### **📚 Resources**
+
+[Documentation](https://github.com/badboysm890/ClaraVerse/tree/main/docs) • 
+[API Reference](https://github.com/badboysm890/ClaraVerse/tree/main/docs/api) • 
+[Tutorials](https://github.com/badboysm890/ClaraVerse/tree/main/docs/tutorials) • 
+[FAQ](https://github.com/badboysm890/ClaraVerse/wiki/FAQ)
+
+</div>
+
+<br/>
+
+## 💝 **Contributors**
+
+<div align="center">
+
+<!-- ALL-CONTRIBUTORS-LIST:START -->
+<a href="https://github.com/badboysm890/ClaraVerse/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=badboysm890/ClaraVerse&max=100&columns=10&anon=1" />
+</a>
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+### **How to Contribute**
+
+We love contributions! Check our [Contributing Guide](CONTRIBUTING.md) to get started.
+
+```mermaid
+graph LR
+    A[🍴 Fork] --> B[🔧 Code]
+    B --> C[✅ Test]
+    C --> D[📤 PR]
+    D --> E[🎉 Merge]
+```
+
+</div>
+
+<br/>
+
+## 🙏 **Acknowledgments**
+
+<div align="center">
+
+**Built on the shoulders of giants:**
+
+[llama.cpp](https://github.com/ggml-org/llama.cpp) • 
+[llama-swap](https://github.com/mostlygeek/llama-swap) • 
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) • 
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI) • 
+[N8N](https://github.com/n8n-io/n8n)
+
+### **Special Thanks**
+
+☕ **Coffee Supporters** • 🌟 **Star Gazers** • 🐛 **Bug Hunters** • 💡 **Feature Suggesters**
+
+</div>
+
+<br/>
+
+## 📄 **License**
+
+<div align="center">
+
+**MIT License** - Use it, modify it, sell it, we don't mind!
+
+See [LICENSE](LICENSE) for details.
 
 </div>
 
 ---
 
-## 🌍 **Join the ClaraVerse Community**
+<div align="center">
+
+<br/>
+
+### **🚀 Ready to revolutionize your AI workflow?**
+
+<br/>
+
+<a href="https://github.com/badboysm890/ClaraVerse/releases/latest">
+  <img src="https://img.shields.io/badge/Download_ClaraVerse_Now-🚀_Get_Started-FF4757?style=for-the-badge&labelColor=1e1e2e" alt="Download" height="50"/>
+</a>
+
+<br/>
+<br/>
+
+**⭐ Star us** • **🍴 Fork us** • **💬 Join us**
+
+<br/>
+
+<sub>Made with ❤️ by developers who believe privacy is a right, not a privilege</sub>
+
+<br/>
+
+</div>
+
+<br/>
+<br/>
 
 <div align="center">
 
-### **Connect, Share, Build Together**
+## 💭 **A Note From The Developer regarding incomplete features, bugs and docs**
+
+</div>
+
+<div align="center">
+
+### **Building ClaraVerse**
+
+<br/>
 
 <table>
 <tr>
-<td align="center" width="25%">
-<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg" width="60"/>
-<br/><strong>GitHub</strong><br/>
-<a href="https://github.com/badboysm890/ClaraVerse">🐛 Issues & PRs</a><br/>
-<sub>Report bugs, request features</sub>
+<td align="center" width="50%">
+
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/People/Man%20Technologist.png" width="80" />
+
+### **Solo Developer**
+
+`9-6 Day Job` `Night Coding` 
+`Weekend Builds` `3 AM Commits`
+
+**One person. Three platforms.**
+**Just having fun in doing this.**
+
 </td>
-<td align="center" width="25%">
-<img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6ca814282eca7172c6_icon_clyde_white_RGB.svg" width="60"/>
-<br/><strong>Discord</strong><br/>
-<a href="https://discord.gg/j633fsrAne">💬 Live Community</a><br/>
-<sub>Real-time help & discussions</sub>
-</td>
-<td align="center" width="25%">
-<img src="https://www.redditstatic.com/shreddit/assets/thinking-snoo.png" width="60"/>
-<br/><strong>Reddit</strong><br/>
-<a href="https://www.reddit.com/r/claraverse/">🗨️ r/claraverse</a><br/>
-<sub>Share creations & get support</sub>
-</td>
-<td align="center" width="25%">
-<img src="https://upload.wikimedia.org/wikipedia/commons/4/4f/Twitter-logo.svg" width="60"/>
-<br/><strong>X (Twitter)</strong><br/>
-<a href="https://twitter.com/intent/tweet?text=Clara%20is%20a%20fully%20offline%20AI%20superstack%20with%20LLMs%2C%20automations%2C%20agents%2C%20image%20generation%20%2B%20more%20%E2%80%94%20all%20open-source.%20Get%20it%20here%20%F0%9F%91%87&url=https%3A%2F%2Fgithub.com%2Fbadboysm890%2FClaraVerse">🐦 Share Clara</a><br/>
-<sub>Spread the word</sub>
+<td align="center" width="50%">
+
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Sparkling%20Heart.png" width="80" />
+
+### **Community Heroes**
+
+`Discord Testers` `Bug Hunters`
+`Coffee Supporters` `PR Contributors`
+
+**You make this possible.**
+**Every single day.**
+
 </td>
 </tr>
 </table>
 
-### **🆘 Get Help When You Need It**
-- � **[Complete Documentation](https://github.com/badboysm890/ClaraVerse/tree/main/docs)** — Comprehensive guides for every feature
-- 🐛 **[GitHub Issues](https://github.com/badboysm890/ClaraVerse/issues)** — Bug reports and feature requests  
-- 💬 **[Discord Support](https://discord.gg/j633fsrAne)** — Real-time community assistance
-- 📧 **Direct Contact**: [praveensm890@gmail.com](mailto:praveensm890@gmail.com)
+<br/>
 
-</div>
+<details>
+<summary><kbd><strong>📖 Read the Full Story</strong></kbd></summary>
 
----
+<br/>
 
-## 🤝 **Contributing to ClaraVerse**
+> **"Why are some docs incomplete? Why does this feature need work?"**
 
-We believe the best software is built by communities. Here's how you can help shape ClaraVerse:
+Here's the honest truth...
 
-### **🌟 Ways to Contribute**
-- ⭐ **Star the repository** to show your support
-- 🐛 **Report bugs** and suggest improvements via GitHub Issues
-- 📝 **Improve documentation** — help others discover ClaraVerse's potential
-- 🧩 **Create templates** for agents, workflows, and projects
-- 🎨 **Design new widgets** and UI components
-- 🔧 **Add features** that solve real problems
-- 💰 **Support development** via [Buy Me a Coffee](https://buymeacoffee.com) (see credits below)
+I'm a **single developer** building ClaraVerse during nights and weekends while working a **9-6 day job**. I'm maintaining **3 platforms**, fixing bugs, adding features, answering Discord questions, reviewing PRs, and somehow trying to keep documentation updated.
 
-### **🚀 Quick Contribution Guide**
-1. **Fork** the repository on GitHub
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`  
-3. **Make** your changes and test thoroughly
-4. **Commit** with clear messages: `git commit -m 'Add amazing feature'`
-5. **Push** to your branch: `git push origin feature/amazing-feature`
-6. **Open** a Pull Request with a detailed description
+<br/>
 
----
+### **🌟 The Amazing People Making This Possible**
 
-## 📊 **Community Growth**
+<table>
+<tr>
+<td align="center">
+
+**💬 Discord Community**
+<br/>
+<sub>UI Testing • Feature Ideas • Bug Reports</sub>
+
+</td>
+<td align="center">
+
+**👨‍💻 @aruntemme**
+<br/>
+<sub>ClaraCore Dev • Notebook Features</sub>
+
+</td>
+<td align="center">
+
+**☕ Coffee Supporters**
+<br/>
+<sub>Keeping 3 AM Sessions Alive</sub>
+
+</td>
+<td align="center">
+
+**🐛 Issue Reporters**
+<br/>
+<sub>Detailed Reports • Patience</sub>
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+**The Reality Check:**
+- Docs written with **Claude & GPT** during my **2-3 hours of free time**
+- Some nights too exhausted to write proper commit messages
+- Every feature request matters, but time is limited
+- Your patience literally keeps this project alive
+
+<br/>
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=badboysm890/ClaraVerse&type=Date)](https://star-history.com/#badboysm890/ClaraVerse&Date)
+**🙏 Thank you for being part of this crazy journey**
 
-<p>
-  <img src="https://img.shields.io/github/contributors/badboysm890/ClaraVerse?style=for-the-badge&color=orange" alt="Contributors" />
-  <img src="https://img.shields.io/github/forks/badboysm890/ClaraVerse?style=for-the-badge&color=blue" alt="Forks" />
-  <img src="https://img.shields.io/github/issues/badboysm890/ClaraVerse?style=for-the-badge&color=red" alt="Issues" />
-  <img src="https://img.shields.io/github/issues-pr/badboysm890/ClaraVerse?style=for-the-badge&color=green" alt="Pull Requests" />
+*Building an AI platform alone is insane.*
+*Your support makes it possible.*
+
+<sub>— @badboysm890, probably debugging at 3 AM ☕</sub>
+
+</div>
+
+</details>
+
+</div>
+
+<br/>
+
+---
+
+<br/>
+
+## ❓ **Frequently Asked Questions**
+
+<div align="center">
+
+### **Quick Answers to Common Questions**
+
+<p align="center">
+  <kbd>Installation</kbd> ×
+  <kbd>Models</kbd> ×
+  <kbd>Features</kbd> ×
+  <kbd>Troubleshooting</kbd>
 </p>
 
 </div>
 
----
+<br/>
 
-## 🙏 **Credits & Acknowledgments**
+<details>
+<summary>
+  <kbd><strong>🚀 Installation & Setup</strong></kbd>
+</summary>
 
-ClaraVerse stands on the shoulders of giants. We're deeply grateful to these amazing projects and communities:
+<br/>
 
-### **� Core Technologies**
-- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — The backbone of our local AI inference engine
-- **[llama-swap](https://github.com/mostlygeek/llama-swap)** — Inspiration for efficient model management
-- **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** — Powers our speech-to-text capabilities
+<table>
+<tr>
+<td width="50%">
 
-### **💝 Community Support**
-- **💰 Buy Me a Coffee Contributors** — Thank you to everyone who has supported our development through donations
-- **👥 GitHub Contributors** — Every bug report, feature request, and pull request makes ClaraVerse better
-- **💬 Discord Community** — Your feedback, ideas, and conversations drive our development priorities
-- **🌟 Early Adopters** — Thank you for believing in the vision and helping us improve
+### **System Requirements**
 
-### **🎯 Special Thanks**
-To every developer, creator, and privacy advocate who has contributed to making ClaraVerse a reality. Your support, whether through code, feedback, testing, or simply using ClaraVerse, is what makes this project possible.
+| Platform | Requirements |
+|:---------|:------------|
+| **Windows** | Win 10/11 • 8GB RAM |
+| **macOS** | 10.15+ • M1/Intel |
+| **Linux** | Ubuntu 18.04+ • FUSE |
 
----
+</td>
+<td width="50%">
 
-## �📜 **License**
+### **Common Issues**
 
-ClaraVerse is open-source software licensed under the [MIT License](LICENSE). This means you can:
+**🛡️ Windows Protection Warning?**
+```
+More Info → Run Anyway
+(App is safe but unsigned)
+```
 
-- ✅ **Use commercially** — Build your business on ClaraVerse
-- ✅ **Modify freely** — Adapt it to your specific needs  
-- ✅ **Distribute widely** — Share your improvements with the world
-- ✅ **Contribute back** — Help make ClaraVerse better for everyone
+**🍎 macOS Won't Open?**
+```bash
+sudo xattr -r -d com.apple.quarantine \
+  /Applications/ClaraVerse.app
+```
 
----
+</td>
+</tr>
+</table>
 
-## 🚀 **Ready to Launch Your AI Journey?**
+</details>
+
+<details>
+<summary>
+  <kbd><strong>🤖 AI Models & Performance</strong></kbd>
+</summary>
+
+<br/>
+
+<table>
+<tr>
+<td width="50%">
+
+### **Model Compatibility**
+
+✅ **Auto-Import From:**
+- Ollama models
+- LM Studio models
+- GGUF files
+- Custom models
+
+❌ **Not Required:**
+- OpenAI API keys
+- Cloud subscriptions
+- Internet connection
+
+</td>
+<td width="50%">
+
+### **Performance Tips**
+
+**Clara AI Not Responding?**
+1. Check AI provider settings
+2. Switch to different model
+3. Ensure Ollama running: `ollama serve`
+4. Restart ClaraVerse
+
+**Memory Optimization:**
+- Use smaller models (7B vs 70B)
+- Close unused tabs
+- Restart periodically
+
+</td>
+</tr>
+</table>
+
+</details>
+
+<details>
+<summary>
+  <kbd><strong>🎨 Features & Development</strong></kbd>
+</summary>
+
+<br/>
+
+<table>
+<tr>
+<td width="50%">
+
+### **LumaUI Issues**
+
+**Project Won't Start?**
+- Restart ClaraVerse
+- Clear app cache
+- Check 4GB+ RAM available
+- Close heavy applications
+
+**Build Errors?**
+- Update dependencies
+- Check console logs
+- Try simpler project first
+
+</td>
+<td width="50%">
+
+### **Image Generation**
+
+**Generation Fails?**
+- Reduce resolution (512x512)
+- Check GPU memory (6GB+)
+- Close GPU applications
+- Try CPU mode (slower)
+
+**Quality Issues?**
+- Increase steps (20-50)
+- Try different models
+- Adjust CFG scale
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><sub>💡 <strong>Pro Tip: Multi-Tool Usage</strong></sub></summary>
+
+<br/>
+
+You can run **all tools simultaneously** - that's the magic of ClaraVerse! 
+Clara AI + LumaUI + ComfyUI can all share context and work together.
+
+</details>
+
+</details>
+
+<details>
+<summary>
+  <kbd><strong>🔧 Troubleshooting</strong></kbd>
+</summary>
+
+<br/>
 
 <div align="center">
 
-### **ClaraVerse: Your Complete Local AI Stack**
-### **No Vendor Lock-in • No API Fees • No Compromises**
+### **Quick Fixes for Common Problems**
 
-<p>
-  <a href="https://github.com/badboysm890/ClaraVerse/releases/latest" target="_blank">
-    <img src="https://img.shields.io/badge/🚀_Download_ClaraVerse-FF6B6B?style=for-the-badge&logo=rocket&logoColor=white" alt="Download ClaraVerse" />
-  </a>
-</p>
+</div>
 
----
+<table>
+<tr>
+<td align="center" width="25%">
 
-### **🌟 "The future of AI is local, private, and in your hands."**
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Computer%20Disk.png" width="40" />
 
-<sub>Made with ❤️ by the ClaraVerse community</sub>
+**High Memory?**
 
-**⭐ Star us on GitHub • � Join our Discord • 🎯 Follow our journey**
+<sub>
+• Close unused tabs<br/>
+• Use smaller models<br/>
+• Reduce batch sizes<br/>
+• Restart periodically
+</sub>
 
-</div> 
+</td>
+<td align="center" width="25%">
+
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Globe%20with%20Meridians.png" width="40" />
+
+**Network Issues?**
+
+<sub>
+• Check firewall<br/>
+• Try different network<br/>
+• Use offline mode<br/>
+• Verify antivirus
+</sub>
+
+</td>
+<td align="center" width="25%">
+
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Electric%20Plug.png" width="40" />
+
+**GPU Problems?**
+
+<sub>
+• Update drivers<br/>
+• Check CUDA version<br/>
+• Monitor VRAM usage<br/>
+• Try CPU fallback
+</sub>
+
+</td>
+<td align="center" width="25%">
+
+<img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Hammer.png" width="40" />
+
+**App Crashes?**
+
+<sub>
+• Check error logs<br/>
+• Reinstall app<br/>
+• Clear cache/data<br/>
+• Report on GitHub
+</sub>
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+<div align="center">
+
+### **🆘 Still Need Help?**
+
+<a href="https://github.com/badboysm890/ClaraVerse/tree/main/docs">
+  <img src="https://img.shields.io/badge/📚_Documentation-Read_Docs-4A90E2?style=flat&labelColor=1e1e2e" />
+</a>
+&nbsp;
+<a href="https://github.com/badboysm890/ClaraVerse/issues">
+  <img src="https://img.shields.io/badge/🐛_GitHub_Issues-Report_Bug-FF6B6B?style=flat&labelColor=1e1e2e" />
+</a>
+&nbsp;
+<a href="https://discord.gg/j633fsrAne">
+  <img src="https://img.shields.io/badge/💬_Discord-Get_Help-5865F2?style=flat&labelColor=1e1e2e" />
+</a>
+
+</div>
+
+</details>
+
+<br/>
+
+<div align="center">
+
+<sub>Can't find your answer? Join our <a href="https://discord.gg/j633fsrAne">Discord</a> for real-time help!</sub>
+
+</div>
+
+<br/>

@@ -97,24 +97,24 @@ issues.md
 
 # Exclude binary files from specific platform directories
 electron/llamacpp-binaries/darwin-arm64/*.dylib
-electron/llamacpp-binaries/darwin-arm64/llama-*
+# electron/llamacpp-binaries/darwin-arm64/llama-*
 electron/llamacpp-binaries/darwin-arm64/lib*
 electron/llamacpp-binaries/darwin-arm64/*-server
 electron/llamacpp-binaries/darwin-arm64/ggml-*
 
 electron/llamacpp-binaries/linux-x64/*.so
-electron/llamacpp-binaries/linux-x64/llama-*
+# electron/llamacpp-binaries/linux-x64/llama-*
 electron/llamacpp-binaries/linux-x64/lib*
 electron/llamacpp-binaries/linux-x64/*-server
 electron/llamacpp-binaries/linux-x64/ggml-*
 electron/llamacpp-binaries/linux-x64/rpc-server
 electron/llamacpp-binaries/linux-x64/vulkan-shaders-gen
 
-electron/llamacpp-binaries/win32-x64/*.dll
-electron/llamacpp-binaries/win32-x64/llama-*
-electron/llamacpp-binaries/win32-x64/lib*
-electron/llamacpp-binaries/win32-x64/*-server
-electron/llamacpp-binaries/win32-x64/ggml-*
+# electron/llamacpp-binaries/win32-x64/*.dll
+# # electron/llamacpp-binaries/win32-x64/llama-*
+# electron/llamacpp-binaries/win32-x64/lib*
+# electron/llamacpp-binaries/win32-x64/*-server
+# electron/llamacpp-binaries/win32-x64/ggml-*
 
 # Keep config files, documentation, and scripts
 !electron/llamacpp-binaries/*.md
