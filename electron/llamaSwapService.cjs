@@ -2533,7 +2533,7 @@ class LlamaSwapService {
     
     let configYaml = `# Auto-generated llama-swap configuration
 # Models directory: ${this.modelsDir}
-healthCheckTimeout: 30
+healthCheckTimeout: 300
 logLevel: info
 
 models:
@@ -2646,7 +2646,7 @@ models:
       --port ${modelPort}`;
 
       // Add --jinja parameter for all models
-      cmdLine += ` --jinja`;
+      cmdLine += ` --jinja --no-warmup`;
       
       // Add GPU layers based on user setting or calculation
       if (gpuLayersToUse > 0) {
