@@ -140,3 +140,4 @@ electron/llamacpp-binaries/*
 .github
 .vscode
 web-bundles
+docs-internal-agents

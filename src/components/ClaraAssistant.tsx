@@ -1635,7 +1635,6 @@ Please provide your refined response for following user question:
           // Fallback to post-processing if streaming refinement fails
           const postProcessedContent = await postProcessAutonomousResponse(
             aiMessage.content,
-            content, // Original user request
             aiMessage.metadata?.toolsUsed || []
           );
           aiMessage.content = postProcessedContent;
@@ -1715,7 +1714,6 @@ Please provide your refined response for following user question:
         // **NEW**: Post-process autonomous agent response for clean user presentation
         const cleanedContent = await postProcessAutonomousResponse(
           aiMessage.content, 
-          currentMessages[currentMessages.length - 1]?.content || '', // Get the last user message
           completedTools
         );
         
@@ -2487,27 +2485,102 @@ Would you like me to help with text-only responses for now?`,
     }
   }, []);
 
-  const handleRetryMessage = useCallback((messageId: string) => {
-    console.log('Retrying message:', messageId);
-    // Implementation for retrying failed messages
-    const messageIndex = messages.findIndex(m => m.id === messageId);
-    if (messageIndex > 0) {
-      const previousMessage = messages[messageIndex - 1];
-      if (previousMessage.role === 'user') {
-        handleSendMessage(previousMessage.content, previousMessage.attachments);
-      }
+  const handleRetryMessage = useCallback(async (messageId: string) => {
+    console.log('🔄 Retrying message:', messageId);
+    
+    if (isLoading) {
+      console.warn('Cannot retry while another message is being processed');
+      return;
     }
-  }, [messages, handleSendMessage]);
+    
+    // Find the assistant message being retried
+    const assistantMessageIndex = messages.findIndex(m => m.id === messageId);
+    if (assistantMessageIndex === -1) {
+      console.error('Assistant message not found for retry');
+      return;
+    }
+    
+    const assistantMessage = messages[assistantMessageIndex];
+    if (assistantMessage.role !== 'assistant') {
+      console.error('Can only retry assistant messages');
+      return;
+    }
+    
+    // Find the corresponding user message (should be right before the assistant message)
+    if (assistantMessageIndex === 0) {
+      console.error('No user message found before assistant message');
+      return;
+    }
+    
+    const userMessage = messages[assistantMessageIndex - 1];
+    if (userMessage.role !== 'user') {
+      console.error('Previous message is not a user message');
+      return;
+    }
+    
+    console.log('🔄 Retrying with user message:', {
+      userMessageId: userMessage.id,
+      assistantMessageId: assistantMessage.id,
+      userContent: userMessage.content.substring(0, 100) + (userMessage.content.length > 100 ? '...' : ''),
+      hasAttachments: !!userMessage.attachments?.length,
+      messageIndex: assistantMessageIndex
+    });
+    
+    try {
+      // Remove both messages from the state immediately for responsive UI
+      const messagesBeforePair = messages.slice(0, assistantMessageIndex - 1);
+      const messagesAfterPair = messages.slice(assistantMessageIndex + 1);
+      const updatedMessages = [...messagesBeforePair, ...messagesAfterPair];
+      
+      setMessages(updatedMessages);
+      
+      // Delete both messages from the database
+      if (currentSession) {
+        try {
+          await claraDB.deleteMessage(currentSession.id, userMessage.id);
+          await claraDB.deleteMessage(currentSession.id, assistantMessage.id);
+          console.log('✅ Deleted message pair from database');
+        } catch (dbError) {
+          console.error('Failed to delete messages from database:', dbError);
+          // Continue anyway - the messages are already removed from UI
+        }
+      }
+      
+      // Resend the user message (with its current content, which might have been edited)
+      console.log('🚀 Resending user message with content:', userMessage.content.substring(0, 100) + '...');
+      await handleSendMessage(userMessage.content, userMessage.attachments);
+      
+    } catch (error) {
+      console.error('Failed to retry message:', error);
+      // On error, restore the messages to the state
+      setMessages(messages);
+    }
+  }, [messages, handleSendMessage, currentSession, isLoading]);
 
-  const handleEditMessage = useCallback((messageId: string, newContent: string) => {
-    console.log('Editing message:', messageId, newContent);
-    // Implementation for editing messages
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    console.log('Editing message:', messageId, 'new content length:', newContent.length);
+    
+    // Update message in state immediately for responsive UI
     setMessages(prev => prev.map(msg => 
       msg.id === messageId 
         ? { ...msg, content: newContent, timestamp: new Date() }
         : msg
     ));
-  }, []);
+    
+    // Save the edited message to database
+    if (currentSession) {
+      try {
+        await claraDB.updateClaraMessage(currentSession.id, messageId, {
+          content: newContent,
+          timestamp: new Date()
+        });
+        console.log('✅ Message edit saved to database');
+      } catch (dbError) {
+        console.error('Failed to save edited message to database:', dbError);
+        // The edit is still visible in the UI, so this is not a critical failure
+      }
+    }
+  }, [currentSession]);
 
   // Handle stopping generation
   const handleStop = useCallback(() => {
@@ -2619,10 +2692,10 @@ Would you like me to help with text-only responses for now?`,
     };
 
     (window as any).setupTestMCP = async () => {
-      console.log('🔧 Setting up test MCP server...');
-      const success = await claraMCPService.setupTestGitHubServer();
+      console.log('🔧 Setting up bundled Python MCP server...');
+      const success = await claraMCPService.setupBundledPythonMCPServer();
       if (success) {
-        console.log('✅ Test MCP server setup complete');
+        console.log('✅ Bundled Python MCP server setup complete');
         await claraMCPService.refresh();
         console.log('📊 Updated MCP status:', {
           servers: claraMCPService.getRunningServers().length,
@@ -2956,13 +3029,12 @@ Execution result: undefined
 
 Console output:`;
 
-      const userRequest = "What's my current location?";
       const completedTools = [{ name: 'mcp_puppeteer_evaluate' }];
       
       console.log('📝 Raw response (before processing):');
       console.log(rawResponse);
       
-      const cleanedResponse = await postProcessAutonomousResponse(rawResponse, userRequest, completedTools);
+      const cleanedResponse = await postProcessAutonomousResponse(rawResponse, completedTools);
       
       console.log('\n✨ Cleaned response (after processing):');
       console.log(cleanedResponse);
@@ -3634,7 +3706,6 @@ Let me execute this for you.`;
  */
 const postProcessAutonomousResponse = async (
   rawResponse: string, 
-  userRequest: string, 
   completedTools: any[]
 ): Promise<string> => {
     try {

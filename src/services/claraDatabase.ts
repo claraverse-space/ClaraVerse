@@ -184,6 +184,37 @@ export class ClaraDatabaseService {
   }
 
   /**
+   * Update a message in the database
+   */
+  async updateMessage(sessionId: string, messageId: string, updates: Partial<ClaraMessage>): Promise<void> {
+    const existingRecord = await indexedDBService.get<ClaraMessageRecord>(this.MESSAGES_STORE, messageId);
+    if (!existingRecord) throw new Error(`Message ${messageId} not found`);
+
+    const updatedRecord: ClaraMessageRecord = {
+      ...existingRecord,
+      ...updates,
+      sessionId, // Ensure session ID is maintained
+      timestamp: updates.timestamp ? updates.timestamp.toISOString() : existingRecord.timestamp,
+    };
+
+    await indexedDBService.put(this.MESSAGES_STORE, updatedRecord);
+  }
+
+  /**
+   * Delete a message and its associated files
+   */
+  async deleteMessage(sessionId: string, messageId: string): Promise<void> {
+    // Delete all files associated with this message
+    const files = await indexedDBService.getAll<ClaraFileRecord>(this.FILES_STORE);
+    for (const file of files.filter(f => f.messageId === messageId && f.sessionId === sessionId)) {
+      await indexedDBService.delete(this.FILES_STORE, file.id);
+    }
+
+    // Delete the message itself
+    await indexedDBService.delete(this.MESSAGES_STORE, messageId);
+  }
+
+  /**
    * Delete a session and all its messages and files
    */
   async deleteSession(sessionId: string): Promise<void> {

@@ -34,10 +34,10 @@ export class ClaraMCPService {
       console.log('🔧 Initializing Clara MCP Service...');
       await this.refreshServers();
       
-      // If no servers exist, set up a test GitHub server
+      // If no servers exist, set up a bundled Python MCP server
       if (this.servers.size === 0) {
-        console.log('📦 No MCP servers found, setting up test GitHub server...');
-        await this.setupTestGitHubServer();
+        console.log('📦 No MCP servers found, setting up bundled Python MCP server...');
+        await this.setupBundledPythonMCPServer();
       }
       
       await this.discoverToolsAndResources();
@@ -196,7 +196,9 @@ export class ClaraMCPService {
     } catch (error) {
       console.warn(`⚠️ Dynamic tool discovery failed for server ${server.name}:`, error);
       // Optionally, fallback to hardcoded tools for known servers (legacy/test only)
-      if (server.name === 'github') {
+      if (server.name === 'python-mcp') {
+        this.addPythonMCPTools(server.name);
+      } else if (server.name === 'github') {
         this.addGitHubTools(server.name);
       } else if (server.name === 'filesystem') {
         this.addFileSystemTools(server.name);
@@ -325,6 +327,53 @@ export class ClaraMCPService {
     ];
 
     for (const tool of githubTools) {
+      this.tools.set(`${serverName}:${tool.name}`, tool);
+    }
+  }
+
+  /**
+   * Add Python MCP-specific tools (fallback for bundled server)
+   */
+  private addPythonMCPTools(serverName: string): void {
+    const pythonMCPTools: ClaraMCPTool[] = [
+      {
+        name: 'execute_python',
+        description: 'Execute Python code safely',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'Python code to execute' }
+          },
+          required: ['code']
+        },
+        server: serverName
+      },
+      {
+        name: 'install_package',
+        description: 'Install Python packages',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            package: { type: 'string', description: 'Package name to install' },
+            version: { type: 'string', description: 'Specific version (optional)' }
+          },
+          required: ['package']
+        },
+        server: serverName
+      },
+      {
+        name: 'list_packages',
+        description: 'List installed Python packages',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: []
+        },
+        server: serverName
+      }
+    ];
+
+    for (const tool of pythonMCPTools) {
       this.tools.set(`${serverName}:${tool.name}`, tool);
     }
   }
@@ -1133,35 +1182,52 @@ export class ClaraMCPService {
   }
 
   /**
-   * Set up a test GitHub MCP server
+   * Get the path to the bundled Python MCP server executable
    */
-  public async setupTestGitHubServer(): Promise<boolean> {
+   private getPythonMCPExecutablePath(): string {
+    // Use a simple path pattern - the backend will resolve the actual path
+    // This pattern will be resolved by the MCP service in the backend
+    return 'python-mcp-server'; // The backend will append the correct suffix
+  }
+
+  /**
+   * Set up the bundled Python MCP server (replaces GitHub server)
+   */
+  public async setupBundledPythonMCPServer(): Promise<boolean> {
     try {
       if (!window.mcpService) {
         console.error('❌ MCP service not available in window object');
         return false;
       }
 
-      console.log('🔧 Setting up test GitHub MCP server...');
+      console.log('🔧 Setting up bundled Python MCP server...');
       
-      const githubServerConfig = {
-        name: 'github',
+      // Get the path to the bundled executable
+      let executablePath: string;
+      try {
+        executablePath = this.getPythonMCPExecutablePath();
+        console.log('📍 Python MCP executable path:', executablePath);
+      } catch (pathError) {
+        console.error('❌ Failed to determine Python MCP executable path:', pathError);
+        return false;
+      }
+      
+      const pythonMCPServerConfig = {
+        name: 'python-mcp',
         type: 'stdio' as const,
-        command: 'npx',
-        args: ['@modelcontextprotocol/server-github'],
-        env: {
-          GITHUB_PERSONAL_ACCESS_TOKEN: 'your-github-token-here'
-        },
-        description: 'GitHub repository and issue management',
+        command: executablePath,
+        args: [], // Direct executable, no arguments needed
+        env: {}, // No special environment variables needed
+        description: 'Bundled Python MCP Server (Clara Native)',
         enabled: true
       };
 
       try {
-        await window.mcpService.addServer(githubServerConfig);
-        console.log('✅ GitHub MCP server added successfully');
+        await window.mcpService.addServer(pythonMCPServerConfig);
+        console.log('✅ Python MCP server added successfully');
       } catch (error: any) {
         if (error.message?.includes('already exists')) {
-          console.log('ℹ️ GitHub MCP server already exists, skipping add');
+          console.log('ℹ️ Python MCP server already exists, skipping add');
         } else {
           throw error;
         }
@@ -1169,12 +1235,12 @@ export class ClaraMCPService {
 
       // Try to start the server
       try {
-        console.log('🚀 Attempting to start GitHub MCP server...');
-        await window.mcpService.startServer('github');
-        console.log('✅ GitHub MCP server started successfully');
+        console.log('🚀 Attempting to start Python MCP server...');
+        await window.mcpService.startServer('python-mcp');
+        console.log('✅ Python MCP server started successfully');
       } catch (startError) {
-        console.warn('⚠️ Failed to start GitHub MCP server (this is expected without proper credentials):', startError);
-        // Continue anyway - we'll add tools in testing mode
+        console.warn('⚠️ Failed to start Python MCP server:', startError);
+        // Continue anyway - the server is configured and can be started manually
       }
       
       // Refresh our local state
@@ -1183,7 +1249,7 @@ export class ClaraMCPService {
       
       return true;
     } catch (error) {
-      console.error('❌ Failed to setup GitHub MCP server:', error);
+      console.error('❌ Failed to setup Python MCP server:', error);
       return false;
     }
   }

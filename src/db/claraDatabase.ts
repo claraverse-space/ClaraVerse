@@ -114,6 +114,30 @@ export class ClaraDatabase {
   }
 
   /**
+   * Update a message in a Clara session
+   */
+  async updateClaraMessage(sessionId: string, messageId: string, updates: Partial<ClaraMessage>): Promise<void> {
+    await claraDatabaseService.updateMessage(sessionId, messageId, updates);
+    
+    // Update session's updatedAt timestamp
+    await claraDatabaseService.updateSession(sessionId, {
+      updatedAt: new Date()
+    });
+  }
+
+  /**
+   * Delete a message from a Clara session
+   */
+  async deleteMessage(sessionId: string, messageId: string): Promise<void> {
+    await claraDatabaseService.deleteMessage(sessionId, messageId);
+    
+    // Update session's updatedAt timestamp
+    await claraDatabaseService.updateSession(sessionId, {
+      updatedAt: new Date()
+    });
+  }
+
+  /**
    * Get Clara storage statistics
    */
   async getClaraStorageStats(): Promise<{
