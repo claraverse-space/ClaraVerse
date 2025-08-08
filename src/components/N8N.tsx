@@ -4,7 +4,7 @@ import Topbar from './Topbar';
 import Store from './n8n_components/Store';
 import MiniStore from './n8n_components/MiniStore';
 import N8NStartupModal from './N8NStartupModal';
-import { Plus, Trash2, Check, X,  AlertCircle,  ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon, WifiOff } from 'lucide-react';
+import { Plus, Trash2, Check, X,  AlertCircle,  ExternalLink, RefreshCcw, Terminal, Send, Webhook, Wrench, Settings2, Store as StoreIcon, Lightbulb, Copy } from 'lucide-react';
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
 import { db } from '../db';
@@ -139,6 +139,10 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   const [showNewFeatureTag, setShowNewFeatureTag] = useState(false);
   const [showMiniStore, setShowMiniStore] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [hasSuccessfulTest, setHasSuccessfulTest] = useState(false);
+  const [showToolCreatedModal, setShowToolCreatedModal] = useState(false);
+  const [showCredentialsTips, setShowCredentialsTips] = useState(false);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // N8N startup modal state
   const [showStartupModal, setShowStartupModal] = useState(false);
@@ -423,13 +427,16 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       if (response.ok) {
         setTestResult('✅ Webhook test successful!');
         setWebhookResponse(responseText);
+        setHasSuccessfulTest(true);
       } else {
         setTestResult(`❌ Webhook test failed: ${response.status} ${response.statusText}`);
         setWebhookResponse(`Error: ${response.status} ${response.statusText}\n\n${responseText}`);
+        setHasSuccessfulTest(false);
       }
     } catch (error) {
       setTestResult(`❌ Webhook test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setWebhookResponse(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setHasSuccessfulTest(false);
     } finally {
       setIsTestingWebhook(false);
     }
@@ -482,6 +489,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
       setToolName('');
       setToolDescription('');
       setToolCreationError(null);
+      setShowToolCreatedModal(true);
     } catch (err) {
       setToolCreationError(err instanceof Error ? err.message : 'Failed to create tool');
     }
@@ -506,25 +514,16 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   };
 
   const renderWebhookTester = () => {
-    const currentStep = !webhookUrl ? 1 : !testResult && !webhookResponse ? 2 : 3;
-    
     return (
-      <div className="w-96 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 overflow-y-auto flex flex-col">
+      <div className="w-80 bg-white dark:bg-black overflow-y-auto flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Webhook className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Webhook Tool Studio
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Test webhooks & create AI tools
-                </p>
-              </div>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">{/* Keep only bottom border for separation */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Webhook className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Webhook Tester &<br /> Tool Creator
+              </h3>
             </div>
             <button
               onClick={() => {
@@ -533,71 +532,47 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                 setWebhookUrl('');
                 setWebhookResponse(null);
                 setTestResult(null);
+                setHasSuccessfulTest(false);
               }}
-              className="p-2 rounded-lg hover:bg-white/80 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-          
-          {/* Progress Steps */}
-          <div className="flex items-center gap-2">
-            {[1, 2, 3].map((step) => (
-              <React.Fragment key={step}>
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-all ${
-                  step <= currentStep 
-                    ? 'bg-blue-600 text-white shadow-md' 
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                }`}>
-                  {step < currentStep ? <Check className="w-4 h-4" /> : step}
-                </div>
-                {step < 3 && (
-                  <div className={`flex-1 h-1 rounded-full transition-all ${
-                    step < currentStep ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
-                  }`} />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-4 space-y-6">
           {/* Step 1: Configure Webhook */}
-          <div className={`space-y-6 ${currentStep !== 1 && webhookResponse ? 'opacity-75' : ''}`}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className={`w-2 h-2 rounded-full ${currentStep === 1 ? 'bg-blue-600' : 'bg-gray-300'}`} />
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${!webhookUrl ? 'bg-gray-600 dark:bg-gray-300' : 'bg-green-500'}`} />
               <h4 className="font-medium text-gray-900 dark:text-white">Configure Webhook</h4>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Webhook URL *
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Webhook URL
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={webhookUrl}
-                    onChange={(e) => setWebhookUrl(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white transition-all pl-10"
-                    placeholder="https://api.example.com/webhook"
-                  />
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                    <div className="w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600" />
-                  </div>
-                </div>
+                <input
+                  type="text"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 dark:bg-gray-900 dark:text-white text-sm"
+                  placeholder="https://api.example.com/webhook"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Method
                   </label>
                   <select
                     value={webhookMethod}
                     onChange={(e) => setWebhookMethod(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 dark:bg-gray-900 dark:text-white text-sm"
                   >
                     <option value="GET">GET</option>
                     <option value="POST">POST</option>
@@ -610,7 +585,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                   <button
                     onClick={handleTestWebhook}
                     disabled={!webhookUrl || isTestingWebhook}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded-lg shadow-sm disabled:cursor-not-allowed transition-colors"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 rounded-lg disabled:cursor-not-allowed transition-colors"
                   >
                     {isTestingWebhook ? (
                       <>
@@ -629,15 +604,15 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
 
               {webhookMethod !== 'GET' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Request Body (JSON)
                   </label>
                   <textarea
                     value={webhookBody}
                     onChange={(e) => setWebhookBody(e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
-                    placeholder='{\n  "message": "Hello World",\n  "data": {}\n}'
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
+                    placeholder='{"message": "Hello World"}'
                   />
                 </div>
               )}
@@ -646,28 +621,28 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
 
           {/* Step 2: Test Results */}
           {(testResult || webhookResponse) && (
-            <div className="mt-8 space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <div className={`w-2 h-2 rounded-full ${currentStep === 2 ? 'bg-blue-600' : 'bg-green-500'}`} />
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${testResult?.includes('✅') ? 'bg-green-500' : 'bg-red-500'}`} />
                 <h4 className="font-medium text-gray-900 dark:text-white">Test Results</h4>
               </div>
 
               {testResult && (
-                <div className={`p-4 rounded-lg border-l-4 ${
+                <div className={`p-3 rounded-lg border ${
                   testResult.includes('✅') 
-                    ? 'bg-green-50 border-green-400 dark:bg-green-900/20 dark:border-green-400' 
-                    : 'bg-red-50 border-red-400 dark:bg-red-900/20 dark:border-red-400'
+                    ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' 
+                    : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
                 }`}>
                   <div className="flex items-center gap-2">
                     {testResult.includes('✅') ? (
-                      <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
                     ) : (
-                      <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
                     )}
-                    <span className={`text-sm font-medium ${
+                    <span className={`text-sm ${
                       testResult.includes('✅') 
-                        ? 'text-green-800 dark:text-green-200' 
-                        : 'text-red-800 dark:text-red-200'
+                        ? 'text-green-700 dark:text-green-300' 
+                        : 'text-red-700 dark:text-red-300'
                     }`}>
                       {testResult}
                     </span>
@@ -676,20 +651,20 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
               )}
 
               {webhookResponse && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Response Data
                   </label>
                   <div className="relative">
-                    <pre className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto text-sm font-mono max-h-48">
+                    <pre className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto text-sm font-mono max-h-32 text-gray-900 dark:text-gray-100">
                       {webhookResponse}
                     </pre>
                     <button
                       onClick={() => navigator.clipboard.writeText(webhookResponse)}
-                      className="absolute top-3 right-3 p-1.5 rounded bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      className="absolute top-2 right-2 p-1 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       title="Copy response"
                     >
-                      <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     </button>
@@ -700,26 +675,28 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           )}
 
           {/* Step 3: Create Tool */}
-          {webhookResponse && testResult?.includes('✅') && (
-            <div className="mt-8 space-y-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className={`w-2 h-2 rounded-full ${showCreateTool ? 'bg-blue-600' : 'bg-gray-300'}`} />
+          {webhookResponse && hasSuccessfulTest && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${showCreateTool ? 'bg-gray-600 dark:bg-gray-300' : 'bg-gray-300 dark:bg-gray-600'}`} />
                 <h4 className="font-medium text-gray-900 dark:text-white">Create AI Tool</h4>
               </div>
 
               {!showCreateTool ? (
-                <div className="p-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+                <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
                   <div className="text-center space-y-3">
-                    <div className="mx-auto w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
-                      <Wrench className="w-6 h-6 text-white" />
+                    <div className="mx-auto w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
+                      <Wrench className="w-5 h-5 text-white" />
                     </div>
-                    <h5 className="font-medium text-gray-900 dark:text-white">Turn into AI Tool</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mx-auto">
-                      Transform this working webhook into a Clara Assistant tool that can be used in conversations.
-                    </p>
+                    <div>
+                      <h5 className="font-medium text-gray-900 dark:text-white">Turn into AI Tool</h5>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Create a Clara Assistant tool from this webhook
+                      </p>
+                    </div>
                     <button
                       onClick={() => setShowCreateTool(true)}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium rounded-lg shadow-lg transition-all transform hover:scale-105"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors text-sm"
                     >
                       <Wrench className="w-4 h-4" />
                       Create Tool
@@ -727,17 +704,17 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4 p-6 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Tool Name *
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tool Name
                     </label>
                     <input
                       type="text"
                       value={toolName}
                       onChange={(e) => setToolName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                       placeholder="my_awesome_tool"
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:text-white"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 dark:bg-gray-800 dark:text-white text-sm"
                     />
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Lowercase letters, numbers, and underscores only
@@ -745,19 +722,16 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Description *
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description
                     </label>
                     <textarea
                       value={toolDescription}
                       onChange={(e) => setToolDescription(e.target.value)}
                       rows={3}
-                      placeholder="This helpful tool allows Clara to..."
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:text-white"
+                      placeholder="This tool allows Clara to..."
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 dark:bg-gray-800 dark:text-white text-sm"
                     />
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Describe what this tool does for Clara
-                    </p>
                   </div>
 
                   {toolCreationError && (
@@ -769,11 +743,11 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 pt-2">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={handleCreateTool}
                       disabled={!toolName || !toolDescription}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 rounded-lg shadow-sm disabled:cursor-not-allowed transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 rounded-lg disabled:cursor-not-allowed transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       Create Tool
@@ -785,7 +759,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                         setToolDescription('');
                         setToolCreationError(null);
                       }}
-                      className="px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     >
                       Cancel
                     </button>
@@ -796,24 +770,22 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           )}
         </div>
 
-        {/* Quick Actions Footer */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span>Webhook Studio</span>
-            <button
-              onClick={() => {
-                setWebhookUrl('');
-                setWebhookResponse(null);
-                setTestResult(null);
-                setShowCreateTool(false);
-                setToolName('');
-                setToolDescription('');
-              }}
-              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-            >
-              Reset All
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <button
+            onClick={() => {
+              setWebhookUrl('');
+              setWebhookResponse(null);
+              setTestResult(null);
+              setShowCreateTool(false);
+              setToolName('');
+              setToolDescription('');
+              setHasSuccessfulTest(false);
+            }}
+            className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            Reset All
+          </button>
         </div>
       </div>
     );
@@ -821,8 +793,8 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
 
   const renderToolsList = () => {
     return (
-      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="w-80 bg-white dark:bg-black overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">{/* Keep only bottom border for separation */}
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
               <Settings2 className="w-5 h-5" />
@@ -896,6 +868,220 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCredentialsTips = () => {
+    const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      setTimeout(() => setCopiedText(null), 2000);
+    };
+
+    return (
+      <div className="w-96 bg-white dark:bg-black overflow-y-auto flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Lightbulb className="w-5 h-5 text-yellow-500" />
+                <div className="absolute inset-0 rounded-full bg-yellow-400/20 blur-sm animate-pulse" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Tips to make the most of N8N in ClaraVerse
+              </h3>
+            </div>
+            <button
+              onClick={() => setShowCredentialsTips(false)}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-6 space-y-8">
+          {/* Local AI Models Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-yellow-500" />
+              <h4 className="font-medium text-gray-900 dark:text-white">Local AI Models Integration</h4>
+            </div>
+            
+            <div className="p-5 bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-sm font-bold text-white">💡</span>
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <h5 className="font-semibold text-gray-900 dark:text-white">
+                      N8N + Local Models Base URL
+                    </h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                      Use this URL to connect N8N with your local AI models:
+                    </p>
+                    <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
+                      <code className="flex-1 text-sm font-mono text-gray-900 dark:text-gray-100">
+                        http://localhost:8091/v1
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard('http://localhost:8091/v1')}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          copiedText === 'http://localhost:8091/v1'
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}
+                        title={copiedText === 'http://localhost:8091/v1' ? 'Copied!' : 'Copy URL'}
+                      >
+                        {copiedText === 'http://localhost:8091/v1' ? (
+                          <Check className="w-4 h-4" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                      <p className="text-xs text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
+                        <span className="text-yellow-600">⚠️</span>
+                        Note: This only works when N8N is running in Docker locally
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Webhook Tools Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <h4 className="font-medium text-gray-900 dark:text-white">Creating Powerful Clara Tools</h4>
+            </div>
+            
+            <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Webhook className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <h5 className="font-semibold text-gray-900 dark:text-white">
+                      Webhook → Clara Assistant Tools
+                    </h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                      Transform your N8N workflows into Clara's superpowers:
+                    </p>
+                    <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+                      <li className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        Create webhooks in N8N workflows
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        Test them using our Webhook Tester
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        Convert to Clara tools with one click
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        Ask Clara to use your workflows!
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Authentication Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <h4 className="font-medium text-gray-900 dark:text-white">Authentication & Login</h4>
+            </div>
+            
+            <div className="p-5 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ExternalLink className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <h5 className="font-semibold text-gray-900 dark:text-white">
+                      Need to Login or Authenticate?
+                    </h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                      This embedded view has limitations for security reasons.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => window.open(n8nUrl, '_blank')}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 hover:scale-105"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Open in New Browser
+                      </button>
+                    </div>
+                    <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                      <p className="text-xs text-purple-800 dark:text-purple-300 flex items-center gap-2">
+                        <span className="text-purple-600">💡</span>
+                        Use this for OAuth, API key setup, or complex authentication
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pro Tips Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <h4 className="font-medium text-gray-900 dark:text-white">Pro Developer Tips</h4>
+            </div>
+            
+            <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-sm font-bold text-white">⚡</span>
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <h5 className="font-semibold text-gray-900 dark:text-white">
+                      Quick Tips for Success
+                    </h5>
+                    <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-3">
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="leading-relaxed">Always test webhooks before creating Clara tools</span>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="leading-relaxed">Use descriptive tool names (lowercase + underscores)</span>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="leading-relaxed">Your Clara tools work across all chat conversations</span>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="leading-relaxed">Check Clara's Tool Belt to manage all your tools</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1018,6 +1204,18 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     </div>
                   </button>
                   <button
+                    onClick={() => setShowCredentialsTips(!showCredentialsTips)}
+                    className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showCredentialsTips ? 'bg-gray-100 dark:bg-gray-900' : ''} group relative`}
+                  >
+                    <div className="relative">
+                      <Lightbulb className="w-4 h-4" />
+                      <div className="absolute inset-0 rounded-full bg-yellow-400/30 blur-sm animate-pulse" />
+                    </div>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Tips
+                    </div>
+                  </button>
+                  <button
                     onClick={() => setShowToolsList(!showToolsList)}
                     className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-600 dark:text-gray-300 ${showToolsList ? 'bg-gray-100 dark:bg-gray-900' : ''} group relative`}
                   >
@@ -1069,6 +1267,8 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
             )}
 
             {!showStore && showToolsList && renderToolsList()}
+
+            {!showStore && showCredentialsTips && renderCredentialsTips()}
           </div>
         </main>
       </div>
@@ -1081,6 +1281,33 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
         n8nMode={n8nMode}
         n8nUrl={n8nUrl}
       />
+
+      {/* Tool Created Success Modal */}
+      {showToolCreatedModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <div className="text-center space-y-4">
+              <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Tool Created Successfully!
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                  Your tool is now part of Clara Chat. Ask Clara to do certain things and it will use your workflow to help you accomplish tasks.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowToolCreatedModal(false)}
+                className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors"
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -58,8 +58,46 @@ const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9
 /**
  * Get default system prompt for a provider
  */
-const getDefaultSystemPrompt = (provider: ClaraProvider, artifactConfig?: any): string => {
+const getDefaultSystemPrompt = (provider: ClaraProvider, artifactConfig?: any, userInfo?: { name?: string; email?: string; timezone?: string }): string => {
   const providerName = provider?.name || 'AI Assistant';
+  
+  // Generate user context information
+  const getUserContext = (): string => {
+    if (!userInfo?.name && !userInfo?.email) {
+      return '';
+    }
+    
+    const currentTime = new Date();
+    const timeZone = userInfo?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // Format current time with user's timezone
+    const formattedTime = currentTime.toLocaleString('en-US', {
+      timeZone: timeZone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+    
+    let context = `\n## 👤 USER CONTEXT\n`;
+    if (userInfo?.name) {
+      context += `- User's Name: ${userInfo.name}\n`;
+    }
+    if (userInfo?.email) {
+      context += `- User's Email: ${userInfo.email}\n`;
+    }
+    context += `- Current Time: ${formattedTime}\n`;
+    context += `- User's Timezone: ${timeZone}\n\n`;
+    context += `Use this information to personalize your responses appropriately. Address the user by their name when it feels natural, and be aware of their local time for time-sensitive suggestions or greetings.\n\n`;
+    
+    return context;
+  };
+  
+  const userContext = getUserContext();
   
   // Check if artifact generation is enabled
   const artifactsEnabled = artifactConfig?.autoDetectArtifacts ?? true;
@@ -341,16 +379,16 @@ when you are asked for something always resort to writing a python script and ru
 
   switch (provider?.type) {
     case 'ollama':
-      return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
+      return `${userContext}You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openai':
-      return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
+      return `${userContext}You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
       
     case 'openrouter':
-      return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
+      return `${userContext}You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
       
     case 'claras-pocket':
-      return `# Clara - Privacy-First AI 🎯
+      return `${userContext}# Clara - Privacy-First AI 🎯
 
 You're Clara, a tech-savvy friend on user's device. Be real, helpful, chill.
 
@@ -391,7 +429,7 @@ Skip for: quick answers, simple lists
 **Remember:** Knowledge friend who wants to help. When limited, suggest agent mode for full capabilities..${artifactGuidance} ${toolsGuidance}`;
       
     default:
-      return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
+      return `${userContext}You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
   }
 };
 
@@ -434,6 +472,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   
   // User and session state
   const [userName, setUserName] = useState<string>('');
+  const [userInfo, setUserInfo] = useState<{ name?: string; email?: string; timezone?: string } | null>(null);
   const [currentSession, setCurrentSession] = useState<ClaraChatSession | null>(null);
   const [messages, setMessages] = useState<ClaraMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -737,6 +776,13 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       if (personalInfo?.name) {
         const formattedName = personalInfo.name.charAt(0).toUpperCase() + personalInfo.name.slice(1).toLowerCase();
         setUserName(formattedName);
+        
+        // Store complete user info for system prompts
+        setUserInfo({
+          name: formattedName,
+          email: personalInfo.email,
+          timezone: personalInfo.timezone
+        });
       }
     };
     
@@ -1032,16 +1078,8 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
               provider: primaryProvider.id,
               systemPrompt: getDefaultSystemPrompt(primaryProvider, {
                 enableCodeArtifacts: true,
-                enableChartArtifacts: true,
-                enableTableArtifacts: true,
-                enableMermaidArtifacts: true,
-                enableHtmlArtifacts: true,
-                enableMarkdownArtifacts: true,
-                enableJsonArtifacts: true,
-                enableDiagramArtifacts: true,
-                autoDetectArtifacts: true,
-                maxArtifactsPerMessage: 10
-              }),
+                autoDetectArtifacts: true
+              }, userInfo || undefined),
               models: {
                 text: textModel?.id || '',
                 vision: visionModel?.id || '',
@@ -1121,7 +1159,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
     };
 
     loadProvidersAndModels();
-  }, []);
+  }, [userInfo]);
 
   // Monitor models availability to show/hide no models modal
   useEffect(() => {
@@ -1279,9 +1317,9 @@ Please provide your refined response for following user question:
       }
 
       // Get system prompt for refinement
-      const systemPrompt = getDefaultSystemPrompt(currentProvider, streamingConfig.artifacts);
+      const systemPrompt = getDefaultSystemPrompt(currentProvider, streamingConfig.artifacts, userInfo || undefined);
       
-      console.log('📡 Sending refinement request with streaming...');
+      console.log('�� Sending refinement request with streaming...');
       
       // Send refinement request with streaming
       const refinementResponse = await claraApiService.sendChatMessage(
@@ -1553,7 +1591,7 @@ Please provide your refined response for following user question:
       // Get system prompt (provider-specific or fallback to default)
       const currentProvider = providers.find(p => p.id === enforcedConfig.provider);
       const systemPrompt = enforcedConfig.systemPrompt || 
-                          (currentProvider ? getDefaultSystemPrompt(currentProvider, enforcedConfig.artifacts) : 'You are Clara, a helpful AI assistant.');
+                          (currentProvider ? getDefaultSystemPrompt(currentProvider, enforcedConfig.artifacts, userInfo || undefined) : 'You are Clara, a helpful AI assistant.');
       
       // Create enhanced streaming callback that updates both message content and status panel
       const enhancedStreamingCallback = (chunk: string) => {
@@ -2346,7 +2384,7 @@ Would you like me to help with text-only responses for now?`,
             enableDiagramArtifacts: true,
             autoDetectArtifacts: true,
             maxArtifactsPerMessage: 10
-          }),
+          }, userInfo || undefined),
           models: {
             text: textModel?.id || '',
             vision: visionModel?.id || '',

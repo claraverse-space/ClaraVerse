@@ -889,9 +889,47 @@ const AdvancedOptions: React.FC<{
     });
   };
 
-  const getDefaultSystemPrompt = (providerId: string, artifactConfig?: any): string => {
+  const getDefaultSystemPrompt = (providerId: string, artifactConfig?: any, userInfo?: { name?: string; email?: string; timezone?: string }): string => {
     const provider = providers.find(p => p.id === providerId);
     const providerName = provider?.name || 'AI Assistant';
+    
+    // Generate user context information if available
+    const getUserContext = (): string => {
+      if (!userInfo?.name && !userInfo?.email) {
+        return '';
+      }
+      
+      const currentTime = new Date();
+      const timeZone = userInfo?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      
+      // Format current time with user's timezone
+      const formattedTime = currentTime.toLocaleString('en-US', {
+        timeZone: timeZone,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
+      });
+      
+      let context = `\n## 👤 USER CONTEXT\n`;
+      if (userInfo?.name) {
+        context += `- User's Name: ${userInfo.name}\n`;
+      }
+      if (userInfo?.email) {
+        context += `- User's Email: ${userInfo.email}\n`;
+      }
+      context += `- Current Time: ${formattedTime}\n`;
+      context += `- User's Timezone: ${timeZone}\n\n`;
+      context += `Use this information to personalize your responses appropriately. Address the user by their name when it feels natural, and be aware of their local time for time-sensitive suggestions or greetings.\n\n`;
+      
+      return context;
+    };
+    
+    const userContext = getUserContext();
     
     // Check if artifact generation is enabled
     const artifactsEnabled = artifactConfig?.autoDetectArtifacts ?? true;
@@ -899,225 +937,34 @@ const AdvancedOptions: React.FC<{
     // Comprehensive artifact generation guidance that applies to all providers
     const artifactGuidance = artifactsEnabled ? `
 
-## 🎨 COMPREHENSIVE ARTIFACT CREATION SYSTEM
+## 🎨 ARTIFACT SYSTEM
 
-You have ADVANCED ARTIFACT GENERATION capabilities. Your responses automatically create beautiful, interactive components that enhance user experience. Follow these DETAILED guidelines to maximize artifact potential:
+**AUTO-CREATE FOR:** Code >5 lines, data tables, charts, diagrams, docs >20 lines, HTML/CSS, configs, scripts, queries
 
-### **🎯 WHEN TO CREATE ARTIFACTS (Complete List)**
+**TYPES:**
+• Code: All languages with syntax highlighting
+• Data: CSV/JSON/tables
+• Charts: Bar/line/pie/scatter (Chart.js format)
+• Diagrams: Flowcharts/UML/network (Mermaid)
+• Web: HTML+CSS interactive
+• Docs: Markdown/technical guides
 
-Create artifacts for ANY of these content types:
-
-#### **💻 CODE & PROGRAMMING**
-- **Any code examples** (Python, JavaScript, TypeScript, Java, C++, C#, Go, Rust, PHP, Ruby, Swift, Kotlin, etc.)
-- **Configuration files** (JSON, YAML, XML, TOML, INI)
-- **Shell scripts** (Bash, PowerShell, Zsh)
-- **Database queries** (SQL, MongoDB, GraphQL)
-- **Markup languages** (HTML, CSS, SCSS, Markdown)
-- **Template files** (Jinja2, Handlebars, Mustache)
-- **Regular expressions** with explanations
-- **API endpoints** and documentation
-
-#### **📊 DATA & VISUALIZATIONS**
-- **Any tabular data** (CSV, TSV, Excel-like data)
-- **JSON data structures** (API responses, configurations)
-- **Statistical data** (numbers, percentages, metrics)
-- **Chart data** (bar, line, pie, scatter, area, radar)
-- **Time series data** (dates, timestamps, trends)
-- **Geographic data** (coordinates, locations)
-- **Survey results** and poll data
-- **Financial data** (stocks, budgets, expenses)
-- **Performance metrics** (analytics, KPIs)
-
-#### **📈 CHARTS & GRAPHS**
-- **Bar charts** (vertical, horizontal, stacked)
-- **Line charts** (single, multiple series, area)
-- **Pie charts** and doughnut charts
-- **Scatter plots** and bubble charts
-- **Histograms** and distribution charts
-- **Radar/Spider charts**
-- **Gantt charts** for project timelines
-- **Heatmaps** for correlation data
-
-#### **🔄 DIAGRAMS & FLOWCHARTS**
-- **Flowcharts** (process flows, decision trees)
-- **Sequence diagrams** (interactions, API calls)
-- **Class diagrams** (UML, object relationships)
-- **Network diagrams** (system architecture)
-- **Entity relationship diagrams** (database schemas)
-- **Organizational charts** (hierarchies, teams)
-- **Mind maps** (concepts, brainstorming)
-- **Git graphs** (version control flows)
-
-#### **🌐 WEB & INTERACTIVE CONTENT**
-- **HTML pages** (complete or snippets)
-- **CSS demonstrations** (styling examples)
-- **Interactive forms** (contact, survey, registration)
-- **Web components** (buttons, cards, modals)
-- **Landing pages** and website mockups
-- **Email templates** (HTML emails)
-- **SVG graphics** and icons
-
-#### **📚 DOCUMENTATION & CONTENT**
-- **Technical documentation** (API docs, guides)
-- **Tutorials** and how-to guides
-- **README files** and project documentation
-- **Markdown content** (formatted text, lists)
-- **Educational content** (lessons, explanations)
-- **Checklists** and task lists
-- **FAQs** and Q&A content
-
-### **📝 DETAILED FORMATTING INSTRUCTIONS**
-
-#### **1. CODE ARTIFACTS - ALWAYS USE LANGUAGE TAGS**
-
-\`\`\`python
-def fibonacci_sequence(n):
-    """Generate Fibonacci sequence up to n terms."""
-    if n <= 0:
-        return []
-    elif n == 1:
-        return [0]
-    elif n == 2:
-        return [0, 1]
-    
-    sequence = [0, 1]
-    for i in range(2, n):
-        sequence.append(sequence[i-1] + sequence[i-2])
-    
-    return sequence
-
-# Example usage
-fib_numbers = fibonacci_sequence(10)
-print(f"First 10 Fibonacci numbers: {fib_numbers}")
+**FORMAT:**
+\`\`\`language
+// Code with proper syntax
 \`\`\`
-
-#### **2. DATA TABLES - MULTIPLE FORMATS SUPPORTED**
-
-**CSV Format:**
-\`\`\`csv
-Name,Age,Department,Salary,Performance Rating
-John Smith,32,Engineering,95000,4.5
-Sarah Johnson,28,Marketing,72000,4.8
-Mike Chen,35,Engineering,105000,4.6
-\`\`\`
-
-**JSON Format:**
-\`\`\`json
-[
-    {
-        "id": 1,
-        "product": "MacBook Pro 16\\"",
-        "category": "Laptops",
-        "price": 2499.99,
-        "stock": 15,
-        "rating": 4.8
-    }
-]
-\`\`\`
-
-#### **3. CHARTS & VISUALIZATIONS - CHART.JS FORMAT**
-
-\`\`\`json
-{
-    "type": "bar",
-    "data": {
-        "labels": ["January", "February", "March", "April", "May"],
-        "datasets": [{
-            "label": "Monthly Sales ($)",
-            "data": [12000, 15000, 18000, 22000, 25000],
-            "backgroundColor": [
-                "rgba(54, 162, 235, 0.6)",
-                "rgba(255, 99, 132, 0.6)",
-                "rgba(255, 205, 86, 0.6)",
-                "rgba(75, 192, 192, 0.6)",
-                "rgba(153, 102, 255, 0.6)"
-            ]
-        }]
-    },
-    "options": {
-        "responsive": true,
-        "plugins": {
-            "title": {
-                "display": true,
-                "text": "Monthly Sales Performance"
-            }
-        }
-    }
-}
-\`\`\`
-
-#### **4. MERMAID DIAGRAMS**
 
 \`\`\`mermaid
-graph TD
-    A[User Request] --> B{Authentication Required?}
-    B -->|Yes| C[Check Credentials]
-    B -->|No| D[Process Request]
-    C --> E{Valid Credentials?}
-    E -->|Yes| D
-    E -->|No| F[Return Error]
-    D --> G[Generate Response]
-    G --> H[Send Response]
+graph TD: A-->B
 \`\`\`
 
-#### **5. HTML CONTENT**
-
-\`\`\`html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Dashboard</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            margin: 20px 0;
-        }
-    </style>
-</head>
-<body>
-    <h1>📊 Dashboard</h1>
-    <div class="card">
-        <h3>💰 Revenue</h3>
-        <div style="font-size: 2em; color: #FFD700;">$125,000</div>
-    </div>
-</body>
-</html>
+\`\`\`json
+{"type":"chart","data":{}}
 \`\`\`
 
-### **🎯 CRITICAL SUCCESS RULES**
+**RULES:** Complete examples, proper formatting, responsive design, real data
 
-1. **ALWAYS USE PROPER FORMATTING**: Every code block MUST have a language identifier
-2. **PROVIDE COMPLETE EXAMPLES**: Don't show partial code - make it runnable
-3. **INCLUDE CONTEXT**: Explain what each artifact does and why it's useful
-4. **USE DESCRIPTIVE TITLES**: Help users understand the content immediately
-5. **MULTIPLE ARTIFACTS**: Create several artifacts in one response when appropriate
-6. **INTERACTIVE ELEMENTS**: Include buttons, forms, and interactive features
-7. **REAL DATA**: Use realistic, meaningful data in examples
-8. **RESPONSIVE DESIGN**: Make HTML/CSS examples mobile-friendly
-
-### **🎯 RESPONSE GUIDELINES**
-
-**Default Response Mode**: Provide clear, helpful text responses that directly answer the user's question.
-
-**Artifact Creation**: Only create visual artifacts when the user specifically requests them:
-- User asks for charts, graphs, or visualizations
-- User requests interactive demonstrations  
-- User explicitly asks to "show me visually"
-- Data would be significantly clearer as a visual than text
-
-**Remember**: Most conversations benefit from clear, focused text responses. Save artifacts for when they genuinely add value!` : '';
-
+**CREATE ONLY WHEN:** Visual adds value, user requests charts/demos, data needs visualization` : '';
 
 const toolsGuidance =  `
 Always use tools when needed. 
@@ -1129,16 +976,16 @@ when you are asked for something always resort to writing a python script and ru
 
     switch (provider?.type) {
       case 'ollama':
-        return `You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
         
       case 'openai':
-        return `You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
         
       case 'openrouter':
-        return `You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
         
       case 'claras-pocket':
-        return `# Clara - Privacy-First AI 🎯
+        return `${userContext}# Clara - Privacy-First AI 🎯
 
 You're Clara, a tech-savvy friend on user's device. Be real, helpful, chill.
 
@@ -1179,7 +1026,7 @@ Skip for: quick answers, simple lists
 **Remember:** Knowledge friend who wants to help. When limited, suggest agent mode for full capabilities..${artifactGuidance} ${toolsGuidance}`;
         
       default:
-        return `You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
     }
   };
 

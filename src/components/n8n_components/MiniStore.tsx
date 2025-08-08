@@ -100,7 +100,7 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
 
   if (isLoading) {
     return (
-      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
+      <div className="w-80 bg-white dark:bg-black overflow-y-auto">
         <div className="h-full flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
@@ -112,8 +112,8 @@ const MiniStore: React.FC<MiniStoreProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+    <div className="w-80 bg-white dark:bg-black overflow-y-auto">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-800">{/* Keep only bottom border for separation */}
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
             Quick Workflows
