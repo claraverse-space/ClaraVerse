@@ -42,7 +42,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         openai_base_url: 'https://api.openai.com/v1',
         api_type: 'clara_core' as 'clara_core' | 'openai'
     });
-    // const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [claraStatus, setClaraStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [animationClass, setAnimationClass] = useState('animate-fadeIn');
     const [logoError, setLogoError] = useState(false);
@@ -491,8 +491,12 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         
         try {
             for (const serviceName of servicesToStart) {
-                // Skip TTS as it's always Docker and auto-managed
-                if (serviceName === 'tts') continue;
+                // During onboarding, only start services that the user explicitly wants to start
+                // Skip TTS as it's a complex service that should be started on-demand later
+                if (serviceName === 'tts') {
+                    console.log('TTS service preference saved, but not auto-starting during onboarding');
+                    continue;
+                }
                 
                 const mode = serviceModes[serviceName as keyof typeof serviceModes];
                 const serviceUrl = serviceUrls[serviceName as keyof typeof serviceUrls];
@@ -589,10 +593,18 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             try {
                 const newConfig = {
                     comfyUI: selectedServices.comfyui,
-                    ragAndTts: selectedServices.tts,
+                    ragAndTts: false, // Don't auto-enable during onboarding to prevent downloads
                     n8n: selectedServices.n8n,
                     claraCore: true, // Always enabled
-                    userConsentGiven: true // Flag to indicate user has completed onboarding
+                    userConsentGiven: true, // Flag to indicate user has completed onboarding
+                    onboardingMode: true, // Flag to indicate this is during onboarding
+                    servicePreferences: {
+                        // Store actual user preferences separately
+                        comfyUI: selectedServices.comfyui,
+                        ragAndTts: selectedServices.tts,
+                        n8n: selectedServices.n8n,
+                        claraCore: true
+                    }
                 };
                 await (window as any).featureConfig.updateFeatureConfig(newConfig);
                 console.log('User service selections saved:', selectedServices);
@@ -611,16 +623,25 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             try {
                 await (window as any).electronAPI.createUserConsentFile({
                     hasConsented: true,
+                    onboardingMode: true, // Flag to indicate this is during onboarding
+                    autoStartServices: false, // Don't auto-start services during onboarding
                     services: {
                         comfyui: selectedServices.comfyui,
-                        python: selectedServices.tts, // TTS service runs as python backend
+                        python: false, // Don't auto-start Python backend during onboarding
                         n8n: selectedServices.n8n,
                         'clara-core': true // Always enabled
+                    },
+                    servicePreferences: {
+                        // Store user preferences separately from auto-start decisions
+                        comfyui: selectedServices.comfyui,
+                        tts: selectedServices.tts,
+                        n8n: selectedServices.n8n,
+                        'clara-core': true
                     },
                     timestamp: new Date().toISOString(),
                     onboardingVersion: '1.0'
                 });
-                console.log('User consent file created for watchdog service');
+                console.log('User consent file created for watchdog service (onboarding mode)');
             } catch (error) {
                 console.error('Failed to create user consent file:', error);
             }
@@ -633,6 +654,12 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                 
                 for (const [serviceName, enabled] of Object.entries(selectedServices)) {
                     if (enabled) {
+                        // Skip TTS service during onboarding to prevent automatic Python backend startup
+                        if (serviceName === 'tts') {
+                            console.log('TTS service preference noted but not configured during onboarding to prevent auto-start');
+                            continue;
+                        }
+                        
                         const mode = serviceModes[serviceName as keyof typeof serviceModes];
                         const serviceUrl = serviceUrls[serviceName as keyof typeof serviceUrls];
                         
@@ -689,6 +716,18 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                     }
                 } catch (verifyError) {
                     console.warn('Could not verify service configurations:', verifyError);
+                }
+                
+                // Explicitly disable Python/TTS service during onboarding to prevent auto-downloads
+                try {
+                    const disablePythonResult = await (window as any).electronAPI.invoke('service-config:disable-service', 'python');
+                    if (disablePythonResult.success) {
+                        console.log('✓ Python/TTS service explicitly disabled during onboarding');
+                    } else {
+                        console.warn('⚠ Could not disable Python/TTS service:', disablePythonResult.error);
+                    }
+                } catch (disableError) {
+                    console.warn('Could not disable Python/TTS service during onboarding:', disableError);
                 }
                 
             } catch (error) {
@@ -1204,11 +1243,16 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     <Server className="w-6 h-6 text-sakura-500"/>
                                 </div>
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                                    Choose Additional Services
+                                    Choose Additional Services (Optional)
                                 </h3>
                             </div>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Select the services you'd like to enable. Status indicators show current availability.
+                                Select the services you'd like to enable. <b>You must have docker installed to use these services.</b>
+                                <br/>
+                                <br/>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Note: During onboarding, only ComfyUI and N8N will be started if selected. TTS services will be available on-demand when needed. All services can be managed later in settings.
+                                </span>
                             </p>
 
                             <div className="space-y-4">
@@ -1243,7 +1287,12 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     </div>
                                     
                                     {selectedServices.comfyui && (
+                                        // small message about docker is not for linux and macOS
+                                        
                                         <div className="px-4 pb-4 space-y-2">
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            Note: Docker Image of Clara-ComfyUI is not supported on Linux and macOS. (Feel free to use your own ComfyUI instance)
+                                            </p>
                                             <div className="flex items-center gap-2 text-sm">
                                                 <span className="text-gray-600 dark:text-gray-400">Mode:</span>
                                                 <div className="flex gap-2">
@@ -1251,7 +1300,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                         onClick={() => setServiceModes(prev => ({...prev, comfyui: 'docker'}))}
                                                         className={`px-2 py-1 rounded text-xs ${serviceModes.comfyui === 'docker' ? 'bg-sakura-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
                                                     >
-                                                        Docker
+                                                        Docker (15.7GB - Windows CUDA Only)
                                                     </button>
                                                     <button
                                                         onClick={() => setServiceModes(prev => ({...prev, comfyui: 'manual'}))}
@@ -1330,7 +1379,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         <div className="flex-1">
                                             <label htmlFor="tts-service" className="cursor-pointer">
                                                 <div className="flex items-center gap-2">
-                                                    <h4 className="font-medium text-gray-900 dark:text-white">RAG & TTS</h4>
+                                                    <h4 className="font-medium text-gray-900 dark:text-white">RAG & TTS </h4>
                                                     {serviceStatuses.tts === 'checking' && (
                                                         <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
                                                     )}
@@ -1341,37 +1390,15 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                         <span className="text-gray-400 text-xs">○ Offline</span>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-600 dark:text-gray-400">Document analysis & voice synthesis (Clara's own service)</p>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400">Document analysis & voice synthesis (will start on-demand)</p>
                                             </label>
                                         </div>
                                     </div>
                                     
                                     {selectedServices.tts && (
                                         <div className="px-4 pb-4 space-y-2">
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={async () => {
-                                                        if (serviceStatuses.tts === 'unavailable') {
-                                                            setServiceStatuses(prev => ({...prev, tts: 'starting'}));
-                                                            try {
-                                                                const result = await window.electronAPI.invoke('start-docker-service', 'python');
-                                                                if (result.success) {
-                                                                    setServiceStatuses(prev => ({...prev, tts: 'available'}));
-                                                                } else {
-                                                                    setServiceStatuses(prev => ({...prev, tts: 'unavailable'}));
-                                                                }
-                                                            } catch (error) {
-                                                                setServiceStatuses(prev => ({...prev, tts: 'unavailable'}));
-                                                            }
-                                                        }
-                                                    }}
-                                                    disabled={serviceStatuses.tts === 'starting' || serviceStatuses.tts === 'available'}
-                                                    className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                                >
-                                                    {serviceStatuses.tts === 'starting' ? 'Starting...' : 
-                                                     serviceStatuses.tts === 'available' ? 'Running' : 'Download & Start'}
-                                                </button>
-                                                <span className="text-xs text-gray-500">Clara's integrated service</span>
+                                            <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded text-xs text-green-700 dark:text-green-300">
+                                                ✓ TTS service preference saved. Will NOT download during onboarding - available on-demand when you need document analysis or voice features (~11.4GB download when first used)
                                             </div>
                                         </div>
                                     )}
@@ -1564,8 +1591,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                 <span className="text-sm font-medium">Auto-configured services</span>
                                             </div>
                                             <p className="text-xs text-green-600 dark:text-green-400">
-                                                {selectedServices.tts && "RAG & TTS"}{selectedServices.tts && selectedServices.n8n && ", "}
-                                                {selectedServices.n8n && "N8N"} will be started automatically.
+                                                {selectedServices.tts && "RAG & TTS (on-demand)"}{selectedServices.tts && selectedServices.n8n && ", "}
+                                                {selectedServices.n8n && "N8N"} will be configured automatically.
                                             </p>
                                         </div>
                                     )}
@@ -1678,6 +1705,21 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     )
                                 ))}
 
+                                {/* Loading state for launch */}
+                                {loading && (
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Loader className="w-4 h-4 animate-spin text-blue-500"/>
+                                            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                                Launching Clara...
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-blue-600 dark:text-blue-400">
+                                            Saving your preferences and starting selected services
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="p-3 bg-sakura-50 dark:bg-sakura-900/20 rounded-lg">
                                     <h4 className="font-medium text-sakura-800 dark:text-sakura-200 mb-2">
                                         🎉 You're almost ready!
@@ -1715,23 +1757,43 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     if (step < 8) {
                                         setStep(step + 1);
                                     } else {
-                                        // Save preferences first
-                                        await handleSubmit();
-                                        // Then start only the selected services
-                                        await startSelectedServices();
+                                        // Launch Clara - show loading state
+                                        setLoading(true);
+                                        try {
+                                            // Save preferences first
+                                            await handleSubmit();
+                                            // Then start only the selected services
+                                            await startSelectedServices();
+                                            // Complete onboarding
+                                            onComplete();
+                                        } catch (error) {
+                                            console.error('Error launching Clara:', error);
+                                            // Still complete onboarding even if there are service errors
+                                            onComplete();
+                                        } finally {
+                                            setLoading(false);
+                                        }
                                     }
                                 }}
                                 disabled={
                                     (step === 1 && !formData.name) ||
                                     (step === 2 && !formData.email) ||
                                     (step === 5 && availableModels.length === 0 && !downloadingModel && !formData.model_folder_path) ||
-                                    downloadingModel
+                                    downloadingModel ||
+                                    loading
                                 }
                                 className="ml-auto px-6 py-2 rounded-lg bg-sakura-500 text-white
                 transition-all disabled:bg-gray-400 disabled:cursor-not-allowed
                 hover:shadow-[0_0_20px_rgba(244,163,187,0.5)] hover:bg-sakura-400"
                             >
-                                {step === 8 ? 'Launch Clara' : 'Continue'}
+                                {step === 8 ? (
+                                    loading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <Loader className="w-4 h-4 animate-spin"/>
+                                            Launching Clara...
+                                        </span>
+                                    ) : 'Launch Clara'
+                                ) : 'Continue'}
                             </button>
                         </>
                     )}

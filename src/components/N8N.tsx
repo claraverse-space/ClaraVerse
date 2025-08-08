@@ -380,30 +380,58 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   }, [n8nUrl, serviceConfigLoading]);
 
   const handleTestWebhook = async () => {
-    if (!n8nUrl) {
-      setError("Cannot test webhook: n8n URL not available");
+    if (!webhookUrl) {
+      setTestResult("❌ Please enter a webhook URL");
+      setTimeout(() => setTestResult(null), 5000);
       return;
     }
 
+    setIsTestingWebhook(true);
+    setWebhookResponse(null);
+
     try {
-      const response = await fetch(`${n8nUrl}/webhook-test/test`, {
-        method: 'POST',
+      let requestBody = undefined;
+      
+      // Prepare request body for non-GET methods
+      if (webhookMethod !== 'GET') {
+        if (webhookBody.trim()) {
+          try {
+            requestBody = JSON.stringify(JSON.parse(webhookBody));
+          } catch (e) {
+            // If it's not valid JSON, send as plain text
+            requestBody = webhookBody;
+          }
+        } else {
+          // Default test payload
+          requestBody = JSON.stringify({
+            message: 'Test webhook from ClaraVerse',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      const response = await fetch(webhookUrl, {
+        method: webhookMethod,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: 'Test webhook from ClaraVerse',
-          timestamp: new Date().toISOString(),
-        }),
+        body: requestBody,
       });
 
+      const responseText = await response.text();
+      
       if (response.ok) {
         setTestResult('✅ Webhook test successful!');
+        setWebhookResponse(responseText);
       } else {
         setTestResult(`❌ Webhook test failed: ${response.status} ${response.statusText}`);
+        setWebhookResponse(`Error: ${response.status} ${response.statusText}\n\n${responseText}`);
       }
     } catch (error) {
       setTestResult(`❌ Webhook test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setWebhookResponse(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsTestingWebhook(false);
     }
 
     setTimeout(() => setTestResult(null), 5000);
@@ -478,151 +506,274 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
   };
 
   const renderWebhookTester = () => {
+    const currentStep = !webhookUrl ? 1 : !testResult && !webhookResponse ? 2 : 3;
+    
     return (
-      <div className="w-80 border-l border-transparent dark:border-gray-800 bg-white dark:bg-black overflow-y-auto">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
-              <Webhook className="w-5 h-5" />
-              Webhook Tester
-            </h3>
+      <div className="w-96 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 overflow-y-auto flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <Webhook className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Webhook Tool Studio
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Test webhooks & create AI tools
+                </p>
+              </div>
+            </div>
             <button
-              onClick={() => setShowWebhookTester(false)}
-              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              onClick={() => {
+                setShowWebhookTester(false);
+                setShowCreateTool(false);
+                setWebhookUrl('');
+                setWebhookResponse(null);
+                setTestResult(null);
+              }}
+              className="p-2 rounded-lg hover:bg-white/80 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
+          
+          {/* Progress Steps */}
+          <div className="flex items-center gap-2">
+            {[1, 2, 3].map((step) => (
+              <React.Fragment key={step}>
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-all ${
+                  step <= currentStep 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                }`}>
+                  {step < currentStep ? <Check className="w-4 h-4" /> : step}
+                </div>
+                {step < 3 && (
+                  <div className={`flex-1 h-1 rounded-full transition-all ${
+                    step < currentStep ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                  }`} />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
         </div>
-        
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Webhook URL
-            </label>
-            <input
-              type="text"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
-              placeholder="Enter webhook URL"
-            />
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Method
-            </label>
-            <select
-              value={webhookMethod}
-              onChange={(e) => setWebhookMethod(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
-            >
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-            </select>
-          </div>
-
-          {webhookMethod !== 'GET' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Request Body (JSON)
-              </label>
-              <textarea
-                value={webhookBody}
-                onChange={(e) => setWebhookBody(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
-                placeholder="{}"
-              />
+        {/* Content */}
+        <div className="flex-1 p-6">
+          {/* Step 1: Configure Webhook */}
+          <div className={`space-y-6 ${currentStep !== 1 && webhookResponse ? 'opacity-75' : ''}`}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className={`w-2 h-2 rounded-full ${currentStep === 1 ? 'bg-blue-600' : 'bg-gray-300'}`} />
+              <h4 className="font-medium text-gray-900 dark:text-white">Configure Webhook</h4>
             </div>
-          )}
-
-          <button
-            onClick={handleTestWebhook}
-            disabled={!webhookUrl || isTestingWebhook}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isTestingWebhook ? (
-              <>
-                <RefreshCcw className="w-4 h-4 animate-spin" />
-                Testing...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Test Webhook
-              </>
-            )}
-          </button>
-
-          {testResult && (
-            <div className="text-center text-lg font-semibold text-green-500 dark:text-green-400">
-              {testResult}
-            </div>
-          )}
-
-          {webhookResponse && (
-            <>
+            
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Response
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Webhook URL *
                 </label>
-                <pre className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md overflow-x-auto text-sm font-mono">
-                  {webhookResponse}
-                </pre>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white transition-all pl-10"
+                    placeholder="https://api.example.com/webhook"
+                  />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600" />
+                  </div>
+                </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-                <button
-                  onClick={() => setShowCreateTool(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-sakura-500 hover:bg-sakura-600 rounded-md"
-                >
-                  <Wrench className="w-4 h-4" />
-                  Create Clara Assistant Tool
-                </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Method
+                  </label>
+                  <select
+                    value={webhookMethod}
+                    onChange={(e) => setWebhookMethod(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white"
+                  >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                </div>
+                
+                <div className="flex items-end">
+                  <button
+                    onClick={handleTestWebhook}
+                    disabled={!webhookUrl || isTestingWebhook}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded-lg shadow-sm disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isTestingWebhook ? (
+                      <>
+                        <RefreshCcw className="w-4 h-4 animate-spin" />
+                        Testing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Test
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              {showCreateTool && (
-                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+              {webhookMethod !== 'GET' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Request Body (JSON)
+                  </label>
+                  <textarea
+                    value={webhookBody}
+                    onChange={(e) => setWebhookBody(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
+                    placeholder='{\n  "message": "Hello World",\n  "data": {}\n}'
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2: Test Results */}
+          {(testResult || webhookResponse) && (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className={`w-2 h-2 rounded-full ${currentStep === 2 ? 'bg-blue-600' : 'bg-green-500'}`} />
+                <h4 className="font-medium text-gray-900 dark:text-white">Test Results</h4>
+              </div>
+
+              {testResult && (
+                <div className={`p-4 rounded-lg border-l-4 ${
+                  testResult.includes('✅') 
+                    ? 'bg-green-50 border-green-400 dark:bg-green-900/20 dark:border-green-400' 
+                    : 'bg-red-50 border-red-400 dark:bg-red-900/20 dark:border-red-400'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {testResult.includes('✅') ? (
+                      <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    )}
+                    <span className={`text-sm font-medium ${
+                      testResult.includes('✅') 
+                        ? 'text-green-800 dark:text-green-200' 
+                        : 'text-red-800 dark:text-red-200'
+                    }`}>
+                      {testResult}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {webhookResponse && (
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Response Data
+                  </label>
+                  <div className="relative">
+                    <pre className="w-full p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto text-sm font-mono max-h-48">
+                      {webhookResponse}
+                    </pre>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(webhookResponse)}
+                      className="absolute top-3 right-3 p-1.5 rounded bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      title="Copy response"
+                    >
+                      <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Create Tool */}
+          {webhookResponse && testResult?.includes('✅') && (
+            <div className="mt-8 space-y-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className={`w-2 h-2 rounded-full ${showCreateTool ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                <h4 className="font-medium text-gray-900 dark:text-white">Create AI Tool</h4>
+              </div>
+
+              {!showCreateTool ? (
+                <div className="p-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+                  <div className="text-center space-y-3">
+                    <div className="mx-auto w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
+                      <Wrench className="w-6 h-6 text-white" />
+                    </div>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Turn into AI Tool</h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mx-auto">
+                      Transform this working webhook into a Clara Assistant tool that can be used in conversations.
+                    </p>
+                    <button
+                      onClick={() => setShowCreateTool(true)}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium rounded-lg shadow-lg transition-all transform hover:scale-105"
+                    >
+                      <Wrench className="w-4 h-4" />
+                      Create Tool
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 p-6 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Tool Name (lowercase, underscores only)
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Tool Name *
                     </label>
                     <input
                       type="text"
                       value={toolName}
-                      onChange={(e) => setToolName(e.target.value.toLowerCase())}
-                      placeholder="my_webhook_tool"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+                      onChange={(e) => setToolName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                      placeholder="my_awesome_tool"
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:text-white"
                     />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Lowercase letters, numbers, and underscores only
+                    </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Description (be friendly!)
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Description *
                     </label>
                     <textarea
                       value={toolDescription}
                       onChange={(e) => setToolDescription(e.target.value)}
                       rows={3}
-                      placeholder="This friendly tool helps you..."
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:text-white"
+                      placeholder="This helpful tool allows Clara to..."
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:text-white"
                     />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Describe what this tool does for Clara
+                    </p>
                   </div>
 
                   {toolCreationError && (
-                    <div className="text-sm text-red-500">
-                      {toolCreationError}
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        <span className="text-sm text-red-700 dark:text-red-300">{toolCreationError}</span>
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 pt-2">
                     <button
                       onClick={handleCreateTool}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
+                      disabled={!toolName || !toolDescription}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 rounded-lg shadow-sm disabled:cursor-not-allowed transition-all"
                     >
                       <Plus className="w-4 h-4" />
                       Create Tool
@@ -634,15 +785,35 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                         setToolDescription('');
                         setToolCreationError(null);
                       }}
-                      className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                      className="px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     >
                       Cancel
                     </button>
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
+        </div>
+
+        {/* Quick Actions Footer */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>Webhook Studio</span>
+            <button
+              onClick={() => {
+                setWebhookUrl('');
+                setWebhookResponse(null);
+                setTestResult(null);
+                setShowCreateTool(false);
+                setToolName('');
+                setToolDescription('');
+              }}
+              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              Reset All
+            </button>
+          </div>
         </div>
       </div>
     );

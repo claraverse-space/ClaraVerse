@@ -7,7 +7,10 @@ import {
   WifiOff,
   RefreshCw,
   Grid3X3,
-  List
+  List,
+  Loader2,
+  FileText,
+  Clock
 } from 'lucide-react';
 import CreateNotebookModal from './CreateNotebookModal';
 import NotebookDetails from './NotebookDetails';
@@ -21,13 +24,18 @@ interface NotebooksProps {
   userName?: string;
 }
 
+interface NotebookWithStatus extends NotebookResponse {
+  completedDocumentCount?: number;
+  isLoadingDocuments?: boolean;
+}
+
 const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userName?: string }> = ({ onPageChange: _onPageChange, userName: _userName }) => {
-  const [notebooks, setNotebooks] = useState<NotebookResponse[]>([]);
+  const [notebooks, setNotebooks] = useState<NotebookWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedNotebook, setSelectedNotebook] = useState<NotebookResponse | null>(null);
+  const [selectedNotebook, setSelectedNotebook] = useState<NotebookWithStatus | null>(null);
   const [isBackendHealthy, setIsBackendHealthy] = useState(false);
   const [showStartupModal, setShowStartupModal] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
@@ -72,6 +80,25 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
     }
   }, [isBackendHealthy, showStartupModal]);
 
+  // Periodic refresh of document status for notebooks with processing documents
+  useEffect(() => {
+    if (!isBackendHealthy || notebooks.length === 0) return;
+
+    const interval = setInterval(() => {
+      const notebooksNeedingRefresh = notebooks.filter(notebook => 
+        !notebook.isLoadingDocuments && 
+        (notebook.document_count || 0) > 0 && 
+        (notebook.completedDocumentCount || 0) < (notebook.document_count || 0)
+      );
+
+      if (notebooksNeedingRefresh.length > 0) {
+        loadDocumentStatusForNotebooks(notebooksNeedingRefresh);
+      }
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isBackendHealthy, notebooks]);
+
   const loadNotebooks = async () => {
     if (!isBackendHealthy) {
       setError('Notebook backend is not available');
@@ -83,12 +110,49 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
       setIsLoading(true);
       setError(null);
       const data = await claraNotebookService.listNotebooks();
-      setNotebooks(data);
+      setNotebooks(data.map(notebook => ({ ...notebook, isLoadingDocuments: true })));
+      
+      // Load document status for each notebook
+      loadDocumentStatusForNotebooks(data);
     } catch (err) {
       console.error('Failed to load notebooks:', err);
       setError(err instanceof Error ? err.message : 'Failed to load notebooks');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadDocumentStatusForNotebooks = async (notebookList: NotebookResponse[]) => {
+    // Load document status for each notebook in parallel
+    const statusPromises = notebookList.map(async (notebook) => {
+      try {
+        const documents = await claraNotebookService.listDocuments(notebook.id);
+        const completedCount = documents.filter(doc => doc.status === 'completed').length;
+        return { id: notebook.id, completedDocumentCount: completedCount };
+      } catch (error) {
+        console.error(`Failed to load documents for notebook ${notebook.id}:`, error);
+        return { id: notebook.id, completedDocumentCount: 0 };
+      }
+    });
+
+    try {
+      const results = await Promise.all(statusPromises);
+      
+      setNotebooks(prev => prev.map(notebook => {
+        const status = results.find(r => r.id === notebook.id);
+        return {
+          ...notebook,
+          completedDocumentCount: status?.completedDocumentCount ?? 0,
+          isLoadingDocuments: false
+        };
+      }));
+    } catch (error) {
+      console.error('Failed to load document status:', error);
+      // Remove loading state even if some failed
+      setNotebooks(prev => prev.map(notebook => ({
+        ...notebook,
+        isLoadingDocuments: false
+      })));
     }
   };
 
@@ -150,10 +214,35 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
   const handleNotebookUpdated = (updatedNotebook: NotebookResponse) => {
     setNotebooks(prev => 
       prev.map(notebook => 
-        notebook.id === updatedNotebook.id ? updatedNotebook : notebook
+        notebook.id === updatedNotebook.id 
+          ? { ...updatedNotebook, isLoadingDocuments: true, completedDocumentCount: notebook.completedDocumentCount }
+          : notebook
       )
     );
     setSelectedNotebook(updatedNotebook);
+    
+    // Refresh document status for the updated notebook
+    refreshDocumentStatusForNotebook(updatedNotebook.id);
+  };
+
+  const refreshDocumentStatusForNotebook = async (notebookId: string) => {
+    try {
+      const documents = await claraNotebookService.listDocuments(notebookId);
+      const completedCount = documents.filter(doc => doc.status === 'completed').length;
+      
+      setNotebooks(prev => prev.map(notebook => 
+        notebook.id === notebookId 
+          ? { ...notebook, completedDocumentCount: completedCount, isLoadingDocuments: false }
+          : notebook
+      ));
+    } catch (error) {
+      console.error(`Failed to refresh document status for notebook ${notebookId}:`, error);
+      setNotebooks(prev => prev.map(notebook => 
+        notebook.id === notebookId 
+          ? { ...notebook, isLoadingDocuments: false }
+          : notebook
+      ));
+    }
   };
 
   // Filter and sort notebooks based on search query (most recent first)
@@ -426,9 +515,29 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
                                     <h3 className="font-semibold text-gray-800 dark:text-gray-100 truncate">
                                       {notebook.name}
                                     </h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                      {notebook.document_count || 0} documents
-                                    </p>
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                      <FileText className="w-3 h-3" />
+                                      <span>{notebook.document_count || 0} documents</span>
+                                      
+                                      {/* Processing Status */}
+                                      {notebook.isLoadingDocuments ? (
+                                        <div className="flex items-center gap-1 text-blue-500">
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          <span>Loading...</span>
+                                        </div>
+                                      ) : (notebook.document_count || 0) > 0 && (notebook.completedDocumentCount || 0) < (notebook.document_count || 0) ? (
+                                        <div className="flex items-center gap-1 text-amber-500">
+                                          <Clock className="w-3 h-3" />
+                                          <span>
+                                            Processing {(notebook.document_count || 0) - (notebook.completedDocumentCount || 0)}
+                                          </span>
+                                        </div>
+                                      ) : (notebook.document_count || 0) > 0 && (notebook.completedDocumentCount || 0) === (notebook.document_count || 0) ? (
+                                        <div className="flex items-center gap-1 text-green-500">
+                                          <span>✓ Ready</span>
+                                        </div>
+                                      ) : null}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -517,6 +626,25 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
                                           <polyline points="10 9 9 9 8 9"></polyline>
                                         </svg>
                                         <span>{notebook.document_count || 0} documents</span>
+                                        
+                                        {/* Processing Status */}
+                                        {notebook.isLoadingDocuments ? (
+                                          <div className="flex items-center gap-1 text-blue-500">
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                            <span className="text-xs">Loading...</span>
+                                          </div>
+                                        ) : (notebook.document_count || 0) > 0 && (notebook.completedDocumentCount || 0) < (notebook.document_count || 0) ? (
+                                          <div className="flex items-center gap-1 text-amber-500">
+                                            <Clock className="w-3 h-3" />
+                                            <span className="text-xs">
+                                              Processing {(notebook.document_count || 0) - (notebook.completedDocumentCount || 0)}
+                                            </span>
+                                          </div>
+                                        ) : (notebook.document_count || 0) > 0 && (notebook.completedDocumentCount || 0) === (notebook.document_count || 0) ? (
+                                          <div className="flex items-center gap-1 text-green-500">
+                                            <span className="text-xs">✓ Ready</span>
+                                          </div>
+                                        ) : null}
                                       </div>
                                     </div>
                                     <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">

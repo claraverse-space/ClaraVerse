@@ -774,10 +774,26 @@ class WatchdogService extends EventEmitter {
     this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating n8n service restart');
     
     try {
-      if (this.dockerSetup.containers.n8n) {
-        await this.dockerSetup.startContainer(this.dockerSetup.containers.n8n);
-        this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'n8n restart operation completed');
+      let n8nConfig = this.dockerSetup.containers.n8n;
+      
+      // If N8N config is not available, create it
+      if (!n8nConfig) {
+        this.logEvent('SERVICE_RESTART_WARNING', 'WARN', 'N8N configuration not found, creating default configuration');
+        n8nConfig = {
+          name: 'clara_n8n',
+          image: this.dockerSetup.getArchSpecificImage('n8nio/n8n', 'latest'),
+          port: 5678,
+          internalPort: 5678,
+          healthCheck: this.dockerSetup.checkN8NHealth.bind(this.dockerSetup),
+          volumes: [
+            `${require('path').join(require('os').homedir(), '.clara', 'n8n')}:/home/node/.n8n`
+          ]
+        };
+        this.dockerSetup.containers.n8n = n8nConfig;
       }
+      
+      await this.dockerSetup.startContainer(n8nConfig);
+      this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'n8n restart operation completed');
     } catch (error) {
       this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'n8n restart operation failed', {
         error: error.message,
@@ -791,10 +807,28 @@ class WatchdogService extends EventEmitter {
     this.logEvent('SERVICE_RESTART', 'INFO', 'Initiating Python Backend service restart');
     
     try {
-      if (this.dockerSetup.containers.python) {
-        await this.dockerSetup.startContainer(this.dockerSetup.containers.python);
-        this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'Python Backend restart operation completed');
+      let pythonConfig = this.dockerSetup.containers.python;
+      
+      // If Python config is not available, create it
+      if (!pythonConfig) {
+        this.logEvent('SERVICE_RESTART_WARNING', 'WARN', 'Python configuration not found, creating default configuration');
+        pythonConfig = {
+          name: 'clara_python',
+          image: this.dockerSetup.getArchSpecificImage('clara17verse/clara-backend', 'latest'),
+          port: 5001,
+          internalPort: 5000,
+          healthCheck: this.dockerSetup.isPythonRunning.bind(this.dockerSetup),
+          volumes: [
+            `${this.dockerSetup.pythonBackendDataPath}:/home/clara`,
+            'clara_python_models:/app/models'
+          ],
+          volumeNames: ['clara_python_models']
+        };
+        this.dockerSetup.containers.python = pythonConfig;
       }
+      
+      await this.dockerSetup.startContainer(pythonConfig);
+      this.logEvent('SERVICE_RESTART_OPERATION', 'INFO', 'Python Backend restart operation completed');
     } catch (error) {
       this.logEvent('SERVICE_RESTART_ERROR', 'ERROR', 'Python Backend restart operation failed', {
         error: error.message,

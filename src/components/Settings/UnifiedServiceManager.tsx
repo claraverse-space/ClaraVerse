@@ -324,27 +324,31 @@ const UnifiedServiceManager: React.FC = () => {
         return;
       }
 
-      const containers = await electronAPI.getContainers();
-      const containerNameMap: { [key: string]: string } = {
-        'python': 'clara_python',
-        'n8n': 'clara_n8n'
-      };
+      // Use specific service handlers instead of generic container actions
+      // This ensures containers are created if they don't exist
+      let result;
       
-      const containerName = containerNameMap[service];
-      if (!containerName) {
+      if (service === 'python') {
+        if (action === 'start') {
+          result = await electronAPI.invoke('start-python-container');
+        } else {
+          // For stop/restart, try to use generic docker service handler
+          result = await electronAPI.invoke('stop-docker-service', service);
+        }
+      } else if (service === 'n8n') {
+        if (action === 'start') {
+          result = await electronAPI.invoke('n8n:start-container');
+        } else if (action === 'stop') {
+          result = await electronAPI.invoke('n8n:stop-container');
+        } else if (action === 'restart') {
+          result = await electronAPI.invoke('n8n:restart-container');
+        }
+      } else {
         console.error(`Unknown service: ${service}`);
         return;
       }
       
-      const container = containers.find((c: any) => c.name === containerName || c.name === `/${containerName}`);
-      if (!container) {
-        console.error(`Container not found for service ${service}`);
-        return;
-      }
-      
-      const result = await electronAPI.containerAction(container.id, action);
-      
-      if (result.success) {
+      if (result?.success) {
         let expectedState: boolean;
         if (action === 'start') {
           expectedState = true;
@@ -367,9 +371,12 @@ const UnifiedServiceManager: React.FC = () => {
             console.error('Error refreshing services after action:', error);
           }
         }, 1000);
+      } else {
+        console.error(`Failed to ${action} ${service}:`, result?.error || 'Unknown error');
       }
     } catch (error) {
       console.error(`Failed to ${action} ${service}:`, error);
+    } finally {
       setDockerServiceLoading(prev => ({ ...prev, [loadingKey]: false }));
     }
   };
@@ -486,7 +493,7 @@ const UnifiedServiceManager: React.FC = () => {
     {
       id: 'python-backend',
       name: 'Python Backend',
-      description: 'RAG, TTS, STT, and document processing services',
+      description: 'RAG, TTS, STT, and document processing services \n (Might take a few minutes to start if its the first time)',
       icon: Code,
       status: enhancedServiceStatus?.['python-backend']?.state === 'running' || dockerServices?.pythonAvailable ? 'running' : 'stopped',
       serviceUrl: enhancedServiceStatus?.['python-backend']?.serviceUrl || 'http://localhost:5001',

@@ -749,10 +749,10 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
             <span className="text-sm">
               {!isBackendHealthy 
                 ? "Backend unavailable - Chat functionality is limited"
-                : documentCount === 0 
-                  ? "Upload documents to enable chat functionality"
-                  : completedDocumentCount === 0
-                    ? `Processing ${documentCount} document${documentCount !== 1 ? 's' : ''} - Chat will be available once processing completes`
+                : completedDocumentCount === 0 && documentCount > 0
+                  ? `Processing ${documentCount} document${documentCount !== 1 ? 's' : ''} - Chat will be available once processing completes (Don't Worry this can run in the background - You can access other features meanwhile)`
+                  : documentCount === 0 
+                    ? "Upload documents to enable chat functionality"
                     : ""
               }
             </span>
@@ -772,10 +772,10 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
               placeholder={
                 !isBackendHealthy 
                   ? "Backend unavailable..." 
-                  : documentCount === 0 
-                    ? "Upload documents to start chatting..."
-                    : completedDocumentCount === 0
-                      ? "Processing documents..."
+                  : completedDocumentCount === 0 && documentCount > 0
+                    ? "Processing documents..."
+                    : documentCount === 0 
+                      ? "Upload documents to start chatting..."
                       : "Message your notebook..."
               }
               disabled={!isBackendHealthy || isLoading || completedDocumentCount === 0}

@@ -1396,7 +1396,9 @@ const NotebookCanvas: React.FC<NotebookCanvasProps> = ({
                 <MonacoEditor
                   content={editContent}
                   onChange={setEditContent}
-                  placeholder="Start writing your note...
+                  placeholder="Start writing your note here, this notes is for creating document from the chat
+
+You can chat with your Document and you can use the content of the chat to create a document.
 
 Tips:
 - Use # for headers
@@ -1422,8 +1424,9 @@ Tips:
                     // Debounced save for backlinks and final persistence
                     debouncedSave(currentNote.id, newContent);
                   }}
-                  placeholder="Start writing your note...
+                  placeholder="Start writing your note here, this notes is for creating document from the chat
 
+You can chat with your Document and you can use the content of the chat to create a document.
 Tips:
 - Use # for headers
 - Use [[Note Title]] to link to other notes
@@ -1452,7 +1455,9 @@ Tips:
                         // Debounced save for backlinks and final persistence
                         debouncedSave(currentNote.id, newContent);
                       }}
-                      placeholder="Start writing your note...
+                      placeholder="Start writing your note here, this notes is for creating document from the chat
+
+- You can chat with your Document and you can use the content of the chat to create a document.
 
 Tips:
 - Use # for headers

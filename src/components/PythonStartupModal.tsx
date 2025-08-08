@@ -67,7 +67,7 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
     try {
       setIsLoading(true);
       setError('');
-      setStatus('Starting Python backend container...');
+      setStatus('Starting Python backend container... (if its the first time i would suggesting waiting a bit (Needs to download ~9 GB))');
 
       // Check if electronAPI is available
       if (!(window as any).electronAPI) {

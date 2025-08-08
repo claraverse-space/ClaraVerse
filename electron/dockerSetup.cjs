@@ -1806,6 +1806,19 @@ class DockerSetup extends EventEmitter {
 
   async startContainer(config) {
     try {
+      // Validate config parameter
+      if (!config) {
+        throw new Error('Container configuration is required but was not provided');
+      }
+      
+      if (!config.name) {
+        throw new Error('Container configuration is missing required "name" property');
+      }
+      
+      if (!config.image) {
+        throw new Error(`Container configuration for "${config.name}" is missing required "image" property`);
+      }
+
       // Check if container exists and is running
       try {
         const existingContainer = await this.docker.getContainer(config.name);
@@ -2184,12 +2197,12 @@ class DockerSetup extends EventEmitter {
         return false;
       }
 
-      // Get user's feature selections from global scope
+      // Get user's feature selections from global scope - conservative defaults during onboarding
       const selectedFeatures = global.selectedFeatures || {
-        comfyUI: true,
-        n8n: true,
-        ragAndTts: true,
-        claraCore: true
+        comfyUI: false,   // Conservative default - only start if explicitly selected
+        n8n: false,       // Conservative default - only start if explicitly selected  
+        ragAndTts: false, // Conservative default - prevent unwanted Python backend downloads
+        claraCore: true   // Always enable core functionality
       };
 
       statusCallback('Creating Docker network...');
@@ -2228,8 +2241,13 @@ class DockerSetup extends EventEmitter {
         
         switch (name) {
           case 'python':
-            // Python backend is always enabled (core service)
-            shouldEnable = true;
+            // Python backend only if user selected TTS/RAG features
+            // During onboarding, respect user's explicit choice to prevent unwanted downloads
+            shouldEnable = selectedFeatures.ragAndTts || false;
+            if (!shouldEnable) {
+              console.log(`⏭️ Python backend disabled (TTS/RAG not selected by user)`);
+              statusCallback(`⏭️ Python backend disabled (TTS/RAG not selected by user)`, 'info');
+            }
             break;
           case 'n8n':
             // N8N only if user selected it

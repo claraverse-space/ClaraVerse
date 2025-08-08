@@ -68,7 +68,7 @@ const InitialLoadingOverlay: React.FC<InitialLoadingOverlayProps> = ({
               : 'Connection Error' 
             : isComplete 
               ? 'Setup Complete!' 
-              : 'Setting up ComfyUI Connection'}
+              : 'Setting up ComfyUI Connection - it may take a few minutes...'}
         </h3>
         
         {connectionError ? (
