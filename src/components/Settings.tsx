@@ -339,6 +339,11 @@ const Settings = () => {
         }
       }
       
+      // Dispatch event to notify other components (like Sidebar) about the config change
+      const event = new CustomEvent('feature-config-updated', { detail: newConfig });
+      window.dispatchEvent(event);
+      console.log('🔄 Settings - Dispatched feature-config-updated event');
+      
     } catch (error) {
       console.error('Failed to update feature configuration:', error);
       // Revert on error

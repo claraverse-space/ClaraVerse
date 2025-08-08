@@ -99,6 +99,63 @@ const UnifiedServiceManager: React.FC = () => {
   const [globalLoading, setGlobalLoading] = useState(false);
   const [n8nLoading, setN8nLoading] = useState(false);
   const [comfyuiLoading, setComfyuiLoading] = useState(false);
+  
+  // Feature Configuration State
+  const [featureConfig, setFeatureConfig] = useState({
+    comfyUI: true,
+    n8n: true,
+    ragAndTts: true,
+    claraCore: true
+  });
+  const [savingFeatureConfig, setSavingFeatureConfig] = useState(false);
+
+  // Load feature configuration
+  const loadFeatureConfig = async () => {
+    try {
+      if ((window as any).featureConfig?.getFeatureConfig) {
+        const config = await (window as any).featureConfig.getFeatureConfig();
+        if (config) {
+          setFeatureConfig(config);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load feature configuration:', error);
+    }
+  };
+
+  // Update feature configuration
+  const updateFeatureConfig = async (updates: Partial<typeof featureConfig>) => {
+    try {
+      setSavingFeatureConfig(true);
+      const newConfig = { ...featureConfig, ...updates };
+      
+      // Clara Core is always enabled
+      newConfig.claraCore = true;
+      
+      setFeatureConfig(newConfig);
+      
+      // Save to electron backend
+      if ((window as any).featureConfig?.updateFeatureConfig) {
+        const success = await (window as any).featureConfig.updateFeatureConfig(newConfig);
+        if (!success) {
+          throw new Error('Failed to save feature configuration');
+        }
+      }
+      
+      // Dispatch event to notify other components (like Sidebar) about the config change
+      const event = new CustomEvent('feature-config-updated', { detail: newConfig });
+      window.dispatchEvent(event);
+      console.log('🔄 UnifiedServiceManager - Dispatched feature-config-updated event');
+      
+    } catch (error) {
+      console.error('Failed to update feature configuration:', error);
+      // Revert on error
+      setFeatureConfig(featureConfig);
+      alert('❌ Failed to save feature configuration. Please try again.');
+    } finally {
+      setSavingFeatureConfig(false);
+    }
+  };
   const [dockerServiceLoading, setDockerServiceLoading] = useState<{ [key: string]: boolean }>({});
 
   // Manual service configuration states (reused from Settings.tsx)
@@ -125,6 +182,7 @@ const UnifiedServiceManager: React.FC = () => {
   // Load service configurations (reused from Settings.tsx)
   useEffect(() => {
     loadServiceConfigurations();
+    loadFeatureConfig(); // Load feature configuration on mount
   }, []);
 
   // Status checking intervals (reused from ServicesTab)
@@ -1116,6 +1174,61 @@ const UnifiedServiceManager: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Feature Configuration Toggle */}
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {service.id === 'comfyui' ? '🎨 Enable' : '⚡ Enable'}
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {service.id === 'comfyui' 
+                    ? 'Show ComfyUI in the sidebar' 
+                    : 'Show N8N in the sidebar'
+                  }
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={service.id === 'comfyui' ? featureConfig.comfyUI : featureConfig.n8n}
+                  onChange={(e) => {
+                    if (service.id === 'comfyui') {
+                      updateFeatureConfig({ comfyUI: e.target.checked });
+                    } else {
+                      updateFeatureConfig({ n8n: e.target.checked });
+                    }
+                  }}
+                  disabled={savingFeatureConfig}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/20 dark:peer-focus:ring-purple-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+              </label>
+            </div>
+            
+            {savingFeatureConfig && (
+              <div className="mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-purple-700 dark:text-purple-300">
+                    Updating feature configuration...
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs">
+              <div className="flex items-start gap-2">
+                <div className="text-blue-600 dark:text-blue-400 mt-0.5">💡</div>
+                <div className="text-blue-700 dark:text-blue-300">
+                  <strong>Tip:</strong> Enabling this feature will make {service.id === 'comfyui' ? 'Image Generation' : 'Workflow Automation'} 
+                  available in the sidebar and include it in the onboarding flow for new users. 
+                  This is useful if you initially skipped this service during setup.
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );

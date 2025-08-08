@@ -94,6 +94,15 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     };
 
     loadFeatureConfig();
+
+    // Listen for feature configuration updates
+    const handleFeatureConfigUpdate = () => {
+      console.log('🔄 Sidebar - Feature config update event received, reloading...');
+      loadFeatureConfig();
+    };
+
+    window.addEventListener('feature-config-updated', handleFeatureConfigUpdate);
+    return () => window.removeEventListener('feature-config-updated', handleFeatureConfigUpdate);
   }, []);
 
   // Listen for Clara background activity changes
@@ -157,7 +166,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
                 mergedStatus[serviceName] = {
                   ...mergedStatus[serviceName],
                   state: watchdogData.isHealthy ? 'running' : 'stopped',
-                  lastHealthCheck: watchdogData.lastCheck || null,
+                  lastHealthCheck: watchdogData.lastCheck || Date.now(),
                   uptime: watchdogData.uptime || 0
                 };
               }
@@ -179,9 +188,59 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     };
 
     loadServiceStatus();
-    // More frequent updates for better reactivity (every 15 seconds)
-    const interval = setInterval(loadServiceStatus, 15000);
-    return () => clearInterval(interval);
+    
+    // Set up periodic health checking every 30 seconds
+    const healthCheckInterval = setInterval(() => {
+      console.log('🔄 Sidebar - Periodic health check refresh');
+      loadServiceStatus();
+    }, 30000);
+
+    // Also attempt direct health checks for critical services
+    const performDirectHealthChecks = async () => {
+      const servicesToCheck = [
+        { name: 'comfyui', url: 'http://localhost:8188/' },
+        { name: 'n8n', url: 'http://localhost:5678/' },
+        { name: 'python-backend', url: 'http://localhost:5001/health' }
+      ];
+
+      for (const service of servicesToCheck) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(service.url, { 
+            method: 'GET',
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            console.log(`✅ Direct health check: ${service.name} is responding (${response.status})`);
+            // Update the status to reflect the service is actually running
+            setEnhancedServiceStatus(prev => ({
+              ...prev,
+              [service.name]: {
+                ...prev[service.name],
+                state: 'running',
+                lastHealthCheck: Date.now()
+              }
+            }));
+          }
+        } catch (error) {
+          console.log(`❌ Direct health check: ${service.name} is not responding:`, error);
+        }
+      }
+    };
+
+    // Run direct health checks initially and then every 60 seconds
+    performDirectHealthChecks();
+    const directHealthCheckInterval = setInterval(performDirectHealthChecks, 60000);
+
+    return () => {
+      clearInterval(healthCheckInterval);
+      clearInterval(directHealthCheckInterval);
+    };
   }, []);
 
   // Listen for download progress updates
@@ -280,10 +339,31 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     );
   };
 
-  // Simple helper function to check if service is responding
+  // Enhanced helper function to check if service is responding
   const isServiceResponding = (serviceName: string): boolean => {
     const serviceStatus = enhancedServiceStatus[serviceName];
-    return serviceStatus?.state === 'running';
+    
+    // Check multiple indicators of service health
+    const isStateRunning = serviceStatus?.state === 'running';
+    const hasRecentHealthCheck = serviceStatus?.lastHealthCheck && 
+      (Date.now() - serviceStatus.lastHealthCheck < 120000); // Within last 2 minutes (more lenient)
+    
+    // For debugging, show what we're checking
+    if (serviceName === 'comfyui' || serviceName === 'n8n') {
+      console.log(`🔍 Service ${serviceName} health check:`, {
+        state: serviceStatus?.state,
+        lastHealthCheck: serviceStatus?.lastHealthCheck,
+        timeSinceLastCheck: serviceStatus?.lastHealthCheck ? Date.now() - serviceStatus.lastHealthCheck : 'never',
+        hasRecentHealthCheck: Boolean(hasRecentHealthCheck),
+        isStateRunning,
+        shouldShow: isStateRunning || Boolean(hasRecentHealthCheck)
+      });
+    }
+    
+    // Service is considered responding if either:
+    // 1. State is explicitly 'running', OR
+    // 2. We have a recent successful health check (within 2 minutes)
+    return isStateRunning || Boolean(hasRecentHealthCheck);
   };
 
   const mainMenuItems: MenuItem[] = [
@@ -293,14 +373,14 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     { icon: BookOpen, label: 'Notebooks', id: 'notebooks' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
-    // Only show Image Gen if ComfyUI feature is enabled by user
-    ...(featureConfig.comfyUI ? [{
+    // Show Image Gen if ComfyUI feature is enabled OR if ComfyUI service is running
+    ...(featureConfig.comfyUI || isServiceResponding('comfyui') ? [{
       icon: ImageIcon, 
       label: 'Image Gen', 
       id: 'image-gen'
     }] : []),
-    // Only show n8n if feature is enabled by user
-    ...(featureConfig.n8n ? [{
+    // Show n8n if feature is enabled OR if n8n service is running
+    ...(featureConfig.n8n || isServiceResponding('n8n') ? [{
       icon: Network, 
       label: 'Workflows', 
       id: 'n8n'
@@ -313,9 +393,11 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     'enhancedServiceStatus': enhancedServiceStatus,
     'comfyui enabled': featureConfig.comfyUI,
     'comfyui responding': isServiceResponding('comfyui'),
+    'comfyui should show': featureConfig.comfyUI || isServiceResponding('comfyui'),
     'n8n enabled': featureConfig.n8n,
     'n8n responding': isServiceResponding('n8n'),
-    'final menu items': mainMenuItems.map(item => ({ id: item.id }))
+    'n8n should show': featureConfig.n8n || isServiceResponding('n8n'),
+    'final menu items': mainMenuItems.map(item => ({ id: item.id, label: item.label }))
   });
 
   const bottomMenuItems: MenuItem[] = [

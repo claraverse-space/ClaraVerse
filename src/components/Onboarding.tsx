@@ -587,14 +587,20 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         // Save user's explicit service selections
         if ((window as any).featureConfig?.updateFeatureConfig) {
             try {
-                await (window as any).featureConfig.updateFeatureConfig({
+                const newConfig = {
                     comfyUI: selectedServices.comfyui,
                     ragAndTts: selectedServices.tts,
                     n8n: selectedServices.n8n,
                     claraCore: true, // Always enabled
                     userConsentGiven: true // Flag to indicate user has completed onboarding
-                });
+                };
+                await (window as any).featureConfig.updateFeatureConfig(newConfig);
                 console.log('User service selections saved:', selectedServices);
+                
+                // Dispatch event to notify other components about the config change
+                const event = new CustomEvent('feature-config-updated', { detail: newConfig });
+                window.dispatchEvent(event);
+                console.log('🔄 Onboarding - Dispatched feature-config-updated event');
             } catch (error) {
                 console.error('Failed to save service selections:', error);
             }
