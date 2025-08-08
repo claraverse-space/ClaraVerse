@@ -84,7 +84,7 @@ ClaraVerse is our answer to that question.
 
 | **The Subscription Hell** 💸 | **The Context-Loss Nightmare** 🔄 |
 |:---|:---|
-| • Claude Pro: **$20/month**<br/>• ChatGPT Plus: **$20/month**<br/>• GitHub Copilot: **$10/month**<br/>• Midjourney: **$10/month**<br/>• N8N Cloud: **$20/month**<br/><br/>**Total: $960/year** 😱 | • Chat in Claude → Code in Cursor<br/>• Design in ComfyUI → Build in N8N<br/>• Deploy with Ollama → Debug in LM Studio<br/><br/>**Lost context with every switch** 🤦 |
+| • Claude Pro: **$20/month**<br/>• ChatGPT Plus: **$20/month**<br/>• GitHub Copilot: **$10/month**<br/>• Midjourney: **$10/month**<br/>• N8N Cloud: **$20/month**<br/><br/>**Total: $960/year** 😱 | • Chat in Claude → Code in VScode<br/>• Prompt in LLM → Use it in ComfyUI<br/>• Deploy with Ollama → Run in OpenWebUI<br/><br/>**Lost context with every switch** 🤦 |
 
 </div>
 
@@ -109,7 +109,7 @@ ClaraVerse is our answer to that question.
   **Smart Assistant**
   
   `Advanced Chat` `Code Gen`
-  `Voice` `Files` `Memory`
+  `Voice` `Files` `Easy MCP` `Model Manager`
   
   <br/>
   
@@ -256,7 +256,7 @@ docker run -d -p 3000:3000 claraverse/claraverse:latest
 | **Open Source** | ✅ | ⚠️ |
 | **Offline Mode** | ✅ | ❌ |
 | **Custom Models** | ✅ | ⚠️ |
-| **Enterprise Ready** | ✅ | 💰 |
+| **Enterprise Ready** | ❌ | 💰 |
 
 </div>
 
