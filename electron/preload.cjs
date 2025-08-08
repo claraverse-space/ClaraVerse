@@ -256,7 +256,7 @@ contextBridge.exposeInMainWorld('modelManager', {
   },
 
   // Model Manager APIs
-  searchCivitAI: (query, types, sort) => ipcRenderer.invoke('model-manager:search-civitai', { query, types, sort }),
+  searchCivitAI: (query, types, sort, apiKey, nsfw) => ipcRenderer.invoke('model-manager:search-civitai', { query, types, sort, apiKey, nsfw }),
   searchHuggingFace: (query, modelType, author) => ipcRenderer.invoke('model-manager:search-huggingface', { query, modelType, author }),
   downloadModelFile: (url, filename, modelType, source) => ipcRenderer.invoke('model-manager:download-model', { url, filename, modelType, source }),
   getLocalModelFiles: () => ipcRenderer.invoke('model-manager:get-local-models'),
@@ -339,8 +339,8 @@ contextBridge.exposeInMainWorld('modelManager', {
   
   // Local persistent model management
   comfyuiLocalListModels: (category) => ipcRenderer.invoke('comfyui-local:list-models', category),
-  comfyuiLocalDownloadModel: (url, filename, category) => 
-    ipcRenderer.invoke('comfyui-local:download-model', { url, filename, category }),
+  comfyuiLocalDownloadModel: (url, filename, category, apiKey, source) => 
+    ipcRenderer.invoke('comfyui-local:download-model', { url, filename, category, apiKey, source }),
   comfyuiLocalDeleteModel: (filename, category) => 
     ipcRenderer.invoke('comfyui-local:delete-model', { filename, category }),
   comfyuiLocalImportModel: (externalPath, filename, category) => 

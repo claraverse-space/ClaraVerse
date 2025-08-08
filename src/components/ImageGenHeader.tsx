@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Sun, Moon, Image, Settings, Download, ExternalLink, ArrowLeftRight, RefreshCw } from 'lucide-react';
+import { Bell, Sun, Moon, Image, Settings, Download, ArrowLeftRight, RefreshCw, Cpu } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 
@@ -14,6 +14,9 @@ interface ImageGenHeaderProps {
   comfyuiMode?: string;
   // Pass system stats from ComfyUI
   systemStats?: any;
+  // Smart memory management props
+  smartMemoryEnabled?: boolean;
+  onToggleSmartMemory?: () => void;
 }
 
 const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
@@ -25,7 +28,9 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
   onRefreshComfyUI,
   showComfyUIInterface,
   comfyuiMode,
-  systemStats
+  systemStats,
+  smartMemoryEnabled,
+  onToggleSmartMemory
 }) => {
   const { isDark, setTheme } = useTheme();
 
@@ -130,6 +135,22 @@ const ImageGenHeader: React.FC<ImageGenHeaderProps> = ({
             <RefreshCw className="w-4 h-4" />
           </button>
         )}
+
+        {/* Smart Memory Toggle */}
+        <button
+          onClick={onToggleSmartMemory}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+            smartMemoryEnabled 
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50' 
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+          title={smartMemoryEnabled ? "Smart Memory: Models stay loaded between generations for maximum speed" : "Smart Memory: Disabled - models are unloaded after each generation (saves VRAM)"}
+        >
+          <Cpu className="w-4 h-4" />
+          <span className="text-xs font-medium">
+            {smartMemoryEnabled ? 'Smart Memory' : 'Standard Memory'}
+          </span>
+        </button>
 
         <button 
           onClick={toggleTheme}

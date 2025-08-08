@@ -628,6 +628,15 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   // Track the last used model to optimize memory management
   const lastUsedModelRef = useRef<string | null>(null);
 
+  /*
+   * Smart Memory Management Strategy:
+   * - Keep models loaded in GPU memory between generations for the same model
+   * - Only unload models when switching to a different model
+   * - Free general memory after each generation to prevent memory leaks
+   * - Unload all models only on component unmount or explicit cleanup
+   * This approach reduces model loading times and improves user experience
+   */
+
   // Disconnect any lingering client created in a different page on mount
   useEffect(() => {
     if (clientRef.current) {
@@ -639,6 +648,27 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       }
       clientRef.current = null;
     }
+  }, []);
+
+  // Cleanup effect: Free memory and close connections when component unmounts
+  useEffect(() => {
+    return () => {
+      console.log("🧠 ImageGen component unmounting - cleaning up memory");
+      if (clientRef.current) {
+        try {
+          // Free all memory and unload models on component unmount
+          clientRef.current.free({
+            free_memory: true,
+            unload_models: true
+          });
+          clientRef.current.close();
+        } catch (error) {
+          console.warn("Error during cleanup:", error);
+        }
+        clientRef.current = null;
+      }
+      lastUsedModelRef.current = null;
+    };
   }, []);
 
   // Remove reconnection interval dependency from generation;
@@ -673,7 +703,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedUpscaler, setSelectedUpscaler] = useState<string>('');
 
   const edgeRef = useRef<HTMLDivElement>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout>();
 
   const [denoise, setDenoise] = useState<number>(0.7);
   const [sampler, setSampler] = useState<string>("euler");
@@ -701,6 +730,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [comfyUILoadError, setComfyUILoadError] = useState(false);
   const [comfyUILoading, setComfyUILoading] = useState(false);
   const [comfyUIKey, setComfyUIKey] = useState(0); // Add key to prevent unnecessary re-renders
+
+  // Add smart memory management toggle
+  const [smartMemoryEnabled, setSmartMemoryEnabled] = useState(() => {
+    const saved = localStorage.getItem('clara-smart-memory-enabled');
+    return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+  });
 
   // Add new state variables for the provider system
   const [providers, setProviders] = useState<ClaraProvider[]>([]);
@@ -902,12 +937,25 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       ]) as { images: any[] };
 
       console.log('Generated images:', result.images[0].data);
-      client.free(
-        {
+      
+      // Smart memory management: Use toggle to determine memory clearing strategy
+      if (smartMemoryEnabled) {
+        console.log('🧠 Smart memory: Keeping models loaded, minimal memory clearing');
+        // Only do minimal memory clearing without affecting models
+        // Avoid calling client.free() entirely to prevent any model unloading
+        console.log('🧠 Skipping memory clearing to preserve loaded models');
+      } else {
+        console.log('🧠 Traditional memory: Unloading models after generation');
+        // Traditional approach: Free everything
+        client.free({
           free_memory: true,
           unload_models: true
-        }
-      );
+        });
+      }
+      
+      // Update the last used model reference for smart memory management
+      lastUsedModelRef.current = selectedModel;
+      
       const base64Images = result.images.map((img) => {
         const base64 = arrayBufferToBase64(img.data);
         return `data:${img.mime};base64,${base64}`;
@@ -970,34 +1018,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     return () => clearTimeout(timeout);
   }, [isGenerating, generationError]);
 
-  // (2) Auto show/hide the settings drawer based on mouse position
+  // (2) Notification auto-hide
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const windowWidth = window.innerWidth;
-      const edgeThreshold = 20;
-      if (e.clientX >= windowWidth - edgeThreshold) {
-        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-        setShowSettings(true);
-      } else if (e.clientX < windowWidth - 320) {
-        const sidebarBounds = edgeRef.current?.getBoundingClientRect();
-        if (sidebarBounds) {
-          const insideSidebar =
-            e.clientX >= sidebarBounds.left &&
-            e.clientX <= sidebarBounds.right &&
-            e.clientY >= sidebarBounds.top &&
-            e.clientY <= sidebarBounds.bottom;
-          if (!insideSidebar) {
-            hoverTimeoutRef.current = setTimeout(() => setShowSettings(false), 300);
-          }
-        }
-      }
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
+    if (!showNotification) return;
+    
+    const timeout = setTimeout(() => {
+      setShowNotification(false);
+    }, 3000);
+    
+    return () => clearTimeout(timeout);
+  }, [isGenerating, generationError]);
 
   const handleSettingsClick = () => {
     setShowSettings(!showSettings);
@@ -1010,6 +1040,12 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       try {
         // Attempt to interrupt the pipeline (if supported)
         clientRef.current.interrupt();
+        
+        // Smart memory management: Only free general memory during cancellation, keep model loaded
+        clientRef.current.free({
+          free_memory: true,
+          unload_models: false
+        });
       } catch (e) {
         console.error('Failed to interrupt pipeline:', e);
       }
@@ -1053,11 +1089,17 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     
     if (clientRef.current) {
       try {
+        // Smart memory management: Free all memory before reconnecting
+        clientRef.current.free({
+          free_memory: true,
+          unload_models: true
+        });
         clientRef.current.close();
       } catch (e) {
-        console.error("Error closing existing client:", e);
+        console.error("Error cleaning up during reconnection:", e);
       }
       clientRef.current = null;
+      lastUsedModelRef.current = null; // Reset model tracking on reconnection
     }
     
     // Re-initialize the connection
@@ -1195,6 +1237,25 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   }, [onPageChange]);
 
   const handleModelSelection = (model: string) => {
+    // Smart memory management: Only unload previous model if toggle is disabled OR if switching to a different model
+    if (lastUsedModelRef.current && lastUsedModelRef.current !== model && clientRef.current) {
+      if (!smartMemoryEnabled) {
+        console.log(`🧠 Traditional memory: Switching from ${lastUsedModelRef.current} to ${model}, unloading previous model`);
+        try {
+          clientRef.current.free({
+            free_memory: true,
+            unload_models: true
+          });
+        } catch (error) {
+          console.warn('Failed to unload previous model:', error);
+        }
+      } else {
+        console.log(`🧠 Smart memory: Switching from ${lastUsedModelRef.current} to ${model}, keeping previous model loaded`);
+        // With smart memory, we might want to selectively unload only if memory is getting tight
+        // For now, we keep all models loaded for maximum performance
+      }
+    }
+    
     setSelectedModel(model);
     
     // Try to load saved config
@@ -1598,6 +1659,21 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }
   };
 
+  // Add smart memory management toggle handler
+  const handleToggleSmartMemory = () => {
+    const newValue = !smartMemoryEnabled;
+    setSmartMemoryEnabled(newValue);
+    localStorage.setItem('clara-smart-memory-enabled', JSON.stringify(newValue));
+    
+    setNotificationMessage(
+      newValue 
+        ? '🧠 Smart Memory enabled: Models stay loaded for maximum speed (uses more VRAM)'
+        : '💾 Standard Memory enabled: Models unloaded after generation (saves VRAM)'
+    );
+    setShowNotification(true);
+    setTimeout(() => setShowNotification(false), 4000);
+  };
+
   // Add a new function to handle explicit image clearing
   const handleImageClear = () => {
     setImageBuffer(null);
@@ -1798,6 +1874,8 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
             onRefreshComfyUI={refreshComfyUI}
             showComfyUIInterface={showComfyUIInterface}
             comfyuiMode={comfyuiMode}
+            smartMemoryEnabled={smartMemoryEnabled}
+            onToggleSmartMemory={handleToggleSmartMemory}
           />
           
           {/* Conditional rendering: Show either Clara's interface or ComfyUI interface */}
@@ -1933,54 +2011,103 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
           />
         )}
         
-        {/* Settings Drawer - Only show in Clara interface mode */}
+        {/* Configuration Sidebar - Vertical Tab - Only show in Clara interface mode */}
         {!showComfyUIInterface && (
-          <SettingsDrawer
-            drawerRef={edgeRef}
-            showSettings={showSettings}
-            expandedSections={expandedSections}
-            toggleSection={toggleSection}
-            sdModels={sdModels}
-            selectedModel={selectedModel}
-            setSelectedModel={handleModelSelection}
-            loras={loras}
-            selectedLora={selectedLora}
-            setSelectedLora={setSelectedLora}
-            loraStrength={loraStrength}
-            setLoraStrength={setLoraStrength}
-            vaes={vaes}
-            selectedVae={selectedVae}
-            setSelectedVae={setSelectedVae}
-            negativeTags={negativeTags}
-            negativeInput={negativeInput}
-            setNegativeInput={setNegativeInput}
-            handleNegativeTagAdd={handleNegativeTagAdd}
-            handleNegativeTagRemove={handleNegativeTagRemove}
-            handleNegativeInputKeyDown={handleNegativeInputKeyDown}
-            steps={steps}
-            setSteps={setSteps}
-            guidanceScale={guidanceScale}
-            setGuidanceScale={setGuidanceScale}
-            resolutions={RESOLUTIONS}
-            selectedResolution={selectedResolution}
-            setSelectedResolution={setSelectedResolution}
-            customWidth={customWidth}
-            setCustomWidth={setCustomWidth}
-            customHeight={customHeight}
-            setCustomHeight={setCustomHeight}
-            controlNetModels={controlNetModels}
-            selectedControlNet={selectedControlNet}
-            setSelectedControlNet={setSelectedControlNet}
-            upscaleModels={upscaleModels}
-            selectedUpscaler={selectedUpscaler}
-            setSelectedUpscaler={setSelectedUpscaler}
-            denoise={denoise}
-            setDenoise={setDenoise}
-            sampler={sampler}
-            setSampler={setSampler}
-            scheduler={scheduler}
-            setScheduler={setScheduler}
-          />
+          <div
+            ref={edgeRef}
+            className={`fixed right-0 glassmorphic transition-all duration-300 z-[10000] ${
+              showSettings ? 'w-80' : 'w-16'
+            } border-l border-gray-200/20 dark:border-gray-700/20`}
+            style={{ 
+              top: '4rem', // Position below the header (64px)
+              height: 'calc(100vh - 4rem)', // Full height minus header
+              backdropFilter: 'blur(10px)',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              minWidth: showSettings ? '20rem' : '4rem', 
+              maxWidth: showSettings ? '20rem' : '4rem' 
+            }}
+            onMouseEnter={() => setShowSettings(true)}
+            onMouseLeave={() => setShowSettings(false)}
+          >
+            {showSettings ? (
+              // Expanded settings panel
+              <SettingsDrawer
+                drawerRef={edgeRef}
+                showSettings={showSettings}
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                sdModels={sdModels}
+                selectedModel={selectedModel}
+                setSelectedModel={handleModelSelection}
+                loras={loras}
+                selectedLora={selectedLora}
+                setSelectedLora={setSelectedLora}
+                loraStrength={loraStrength}
+                setLoraStrength={setLoraStrength}
+                vaes={vaes}
+                selectedVae={selectedVae}
+                setSelectedVae={setSelectedVae}
+                negativeTags={negativeTags}
+                negativeInput={negativeInput}
+                setNegativeInput={setNegativeInput}
+                handleNegativeTagAdd={handleNegativeTagAdd}
+                handleNegativeTagRemove={handleNegativeTagRemove}
+                handleNegativeInputKeyDown={handleNegativeInputKeyDown}
+                steps={steps}
+                setSteps={setSteps}
+                guidanceScale={guidanceScale}
+                setGuidanceScale={setGuidanceScale}
+                resolutions={RESOLUTIONS}
+                selectedResolution={selectedResolution}
+                setSelectedResolution={setSelectedResolution}
+                customWidth={customWidth}
+                setCustomWidth={setCustomWidth}
+                customHeight={customHeight}
+                setCustomHeight={setCustomHeight}
+                controlNetModels={controlNetModels}
+                selectedControlNet={selectedControlNet}
+                setSelectedControlNet={setSelectedControlNet}
+                upscaleModels={upscaleModels}
+                selectedUpscaler={selectedUpscaler}
+                setSelectedUpscaler={setSelectedUpscaler}
+                denoise={denoise}
+                setDenoise={setDenoise}
+                sampler={sampler}
+                setSampler={setSampler}
+                scheduler={scheduler}
+                setScheduler={setScheduler}
+              />
+            ) : (
+              // Collapsed vertical tab
+              <div className="flex flex-col items-center justify-center h-full p-2">
+                <div 
+                  className="writing-mode-vertical text-center cursor-pointer select-none"
+                  style={{ 
+                    writingMode: 'vertical-rl',
+                    textOrientation: 'mixed',
+                    transform: 'rotate(180deg)'
+                  }}
+                >
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400 tracking-wider uppercase">
+                    Configuration
+                  </span>
+                </div>
+                <div className="mt-4 space-y-3 flex flex-col items-center">
+                  {/* Settings icon */}
+                  <div className="w-6 h-6 text-gray-500 dark:text-gray-400">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  {/* Model indicator */}
+                  {selectedModel && (
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
         
         {/* ComfyUI Startup Modal */}

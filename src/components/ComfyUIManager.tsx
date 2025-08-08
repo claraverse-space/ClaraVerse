@@ -660,10 +660,10 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200/50 dark:border-gray-700/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
               <Settings className="w-5 h-5 text-white" />
             </div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-sakura-600 to-sakura-500 bg-clip-text text-transparent">
               ComfyUI Manager
             </h2>
           </div>
@@ -671,7 +671,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <button
               onClick={refreshData}
               disabled={isRefreshing}
-              className="p-2 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 disabled:opacity-50 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800/30"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-sakura-600 dark:hover:text-sakura-400 disabled:opacity-50 transition-colors rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10"
               title="Refresh data"
             >
               <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -686,7 +686,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Status Bar */}
-        <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-b border-gray-200/50 dark:border-gray-700/30">
+        <div className="px-6 py-4 bg-gradient-to-r from-sakura-50 to-sakura-100/50 dark:from-sakura-900/20 dark:to-sakura-800/20 border-b border-gray-200/50 dark:border-gray-700/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
               <div className="flex items-center space-x-2">
@@ -724,7 +724,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   <button
                     onClick={optimizeComfyUI}
                     disabled={isLoading}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                    className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                     title="Optimize GPU performance and fix compatibility issues"
                   >
                     <Settings className="w-4 h-4" />
@@ -733,14 +733,14 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                   <button
                     onClick={restartComfyUI}
                     disabled={isLoading}
-                    className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 disabled:opacity-50 text-sm transition-all duration-200 shadow-lg hover:shadow-xl"
+                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg disabled:opacity-50 text-sm transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     Restart
                   </button>
                   <button
                     onClick={stopComfyUI}
                     disabled={isLoading}
-                    className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     <Square className="w-4 h-4" />
                     <span>Stop</span>
@@ -750,7 +750,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
                 <button
                   onClick={startComfyUI}
                   disabled={isLoading}
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 text-sm flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <Play className="w-4 h-4" />
                   <span>{isLoading ? 'Starting...' : 'Start'}</span>
@@ -773,8 +773,8 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               onClick={() => setActiveTab(tab.id as any)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-white/70 dark:bg-purple-900/20'
-                  : 'border-transparent text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800/20'
+                  ? 'border-sakura-500 text-sakura-600 dark:text-sakura-400 bg-white/70 dark:bg-sakura-900/20'
+                  : 'border-transparent text-gray-700 dark:text-gray-300 hover:text-sakura-600 dark:hover:text-sakura-400 hover:bg-sakura-50 dark:hover:bg-sakura-100/10'
               }`}
             >
               {tab.label}
@@ -783,13 +783,13 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-gray-50/50 to-purple-50/30 dark:from-gray-900/20 dark:to-purple-900/10">
+        <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-gray-50/50 to-sakura-50/30 dark:from-gray-900/20 dark:to-sakura-900/10">
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                    <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                       <Activity className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -818,7 +818,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                    <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                       <HardDrive className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -853,7 +853,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                    <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                       <Settings className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -878,7 +878,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               {!status.running && (
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl border-l-4 border-yellow-500 shadow-sm">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                    <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                       <Play className="w-4 h-4 text-white" />
                     </div>
                     <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200">
@@ -905,7 +905,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                     <HardDrive className="w-4 h-4 text-white" />
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -983,7 +983,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                     <Settings className="w-4 h-4 text-white" />
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -1074,7 +1074,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
           {activeTab === 'settings' && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                <div className="w-8 h-8 bg-sakura-500 rounded-lg flex items-center justify-center shadow-md">
                   <Settings className="w-4 h-4 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -1085,7 +1085,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                    <div className="w-6 h-6 bg-sakura-500 rounded-lg flex items-center justify-center shadow-sm">
                       <Activity className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1114,7 +1114,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                    <div className="w-6 h-6 bg-sakura-500 rounded-lg flex items-center justify-center shadow-sm">
                       <Server className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1139,7 +1139,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                    <div className="w-6 h-6 bg-sakura-500 rounded-lg flex items-center justify-center shadow-sm">
                       <HardDrive className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -1164,7 +1164,7 @@ const ComfyUIManager: React.FC<ComfyUIManagerProps> = ({ onClose }) => {
 
                 <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border border-gray-200/50 dark:border-gray-600/30 p-6 rounded-xl shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-6 h-6 bg-black rounded-lg flex items-center justify-center shadow-sm">
+                    <div className="w-6 h-6 bg-sakura-500 rounded-lg flex items-center justify-center shadow-sm">
                       <Shield className="w-3 h-3 text-white" />
                     </div>
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white">

@@ -189,7 +189,7 @@ declare global {
       stopDownload: (fileName: string) => Promise<{ success: boolean; error?: string }>;
       
       // Model Manager APIs (CivitAI search)
-      searchCivitAI: (query: string, types?: string[], sort?: string) => Promise<any>;
+      searchCivitAI: (query: string, types?: string[], sort?: string, apiKey?: string, nsfw?: boolean) => Promise<any>;
       downloadModelFile: (url: string, filename: string, modelType: string, source: string) => Promise<any>;
       getLocalModelFiles: () => Promise<Record<string, any[]>>;
       deleteLocalModelFile: (modelType: string, filename: string) => Promise<{ success: boolean; error?: string }>;
@@ -209,7 +209,7 @@ declare global {
       
       // ComfyUI Local Model Management APIs
       comfyuiLocalListModels: (category: string) => Promise<{ success: boolean; models: Array<{ name: string; size: number; modified: Date; path: string; type: string }>; error?: string }>;
-      comfyuiLocalDownloadModel: (url: string, filename: string, category: string) => Promise<{ success: boolean; filename?: string; category?: string; localPath?: string; containerPath?: string; size?: number; error?: string }>;
+      comfyuiLocalDownloadModel: (url: string, filename: string, category: string, apiKey?: string, source?: string) => Promise<{ success: boolean; filename?: string; category?: string; localPath?: string; containerPath?: string; size?: number; error?: string }>;
       comfyuiLocalDeleteModel: (filename: string, category: string) => Promise<{ success: boolean; error?: string }>;
       comfyuiLocalImportModel: (externalPath: string, filename: string, category: string) => Promise<{ success: boolean; error?: string }>;
       comfyuiLocalGetStorageInfo: () => Promise<{ success: boolean; storage?: any; error?: string }>;

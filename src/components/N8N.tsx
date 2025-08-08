@@ -1147,8 +1147,7 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                       className="relative flex items-center gap-2 px-4 py-1.5 bg-white dark:bg-black rounded-full group"
                       title="Open ClaraVerse Store"
                     >
-                      <StoreIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ClaraVerse Store</span>
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Workflow Templates for n8n</span>
                       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
                         Browse all workflows and integrations
                       </div>

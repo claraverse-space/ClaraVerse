@@ -1,14 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import FilterBar from './gallery_components/FilterBar';
-import BulkActionBar from './gallery_components/BulkActionBar';
-import GalleryGrid from './gallery_components/GalleryGrid';
-import ImagePreviewModal from './gallery_components/ImagePreviewModal';
-import ToastNotification from './gallery_components/ToastNotification';
 import { db } from '../db';
 import { indexedDBService } from '../services/indexedDB';
 import { GalleryImage } from '../types';
+import { 
+  Search, 
+  Grid3X3, 
+  LayoutGrid, 
+  Download,
+  Heart,
+  Share2,
+  Trash2,
+  Eye,
+  Calendar,
+  Palette,
+  X,
+  ZoomIn,
+  ZoomOut,
+  Copy,
+  Edit3,
+  Check
+} from 'lucide-react';
 
 // Extend db with fallback methods if not available
 if (!(db as any).getStorageItems) {
@@ -41,17 +54,13 @@ if (!(db as any).deleteStorageItem) {
 interface GalleryProps {
   onPageChange?: (page: string) => void;
   userName?: string;
-  userAvatar?: string;
   isDarkMode?: boolean;
-  onToggleDarkMode?: () => void;
 }
 
 const Gallery: React.FC<GalleryProps> = ({ 
   onPageChange, 
   userName = "User", 
-  userAvatar = "/user-avatar.png",
-  isDarkMode = false,
-  onToggleDarkMode = () => {}
+  isDarkMode = false
 }) => {
   // States
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -62,26 +71,18 @@ const Gallery: React.FC<GalleryProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('masonry');
   const [darkMode, setDarkMode] = useState(isDarkMode);
 
-  const [bulkMode, setBulkMode] = useState(false);
-  const [selectedBulk, setSelectedBulk] = useState<Set<string>>(new Set());
-
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
   const [zoom, setZoom] = useState(1);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState('');
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+  const [hoveredImageId, setHoveredImageId] = useState<string | null>(null);
 
   // Sync dark mode with parent component
   useEffect(() => {
     setDarkMode(isDarkMode);
   }, [isDarkMode]);
-
-  // Handle dark mode toggle
-  const handleDarkModeToggle = () => {
-    setDarkMode(!darkMode);
-    onToggleDarkMode();
-  };
 
   // Load images on mount
   useEffect(() => {
@@ -156,36 +157,15 @@ const Gallery: React.FC<GalleryProps> = ({
 
   // Handlers
   const handleImageClick = (image: GalleryImage) => {
-    if (bulkMode) {
-      toggleBulkSelection(image.id);
-    } else {
-      setSelectedImage(image);
-      setZoom(1);
-      setIsEditingPrompt(false);
-    }
-  };
-
-  const toggleBulkMode = () => {
-    setBulkMode(!bulkMode);
-    if (bulkMode) setSelectedBulk(new Set());
-  };
-
-  const toggleBulkSelection = (imageId: string) => {
-    setSelectedBulk(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(imageId)) {
-        newSet.delete(imageId);
-      } else {
-        newSet.add(imageId);
-      }
-      return newSet;
-    });
+    setSelectedImage(image);
+    setZoom(1);
+    setIsEditingPrompt(false);
   };
 
   const handleDownload = (image: GalleryImage) => {
     const a = document.createElement('a');
     a.href = image.url;
-    a.download = `generated-image-${image.id}.png`;
+    a.download = `clara-generated-${image.id}.png`;
     a.click();
     showToast('Image downloaded successfully');
   };
@@ -212,11 +192,6 @@ const Gallery: React.FC<GalleryProps> = ({
       if (selectedImage && selectedImage.id === imageId) {
         setSelectedImage(null);
       }
-      setSelectedBulk(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(imageId);
-        return newSet;
-      });
       showToast('Image deleted successfully');
     } catch (error) {
       console.error('Error deleting image from DB:', error);
@@ -243,56 +218,8 @@ const Gallery: React.FC<GalleryProps> = ({
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedBulk.size === 0) {
-      showToast('No images selected', 'error');
-      return;
-    }
-    if (!window.confirm(`Are you sure you want to delete ${selectedBulk.size} selected images?`)) return;
-    
-    try {
-      let deleteCount = 0;
-      for (let id of selectedBulk) {
-        await (db as any).deleteStorageItem(id);
-        deleteCount++;
-      }
-      
-      setImages(prev => prev.filter(img => !selectedBulk.has(img.id)));
-      setSelectedBulk(new Set());
-      showToast(`${deleteCount} images deleted successfully`);
-    } catch (error) {
-      console.error('Error in bulk delete:', error);
-      showToast('Some images could not be deleted', 'error');
-    }
-  };
-
-  const handleBulkDownload = () => {
-    if (selectedBulk.size === 0) {
-      showToast('No images selected', 'error');
-      return;
-    }
-    
-    let downloadCount = 0;
-    selectedBulk.forEach(id => {
-      const img = images.find(image => image.id === id);
-      if (img) {
-        handleDownload(img);
-        downloadCount++;
-      }
-    });
-    
-    showToast(`Downloading ${downloadCount} images`);
-  };
-
-  const handleBulkShare = () => {
-    if (selectedBulk.size === 0) {
-      showToast('No images selected', 'error');
-      return;
-    }
-    
-    const firstSelected = images.find(img => selectedBulk.has(img.id));
-    if (firstSelected) handleShare(firstSelected);
-  };
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 3));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.5));
@@ -310,137 +237,374 @@ const Gallery: React.FC<GalleryProps> = ({
       setSelectedImage({ ...selectedImage, prompt: editedPrompt });
       setIsEditingPrompt(false);
       showToast('Prompt updated successfully');
-      // Persist changes to DB if needed.
     }
   };
-
-  const handleDownloadAll = () => {
-    if (displayedImages.length === 0) {
-      showToast('No images to download', 'error');
-      return;
-    }
-    
-    displayedImages.forEach(img => handleDownload(img));
-    showToast(`Downloading ${displayedImages.length} images`);
-  };
-
-  const handleSelectAll = () => {
-    if (!bulkMode) {
-      setBulkMode(true);
-    }
-    
-    const newSelection = new Set<string>();
-    displayedImages.forEach(img => newSelection.add(img.id));
-    setSelectedBulk(newSelection);
-    showToast(`Selected ${newSelection.size} images`);
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedBulk(new Set());
-    showToast('All images deselected');
-  };
-
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
   return (
-    <div className={`${darkMode ? 'dark' : ''} h-screen flex flex-col`}>
-      <div className="flex-1 flex overflow-hidden relative">
+    <div className={`${darkMode ? 'dark' : ''} h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900`}>
+      <div className="flex-1 flex overflow-hidden">
         <div className="z-10">
           <Sidebar activePage="gallery" onPageChange={onPageChange || (() => {})} />
         </div>
         <div className="flex-1 flex flex-col z-0">
           <Topbar 
             userName={userName}
-            userAvatar={userAvatar}
             onPageChange={onPageChange} 
-            isDarkMode={darkMode}
-            onToggleDarkMode={handleDarkModeToggle}
           />
-          <div className="flex-1 overflow-hidden bg-gradient-to-br from-purple-50/80 via-sakura-50/80 to-blue-50/80 dark:from-gray-900/90 dark:via-gray-800/90 dark:to-blue-900/90 backdrop-blur-sm">
-            <div className="mx-4 mt-4 rounded-xl overflow-hidden backdrop-blur-md bg-white/70 dark:bg-gray-800/60 shadow-lg border border-white/50 dark:border-gray-700/30">
-              <FilterBar 
-                searchQuery={searchQuery} 
-                setSearchQuery={setSearchQuery}
-                filter={filter}
-                setFilter={setFilter}
-                sortBy={sortBy}
-                setSortBy={setSortBy}
-                viewMode={viewMode}
-                setViewMode={setViewMode}
-                toggleBulkMode={toggleBulkMode}
-                handleDownloadAll={handleDownloadAll}
-                isDarkMode={darkMode}
-              />
+          
+          {/* Modern Header Section */}
+          <div className="px-8 pt-6 pb-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  AI Gallery
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400 mt-1">
+                  {displayedImages.length} {displayedImages.length === 1 ? 'creation' : 'creations'}
+                </p>
+              </div>
+              
+              {/* View Toggle */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center bg-white/50 dark:bg-gray-800/50 rounded-xl p-1 border border-gray-200/50 dark:border-gray-700/50">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 rounded-lg transition-all duration-200 ${
+                      viewMode === 'grid'
+                        ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <Grid3X3 size={18} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('masonry')}
+                    className={`p-2 rounded-lg transition-all duration-200 ${
+                      viewMode === 'masonry'
+                        ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <LayoutGrid size={18} />
+                  </button>
+                </div>
+              </div>
             </div>
-            
-            {bulkMode && (
-              <div className="mx-4 mt-4 rounded-xl overflow-hidden backdrop-blur-md bg-white/70 dark:bg-gray-800/60 shadow-lg border border-white/50 dark:border-gray-700/30">
-                <BulkActionBar 
-                  handleSelectAll={handleSelectAll}
-                  handleDeselectAll={handleDeselectAll}
-                  handleBulkDelete={handleBulkDelete}
-                  handleBulkDownload={handleBulkDownload}
-                  handleBulkShare={handleBulkShare}
-                  selectedCount={selectedBulk.size}
-                  isDarkMode={darkMode}
+
+            {/* Search and Filter Bar */}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Search */}
+              <div className="relative flex-1 min-w-64">
+                <Search size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search your creations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition-all duration-200"
                 />
               </div>
-            )}
-            
-            <div className="p-4 h-full overflow-y-auto">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sakura-500"></div>
-                </div>
-              ) : displayedImages.length === 0 ? (
-                <div className="text-center py-16 backdrop-blur-md bg-white/50 dark:bg-gray-800/50 rounded-xl border border-white/50 dark:border-gray-700/30 shadow-lg">
-                  <p className="text-xl font-medium text-gray-900 dark:text-white mb-2">No images found</p>
-                  <p className="text-gray-600 dark:text-gray-400">Start generating some amazing images!</p>
-                </div>
-              ) : (
-                <GalleryGrid 
-                  images={displayedImages}
-                  viewMode={viewMode}
-                  bulkMode={bulkMode}
-                  selectedBulk={selectedBulk}
-                  onImageClick={handleImageClick}
-                  toggleBulkSelection={toggleBulkSelection}
-                  formatDate={formatDate}
-                  handleLike={handleLike}
-                  handleDownload={handleDownload}
-                  handleDelete={handleDelete}
-                  isDarkMode={darkMode}
-                />
-              )}
+              
+              {/* Filters */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 backdrop-blur-sm transition-all duration-200"
+                >
+                  <option value="all">All Images</option>
+                  <option value="favorites">Favorites</option>
+                  <option value="recent">Recent</option>
+                </select>
+                
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 backdrop-blur-sm transition-all duration-200"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="popular">Most Liked</option>
+                </select>
+              </div>
             </div>
+          </div>
+          
+          {/* Gallery Content */}
+          <div className="flex-1 overflow-y-auto p-8">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center h-64">
+                <div className="w-16 h-16 border-4 border-violet-200 dark:border-violet-800 border-t-violet-600 dark:border-t-violet-400 rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-600 dark:text-gray-400">Loading your gallery...</p>
+              </div>
+            ) : displayedImages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 rounded-2xl flex items-center justify-center mb-4">
+                  <Palette size={32} className="text-violet-600 dark:text-violet-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No images found</h3>
+                <p className="text-gray-600 dark:text-gray-400 max-w-md">
+                  {searchQuery ? 'Try adjusting your search or filters' : 'Start creating amazing AI art to see it here!'}
+                </p>
+              </div>
+            ) : (
+              <div 
+                className={`grid gap-6 ${
+                  viewMode === 'grid'
+                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+                    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+                } auto-rows-min`}
+              >
+                {displayedImages.map((image) => (
+                  <div
+                    key={image.id}
+                    className="group relative bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-200/50 dark:border-gray-700/50"
+                    onMouseEnter={() => setHoveredImageId(image.id)}
+                    onMouseLeave={() => setHoveredImageId(null)}
+                  >
+                    {/* Image */}
+                    <div className="relative aspect-square overflow-hidden cursor-pointer" onClick={() => handleImageClick(image)}>
+                      <img
+                        src={image.url}
+                        alt={image.prompt}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      
+                      {/* Hover Overlay */}
+                      <div className={`absolute inset-0 bg-black/40 backdrop-blur-[1px] transition-opacity duration-300 ${
+                        hoveredImageId === image.id ? 'opacity-100' : 'opacity-0'
+                      }`}>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLike(image.id);
+                              }}
+                              className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors duration-200"
+                            >
+                              <Heart 
+                                size={20} 
+                                className={`${image.likes > 0 ? 'fill-red-500 text-red-500' : 'text-white'} transition-colors duration-200`} 
+                              />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(image);
+                              }}
+                              className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors duration-200"
+                            >
+                              <Download size={20} className="text-white" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShare(image);
+                              }}
+                              className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors duration-200"
+                            >
+                              <Share2 size={20} className="text-white" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Card Content */}
+                    <div className="p-4">
+                      <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 mb-3 leading-relaxed">
+                        {image.prompt || 'No prompt available'}
+                      </p>
+                      
+                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center gap-1">
+                          <Calendar size={12} />
+                          <span>{formatDate(image.createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <Eye size={12} />
+                            <span>{image.views}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Heart size={12} className={image.likes > 0 ? 'text-red-500' : ''} />
+                            <span>{image.likes}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
       
+      {/* Image Preview Modal */}
       {selectedImage && (
-        <ImagePreviewModal 
-          image={selectedImage}
-          onClose={() => { setSelectedImage(null); setIsEditingPrompt(false); }}
-          zoom={zoom}
-          handleZoomIn={handleZoomIn}
-          handleZoomOut={handleZoomOut}
-          handleLike={handleLike}
-          handleDownload={handleDownload}
-          handleShare={handleShare}
-          handleDelete={handleDelete}
-          isEditingPrompt={isEditingPrompt}
-          editedPrompt={editedPrompt}
-          setEditedPrompt={setEditedPrompt}
-          startEditingPrompt={startEditingPrompt}
-          saveEditedPrompt={saveEditedPrompt}
-          handleCopyPrompt={handleCopyPrompt}
-          formatDate={formatDate}
-          isDarkMode={darkMode}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative max-w-7xl max-h-[90vh] mx-4 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Image Details</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleZoomOut}
+                  className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <ZoomOut size={20} />
+                </button>
+                <button
+                  onClick={handleZoomIn}
+                  className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <ZoomIn size={20} />
+                </button>
+                <button
+                  onClick={() => setSelectedImage(null)}
+                  className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex flex-col lg:flex-row max-h-[80vh]">
+              {/* Image Display */}
+              <div className="flex-1 flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-800 overflow-auto">
+                <img
+                  src={selectedImage.url}
+                  alt={selectedImage.prompt}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg transition-transform duration-200"
+                  style={{ transform: `scale(${zoom})` }}
+                />
+              </div>
+              
+              {/* Image Details */}
+              <div className="w-full lg:w-96 p-6 overflow-y-auto">
+                <div className="space-y-6">
+                  {/* Prompt Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900 dark:text-white">Prompt</h4>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleCopyPrompt(selectedImage.prompt)}
+                          className="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button
+                          onClick={startEditingPrompt}
+                          className="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {isEditingPrompt ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editedPrompt}
+                          onChange={(e) => setEditedPrompt(e.target.value)}
+                          className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+                          rows={4}
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={saveEditedPrompt}
+                            className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() => setIsEditingPrompt(false)}
+                            className="px-3 py-1 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                        {selectedImage.prompt}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Metadata */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 dark:text-white">Details</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Created</span>
+                        <span className="text-gray-900 dark:text-white">{formatDate(selectedImage.createdAt)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Model</span>
+                        <span className="text-gray-900 dark:text-white">{selectedImage.model}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Resolution</span>
+                        <span className="text-gray-900 dark:text-white">{selectedImage.resolution}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Likes</span>
+                        <span className="text-gray-900 dark:text-white">{selectedImage.likes}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleLike(selectedImage.id)}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-colors ${
+                        selectedImage.likes > 0
+                          ? 'bg-red-500 text-white hover:bg-red-600'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      <Heart size={16} className={selectedImage.likes > 0 ? 'fill-current' : ''} />
+                      <span className="text-sm">Like</span>
+                    </button>
+                    <button
+                      onClick={() => handleDownload(selectedImage)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <Download size={16} />
+                      <span className="text-sm">Download</span>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(selectedImage.id)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                      <span className="text-sm">Delete</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       
-      {toast.show && <ToastNotification message={toast.message} type={toast.type} glassmorphic={true} />}
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <div className={`px-6 py-3 rounded-xl shadow-lg backdrop-blur-sm border transition-all duration-300 ${
+            toast.type === 'error'
+              ? 'bg-red-500/90 text-white border-red-400/50'
+              : 'bg-green-500/90 text-white border-green-400/50'
+          }`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

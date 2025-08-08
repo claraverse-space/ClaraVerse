@@ -1,0 +1,64 @@
+healthCheckTimeout: 300
+logLevel: info
+models:
+    gemma3:4b:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\Gemma\gemma-3-4b-it-Q4_K_S.gguf" --port 9999 --n-gpu-layers 9999 --threads 21 --ctx-size 32768 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    gemma3:27b:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\Gemma\gemma-3-27b-tools.Q4_K_M.gguf" --port 9999 --n-gpu-layers 9999 --threads 21 --ctx-size 13661 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 6 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    glm-4-5-air-iq4-kss-00001-of-00002:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\GLM-4.5-Air-IQ4_KSS-00001-of-00002\GLM-4.5-Air-IQ4_KSS-00001-of-00002.gguf" --port 9999 --n-gpu-layers 9999 --threads 21 --ctx-size 32768 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    glm-4-5-air-iq4-xs-00001-of-00002:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\GLM-4.5-Air-IQ4_XS\GLM-4.5-Air-IQ4_XS-00001-of-00002.gguf" --port 9999 --n-gpu-layers 22 --threads 21 --ctx-size 8192 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.10 --parallel 6 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --split-mode row --jinja'
+        ttl: 300
+    jan-nano-128k-q8-0:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\Jan-nano-128k-Q8_0.gguf" --port 9999 --n-gpu-layers 9999 --threads 21 --ctx-size 32768 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    mxbai-embed-large:embed-iq4_xs:
+        proxy: http://127.0.0.1:9998
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\mxbai-large.IQ4_XS.gguf" --port 9998 --n-gpu-layers 9999 --threads 21 --ctx-size 32768 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --embeddings --pooling mean --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    mxbai-embed-large:embed-q4_k_s:
+        proxy: http://127.0.0.1:9998
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\embedding\mxbai-embed-large-v1.Q4_K_S.gguf" --port 9998 --n-gpu-layers 9999 --threads 21 --ctx-size 8192 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --embeddings --pooling mean --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    qwen3:4b:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-models\Qwen3-4B.Q4_K_M.gguf" --port 9999 --n-gpu-layers 9999 --threads 21 --ctx-size 32768 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 8 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+    qwen3:30b-q5_k_m:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\Qwen\Qwen_Qwen3-30B-A3B-Instruct-2507-Q5_K_M.gguf" --port 9999 --n-gpu-layers 60 --threads 21 --ctx-size 11314 --batch-size 512 --ubatch-size 128 --keep 2048 --defrag-thold 0.10 --parallel 6 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --split-mode row --jinja'
+        ttl: 300
+    qwen3:30b-q8_0:
+        proxy: http://127.0.0.1:9999
+        cmd: '"C:\Users\Admin\ClaraVerse\electron\llamacpp-binaries\win32-x64-cuda\llama-server.exe" -m "C:\Users\Admin\.clara\llama-modelsss\Qwen\Qwen3-Coder-30B-A3B-Instruct-1M-Q8_0.gguf" --port 9999 --n-gpu-layers 52 --threads 21 --ctx-size 8192 --batch-size 512 --ubatch-size 256 --keep 2048 --defrag-thold 0.10 --parallel 6 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn --cont-batching --mlock --jinja'
+        ttl: 300
+groups:
+    embedding_models:
+        swap: false
+        exclusive: false
+        persistent: true
+        members:
+            - mxbai-embed-large:embed-iq4_xs
+            - mxbai-embed-large:embed-q4_k_s
+    regular_models:
+        swap: true
+        exclusive: true
+        persistent: false
+        members:
+            - qwen3:4b
+            - jan-nano-128k-q8-0
+            - gemma3:27b
+            - gemma3:4b
+            - glm-4-5-air-iq4-kss-00001-of-00002
+            - glm-4-5-air-iq4-xs-00001-of-00002
+            - qwen3:30b-q8_0
+            - qwen3:30b-q5_k_m

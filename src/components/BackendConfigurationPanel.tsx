@@ -1183,8 +1183,8 @@ const BackendConfigurationPanel: React.FC = () => {
                                     </div>
                                     {model.modelSizeGB && (
                                       <div className="flex items-center justify-between">
-                                        <span>Size:</span>
-                                        <span className="font-medium">{model.modelSizeGB.toFixed(1)}GB</span>
+                                        {/* <span>Size:</span>
+                                        <span className="font-medium">{model.modelSizeGB.toFixed(1)}GB</span> */}
                                       </div>
                                     )}
                                     <div className="flex items-center justify-between">
@@ -1206,15 +1206,15 @@ const BackendConfigurationPanel: React.FC = () => {
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${
                                     (model.gpuLayers || 0) === 0 
                                       ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                                      : (model.gpuLayers || 0) === (model.estimatedTotalLayers || 100)
+                                      : (model.gpuLayers || 0) >= (model.estimatedTotalLayers || 1)
                                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                                       : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                                   }`}>
                                     {(model.gpuLayers || 0) === 0 
                                       ? 'CPU' 
-                                      : (model.gpuLayers || 0) === (model.estimatedTotalLayers || 100)
+                                      : (model.gpuLayers || 0) >= (model.estimatedTotalLayers || 1)
                                       ? 'Full GPU'
-                                      : `${Math.round(((model.gpuLayers || 0) / (model.estimatedTotalLayers || 100)) * 100)}% GPU`
+                                      : `${Math.min(100, Math.round(((model.gpuLayers || 0) / Math.max(1, model.estimatedTotalLayers || 1)) * 100))}% GPU`
                                     }
                                   </span>
                                 )}
@@ -1359,15 +1359,15 @@ const BackendConfigurationPanel: React.FC = () => {
                                   <span className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
                                     (selectedModel.gpuLayers || 0) === 0 
                                       ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                                      : (selectedModel.gpuLayers || 0) === (selectedModel.estimatedTotalLayers || 100)
+                                      : (selectedModel.gpuLayers || 0) >= (selectedModel.estimatedTotalLayers || 1)
                                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                                       : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                                   }`}>
                                     {(selectedModel.gpuLayers || 0) === 0 
                                       ? 'CPU Only' 
-                                      : (selectedModel.gpuLayers || 0) === (selectedModel.estimatedTotalLayers || 100)
+                                      : (selectedModel.gpuLayers || 0) >= (selectedModel.estimatedTotalLayers || 1)
                                       ? 'Full GPU'
-                                      : `${Math.round(((selectedModel.gpuLayers || 0) / (selectedModel.estimatedTotalLayers || 100)) * 100)}% GPU`
+                                      : `${Math.min(100, Math.round(((selectedModel.gpuLayers || 0) / Math.max(1, selectedModel.estimatedTotalLayers || 1)) * 100))}% GPU`
                                     }
                                   </span>
                                 </div>

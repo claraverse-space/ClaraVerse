@@ -5172,10 +5172,14 @@ async function initializeWithDocker() {
       log.info('🎨 Initializing ComfyUI service (selected by user)');
       comfyUIModelService = new ComfyUIModelService();
     } else {
+      // Always initialize the model service for model downloads, even if ComfyUI isn't enabled
+      log.info('🎨 Initializing ComfyUI Model Service for model downloads');
+      comfyUIModelService = new ComfyUIModelService();
+      
       if (!selectedFeatures?.comfyUI) {
-        log.info('🎨 ComfyUI disabled (not selected by user)');
+        log.info('🎨 ComfyUI UI disabled (not selected by user) - but model downloads available');
       } else {
-        log.info('🎨 ComfyUI disabled due to system resource limitations');
+        log.info('🎨 ComfyUI UI disabled due to system resource limitations - but model downloads available');
       }
     }
     
@@ -5955,19 +5959,115 @@ ipcMain.handle('reset-feature-config', async () => {
 });
 
 // Model Manager IPC handlers
-ipcMain.handle('model-manager:search-civitai', async (event, { query, types, sort }) => {
+ipcMain.handle('model-manager:search-civitai', async (event, { query, types, sort, apiKey, nsfw = false }) => {
   try {
-    const url = new URL('https://civitai.com/api/v1/models');
-    url.searchParams.set('limit', '20');
-    url.searchParams.set('query', query);
-    url.searchParams.set('sort', sort || 'Highest Rated');
+    // Enhanced search with multiple strategies for better results
+    const searches = [];
+    
+    // Strategy 1: Exact query search
+    const exactUrl = new URL('https://civitai.com/api/v1/models');
+    exactUrl.searchParams.set('limit', '50'); // Increased limit for better results
+    exactUrl.searchParams.set('query', query);
+    exactUrl.searchParams.set('sort', sort || 'Highest Rated');
     if (types && types.length > 0) {
-      url.searchParams.set('types', types.join(','));
+      exactUrl.searchParams.set('types', types.join(','));
+    }
+    if (nsfw) {
+      exactUrl.searchParams.set('nsfw', 'true');
+    }
+    
+    // Strategy 2: Tag-based search (if query looks like it could be tags)
+    const tagUrl = new URL('https://civitai.com/api/v1/models');
+    tagUrl.searchParams.set('limit', '30');
+    tagUrl.searchParams.set('tag', query);
+    tagUrl.searchParams.set('sort', sort || 'Highest Rated');
+    if (types && types.length > 0) {
+      tagUrl.searchParams.set('types', types.join(','));
+    }
+    if (nsfw) {
+      tagUrl.searchParams.set('nsfw', 'true');
+    }
+    
+    // Strategy 3: Username search (if query looks like a username)
+    let usernameUrl = null;
+    if (query && !query.includes(' ') && query.length > 2) {
+      usernameUrl = new URL('https://civitai.com/api/v1/models');
+      usernameUrl.searchParams.set('limit', '20');
+      usernameUrl.searchParams.set('username', query);
+      usernameUrl.searchParams.set('sort', sort || 'Highest Rated');
+      if (types && types.length > 0) {
+        usernameUrl.searchParams.set('types', types.join(','));
+      }
+      if (nsfw) {
+        usernameUrl.searchParams.set('nsfw', 'true');
+      }
     }
 
-    const response = await fetch(url.toString());
-    const data = await response.json();
-    return data;
+    // Add API key for authenticated requests if available
+    const headers = {
+      'User-Agent': 'Clara-AI-Assistant/1.0',
+      'Content-Type': 'application/json'
+    };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Execute searches in parallel
+    const searchPromises = [
+      fetch(exactUrl.toString(), { headers }).then(r => r.json()),
+      fetch(tagUrl.toString(), { headers }).then(r => r.json()).catch(() => ({ items: [] }))
+    ];
+    
+    if (usernameUrl) {
+      searchPromises.push(
+        fetch(usernameUrl.toString(), { headers }).then(r => r.json()).catch(() => ({ items: [] }))
+      );
+    }
+
+    const results = await Promise.all(searchPromises);
+    
+    // Combine and deduplicate results
+    const allItems = [];
+    const seenIds = new Set();
+    
+    results.forEach((result, index) => {
+      if (result.items) {
+        result.items.forEach(item => {
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            // Add relevance score based on search strategy
+            item._relevanceScore = index === 0 ? 10 : (index === 1 ? 7 : 5);
+            allItems.push(item);
+          }
+        });
+      }
+    });
+    
+    // Enhanced sorting with relevance and popularity
+    allItems.sort((a, b) => {
+      // Primary sort by relevance score
+      if (a._relevanceScore !== b._relevanceScore) {
+        return b._relevanceScore - a._relevanceScore;
+      }
+      
+      // Secondary sort by the requested sort order
+      if (sort === 'Most Downloaded') {
+        return (b.stats?.downloadCount || 0) - (a.stats?.downloadCount || 0);
+      } else if (sort === 'Newest') {
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      } else { // Highest Rated
+        return (b.stats?.rating || 0) - (a.stats?.rating || 0);
+      }
+    });
+
+    return {
+      items: allItems.slice(0, 60), // Return top 60 results
+      metadata: {
+        totalItems: allItems.length,
+        searchStrategies: results.length,
+        hasApiKey: !!apiKey
+      }
+    };
   } catch (error) {
     log.error('Error searching CivitAI models:', error);
     throw error;
@@ -6483,13 +6583,14 @@ ipcMain.handle('comfyui-internal:get-storage-info', async () => {
 });
 
 // Download and install model to ComfyUI container
-ipcMain.handle('comfyui-internal:download-model', async (event, { url, filename, category = 'checkpoints' }) => {
+ipcMain.handle('comfyui-internal:download-model', async (event, { url, filename, category = 'checkpoints', apiKey, source }) => {
   try {
     if (!comfyUIModelService) {
       throw new Error('ComfyUI Model Service not initialized');
     }
     
     log.info(`Starting ComfyUI model download: ${filename} (${category}) from ${url}`);
+    log.info(`API key provided: ${!!apiKey}, Source: ${source || 'unknown'}`);
     
     // Set up progress forwarding
     const progressHandler = (progressData) => {
@@ -6512,7 +6613,13 @@ ipcMain.handle('comfyui-internal:download-model', async (event, { url, filename,
     });
     
     try {
-      const result = await comfyUIModelService.downloadAndInstallModel(url, filename, category, progressHandler);
+      // Prepare options for download
+      const downloadOptions = {
+        apiKey,
+        source: source || (url.includes('civitai.com') ? 'civitai' : url.includes('huggingface.co') ? 'huggingface' : 'unknown')
+      };
+      
+      const result = await comfyUIModelService.downloadAndInstallModel(url, filename, category, progressHandler, downloadOptions);
       
       // Clean up event listeners
       Object.entries(eventHandlers).forEach(([eventName, handler]) => {
@@ -6616,8 +6723,10 @@ ipcMain.handle('comfyui-internal:backup-models', async (event, { category = 'che
 // List locally stored persistent models
 ipcMain.handle('comfyui-local:list-models', async (event, category = 'checkpoints') => {
   try {
+    // Ensure ComfyUI Model Service is initialized
     if (!comfyUIModelService) {
-      throw new Error('ComfyUI Model Service not initialized');
+      log.info('🎨 Initializing ComfyUI Model Service for list models request');
+      comfyUIModelService = new ComfyUIModelService();
     }
     
     const models = await comfyUIModelService.listLocalModels(category);
@@ -6629,13 +6738,22 @@ ipcMain.handle('comfyui-local:list-models', async (event, category = 'checkpoint
 });
 
 // Download model to local storage (persistent)
-ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, category = 'checkpoints' }) => {
+ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, category = 'checkpoints', apiKey, source }) => {
   try {
+    // Ensure ComfyUI Model Service is initialized for downloads
     if (!comfyUIModelService) {
-      throw new Error('ComfyUI Model Service not initialized');
+      log.info('🎨 Initializing ComfyUI Model Service for download request');
+      try {
+        comfyUIModelService = new ComfyUIModelService();
+        log.info('✅ ComfyUI Model Service initialized successfully');
+      } catch (initError) {
+        log.error('❌ Failed to initialize ComfyUI Model Service:', initError);
+        throw new Error(`Failed to initialize ComfyUI Model Service: ${initError.message}`);
+      }
     }
     
     log.info(`Starting local ComfyUI model download: ${filename} (${category}) from ${url}`);
+    log.info(`API key provided: ${!!apiKey}, Source: ${source || 'unknown'}`);
     
     // Set up progress forwarding - fix the parameter format
     const progressHandler = (progress, downloadedSize, totalSize) => {
@@ -6675,7 +6793,13 @@ ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, ca
     });
     
     try {
-      const result = await comfyUIModelService.downloadModel(url, filename, category, progressHandler);
+      // Prepare options for download
+      const downloadOptions = {
+        apiKey,
+        source: source || (url.includes('civitai.com') ? 'civitai' : url.includes('huggingface.co') ? 'huggingface' : 'unknown')
+      };
+      
+      const result = await comfyUIModelService.downloadModel(url, filename, category, progressHandler, 0, downloadOptions);
       
       // Clean up event listeners
       Object.entries(eventHandlers).forEach(([eventName, handler]) => {
@@ -6693,6 +6817,21 @@ ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, ca
     
   } catch (error) {
     log.error('Error downloading ComfyUI model to local storage:', error);
+    log.error('Error details:', {
+      filename,
+      category,
+      url: url.substring(0, 100) + '...',
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Send error event to frontend
+    event.sender.send('comfyui-local-download-error', {
+      filename,
+      category,
+      error: error.message
+    });
+    
     return {
       success: false,
       filename,
@@ -6705,8 +6844,10 @@ ipcMain.handle('comfyui-local:download-model', async (event, { url, filename, ca
 // Delete local persistent model
 ipcMain.handle('comfyui-local:delete-model', async (event, { filename, category = 'checkpoints' }) => {
   try {
+    // Ensure ComfyUI Model Service is initialized
     if (!comfyUIModelService) {
-      throw new Error('ComfyUI Model Service not initialized');
+      log.info('🎨 Initializing ComfyUI Model Service for delete model request');
+      comfyUIModelService = new ComfyUIModelService();
     }
     
     const result = await comfyUIModelService.deleteLocalModel(filename, category);
@@ -6721,8 +6862,10 @@ ipcMain.handle('comfyui-local:delete-model', async (event, { filename, category 
 // Import external model file to persistent storage
 ipcMain.handle('comfyui-local:import-model', async (event, { externalPath, filename, category = 'checkpoints' }) => {
   try {
+    // Ensure ComfyUI Model Service is initialized
     if (!comfyUIModelService) {
-      throw new Error('ComfyUI Model Service not initialized');
+      log.info('🎨 Initializing ComfyUI Model Service for import model request');
+      comfyUIModelService = new ComfyUIModelService();
     }
     
     const result = await comfyUIModelService.importExternalModel(externalPath, filename, category);
@@ -6737,8 +6880,10 @@ ipcMain.handle('comfyui-local:import-model', async (event, { externalPath, filen
 // Get enhanced storage information (local + container)
 ipcMain.handle('comfyui-local:get-storage-info', async () => {
   try {
+    // Ensure ComfyUI Model Service is initialized
     if (!comfyUIModelService) {
-      throw new Error('ComfyUI Model Service not initialized');
+      log.info('🎨 Initializing ComfyUI Model Service for storage info request');
+      comfyUIModelService = new ComfyUIModelService();
     }
     
     const storageInfo = await comfyUIModelService.getEnhancedStorageInfo();

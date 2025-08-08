@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
@@ -323,62 +324,149 @@ func extractLlamaPath(config Config) string {
 	return ""
 }
 
-// FetchModelMetadata extracts model metadata from filename and estimates properties
+// FetchModelMetadata extracts model metadata from GGUF file and estimates properties
 func (o *Optimizer) FetchModelMetadata(modelPath string) (*ModelMetadata, error) {
 	metadata := &ModelMetadata{}
 
-	// Extract metadata from filename
-	metadata.detectFromFilename(modelPath)
+	// Try to read actual GGUF metadata first
+	if err := o.readGGUFMetadata(modelPath, metadata); err != nil {
+		fmt.Printf("  ⚠️ Could not read GGUF metadata: %v\n", err)
+		fmt.Printf("  📝 Falling back to filename detection...\n")
+
+		// Fallback to filename detection only if GGUF reading fails
+		metadata.detectFromFilename(modelPath)
+	}
 
 	// Set default values based on model size if not detected
 	if metadata.NumLayers == 0 {
-		// Estimate layers based on parameter count
-		if metadata.TotalParams > 0 {
-			switch {
-			case metadata.TotalParams < 2_000_000_000:
-				metadata.NumLayers = 18
-			case metadata.TotalParams < 5_000_000_000:
-				metadata.NumLayers = 24
-			case metadata.TotalParams < 8_000_000_000:
-				metadata.NumLayers = 32
-			case metadata.TotalParams < 15_000_000_000:
-				metadata.NumLayers = 40
-			case metadata.TotalParams < 35_000_000_000:
-				metadata.NumLayers = 48
-			case metadata.TotalParams < 70_000_000_000:
-				metadata.NumLayers = 80
-			default:
-				metadata.NumLayers = 96
+		// Estimate layers based on architecture and parameter count from filename
+		filename := strings.ToLower(filepath.Base(modelPath))
+
+		if strings.Contains(filename, "qwen") {
+			// Qwen architecture layer counts
+			if strings.Contains(filename, "30b") {
+				metadata.NumLayers = 60 // Qwen-30B: 60 layers
+			} else if strings.Contains(filename, "13b") || strings.Contains(filename, "14b") {
+				metadata.NumLayers = 40 // Qwen-13B: 40 layers
+			} else if strings.Contains(filename, "7b") || strings.Contains(filename, "8b") {
+				metadata.NumLayers = 32 // Qwen-7B: 32 layers
+			} else if strings.Contains(filename, "4b") {
+				metadata.NumLayers = 32 // Qwen-4B: 32 layers
+			} else if strings.Contains(filename, "1b") || strings.Contains(filename, "nano") {
+				metadata.NumLayers = 22 // Qwen-1B: 22 layers
+			} else {
+				metadata.NumLayers = 32 // Default Qwen
+			}
+		} else if strings.Contains(filename, "gemma") {
+			// Gemma architecture layer counts
+			if strings.Contains(filename, "27b") {
+				metadata.NumLayers = 46 // Gemma-27B: 46 layers
+			} else if strings.Contains(filename, "9b") {
+				metadata.NumLayers = 42 // Gemma-9B: 42 layers
+			} else if strings.Contains(filename, "7b") {
+				metadata.NumLayers = 28 // Gemma-7B: 28 layers
+			} else if strings.Contains(filename, "4b") {
+				metadata.NumLayers = 26 // Gemma-4B: 26 layers
+			} else if strings.Contains(filename, "2b") {
+				metadata.NumLayers = 18 // Gemma-2B: 18 layers
+			} else {
+				metadata.NumLayers = 28 // Default Gemma
+			}
+		} else if strings.Contains(filename, "llama") {
+			// Llama architecture layer counts
+			if strings.Contains(filename, "70b") {
+				metadata.NumLayers = 80 // Llama-70B: 80 layers
+			} else if strings.Contains(filename, "30b") {
+				metadata.NumLayers = 60 // Llama-30B: 60 layers
+			} else if strings.Contains(filename, "13b") {
+				metadata.NumLayers = 40 // Llama-13B: 40 layers
+			} else if strings.Contains(filename, "7b") || strings.Contains(filename, "8b") {
+				metadata.NumLayers = 32 // Llama-7B: 32 layers
+			} else if strings.Contains(filename, "3b") {
+				metadata.NumLayers = 26 // Llama-3B: 26 layers
+			} else {
+				metadata.NumLayers = 32 // Default Llama
 			}
 		} else {
-			metadata.NumLayers = 32 // Default
+			// Generic parameter count based estimation (fallback)
+			if metadata.TotalParams > 0 {
+				switch {
+				case metadata.TotalParams < 2_000_000_000:
+					metadata.NumLayers = 18
+				case metadata.TotalParams < 5_000_000_000:
+					metadata.NumLayers = 24
+				case metadata.TotalParams < 8_000_000_000:
+					metadata.NumLayers = 32
+				case metadata.TotalParams < 15_000_000_000:
+					metadata.NumLayers = 40
+				case metadata.TotalParams < 35_000_000_000:
+					metadata.NumLayers = 48
+				case metadata.TotalParams < 70_000_000_000:
+					metadata.NumLayers = 80
+				default:
+					metadata.NumLayers = 96
+				}
+			} else {
+				// Final fallback based on filename patterns
+				if strings.Contains(filename, "30b") || strings.Contains(filename, "27b") {
+					metadata.NumLayers = 60
+				} else if strings.Contains(filename, "13b") || strings.Contains(filename, "14b") {
+					metadata.NumLayers = 40
+				} else if strings.Contains(filename, "7b") || strings.Contains(filename, "8b") {
+					metadata.NumLayers = 32
+				} else if strings.Contains(filename, "3b") || strings.Contains(filename, "4b") {
+					metadata.NumLayers = 26
+				} else if strings.Contains(filename, "1b") || strings.Contains(filename, "nano") {
+					metadata.NumLayers = 22
+				} else {
+					metadata.NumLayers = 32 // Default
+				}
+			}
 		}
+
+		fmt.Printf("  🔧 ESTIMATED LAYERS: %d (arch: %s)\n", metadata.NumLayers, detectArchitecture(filename))
 	}
 
-	// Set default context length based on model name
+	// Only use filename fallback for context if GGUF reading completely failed
 	if metadata.ContextLength == 0 {
+		fmt.Printf("  ⚠️ Context length not found in metadata, using filename fallback\n")
 		filename := strings.ToLower(filepath.Base(modelPath))
+		fmt.Printf("  🔍 CONTEXT DETECTION DEBUG:\n")
+		fmt.Printf("    - Filename: %s\n", filename)
+		fmt.Printf("    - Full path: %s\n", strings.ToLower(modelPath))
+
 		switch {
 		case strings.Contains(filename, "128k"):
 			metadata.ContextLength = 131072
+			fmt.Printf("    - Found '128k' → Setting to 128K context\n")
 		case strings.Contains(filename, "64k"):
 			metadata.ContextLength = 65536
+			fmt.Printf("    - Found '64k' → Setting to 64K context\n")
 		case strings.Contains(filename, "32k"):
 			metadata.ContextLength = 32768
+			fmt.Printf("    - Found '32k' → Setting to 32K context\n")
 		case strings.Contains(filename, "16k"):
 			metadata.ContextLength = 16384
+			fmt.Printf("    - Found '16k' → Setting to 16K context\n")
 		case strings.Contains(filename, "8k"):
 			metadata.ContextLength = 8192
+			fmt.Printf("    - Found '8k' → Setting to 8K context\n")
 		case strings.Contains(filename, "1m"):
 			metadata.ContextLength = 1048576
+			fmt.Printf("    - Found '1m' → Setting to 1M context\n")
 		default:
 			// Default context based on model generation
 			if strings.Contains(filename, "qwen3") || strings.Contains(filename, "gemma-3") {
-				metadata.ContextLength = 8192
+				metadata.ContextLength = 131072 // Modern models typically support 128K+
+				fmt.Printf("    - Qwen3/Gemma-3 default → Setting to 128K context\n")
 			} else {
-				metadata.ContextLength = 4096
+				metadata.ContextLength = 32768 // More reasonable default
+				fmt.Printf("    - Generic default → Setting to 32K context\n")
 			}
 		}
+		fmt.Printf("    - ✅ FINAL CONTEXT LENGTH: %d\n", metadata.ContextLength)
+	} else {
+		fmt.Printf("  ✅ CONTEXT FROM METADATA: %d\n", metadata.ContextLength)
 	}
 
 	// Set embedding size based on model size
@@ -400,6 +488,452 @@ func (o *Optimizer) FetchModelMetadata(modelPath string) (*ModelMetadata, error)
 	}
 
 	return metadata, nil
+}
+
+// readGGUFMetadata reads metadata directly from GGUF file
+func (o *Optimizer) readGGUFMetadata(modelPath string, metadata *ModelMetadata) error {
+	file, err := os.Open(modelPath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Read GGUF header
+	var magic [4]byte
+	if _, err := file.Read(magic[:]); err != nil {
+		return fmt.Errorf("failed to read magic: %w", err)
+	}
+
+	if string(magic[:]) != "GGUF" {
+		return fmt.Errorf("not a GGUF file")
+	}
+
+	// Read version (uint32)
+	var version uint32
+	if err := binary.Read(file, binary.LittleEndian, &version); err != nil {
+		return fmt.Errorf("failed to read version: %w", err)
+	}
+
+	// Read tensor count (uint64)
+	var tensorCount uint64
+	if err := binary.Read(file, binary.LittleEndian, &tensorCount); err != nil {
+		return fmt.Errorf("failed to read tensor count: %w", err)
+	}
+
+	// Read metadata count (uint64)
+	var metadataCount uint64
+	if err := binary.Read(file, binary.LittleEndian, &metadataCount); err != nil {
+		return fmt.Errorf("failed to read metadata count: %w", err)
+	}
+
+	fmt.Printf("  📋 GGUF INFO: version=%d, tensors=%d, metadata_entries=%d\n", version, tensorCount, metadataCount)
+
+	// Read metadata entries with better error recovery
+	successCount := 0
+	consecutiveFailures := 0
+	maxConsecutiveFailures := 5 // Stop if we get too many consecutive failures
+
+	for i := uint64(0); i < metadataCount; i++ {
+		// Record current position for recovery
+		currentPos, _ := file.Seek(0, 1)
+
+		key, value, err := o.readGGUFMetadataEntry(file)
+		if err != nil {
+			consecutiveFailures++
+			fmt.Printf("  ⚠️ Failed to read metadata entry %d: %v (pos: %d)\n", i, err, currentPos)
+
+			// If we get too many consecutive failures, the file is likely corrupted beyond repair
+			if consecutiveFailures >= maxConsecutiveFailures {
+				fmt.Printf("  🚨 Too many consecutive failures (%d), stopping metadata parsing\n", consecutiveFailures)
+				break
+			}
+
+			// Try intelligent recovery based on error type
+			if err := o.recoverFromMetadataError(file, currentPos, err); err != nil {
+				// Recovery failed, skip this entire region
+				fmt.Printf("  🔧 Recovery failed, skipping ahead\n")
+				newPos := currentPos + 64 // Skip ahead 64 bytes
+				if _, seekErr := file.Seek(newPos, 0); seekErr != nil {
+					break // Can't seek, give up
+				}
+			}
+			continue
+		}
+
+		// Reset consecutive failure count on success
+		consecutiveFailures = 0
+		successCount++
+
+		// Parse relevant metadata based on architecture
+		switch key {
+		case "general.architecture":
+			if archStr, ok := value.(string); ok {
+				metadata.Architecture = archStr
+				fmt.Printf("  🎯 FOUND ARCHITECTURE: %s\n", metadata.Architecture)
+
+				// Detect MoE based on architecture
+				if strings.Contains(archStr, "moe") {
+					metadata.IsMoE = true
+					fmt.Printf("  🧩 DETECTED MoE ARCHITECTURE\n")
+				}
+			}
+		case "general.parameter_count":
+			if paramCount, ok := value.(uint64); ok {
+				metadata.TotalParams = int64(paramCount)
+				fmt.Printf("  🎯 FOUND PARAMETER COUNT: %d\n", metadata.TotalParams)
+			}
+		}
+
+		// Architecture-specific metadata parsing
+		if strings.HasPrefix(key, metadata.Architecture+".") {
+			switch {
+			case strings.HasSuffix(key, ".context_length"):
+				if ctxLen, ok := value.(uint64); ok {
+					metadata.ContextLength = int(ctxLen)
+					fmt.Printf("  🎯 FOUND CONTEXT LENGTH: %d\n", metadata.ContextLength)
+				}
+			case strings.HasSuffix(key, ".embedding_length"):
+				if embLen, ok := value.(uint64); ok {
+					metadata.EmbeddingSize = int(embLen)
+					fmt.Printf("  🎯 FOUND EMBEDDING SIZE: %d\n", metadata.EmbeddingSize)
+				}
+			case strings.HasSuffix(key, ".block_count"):
+				if blockCount, ok := value.(uint64); ok {
+					metadata.NumLayers = int(blockCount)
+					fmt.Printf("  🎯 FOUND LAYER COUNT: %d\n", metadata.NumLayers)
+				}
+			case strings.HasSuffix(key, ".expert_count"):
+				if expertCount, ok := value.(uint64); ok {
+					metadata.NumExperts = int(expertCount)
+					fmt.Printf("  🎯 FOUND EXPERT COUNT: %d\n", metadata.NumExperts)
+				}
+			case strings.HasSuffix(key, ".expert_used_count"):
+				if activeCount, ok := value.(uint64); ok {
+					metadata.NumActiveExperts = int(activeCount)
+					fmt.Printf("  🎯 FOUND ACTIVE EXPERTS: %d\n", metadata.NumActiveExperts)
+				}
+			}
+		}
+
+		// Legacy fallbacks (for older GGUF files without architecture prefixes)
+		switch key {
+		case "llama.context_length":
+			if metadata.ContextLength == 0 {
+				if ctxLen, ok := value.(uint64); ok {
+					metadata.ContextLength = int(ctxLen)
+					fmt.Printf("  🎯 FOUND CONTEXT LENGTH (legacy): %d\n", metadata.ContextLength)
+				}
+			}
+		case "llama.embedding_length":
+			if metadata.EmbeddingSize == 0 {
+				if embLen, ok := value.(uint64); ok {
+					metadata.EmbeddingSize = int(embLen)
+					fmt.Printf("  🎯 FOUND EMBEDDING SIZE (legacy): %d\n", metadata.EmbeddingSize)
+				}
+			}
+		case "llama.block_count":
+			if metadata.NumLayers == 0 {
+				if blockCount, ok := value.(uint64); ok {
+					metadata.NumLayers = int(blockCount)
+					fmt.Printf("  🎯 FOUND LAYER COUNT (legacy): %d\n", metadata.NumLayers)
+				}
+			}
+		}
+
+		// Early exit if we have all the important metadata we need
+		if metadata.Architecture != "" && metadata.ContextLength > 0 &&
+			metadata.EmbeddingSize > 0 && metadata.NumLayers > 0 &&
+			metadata.TotalParams > 0 {
+			fmt.Printf("  ✅ All essential metadata found, stopping early parsing\n")
+			break
+		}
+	}
+
+	fmt.Printf("  ✅ Successfully parsed %d/%d metadata entries\n", successCount, metadataCount)
+
+	if successCount == 0 {
+		return fmt.Errorf("no metadata entries could be parsed")
+	}
+
+	return nil
+}
+
+// recoverFromMetadataError attempts to recover from GGUF parsing errors
+func (o *Optimizer) recoverFromMetadataError(file *os.File, failurePos int64, parseError error) error {
+	errorStr := parseError.Error()
+
+	// Different recovery strategies based on error type
+	switch {
+	case strings.Contains(errorStr, "key length too large"):
+		// Likely reading garbage data, try to find next valid entry
+		// Search for the next reasonable key length (typically < 100 bytes)
+		return o.seekToNextValidEntry(file, failurePos)
+
+	case strings.Contains(errorStr, "string arrays not supported"):
+		// We know the structure, try to skip the array properly
+		if _, err := file.Seek(failurePos, 0); err != nil {
+			return err
+		}
+		// Try to re-read just the array and skip it
+		return o.skipComplexArrayEntry(file)
+
+	case strings.Contains(errorStr, "unsupported value type"):
+		// Skip a reasonable amount and continue
+		_, err := file.Seek(failurePos+32, 0)
+		return err
+
+	default:
+		// Generic error, try a small skip forward
+		_, err := file.Seek(failurePos+16, 0)
+		return err
+	}
+}
+
+// seekToNextValidEntry tries to find the next valid metadata entry
+func (o *Optimizer) seekToNextValidEntry(file *os.File, startPos int64) error {
+	// Search forward in small increments to find a valid key length
+	for offset := int64(8); offset < 512; offset += 8 {
+		if _, err := file.Seek(startPos+offset, 0); err != nil {
+			return err
+		}
+
+		var testKeyLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &testKeyLen); err != nil {
+			continue
+		}
+
+		// Valid key lengths are typically 5-200 characters
+		if testKeyLen > 4 && testKeyLen < 200 {
+			// Go back to start of this potential entry
+			_, err := file.Seek(startPos+offset, 0)
+			return err
+		}
+	}
+
+	// Couldn't find valid entry, skip ahead significantly
+	_, err := file.Seek(startPos+256, 0)
+	return err
+}
+
+// skipComplexArrayEntry attempts to properly skip a complex array entry
+func (o *Optimizer) skipComplexArrayEntry(file *os.File) error {
+	// Re-read the key length and key to get to the value
+	var keyLen uint64
+	if err := binary.Read(file, binary.LittleEndian, &keyLen); err != nil {
+		return err
+	}
+
+	if keyLen > 1024 {
+		return fmt.Errorf("key length still too large during recovery")
+	}
+
+	// Skip the key
+	if _, err := file.Seek(int64(keyLen), 1); err != nil {
+		return err
+	}
+
+	// Read value type
+	var valueType uint32
+	if err := binary.Read(file, binary.LittleEndian, &valueType); err != nil {
+		return err
+	}
+
+	// If it's an array, try to skip it properly
+	if valueType == 9 { // GGUF_TYPE_ARRAY
+		var arrayType uint32
+		if err := binary.Read(file, binary.LittleEndian, &arrayType); err != nil {
+			return err
+		}
+		var arrayLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &arrayLen); err != nil {
+			return err
+		}
+
+		// Skip the array data more conservatively
+		return o.skipArrayData(file, arrayType, arrayLen)
+	}
+
+	return fmt.Errorf("not an array after all")
+}
+
+// readGGUFMetadataEntry reads a single metadata key-value pair
+func (o *Optimizer) readGGUFMetadataEntry(file *os.File) (string, interface{}, error) {
+	// Read key length (uint64)
+	var keyLen uint64
+	if err := binary.Read(file, binary.LittleEndian, &keyLen); err != nil {
+		return "", nil, err
+	}
+
+	// Validate key length
+	if keyLen > 1024 { // Reasonable limit
+		return "", nil, fmt.Errorf("key length too large: %d", keyLen)
+	}
+
+	// Read key string
+	keyBytes := make([]byte, keyLen)
+	if _, err := file.Read(keyBytes); err != nil {
+		return "", nil, err
+	}
+	key := string(keyBytes)
+
+	// Read value type (uint32)
+	var valueType uint32
+	if err := binary.Read(file, binary.LittleEndian, &valueType); err != nil {
+		return "", nil, err
+	}
+
+	// Read value based on type
+	var value interface{}
+	switch valueType {
+	case 0: // GGUF_TYPE_UINT8
+		var val uint8
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = uint64(val)
+	case 1: // GGUF_TYPE_INT8
+		var val int8
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = int64(val)
+	case 2: // GGUF_TYPE_UINT16
+		var val uint16
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = uint64(val)
+	case 3: // GGUF_TYPE_INT16
+		var val int16
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = int64(val)
+	case 4: // GGUF_TYPE_UINT32
+		var val uint32
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = uint64(val)
+	case 5: // GGUF_TYPE_INT32
+		var val int32
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = int64(val)
+	case 6: // GGUF_TYPE_FLOAT32
+		var val float32
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = float64(val)
+	case 7: // GGUF_TYPE_BOOL
+		var val uint8
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = val != 0
+	case 8: // GGUF_TYPE_STRING
+		var strLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &strLen); err != nil {
+			return "", nil, err
+		}
+		if strLen > 10240 { // 10KB limit for strings
+			return "", nil, fmt.Errorf("string too large: %d", strLen)
+		}
+		strBytes := make([]byte, strLen)
+		if _, err := file.Read(strBytes); err != nil {
+			return "", nil, err
+		}
+		value = string(strBytes)
+	case 9: // GGUF_TYPE_ARRAY
+		// Skip arrays for now - they're complex
+		var arrayType uint32
+		if err := binary.Read(file, binary.LittleEndian, &arrayType); err != nil {
+			return "", nil, err
+		}
+		var arrayLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &arrayLen); err != nil {
+			return "", nil, err
+		}
+		// Skip the array data based on type and length
+		if err := o.skipArrayData(file, arrayType, arrayLen); err != nil {
+			return "", nil, err
+		}
+		value = fmt.Sprintf("array[%d]", arrayLen)
+	case 10: // GGUF_TYPE_UINT64
+		var val uint64
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = val
+	case 11: // GGUF_TYPE_INT64
+		var val int64
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = val
+	case 12: // GGUF_TYPE_FLOAT64
+		var val float64
+		if err := binary.Read(file, binary.LittleEndian, &val); err != nil {
+			return "", nil, err
+		}
+		value = val
+	default:
+		return "", nil, fmt.Errorf("unsupported value type: %d", valueType)
+	}
+
+	return key, value, nil
+}
+
+// skipArrayData skips array data in GGUF file
+func (o *Optimizer) skipArrayData(file *os.File, arrayType uint32, arrayLen uint64) error {
+	// Reasonable limits to prevent infinite loops or excessive memory usage
+	if arrayLen > 100000 {
+		return fmt.Errorf("array too large to skip safely: %d elements", arrayLen)
+	}
+
+	var elementSize int64
+	switch arrayType {
+	case 0, 1, 7: // uint8, int8, bool
+		elementSize = 1
+	case 2, 3: // uint16, int16
+		elementSize = 2
+	case 4, 5, 6: // uint32, int32, float32
+		elementSize = 4
+	case 10, 11, 12: // uint64, int64, float64
+		elementSize = 8
+	case 8: // string array - handle properly now
+		// For string arrays, each element has a length prefix followed by the string data
+		for i := uint64(0); i < arrayLen; i++ {
+			var strLen uint64
+			if err := binary.Read(file, binary.LittleEndian, &strLen); err != nil {
+				return fmt.Errorf("failed to read string length in array element %d: %w", i, err)
+			}
+
+			// Reasonable string length limit
+			if strLen > 10240 { // 10KB limit per string
+				return fmt.Errorf("string in array too large: %d bytes", strLen)
+			}
+
+			// Skip the string data
+			if _, err := file.Seek(int64(strLen), 1); err != nil {
+				return fmt.Errorf("failed to skip string data: %w", err)
+			}
+		}
+		return nil
+	case 9: // nested array - too complex, give up gracefully
+		return fmt.Errorf("nested arrays not supported (too complex)")
+	default:
+		return fmt.Errorf("unsupported array type: %d", arrayType)
+	}
+
+	// For fixed-size elements, skip all at once
+	skipBytes := int64(arrayLen) * elementSize
+	if _, err := file.Seek(skipBytes, 1); err != nil {
+		return fmt.Errorf("failed to skip %d bytes for array: %w", skipBytes, err)
+	}
+	return nil
 }
 
 func (m *ModelMetadata) detectFromFilename(path string) {
@@ -507,7 +1041,7 @@ func (o *Optimizer) Optimize(modelName string, preset Preset) (*OptimizedParams,
 	}
 
 	// Generate optimized parameters based on preset
-	params := o.generateParams(metadata, preset)
+	params := o.generateParams(metadata, preset, modelPath)
 
 	return params, nil
 }
@@ -520,7 +1054,7 @@ func extractModelPath(cmd string) string {
 	return ""
 }
 
-func (o *Optimizer) generateParams(metadata *ModelMetadata, preset Preset) *OptimizedParams {
+func (o *Optimizer) generateParams(metadata *ModelMetadata, preset Preset, modelPath string) *OptimizedParams {
 	params := &OptimizedParams{
 		ContBatching: true,
 		UseMMAP:      true,
@@ -548,31 +1082,98 @@ func (o *Optimizer) generateParams(metadata *ModelMetadata, preset Preset) *Opti
 
 	// Calculate memory requirements
 	quantMultiplier := getQuantMultiplier(metadata.Quantization)
-	modelSizeGB := estimateModelSize(metadata, quantMultiplier)
 
-	// Adjust available VRAM based on backend
-	availableVRAM := float64(o.specs.GPUMemoryMB) * 0.95
-	if o.backend == "vulkan" {
-		availableVRAM *= 0.85 // Vulkan has more overhead
-	} else if o.backend == "cpu" {
-		// For CPU, use system RAM instead
-		availableVRAM = float64(o.specs.SystemMemoryMB) * 0.5
+	// Get ACTUAL model file size from filesystem
+	actualModelSizeGB := getActualModelSize(modelPath)
+
+	// Also calculate estimated size for comparison
+	estimatedModelSizeGB := estimateModelSize(metadata, quantMultiplier)
+
+	// Compare actual vs estimated
+	fmt.Printf("  📊 SIZE COMPARISON:\n")
+	fmt.Printf("    - Estimated: %.2f GB\n", estimatedModelSizeGB)
+	fmt.Printf("    - Actual:    %.2f GB\n", actualModelSizeGB)
+	if actualModelSizeGB > 0 {
+		diff := ((actualModelSizeGB - estimatedModelSizeGB) / estimatedModelSizeGB) * 100
+		fmt.Printf("    - Difference: %.1f%%\n", diff)
 	}
 
-	// Apply preset optimizations
+	// Use actual size if available, fallback to estimated
+	var modelSizeGB float64
+	if actualModelSizeGB > 0 {
+		modelSizeGB = actualModelSizeGB
+		fmt.Printf("  ✅ Using ACTUAL file size: %.2f GB\n", modelSizeGB)
+	} else {
+		modelSizeGB = estimatedModelSizeGB
+		fmt.Printf("  ⚠️ Using ESTIMATED size: %.2f GB\n", modelSizeGB)
+	}
+
+	// Determine if we're in CPU-only mode or have GPU
+	var availableMemoryMB float64
+	var isGPUMode bool
+
+	if o.backend == "cpu" || o.specs.GPUMemoryMB == 0 {
+		// CPU-only mode
+		isGPUMode = false
+		availableMemoryMB = float64(o.specs.SystemMemoryMB)
+	} else {
+		// GPU mode - check if model fits in GPU with 80% rule
+		gpuVRAMGB := float64(o.specs.GPUMemoryMB) / 1024
+		if modelSizeGB <= gpuVRAMGB*0.8 {
+			isGPUMode = true
+			availableMemoryMB = float64(o.specs.GPUMemoryMB)
+
+			// Check if model is very small (less than 50% of VRAM) - use simple optimization
+			if modelSizeGB <= gpuVRAMGB*0.5 {
+				fmt.Printf("  🎯 SMALL MODEL: %.1fGB fits easily in %.1fGB VRAM (%.1f%% usage)\n",
+					modelSizeGB, gpuVRAMGB, (modelSizeGB/gpuVRAMGB)*100)
+				fmt.Printf("  ✅ Using SIMPLE OPTIMIZATION - no complex tuning needed\n")
+
+				// Apply simple, optimal settings for small models
+				params.NGPULayers = 9999                                           // All layers on GPU
+				params.ContextSize = max(8192, min(metadata.ContextLength, 32768)) // Good context
+				params.BatchSize = 512                                             // Standard batch size
+				params.UBatchSize = 256
+				params.Keep = 2048
+				params.Parallel = min(8, o.specs.CPUCores/2)
+				params.Threads = o.specs.CPUCores * 2 / 3
+				params.DefragThreshold = 0.1
+				params.CacheTypeK = "q8_0" // Balanced KV cache
+				params.CacheTypeV = "q8_0"
+				params.ContBatching = true
+				params.FlashAttn = o.backend == "cuda" && o.specs.GPUCompute >= 8.0
+				params.MLock = o.specs.SystemMemoryMB > 32000
+
+				fmt.Printf("  🚀 SIMPLE: All layers on GPU, Context=%dK, Batch=%d, Threads=%d\n",
+					params.ContextSize/1024, params.BatchSize, params.Threads)
+
+				// Skip complex optimization and go straight to backend adjustments
+				o.adjustForBackend(params, metadata)
+				return params
+			}
+		} else {
+			// Model exceeds 80% of GPU VRAM but we can still use hybrid GPU+CPU mode
+			isGPUMode = true // Keep GPU mode for hybrid approach
+			availableMemoryMB = float64(o.specs.GPUMemoryMB)
+			fmt.Printf("Model size %.1fGB exceeds 80%% of GPU VRAM (%.1fGB), using hybrid GPU+CPU mode\n",
+				modelSizeGB, gpuVRAMGB*0.8)
+		}
+	}
+
+	// Apply preset optimizations with new aggressive strategy
 	switch preset {
 	case PresetHighSpeed:
-		o.optimizeForSpeed(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeForSpeed(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	case PresetMoreContext:
-		o.optimizeForContext(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeForContext(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	case PresetBalanced:
-		o.optimizeBalanced(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeBalanced(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode, modelPath)
 	case PresetSystemSafe:
-		o.optimizeSystemSafe(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeSystemSafe(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	case PresetUltra:
-		o.optimizeUltra(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeUltra(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	case PresetMoE:
-		o.optimizeMoESpecific(params, metadata, modelSizeGB, availableVRAM)
+		o.optimizeMoESpecific(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	}
 
 	// Backend-specific adjustments
@@ -580,7 +1181,7 @@ func (o *Optimizer) generateParams(metadata *ModelMetadata, preset Preset) *Opti
 
 	// MoE specific optimizations (always apply for MoE models)
 	if metadata.IsMoE {
-		o.optimizeMoE(params, metadata, availableVRAM)
+		o.optimizeMoE(params, metadata, availableMemoryMB)
 	}
 
 	// Thread optimization
@@ -598,41 +1199,24 @@ func (o *Optimizer) adjustForBackend(params *OptimizedParams, metadata *ModelMet
 		params.NumaDistribute = false // Not applicable
 		params.F16KV = false          // May cause issues
 
-		// Vulkan has significant memory overhead, be very conservative
-		// Reduce GPU layers for large models
-		if metadata.TotalParams > 20_000_000_000 {
-			// For 20B+ models, reduce layers significantly
-			params.NGPULayers = int(float64(params.NGPULayers) * 0.6)
-		} else if metadata.TotalParams > 10_000_000_000 {
-			// For 10B+ models, reduce moderately
-			params.NGPULayers = int(float64(params.NGPULayers) * 0.75)
-		}
-
 		// Conservative batch sizes for Vulkan
-		if params.BatchSize > 256 {
-			params.BatchSize = 256
+		if params.BatchSize > 1024 {
+			params.BatchSize = 1024
 		}
-		if params.UBatchSize > 128 {
-			params.UBatchSize = 128
-		}
-
-		// Limit context for Vulkan to prevent OOM
-		maxContext := 8192
-		if metadata.TotalParams > 20_000_000_000 {
-			maxContext = 4096 // Very conservative for large models
-		}
-		if params.ContextSize > maxContext {
-			params.ContextSize = maxContext
+		if params.UBatchSize > 512 {
+			params.UBatchSize = 512
 		}
 
-		// Reduce parallel processing
-		if params.Parallel > 2 {
-			params.Parallel = 2
+		// Reduce parallel processing for Vulkan
+		if params.Parallel > 4 {
+			params.Parallel = 4
 		}
 
-		// Don't use KV cache quantization on Vulkan
-		params.CacheTypeK = ""
-		params.CacheTypeV = ""
+		// Don't use aggressive KV cache quantization on Vulkan
+		if params.CacheTypeK == "q2_k" {
+			params.CacheTypeK = "q8_0"
+			params.CacheTypeV = "q8_0"
+		}
 
 	case "metal":
 		// Metal specific optimizations
@@ -645,8 +1229,8 @@ func (o *Optimizer) adjustForBackend(params *OptimizedParams, metadata *ModelMet
 
 	case "rocm":
 		// ROCm specific adjustments
-		if params.BatchSize > 512 {
-			params.BatchSize = 512 // ROCm may have different limits
+		if params.BatchSize > 2048 {
+			params.BatchSize = 2048 // ROCm may have different limits
 		}
 
 	case "cpu":
@@ -656,263 +1240,443 @@ func (o *Optimizer) adjustForBackend(params *OptimizedParams, metadata *ModelMet
 		params.OffloadKQV = false
 		params.NoKVOffload = true
 		params.SplitMode = "" // Not applicable
-		if params.BatchSize > 256 {
-			params.BatchSize = 256 // More conservative for CPU
-		}
-		if params.Parallel > 4 {
-			params.Parallel = 4 // Limit parallelism on CPU
-		}
+		params.NumaDistribute = false
 		// Don't use KV cache quantization on CPU
 		params.CacheTypeK = ""
 		params.CacheTypeV = ""
 	}
-
-	// Adjust context size for non-CUDA backends if needed
-	if o.backend != "cuda" && o.backend != "metal" {
-		maxContext := 16384
-		if o.backend == "cpu" {
-			maxContext = 8192
-		}
-		if params.ContextSize > maxContext {
-			params.ContextSize = maxContext
-		}
-	}
 }
 
-func (o *Optimizer) optimizeForSpeed(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Maximum GPU offloading for speed
-	params.NGPULayers = calculateMaxGPULayers(modelSizeGB, availableVRAM, metadata.NumLayers, metadata.IsMoE, false)
-	params.ContextSize = min(4096, metadata.ContextLength)
+// New aggressive memory calculation function
+func (o *Optimizer) calculateMemoryBudget(modelSizeGB float64, availableMemoryMB float64, isGPUMode bool, preset Preset, metadata *ModelMetadata) (int, int, float64) {
+	var targetUtilization float64
+	var overheadMB float64
+
+	// Set target memory utilization by preset
+	switch preset {
+	case PresetSystemSafe:
+		targetUtilization = 0.95
+	case PresetBalanced:
+		targetUtilization = 0.90 // Only mode that "wastes" memory
+	case PresetHighSpeed:
+		targetUtilization = 0.97
+	case PresetMoreContext:
+		targetUtilization = 0.98
+	case PresetUltra:
+		targetUtilization = 0.98
+	case PresetMoE:
+		targetUtilization = 0.97
+	default:
+		targetUtilization = 0.95
+	}
+
+	// Adjust overhead based on backend
+	if isGPUMode {
+		switch o.backend {
+		case "cuda":
+			overheadMB = 200
+		case "vulkan":
+			overheadMB = 500 // Vulkan needs more overhead
+		case "metal":
+			overheadMB = 300
+		case "rocm":
+			overheadMB = 400
+		}
+	} else {
+		// CPU mode - need more overhead for OS
+		overheadMB = 1024 // 1GB for OS and other processes
+	}
+
+	// Calculate GPU layers strategy
+	var gpuLayers int
+	availableVRAMGB := availableMemoryMB / 1024
+
+	if isGPUMode && modelSizeGB <= availableVRAMGB*0.8 {
+		// Model fits 80% rule - use all layers
+		gpuLayers = -1 // Special value meaning "all layers"
+		fmt.Printf("  ✅ MODEL FITS 80%% RULE: %.1fGB <= %.1fGB (80%% of %.1fGB)\n",
+			modelSizeGB, availableVRAMGB*0.8, availableVRAMGB)
+	} else if isGPUMode {
+		// Model exceeds 80% - calculate maximum layers that FIT
+		fmt.Printf("  ⚡ MODEL EXCEEDS 80%% RULE: %.1fGB > %.1fGB - calculating partial GPU layers\n",
+			modelSizeGB, availableVRAMGB*0.8)
+
+		// Use the calculateMaxGPULayers function for accurate calculation
+		totalLayers := metadata.NumLayers
+		if totalLayers == 0 {
+			totalLayers = 32 // Fallback
+		}
+
+		// Use aggressive context for high-performance modes
+		aggressiveContext := (preset == PresetHighSpeed || preset == PresetUltra || preset == PresetMoreContext)
+
+		gpuLayers = calculateMaxGPULayers(modelSizeGB, availableMemoryMB, totalLayers, metadata.IsMoE, aggressiveContext)
+		fmt.Printf("  🎯 CALCULATED GPU LAYERS: %d out of %d total layers\n", gpuLayers, totalLayers)
+
+		// Ensure we use at least SOME GPU layers if we have VRAM
+		if gpuLayers == 0 && availableVRAMGB > 4 {
+			gpuLayers = max(1, totalLayers/4) // Use at least 25% of layers
+			fmt.Printf("  🔧 EMERGENCY FALLBACK: Using %d GPU layers (25%% minimum)\n", gpuLayers)
+		}
+	} else {
+		gpuLayers = 0 // CPU only
+		fmt.Printf("  🖥️ CPU ONLY MODE: No GPU layers\n")
+	}
+
+	totalBudgetMB := availableMemoryMB * targetUtilization
+	modelBudgetMB := modelSizeGB * 1024
+	usableBudgetMB := totalBudgetMB - modelBudgetMB - overheadMB
+
+	// Ensure minimum 8K context
+	minContextMemoryMB := estimateContextMemory(8192, 4096, "f16") * 1024
+	if usableBudgetMB < minContextMemoryMB {
+		// Emergency fallback - reduce model layers or use more aggressive quantization
+		fmt.Printf("Warning: Insufficient memory for 8K context, attempting aggressive optimization\n")
+		usableBudgetMB = minContextMemoryMB
+	}
+
+	return gpuLayers, int(usableBudgetMB), usableBudgetMB
+}
+
+func (o *Optimizer) optimizeForSpeed(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool) {
+	gpuLayers, _, usableBudgetFloat := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetHighSpeed, metadata)
+
+	// GPU layers - use 9999 if fits 80% rule (let llama.cpp decide)
+	if gpuLayers == -1 {
+		params.NGPULayers = 9999 // Let llama.cpp load all layers
+		fmt.Printf("  🚀 HIGH SPEED: All layers on GPU (fits 80%% rule, using 9999)\n")
+	} else {
+		params.NGPULayers = gpuLayers
+	}
+
+	// Context: Minimum 8K, use aggressive KV quantization to save memory for speed optimizations
+	params.ContextSize = max(8192, min(16384, metadata.ContextLength))
+	params.CacheTypeK = "q4_0" // Aggressive quantization for speed
+	params.CacheTypeV = "q4_0"
+
+	contextMemoryMB := estimateContextMemory(params.ContextSize, metadata.EmbeddingSize, params.CacheTypeK) * 1024
+	remainingBudgetMB := usableBudgetFloat - contextMemoryMB
+
+	// Use remaining memory for SPEED optimizations - but cap batch size for stability
+	if remainingBudgetMB > 1000 { // If we have > 1GB remaining
+		// Cap batch size at 512 for stability
+		params.BatchSize = min(512, int(remainingBudgetMB/8))
+		params.UBatchSize = params.BatchSize / 2
+		// High parallelism for speed
+		params.Parallel = min(16, o.specs.CPUCores)
+		// Generous keep cache
+		params.Keep = min(4096, params.ContextSize/2)
+	} else {
+		// Conservative settings if tight on memory
+		params.BatchSize = 256
+		params.UBatchSize = 128
+		params.Parallel = min(8, o.specs.CPUCores/2)
+		params.Keep = 1024
+	}
+
+	params.DefragThreshold = 0.05 // Aggressive defrag for speed
+	params.NoKVOffload = false
+
+	fmt.Printf("  ⚡ HIGH SPEED: Context=%dK, Batch=%d, Parallel=%d, VRAM=%.1f%%\n",
+		params.ContextSize/1024, params.BatchSize, params.Parallel,
+		(availableMemoryMB*0.97)/availableMemoryMB*100)
+
+	// CRITICAL: Validate context memory safety
+	o.validateContextMemory(params, metadata, modelSizeGB, availableMemoryMB)
+}
+
+func (o *Optimizer) optimizeForContext(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool) {
+	gpuLayers, _, usableBudgetFloat := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetMoreContext, metadata)
+
+	// GPU layers - use 9999 if fits 80% rule (let llama.cpp decide)
+	if gpuLayers == -1 {
+		params.NGPULayers = 9999 // Let llama.cpp load all layers
+		fmt.Printf("  🧠 MORE CONTEXT: All layers on GPU (fits 80%% rule, using 9999)\n")
+	} else {
+		params.NGPULayers = gpuLayers
+	}
+
+	// Context: Use remaining memory for maximum context, but KV cache minimum is q4_0
+	params.CacheTypeK = "q4_0" // Minimum safe quantization for KV cache
+	params.CacheTypeV = "q4_0" // Never go below q4_0
+
+	// Calculate maximum possible context with remaining budget
+	maxPossibleContext := int(usableBudgetFloat / (estimateContextMemory(1024, metadata.EmbeddingSize, params.CacheTypeK) * 1024) * 1024)
+	params.ContextSize = min(maxPossibleContext, metadata.ContextLength)
+	params.ContextSize = max(8192, params.ContextSize) // Ensure minimum 8K
+
+	// Minimal settings for everything else to maximize context
+	params.BatchSize = min(256, 512) // Cap at 512, but prefer smaller for context
+	params.UBatchSize = min(128, params.BatchSize/2)
+	params.Keep = min(params.ContextSize/8, 2048) // Conservative keep
+	params.Parallel = min(2, o.specs.CPUCores/4)  // Low parallel to save memory
+	params.DefragThreshold = 0.05
+	params.OffloadKQV = true
+
+	fmt.Printf("  🧠 MORE CONTEXT: Context=%dK, Batch=%d, KV Cache=q4_0 (minimum safe), VRAM=%.1f%%\n",
+		params.ContextSize/1024, params.BatchSize,
+		(availableMemoryMB*0.98)/availableMemoryMB*100)
+
+	// CRITICAL: Validate context memory safety
+	o.validateContextMemory(params, metadata, modelSizeGB, availableMemoryMB)
+}
+
+func (o *Optimizer) optimizeBalanced(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool, modelPath string) {
+	gpuLayers, _, _ := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetBalanced, metadata)
+
+	// GPU layers - use 9999 if fits 80% rule (let llama.cpp decide)
+	if gpuLayers == -1 {
+		params.NGPULayers = 9999 // Let llama.cpp load all layers
+		fmt.Printf("  ⚖️ BALANCED: All layers on GPU (fits 80%% rule, using 9999)\n")
+	} else {
+		params.NGPULayers = gpuLayers
+	}
+
+	// Context: PROPERLY calculate based on actual remaining memory after model loading
+	params.CacheTypeK = "q8_0" // Balanced quantization
+	params.CacheTypeV = "q8_0"
+
+	// Calculate ACTUAL remaining memory in MB after loading the model
+	availableVRAMGB := availableMemoryMB / 1024
+	actualRemainingGB := availableVRAMGB - modelSizeGB - 0.5 // 0.5GB overhead
+
+	fmt.Printf("  🧮 MEMORY BREAKDOWN:\n")
+	fmt.Printf("    - Total VRAM: %.1f GB\n", availableVRAMGB)
+	fmt.Printf("    - Model size: %.1f GB\n", modelSizeGB)
+	fmt.Printf("    - Overhead: 0.5 GB\n")
+	fmt.Printf("    - Available for context: %.1f GB\n", actualRemainingGB)
+
+	if actualRemainingGB <= 0 {
+		// Not enough memory - force minimal context
+		params.ContextSize = 8192
+		fmt.Printf("    - ❌ INSUFFICIENT MEMORY: Using minimum 8K context\n")
+	} else {
+		// Calculate maximum context from available memory
+		// First calculate memory needed for 8K as reference
+		contextMemoryGB := estimateContextMemoryCorrect(8192, modelSizeGB, metadata.NumLayers, params.NGPULayers, params.CacheTypeK, metadata.EmbeddingSize)
+		fmt.Printf("    - 8K context needs: %.3f GB\n", contextMemoryGB)
+
+		// Calculate maximum possible context tokens from available memory (use 80% of available)
+		usableMemoryGB := actualRemainingGB * 0.8
+
+		// Calculate max context by solving: usableMemoryGB = estimateContextMemoryCorrect(maxContext, ...)
+		// Since memory scales linearly with context size, we can use ratio
+		maxPossibleTokens := int((usableMemoryGB / contextMemoryGB) * 8192)
+
+		// Apply model limits and reasonable caps
+		maxReasonableContext := min(maxPossibleTokens, metadata.ContextLength)
+
+		// Apply intelligent caps - but don't artificially limit based on total memory
+		// Instead, use calculated capacity with reasonable maximums
+		if maxReasonableContext >= 65536 {
+			// Can handle very large context
+			params.ContextSize = 65536
+		} else if maxReasonableContext >= 32768 {
+			// Can handle large context
+			params.ContextSize = 32768
+		} else if maxReasonableContext >= 16384 {
+			// Can handle medium context
+			params.ContextSize = 16384
+		} else if maxReasonableContext >= 8192 {
+			// Can handle at least standard context
+			params.ContextSize = min(16384, maxReasonableContext) // Allow up to 16K if possible
+		} else {
+			// Very constrained - use whatever is possible
+			params.ContextSize = max(8192, maxReasonableContext)
+		}
+
+		// Verify the final context size fits in memory using correct calculation
+		finalContextMemoryGB := estimateContextMemoryCorrect(params.ContextSize, modelSizeGB, metadata.NumLayers, params.NGPULayers, params.CacheTypeK, metadata.EmbeddingSize)
+		fmt.Printf("    - 💡 MAX POSSIBLE: %dK tokens (%.1f GB usable)\n", maxPossibleTokens/1024, usableMemoryGB)
+		fmt.Printf("    - ✅ CALCULATED CONTEXT: %dK (%.3f GB needed, %.1f GB available)\n",
+			params.ContextSize/1024, finalContextMemoryGB, actualRemainingGB)
+	}
+
+	params.ContextSize = max(8192, params.ContextSize) // Ensure minimum 8K
+
+	// Balanced settings - cap batch size at 512
 	params.BatchSize = 512
 	params.UBatchSize = 256
-	params.Keep = 1024
+	params.Keep = min(2048, params.ContextSize/4)
+	params.Parallel = min(6, o.specs.CPUCores*2/3)
 	params.DefragThreshold = 0.1
-	params.Parallel = min(8, o.specs.CPUCores/2)
-	params.NoKVOffload = false
-	// Use KV cache quantization for speed - must use matching K and V types
-	params.CacheTypeK = "q8_0"
-	params.CacheTypeV = "q8_0" // Must match K type
+
+	fmt.Printf("  ⚖️ BALANCED: Context=%dK, Batch=%d, Parallel=%d, Available=%.1fGB\n",
+		params.ContextSize/1024, params.BatchSize, params.Parallel, actualRemainingGB)
 }
 
-func (o *Optimizer) optimizeForContext(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Optimize for maximum context
-	maxContext := metadata.ContextLength
-	if maxContext == 0 {
-		maxContext = 32768 // Default max
-	}
+func (o *Optimizer) optimizeSystemSafe(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool) {
+	gpuLayers, _, _ := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetSystemSafe, metadata)
 
-	// Use aggressive KV cache quantization for large contexts
-	// IMPORTANT: Must use matching K and V types for standard builds
-	params.CacheTypeK = "q4_0"
-	params.CacheTypeV = "q4_0" // Must match K type
-
-	// Calculate context memory requirement with quantization
-	contextMemoryGB := estimateContextMemory(maxContext, metadata.EmbeddingSize, params.CacheTypeK)
-	remainingVRAM := availableVRAM - contextMemoryGB*1024
-
-	params.NGPULayers = calculateMaxGPULayers(modelSizeGB, remainingVRAM, metadata.NumLayers, metadata.IsMoE, true)
-	params.ContextSize = min(maxContext, int((availableVRAM/1024)*0.3*1024)) // Use 30% VRAM for context
-	params.BatchSize = min(256, params.ContextSize/16)
-	params.UBatchSize = min(128, params.BatchSize/2)
-	params.Keep = min(params.ContextSize/4, 4096)
-	params.DefragThreshold = 0.05
-	params.Parallel = min(4, o.specs.CPUCores/4)
-	params.OffloadKQV = true // Offload KV cache if needed
-}
-
-func (o *Optimizer) optimizeBalanced(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Balanced approach with smart KV cache quantization
-	// IMPORTANT: Must use matching K and V types for standard builds
-	params.CacheTypeK = "q8_0" // Good balance
-	params.CacheTypeV = "q8_0" // Must match K type
-
-	layerMultiplier := 0.8
-
-	// For very large models, be more conservative
-	if metadata.TotalParams > 25_000_000_000 {
-		layerMultiplier = 0.6
-		params.CacheTypeK = "q4_0" // More aggressive for large models
-		params.CacheTypeV = "q4_0" // Must match K type
-	}
-
-	if o.backend == "vulkan" {
-		layerMultiplier *= 0.6 // Much more conservative for Vulkan
-	}
-
-	params.NGPULayers = calculateMaxGPULayers(modelSizeGB*layerMultiplier, availableVRAM, metadata.NumLayers, metadata.IsMoE, false)
-
-	// Conservative context for large models to prevent OOM
-	if metadata.TotalParams > 25_000_000_000 {
-		params.ContextSize = min(4096, metadata.ContextLength)
-	} else if metadata.TotalParams > 10_000_000_000 {
-		params.ContextSize = min(8192, metadata.ContextLength)
+	// GPU layers - be more conservative for system safe
+	if gpuLayers == -1 {
+		if o.backend == "vulkan" || metadata.TotalParams > 20_000_000_000 {
+			// More conservative for Vulkan or large models - use exact layer count minus some
+			params.NGPULayers = max(1, metadata.NumLayers-2)
+		} else {
+			// Still use 9999 but mention it's conservative
+			params.NGPULayers = 9999
+		}
+		fmt.Printf("  🛡️ SYSTEM SAFE: GPU layers optimized for stability\n")
 	} else {
-		params.ContextSize = min(16384, metadata.ContextLength)
+		params.NGPULayers = max(0, gpuLayers-1) // Leave one layer on CPU for safety
 	}
 
+	// Context: Minimum 8K, but don't go crazy
+	params.ContextSize = max(8192, min(16384, metadata.ContextLength))
+
+	// Conservative KV cache settings
+	if params.FlashAttn && o.backend == "cuda" {
+		params.CacheTypeK = "q4_0"
+		params.CacheTypeV = "q4_0"
+	} else {
+		params.CacheTypeK = "" // Use default f16 for safety
+		params.CacheTypeV = ""
+	}
+
+	// Conservative settings - cap batch size at 512
 	params.BatchSize = 256
 	params.UBatchSize = 128
 	params.Keep = min(2048, params.ContextSize/4)
-	params.DefragThreshold = 0.1
+	params.Parallel = min(4, o.specs.CPUCores/2)
+	params.DefragThreshold = 0.2 // Less aggressive defrag
+	params.MLock = false         // Don't lock memory for system safety
 
-	// Reduce parallel for large models to prevent context multiplication
-	if metadata.TotalParams > 25_000_000_000 {
-		params.Parallel = 2
+	fmt.Printf("  🛡️ SYSTEM SAFE: Context=%dK, Batch=%d, VRAM=%.1f%% (stable)\n",
+		params.ContextSize/1024, params.BatchSize,
+		(availableMemoryMB*0.95)/availableMemoryMB*100)
+
+	// CRITICAL: Validate context memory safety
+	o.validateContextMemory(params, metadata, modelSizeGB, availableMemoryMB)
+}
+
+func (o *Optimizer) optimizeUltra(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool) {
+	gpuLayers, _, usableBudgetFloat := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetUltra, metadata)
+
+	// GPU layers - use 9999 if fits 80% rule (let llama.cpp decide)
+	if gpuLayers == -1 {
+		params.NGPULayers = 9999 // Let llama.cpp load all layers
+		fmt.Printf("  🚀 ULTRA: All layers on GPU (fits 80%% rule, using 9999)\n")
 	} else {
-		params.Parallel = min(4, o.specs.CPUCores/3)
-	}
-}
-
-func (o *Optimizer) optimizeSystemSafe(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Conservative settings for system stability
-	layerMultiplier := 0.5 // More conservative
-	contextSize := 4096    // Smaller context
-
-	// Extra conservative for Vulkan
-	if o.backend == "vulkan" {
-		layerMultiplier = 0.3 // Very conservative
-		contextSize = 2048    // Small context
-
-		// For large models on Vulkan, be extremely conservative
-		if metadata.TotalParams > 20_000_000_000 {
-			layerMultiplier = 0.2
-			contextSize = 2048
-		}
+		params.NGPULayers = gpuLayers
 	}
 
-	// For large models, be even more conservative
-	if metadata.TotalParams > 25_000_000_000 {
-		layerMultiplier = 0.4
-		contextSize = 4096
+	// Context: Balanced approach for ultra performance
+	params.CacheTypeK = "q8_0" // Good balance of speed and quality
+	params.CacheTypeV = "q8_0"
 
-		// For Q8_0 models, need even more conservation
-		if metadata.Quantization == "Q8_0" {
-			layerMultiplier = 0.3
-		}
+	// Distribute remaining memory: 40% context, 60% for performance
+	contextBudgetMB := usableBudgetFloat * 0.4
+	maxContextFromBudget := int(contextBudgetMB / (estimateContextMemory(1024, metadata.EmbeddingSize, params.CacheTypeK) * 1024) * 1024)
+
+	if modelSizeGB <= (availableMemoryMB/1024)*0.5 {
+		// Model is small, can afford larger context
+		params.ContextSize = min(65536, min(maxContextFromBudget, metadata.ContextLength))
+	} else {
+		// Model is larger, balance context with performance
+		params.ContextSize = min(32768, min(maxContextFromBudget, metadata.ContextLength))
 	}
+	params.ContextSize = max(8192, params.ContextSize) // Ensure minimum 8K
 
-	// Use conservative KV cache quantization - matching K and V types
-	// Start with NO quantization for safety
-	params.CacheTypeK = "" // Will use default f16
-	params.CacheTypeV = "" // Will use default f16
+	// Ultra performance settings - but cap batch size at 512 for stability
+	params.BatchSize = 512 // Cap at 512 for stability
+	params.UBatchSize = 256
 
-	// Only enable KV quantization if we have flash attention
-	if params.FlashAttn && o.backend == "cuda" {
-		params.CacheTypeK = "q4_0"
-		params.CacheTypeV = "q4_0" // Must match K type
-	}
-
-	params.NGPULayers = calculateMaxGPULayers(modelSizeGB*layerMultiplier, availableVRAM*0.7, metadata.NumLayers, metadata.IsMoE, false)
-	params.ContextSize = min(contextSize, metadata.ContextLength)
-	params.BatchSize = 128
-	params.UBatchSize = 64
-	params.Keep = min(1024, params.ContextSize/4)
-	params.DefragThreshold = 0.2
-	params.Parallel = 2
-	params.MLock = false // Don't lock memory
-}
-
-func (o *Optimizer) optimizeUltra(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Ultra performance - aggressive settings
-
-	// Use moderate KV cache quantization for performance
-	// IMPORTANT: Must use matching K and V types for standard builds
-	params.CacheTypeK = "q8_0"
-	params.CacheTypeV = "q8_0" // Must match K type
-
-	// For ultra-large context models, be more conservative
-	maxContext := metadata.ContextLength
-	if maxContext > 131072 {
-		// For 1M+ context models, limit to reasonable amount
-		maxContext = 65536
-		params.CacheTypeK = "q4_0" // More aggressive quantization
-		params.CacheTypeV = "q4_0" // Must match K type
-	} else if maxContext > 32768 {
-		// For 128K models, allow up to 64K if VRAM permits
-		contextMemGB := estimateContextMemory(maxContext, metadata.EmbeddingSize, params.CacheTypeK)
-		if contextMemGB*1024 > availableVRAM*0.4 {
-			maxContext = 32768
-		}
-	}
-
-	params.NGPULayers = min(metadata.NumLayers, calculateMaxGPULayers(modelSizeGB*1.1, availableVRAM, metadata.NumLayers, metadata.IsMoE, false))
-	params.ContextSize = min(maxContext, 32768) // Cap at 32K for ultra performance
-	params.BatchSize = 1024
-	params.UBatchSize = 512
-	params.Keep = 4096
-	params.DefragThreshold = 0.05
-	params.Parallel = min(16, o.specs.CPUCores)
-	params.NumaDistribute = o.specs.CPUCores > 16
+	// Maximum parallelism
+	params.Parallel = min(32, o.specs.CPUCores)
+	params.Keep = min(8192, params.ContextSize/4)
+	params.DefragThreshold = 0.05 // Aggressive defrag
+	// Remove NUMA - not needed for most users
+	params.NumaDistribute = false
 	params.LogitsAll = false
-	params.F16KV = false       // Use quantized KV instead
-	params.SplitMode = "layer" // Better for large models
+	params.F16KV = false
+	params.SplitMode = "layer"
+
+	fmt.Printf("  🚀 ULTRA: Context=%dK, Batch=%d, Parallel=%d, VRAM=%.1f%% (MAXIMUM POWER!)\n",
+		params.ContextSize/1024, params.BatchSize, params.Parallel,
+		(availableMemoryMB*0.98)/availableMemoryMB*100)
+
+	// CRITICAL: Validate context memory safety
+	o.validateContextMemory(params, metadata, modelSizeGB, availableMemoryMB)
 }
 
-func (o *Optimizer) optimizeMoESpecific(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableVRAM float64) {
-	// Special preset for MoE models
-	// IMPORTANT: Must use matching K and V types for standard builds
+func (o *Optimizer) optimizeMoESpecific(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64, isGPUMode bool) {
+	gpuLayers, _, _ := o.calculateMemoryBudget(modelSizeGB, availableMemoryMB, isGPUMode, PresetMoE, metadata)
+
+	// GPU layers - use 9999 if fits 80% rule (let llama.cpp decide)
+	if gpuLayers == -1 {
+		params.NGPULayers = 9999 // Let llama.cpp load all layers
+		fmt.Printf("  🧩 MoE: All layers on GPU with expert optimization (using 9999)\n")
+	} else {
+		params.NGPULayers = gpuLayers
+	}
+
+	// Context: Moderate for MoE complexity
+	params.ContextSize = max(8192, min(32768, metadata.ContextLength))
 	params.CacheTypeK = "q8_0"
-	params.CacheTypeV = "q8_0" // Must match K type
+	params.CacheTypeV = "q8_0"
 
-	// Conservative layer allocation for MoE
-	params.NGPULayers = calculateMaxGPULayers(modelSizeGB*0.5, availableVRAM, metadata.NumLayers, true, true)
-	params.ContextSize = min(8192, metadata.ContextLength)
-	params.BatchSize = 256
-	params.UBatchSize = 64 // Small for expert routing
+	// MoE-specific settings - cap batch size at 512
+	params.BatchSize = 512
+	params.UBatchSize = 256 // Reasonable for expert routing
 	params.Keep = 2048
+	params.Parallel = min(4, max(2, metadata.NumActiveExperts)) // Based on active experts
 	params.DefragThreshold = 0.1
-	params.Parallel = 2 // Limited for MoE
-	params.SplitMode = "row"
+	params.SplitMode = "row" // Better for MoE
 
-	// Apply MoE optimizations
-	o.optimizeMoE(params, metadata, availableVRAM)
+	fmt.Printf("  🧩 MoE: Context=%dK, Batch=%d, Experts=%d, VRAM=%.1f%%\n",
+		params.ContextSize/1024, params.BatchSize, metadata.NumExperts,
+		(availableMemoryMB*0.97)/availableMemoryMB*100)
+
+	// CRITICAL: Validate context memory safety
+	o.validateContextMemory(params, metadata, modelSizeGB, availableMemoryMB)
 }
 
-func (o *Optimizer) optimizeMoE(params *OptimizedParams, metadata *ModelMetadata, availableVRAM float64) {
+func (o *Optimizer) optimizeMoE(params *OptimizedParams, metadata *ModelMetadata, availableMemoryMB float64) {
 	if metadata.NumExperts > 0 {
 		// For MoE models, use row split mode for better expert distribution
 		params.SplitMode = "row"
+
+		// IMPORTANT: DO NOT override params.NGPULayers here!
+		// It was carefully calculated by calculateMaxGPULayers based on actual memory constraints
+		// We should only use tensor overrides for fine-grained expert offloading
 
 		// Calculate actual model size with quantization
 		quantMultiplier := getQuantMultiplier(metadata.Quantization)
 		actualModelSizeGB := float64(metadata.TotalParams) / 1_000_000_000 * quantMultiplier * 1.1
 
-		// Calculate how much VRAM we actually have vs need
-		vramGB := availableVRAM / 1024
+		// Calculate how much memory we actually have vs need
+		memoryGB := availableMemoryMB / 1024
 
 		// With KV cache quantization, we need much less reserved space
 		kvReserveGB := 0.5
 		if params.CacheTypeK == "q4_0" {
-			kvReserveGB = 0.3
+			kvReserveGB = 0.3 // q4_0 is the minimum safe quantization
+		} else if params.CacheTypeK == "q8_0" {
+			kvReserveGB = 0.4 // q8_0 needs slightly more space
 		}
 
-		usableVRAMForModel := vramGB - kvReserveGB - 0.3 // 0.3GB overhead
+		usableMemoryForModel := memoryGB - kvReserveGB - 0.3 // 0.3GB overhead
 
-		// Only offload experts if we REALLY can't fit the model
-		if actualModelSizeGB > usableVRAMForModel*1.5 { // Only if significantly over
-			// Calculate how much we need to offload
-			excessGB := actualModelSizeGB - usableVRAMForModel
+		// Only use tensor overrides for expert offloading if we have calculated GPU layers but still need more memory
+		// This is additional fine-tuning on top of layer-level offloading
+		if actualModelSizeGB > usableMemoryForModel*2.0 { // Only for extremely tight memory situations
+			// Calculate how much we need to offload via expert tensors
+			excessGB := actualModelSizeGB - usableMemoryForModel
 			percentToOffload := excessGB / actualModelSizeGB
 
-			if percentToOffload > 0.3 { // Only if we need to offload more than 30%
-				// Use more targeted expert offloading - only specific layers
-				// This offloads only the last few expert layers, not all
-				lastLayers := int(float64(metadata.NumLayers) * percentToOffload)
-				for i := metadata.NumLayers - lastLayers; i < metadata.NumLayers; i++ {
-					params.OverrideTensors = append(params.OverrideTensors,
-						fmt.Sprintf(`blk\.%d\.ffn_.*_exps\.weight=CPU`, i))
+			if percentToOffload > 0.4 { // Only if we need to offload more than 40% via experts
+				// Use targeted expert offloading - only specific layers
+				// This works in addition to the calculated NGPULayers limit
+				lastLayers := int(float64(metadata.NumLayers) * (percentToOffload - 0.3)) // Conservative
+				if lastLayers > 0 {
+					for i := metadata.NumLayers - lastLayers; i < metadata.NumLayers; i++ {
+						params.OverrideTensors = append(params.OverrideTensors,
+							fmt.Sprintf(`blk\.%d\.ffn_.*_exps\.weight=CPU`, i))
+					}
+					fmt.Printf("  🧩 MoE EXPERT OFFLOAD: Offloading expert tensors from last %d layers to CPU\n", lastLayers)
 				}
-
-				fmt.Printf("  Note: Offloading last %d expert layers to CPU\n", lastLayers)
-			} else {
-				// Try to fit everything on GPU
-				params.NGPULayers = metadata.NumLayers
 			}
-		} else {
-			// Model fits! Don't offload anything
-			params.OverrideTensors = nil
-			// Try to fit all layers on GPU
-			params.NGPULayers = metadata.NumLayers
 		}
 
 		// Optimize batching for MoE - smaller ubatch for expert routing
@@ -933,6 +1697,9 @@ func (o *Optimizer) optimizeMoE(params *OptimizedParams, metadata *ModelMetadata
 			params.CacheTypeK = "q8_0"
 			params.CacheTypeV = "q8_0" // Must match K type
 		}
+
+		fmt.Printf("  🧩 MoE OPTIMIZATION: Using %d GPU layers (calculated), Split=row, Parallel=%d\n",
+			params.NGPULayers, params.Parallel)
 	}
 }
 
@@ -987,31 +1754,101 @@ func getQuantMultiplier(quantization string) float64 {
 	return 0.5 // Default
 }
 
+// Get actual model file size from filesystem, handling multi-part models
+func getActualModelSize(modelPath string) float64 {
+	if modelPath == "" {
+		fmt.Printf("  ⚠️ WARNING: Empty model path\n")
+		return 0.0
+	}
+
+	// Check if this is a multi-part model (contains pattern like 00001-of-00002)
+	multiPartPattern := regexp.MustCompile(`-(\d+)-of-(\d+)\.gguf$`)
+	matches := multiPartPattern.FindStringSubmatch(modelPath)
+
+	if len(matches) > 0 {
+		// This is a multi-part model
+		currentPart := matches[1]
+		totalParts := matches[2]
+		fmt.Printf("  🧩 MULTI-PART MODEL DETECTED: Part %s of %s\n", currentPart, totalParts)
+
+		// Get base path without the part number
+		basePath := multiPartPattern.ReplaceAllString(modelPath, "")
+
+		var totalSize float64
+		partsFound := 0
+
+		// Try to find all parts
+		for i := 1; i <= 10; i++ { // Reasonable limit
+			partPath := fmt.Sprintf("%s-%05d-of-%s.gguf", basePath, i, totalParts)
+
+			if fileInfo, err := os.Stat(partPath); err == nil {
+				partSizeGB := float64(fileInfo.Size()) / (1024 * 1024 * 1024)
+				totalSize += partSizeGB
+				partsFound++
+				fmt.Printf("    - Part %d: %.2f GB (%s)\n", i, partSizeGB, filepath.Base(partPath))
+			} else {
+				// No more parts found
+				break
+			}
+		}
+
+		if partsFound > 0 {
+			fmt.Printf("  📁 TOTAL SIZE (ALL %d PARTS): %.2f GB\n", partsFound, totalSize)
+			return totalSize
+		} else {
+			fmt.Printf("  ⚠️ WARNING: Could not find any parts for multi-part model\n")
+			return 0.0
+		}
+	} else {
+		// Single file model
+		fileInfo, err := os.Stat(modelPath)
+		if err != nil {
+			fmt.Printf("  ⚠️ WARNING: Cannot get file size for %s: %v\n", modelPath, err)
+			return 0.0
+		}
+
+		sizeGB := float64(fileInfo.Size()) / (1024 * 1024 * 1024)
+		fmt.Printf("  📁 ACTUAL FILE SIZE: %.2f GB (%s)\n", sizeGB, filepath.Base(modelPath))
+		return sizeGB
+	}
+}
+
 func estimateModelSize(metadata *ModelMetadata, quantMultiplier float64) float64 {
+	fmt.Printf("  🧮 ESTIMATED SIZE CALCULATION:\n")
+
 	if metadata.TotalParams > 0 {
 		// Estimate based on parameters
 		// Base calculation: params in billions × quantization multiplier
 		baseSize := float64(metadata.TotalParams) / 1_000_000_000 * quantMultiplier
+		fmt.Printf("    - Base size (%.1fB * %.2f): %.2f GB\n",
+			float64(metadata.TotalParams)/1_000_000_000, quantMultiplier, baseSize)
 
 		if metadata.IsMoE {
 			// MoE models are larger due to expert layers
 			baseSize *= 1.3
+			fmt.Printf("    - MoE multiplier (1.3x): %.2f GB\n", baseSize)
 		}
 
 		// Add overhead for model structure
-		return baseSize * 1.1
+		finalSize := baseSize * 1.1
+		fmt.Printf("    - With overhead (1.1x): %.2f GB\n", finalSize)
+		return finalSize
 	}
 
 	// Fallback estimation
 	if metadata.NumLayers > 0 && metadata.EmbeddingSize > 0 {
 		layerSize := float64(metadata.EmbeddingSize*metadata.EmbeddingSize*4) / 1_000_000_000
-		return float64(metadata.NumLayers) * layerSize * quantMultiplier
+		finalSize := float64(metadata.NumLayers) * layerSize * quantMultiplier
+		fmt.Printf("    - Fallback calculation: %.2f GB\n", finalSize)
+		return finalSize
 	}
 
+	fmt.Printf("    - Using default: 10.0 GB\n")
 	return 10.0 // Default 10GB
 }
 
 func estimateContextMemory(contextSize int, embeddingSize int, kvCacheType string) float64 {
+	// This function is now DEPRECATED - use estimateContextMemoryCorrect instead
 	if embeddingSize == 0 {
 		embeddingSize = 4096 // Default
 	}
@@ -1019,17 +1856,174 @@ func estimateContextMemory(contextSize int, embeddingSize int, kvCacheType strin
 	// Base calculation: context * embedding * 2 (K+V) * precision bytes
 	bytesPerElement := 2.0 // f16 default
 
-	// Adjust for KV cache quantization
+	// Adjust for KV cache quantization - q4_0 is minimum safe level
 	switch kvCacheType {
 	case "q8_0":
 		bytesPerElement = 1.0 // 8-bit
 	case "q4_0", "q4_1":
-		bytesPerElement = 0.5 // 4-bit
-	case "q2_k":
-		bytesPerElement = 0.25 // 2-bit
+		bytesPerElement = 0.5 // 4-bit (minimum safe quantization)
+		// Note: q2_k and below removed - not safe for stable operation
 	}
 
 	return float64(contextSize*embeddingSize*2) * bytesPerElement / 1_000_000_000
+}
+
+// estimateContextMemoryCorrect uses the proper KV cache calculation formula
+func estimateContextMemoryCorrect(contextSize int, modelSizeGB float64, numLayers int, gpuLayers int, kvCacheType string, embeddingSize int) float64 {
+	if numLayers == 0 {
+		numLayers = 32 // Default fallback
+	}
+
+	// Use the provided embedding size directly
+	var hiddenSize int
+	if embeddingSize > 0 {
+		hiddenSize = embeddingSize
+		fmt.Printf("    - Hidden size from metadata: %d\n", hiddenSize)
+	} else {
+		// Fallback to estimation only if embedding size is not available
+		if modelSizeGB >= 25 {
+			hiddenSize = 6656 // Large models default
+		} else if modelSizeGB >= 12 {
+			hiddenSize = 5120 // Medium-large models
+		} else if modelSizeGB >= 6 {
+			hiddenSize = 4096 // Medium models
+		} else if modelSizeGB >= 2 {
+			hiddenSize = 2560 // Small-medium models
+		} else {
+			hiddenSize = 2048 // Small models
+		}
+		fmt.Printf("    - Hidden size from heuristics: %d\n", hiddenSize)
+	}
+
+	// Bytes per element based on KV cache quantization
+	var bytesPerElement float64 = 2.0 // f16 default
+	switch kvCacheType {
+	case "q8_0":
+		bytesPerElement = 1.0 // 8-bit
+	case "q4_0", "q4_1":
+		bytesPerElement = 0.5 // 4-bit (minimum safe quantization)
+	}
+
+	// Calculate KV cache size per layer (in bytes)
+	// Formula: context_size * hidden_size * 2 (K+V) * bytes_per_element
+	kvCachePerLayer := float64(contextSize*hiddenSize*2) * bytesPerElement
+
+	// Only GPU layers contribute to GPU memory usage
+	gpuLayerRatio := float64(gpuLayers) / float64(numLayers)
+	if gpuLayers == 9999 { // Special case for "all layers"
+		gpuLayerRatio = 1.0
+	}
+
+	// Total KV cache memory in GB
+	kvCacheGB := (kvCachePerLayer * float64(numLayers) * gpuLayerRatio) / (1024 * 1024 * 1024)
+
+	fmt.Printf("  🧮 KV CACHE CALCULATION:\n")
+	fmt.Printf("    - Context size: %d\n", contextSize)
+	fmt.Printf("    - Hidden size: %d\n", hiddenSize)
+	fmt.Printf("    - Total layers: %d\n", numLayers)
+	fmt.Printf("    - GPU layers: %d (%.1f%% ratio)\n", gpuLayers, gpuLayerRatio*100)
+	fmt.Printf("    - Bytes per element: %.1f (%s)\n", bytesPerElement, kvCacheType)
+	fmt.Printf("    - Per-layer KV cache: %.3f MB\n", kvCachePerLayer/(1024*1024))
+	fmt.Printf("    - Total KV cache: %.3f GB\n", kvCacheGB)
+
+	return kvCacheGB
+}
+
+// getEmbeddingSizeFromGGUF quickly reads just the embedding size from GGUF metadata
+func getEmbeddingSizeFromGGUF(modelPath string) int {
+	file, err := os.Open(modelPath)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	// Skip header
+	file.Seek(16, 0) // magic(4) + version(4) + tensor_count(8)
+
+	var metadataCount uint64
+	if err := binary.Read(file, binary.LittleEndian, &metadataCount); err != nil {
+		return 0
+	}
+
+	// Quick scan for embedding_length
+	for i := uint64(0); i < metadataCount && i < 50; i++ { // Limit scan
+		var keyLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &keyLen); err != nil {
+			return 0
+		}
+
+		if keyLen > 1024 {
+			// Skip this corrupted entry
+			continue
+		}
+
+		keyBytes := make([]byte, keyLen)
+		if _, err := file.Read(keyBytes); err != nil {
+			return 0
+		}
+		key := string(keyBytes)
+
+		var valueType uint32
+		if err := binary.Read(file, binary.LittleEndian, &valueType); err != nil {
+			return 0
+		}
+
+		// Check if this is embedding_length (handle any architecture)
+		if strings.HasSuffix(key, ".embedding_length") || key == "llama.embedding_length" {
+			if valueType == 10 { // GGUF_TYPE_UINT64
+				var embeddingSize uint64
+				if err := binary.Read(file, binary.LittleEndian, &embeddingSize); err != nil {
+					return 0
+				}
+				fmt.Printf("    - Found embedding size in GGUF: %s = %d\n", key, embeddingSize)
+				return int(embeddingSize)
+			}
+		}
+
+		// Skip the value to continue
+		if err := skipGGUFValue(file, valueType); err != nil {
+			continue // Don't fail on unsupported types, just continue
+		}
+	}
+
+	return 0 // Not found
+}
+
+// skipGGUFValue skips a GGUF value based on its type
+func skipGGUFValue(file *os.File, valueType uint32) error {
+	switch valueType {
+	case 0, 1, 7: // uint8, int8, bool
+		file.Seek(1, 1)
+	case 2, 3: // uint16, int16
+		file.Seek(2, 1)
+	case 4, 5, 6: // uint32, int32, float32
+		file.Seek(4, 1)
+	case 10, 11, 12: // uint64, int64, float64
+		file.Seek(8, 1)
+	case 8: // string
+		var strLen uint64
+		if err := binary.Read(file, binary.LittleEndian, &strLen); err != nil {
+			return err
+		}
+		file.Seek(int64(strLen), 1)
+	case 9: // array - too complex, just give up
+		return fmt.Errorf("arrays not supported in quick scan")
+	default:
+		return fmt.Errorf("unknown value type: %d", valueType)
+	}
+	return nil
+}
+
+// Helper function to detect model architecture
+func detectArchitecture(filename string) string {
+	if strings.Contains(filename, "qwen") {
+		return "Qwen"
+	} else if strings.Contains(filename, "gemma") {
+		return "Gemma"
+	} else if strings.Contains(filename, "llama") {
+		return "Llama"
+	}
+	return "Generic"
 }
 
 func calculateMaxGPULayers(modelSizeGB float64, availableVRAM float64, totalLayers int, isMoE bool, aggressiveContext bool) int {
@@ -1042,11 +2036,15 @@ func calculateMaxGPULayers(modelSizeGB float64, availableVRAM float64, totalLaye
 		return 0
 	}
 
-	// More accurate VRAM calculation
-	// Reserve less for KV cache since we're using quantization
-	kvCacheReserveGB := 0.5 // With KV quantization, we need much less
+	// Calculate realistic KV cache reserve based on typical context sizes
+	// Use a reasonable estimate for context memory requirements
+	var kvCacheReserveGB float64
 	if aggressiveContext {
-		kvCacheReserveGB = 0.3 // Even less with aggressive quantization
+		// For aggressive context modes, reserve more for larger contexts
+		kvCacheReserveGB = 2.0 // Enough for ~8K context with q8_0 on medium models
+	} else {
+		// Conservative mode - reserve enough for basic context
+		kvCacheReserveGB = 1.0 // Enough for ~4K context or 8K with q4_0
 	}
 
 	overheadGB := 0.3 // Minimal overhead for operations
@@ -1054,6 +2052,7 @@ func calculateMaxGPULayers(modelSizeGB float64, availableVRAM float64, totalLaye
 	// MoE models need slightly more overhead for routing
 	if isMoE {
 		overheadGB = 0.5
+		kvCacheReserveGB += 0.5 // MoE models typically need more context memory
 	}
 
 	usableVRAMForModel := vramGB - kvCacheReserveGB - overheadGB
@@ -1083,6 +2082,15 @@ func calculateMaxGPULayers(modelSizeGB float64, availableVRAM float64, totalLaye
 	if gpuLayers < 1 && totalLayers > 0 {
 		gpuLayers = 1
 	}
+
+	fmt.Printf("  🧮 GPU LAYER CALCULATION:\n")
+	fmt.Printf("    - Total VRAM: %.1f GB\n", vramGB)
+	fmt.Printf("    - Model size: %.1f GB\n", modelSizeGB)
+	fmt.Printf("    - KV cache reserve: %.1f GB\n", kvCacheReserveGB)
+	fmt.Printf("    - Overhead: %.1f GB\n", overheadGB)
+	fmt.Printf("    - Usable for model: %.1f GB\n", usableVRAMForModel)
+	fmt.Printf("    - Layer ratio: %.3f\n", layerRatio)
+	fmt.Printf("    - Result: %d layers on GPU\n", gpuLayers)
 
 	return gpuLayers
 }
@@ -1247,6 +2255,42 @@ func (o *Optimizer) ExportConfig(optimized map[string]string, outputPath string)
 	}
 
 	return nil
+}
+
+// validateContextMemory ensures the allocated context size is safe given available memory
+func (o *Optimizer) validateContextMemory(params *OptimizedParams, metadata *ModelMetadata, modelSizeGB float64, availableMemoryMB float64) {
+	availableVRAMGB := availableMemoryMB / 1024
+	actualRemainingGB := availableVRAMGB - modelSizeGB - 0.5 // 0.5GB overhead
+
+	// Calculate memory needed for the proposed context
+	contextMemoryGB := estimateContextMemoryCorrect(params.ContextSize, modelSizeGB, metadata.NumLayers, params.NGPULayers, params.CacheTypeK, metadata.EmbeddingSize)
+
+	fmt.Printf("  🔍 CONTEXT MEMORY VALIDATION:\n")
+	fmt.Printf("    - Proposed context: %dK\n", params.ContextSize/1024)
+	fmt.Printf("    - Context memory needed: %.3f GB\n", contextMemoryGB)
+	fmt.Printf("    - Available for context: %.1f GB\n", actualRemainingGB)
+
+	// If we don't have enough memory, force safe context sizes
+	if actualRemainingGB <= 0 || contextMemoryGB > actualRemainingGB {
+		fmt.Printf("    - ❌ INSUFFICIENT MEMORY: Forcing safe context size\n")
+
+		// Try progressively smaller context sizes until we find one that fits
+		safeSizes := []int{8192, 4096, 2048, 1024}
+		for _, safeSize := range safeSizes {
+			testMemoryGB := estimateContextMemoryCorrect(safeSize, modelSizeGB, metadata.NumLayers, params.NGPULayers, params.CacheTypeK, metadata.EmbeddingSize)
+			if actualRemainingGB > 0 && testMemoryGB <= actualRemainingGB*0.8 { // Use 80% of available as safety margin
+				params.ContextSize = safeSize
+				fmt.Printf("    - ✅ SAFE CONTEXT: %dK (%.3f GB needed, %.1f GB available)\n", safeSize/1024, testMemoryGB, actualRemainingGB)
+				return
+			}
+		}
+
+		// Emergency fallback - absolute minimum
+		params.ContextSize = 1024
+		fmt.Printf("    - 🚨 EMERGENCY FALLBACK: 1K context (insufficient memory for larger)\n")
+	} else {
+		fmt.Printf("    - ✅ CONTEXT MEMORY OK: %.3f GB needed, %.1f GB available\n", contextMemoryGB, actualRemainingGB)
+	}
 }
 
 func main() {

@@ -12,6 +12,9 @@ const pipelineAsync = promisify(pipeline);
 class ComfyUIModelService extends EventEmitter {
   constructor() {
     super();
+    
+    console.log('🎨 Initializing ComfyUIModelService...');
+    
     this.docker = new Docker();
     this.containerName = 'clara_comfyui';
     
@@ -20,12 +23,17 @@ class ComfyUIModelService extends EventEmitter {
     this.localDownloadDir = path.join(os.homedir(), '.clara', 'model-downloads');
     this.persistentModelDir = path.join(os.homedir(), '.clara', 'comfyui-data', 'models');
     
+    console.log(`📁 Download dir: ${this.localDownloadDir}`);
+    console.log(`📁 Persistent dir: ${this.persistentModelDir}`);
+    
     // Ensure local directories exist
     if (!fs.existsSync(this.localDownloadDir)) {
       fs.mkdirSync(this.localDownloadDir, { recursive: true });
+      console.log(`✅ Created download directory: ${this.localDownloadDir}`);
     }
     if (!fs.existsSync(this.persistentModelDir)) {
       fs.mkdirSync(this.persistentModelDir, { recursive: true });
+      console.log(`✅ Created persistent directory: ${this.persistentModelDir}`);
     }
     
     // Model categories and their paths (both local and container)
@@ -72,9 +80,12 @@ class ComfyUIModelService extends EventEmitter {
       [paths.local, paths.download].forEach(dir => {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
+          console.log(`✅ Created model directory: ${dir}`);
         }
       });
     });
+    
+    console.log('🎨 ComfyUIModelService initialized successfully');
 
     // Popular model repositories
     this.repositories = {
@@ -216,7 +227,7 @@ class ComfyUIModelService extends EventEmitter {
   /**
    * Download model from URL to local storage, then transfer to container
    */
-  async downloadModel(url, filename, category = 'checkpoints', onProgress = null, redirectCount = 0) {
+  async downloadModel(url, filename, category = 'checkpoints', onProgress = null, redirectCount = 0, options = {}) {
     try {
       // Prevent infinite redirect loops
       if (redirectCount > 10) {
@@ -235,8 +246,32 @@ class ComfyUIModelService extends EventEmitter {
       
       console.log(`📥 Downloading ${filename} to local storage...`);
       
+      // Prepare headers with API key if provided
+      const headers = {
+        'User-Agent': 'Clara-AI-Assistant/1.0',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+      };
+      
+      // Add authentication headers based on source and API key
+      if (options.source === 'civitai' || url.includes('civitai.com')) {
+        headers['Referer'] = 'https://civitai.com/';
+        if (options.apiKey) {
+          headers['Authorization'] = `Bearer ${options.apiKey}`;
+          console.log(`🔑 Using CivitAI API key for authentication`);
+        }
+      } else if (options.source === 'huggingface' || url.includes('huggingface.co')) {
+        if (options.apiKey) {
+          headers['Authorization'] = `Bearer ${options.apiKey}`;
+          console.log(`🔑 Using HuggingFace API key for authentication`);
+        }
+      }
+      
+      console.log(`🌐 Request headers prepared, API key provided: ${!!options.apiKey}`);
+      
       return new Promise((resolve, reject) => {
-        const request = client.get(url, (response) => {
+        const request = client.get(url, { headers }, (response) => {
           // Handle all redirect status codes (301, 302, 307, 308)
           if (response.statusCode === 301 || response.statusCode === 302 || 
               response.statusCode === 307 || response.statusCode === 308) {
@@ -246,8 +281,24 @@ class ComfyUIModelService extends EventEmitter {
               return;
             }
             console.log(`📍 Following redirect (${response.statusCode}): ${redirectUrl} (redirect ${redirectCount + 1}/10)`);
+            
+            // For redirects, check if we're being redirected to a CDN URL
+            // CDN URLs typically don't need authentication headers and can fail with them
+            const redirectUrlObj = new URL(redirectUrl);
+            const isCdnUrl = redirectUrlObj.hostname.includes('cloudflarestorage.com') || 
+                            redirectUrlObj.hostname.includes('amazonaws.com') || 
+                            redirectUrlObj.hostname.includes('s3.') ||
+                            redirectUrlObj.hostname.includes('cdn.') ||
+                            redirectUrlObj.hostname.includes('storage.googleapis.com');
+            
+            // If redirecting to CDN, strip authentication headers
+            const redirectOptions = isCdnUrl ? {} : options;
+            if (isCdnUrl) {
+              console.log(`🌐 Detected CDN redirect, removing auth headers for: ${redirectUrlObj.hostname}`);
+            }
+            
             // Recursively follow the redirect with incremented count
-            return this.downloadModel(redirectUrl, filename, category, onProgress, redirectCount + 1)
+            return this.downloadModel(redirectUrl, filename, category, onProgress, redirectCount + 1, redirectOptions)
               .then(resolve)
               .catch(reject);
           }
@@ -423,10 +474,10 @@ class ComfyUIModelService extends EventEmitter {
   /**
    * Download and install model in one operation
    */
-  async downloadAndInstallModel(url, filename, category = 'checkpoints', onProgress = null) {
+  async downloadAndInstallModel(url, filename, category = 'checkpoints', onProgress = null, options = {}) {
     try {
       // Download the model
-      const tempFilePath = await this.downloadModel(url, filename, category, onProgress);
+      const tempFilePath = await this.downloadModel(url, filename, category, onProgress, 0, options);
       
       // Install it to the container
       const installedPath = await this.installModelToContainer(tempFilePath, filename, category);
