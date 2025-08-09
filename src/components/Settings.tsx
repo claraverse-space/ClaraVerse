@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -25,6 +25,8 @@ import {
   processWallpaper,
   type ImageEffects
 } from '../utils/imageProcessing';
+import { indexedDBService } from '../services/indexedDB';
+import { GalleryImage } from '../types';
 
 // Type for llama.cpp update info
 interface LlamacppUpdateInfo {
@@ -171,6 +173,10 @@ const Settings = () => {
 
   // Wallpaper gallery and processing state
   const [showBuiltinGallery, setShowBuiltinGallery] = useState(false);
+  const [showYourCreations, setShowYourCreations] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+  const [gallerySearchQuery, setGallerySearchQuery] = useState('');
+  const [isLoadingGalleryImages, setIsLoadingGalleryImages] = useState(false);
 
   // Type for update info to fix TypeScript errors
   interface UpdateInfo {
@@ -1406,6 +1412,104 @@ const Settings = () => {
     }
   };
 
+  // Load gallery images for wallpaper selection
+  const loadGalleryImages = async () => {
+    setIsLoadingGalleryImages(true);
+    try {
+      // Use the same fallback method as the Gallery component
+      let storedItems;
+      try {
+        storedItems = await indexedDBService.getAll('storage');
+      } catch (error) {
+        console.error('IndexedDB retrieval failed, falling back to localStorage', error);
+        const data = localStorage.getItem('clara_db_storage');
+        storedItems = data ? JSON.parse(data) : [];
+      }
+      
+      const imageItems = storedItems.filter((item: any) => item.type === 'image');
+      const galleryImages: GalleryImage[] = imageItems.map((item: any, idx: number) => {
+        let finalPrompt = item.description ?? '';
+        if (finalPrompt.startsWith('Prompt:')) {
+          finalPrompt = finalPrompt.replace(/^Prompt:\s*/, '');
+        }
+        return {
+          id: item.id ?? `img-${idx}`,
+          url: item.data,
+          prompt: finalPrompt,
+          createdAt: item.timestamp || new Date().toISOString(),
+          likes: item.likes ?? 0,
+          views: item.views ?? 0,
+          model: item.model || 'SD-Model',
+          resolution: item.resolution || '1024x1024'
+        };
+      });
+      
+      // Sort by newest first and take only 10 recent images initially
+      galleryImages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setGalleryImages(galleryImages);
+    } catch (error) {
+      console.error('Error loading gallery images:', error);
+    } finally {
+      setIsLoadingGalleryImages(false);
+    }
+  };
+
+  // Handle setting a gallery image as wallpaper
+  const handleGalleryImageWallpaper = async (image: GalleryImage) => {
+    try {
+      await db.setWallpaper(image.url);
+      setWallpaperUrl(image.url);
+      setShowYourCreations(false);
+      console.log('✅ Set gallery image as wallpaper');
+    } catch (error) {
+      console.error('Error setting gallery image as wallpaper:', error);
+      alert('Failed to set image as wallpaper. Please try again.');
+    }
+  };
+
+  // Load gallery images when "Your Creations" is first opened
+  useEffect(() => {
+    if (showYourCreations && galleryImages.length === 0) {
+      loadGalleryImages();
+    }
+  }, [showYourCreations]);
+
+  // Filter gallery images based on search query
+  const filteredGalleryImages = galleryImages.filter(image => 
+    image.prompt.toLowerCase().includes(gallerySearchQuery.toLowerCase()) ||
+    image.model.toLowerCase().includes(gallerySearchQuery.toLowerCase())
+  ).slice(0, 10); // Show only 10 images
+
+  // Handle setting avatar image
+  const handleSetAvatar = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          // Convert file to base64
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const base64String = e.target?.result as string;
+            // Update personal info with the new avatar
+            const updatedInfo = { ...personalInfo, avatar_url: base64String };
+            setPersonalInfo(updatedInfo);
+            // Save to database
+            await db.updatePersonalInfo(updatedInfo);
+            console.log('✅ Avatar uploaded successfully');
+          };
+          reader.readAsDataURL(file);
+        } catch (error) {
+          console.error('Error setting avatar:', error);
+          alert('Failed to upload avatar. Please try again.');
+        }
+      }
+    };
+    input.click();
+  };
+
   return (
     <>
       {/* Wallpaper */}
@@ -1612,16 +1716,79 @@ const Settings = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Avatar URL
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                    Avatar
                   </label>
+                  
+                  {/* Avatar Preview */}
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center border-2 border-gray-200 dark:border-gray-600">
+                      {personalInfo.avatar_url ? (
+                        <img
+                          src={personalInfo.avatar_url}
+                          alt="Avatar preview"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // If image fails to load, show fallback
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      {!personalInfo.avatar_url && (
+                        <User className="w-8 h-8 text-gray-400" />
+                      )}
+                      {personalInfo.avatar_url && (
+                        <User className="w-8 h-8 text-gray-400 hidden" />
+                      )}
+                    </div>
+                    
+                    <div className="flex-1">
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          onClick={handleSetAvatar}
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+                        >
+                          Upload Image
+                        </button>
+                        {personalInfo.avatar_url && (
+                          <button
+                            onClick={() => setPersonalInfo(prev => ({ ...prev, avatar_url: '' }))}
+                            className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Upload an image or enter a URL below
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Avatar URL Input */}
                   <input
                     type="url"
                     value={personalInfo.avatar_url}
                     onChange={(e) => setPersonalInfo(prev => ({ ...prev, avatar_url: e.target.value }))}
                     className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-                    placeholder="https://example.com/avatar.jpg"
+                    placeholder="Or enter avatar URL: https://example.com/avatar.jpg"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Timezone
+                  </label>
+                  <select
+                    value={personalInfo.timezone}
+                    onChange={(e) => setPersonalInfo(prev => ({ ...prev, timezone: e.target.value }))}
+                    className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                  >
+                    {timezoneOptions.map((tz: string) => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -2469,7 +2636,7 @@ const Settings = () => {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                       Choose Background Source
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                       <button
                         onClick={handleSetWallpaper}
                         className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-purple-300 dark:hover:border-purple-600 transition-colors text-center"
@@ -2484,6 +2651,7 @@ const Settings = () => {
                       <button
                         onClick={() => {
                           setShowBuiltinGallery(!showBuiltinGallery);
+                          setShowYourCreations(false);
                         }}
                         className={`p-4 border rounded-lg transition-colors text-center ${
                           showBuiltinGallery 
@@ -2496,6 +2664,24 @@ const Settings = () => {
                         </div>
                         <p className="text-sm font-medium text-gray-900 dark:text-white">Gallery</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Built-in collection</p>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowYourCreations(!showYourCreations);
+                          setShowBuiltinGallery(false);
+                        }}
+                        className={`p-4 border rounded-lg transition-colors text-center ${
+                          showYourCreations 
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                            : 'border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
+                        }`}
+                      >
+                        <div className="w-8 h-8 mx-auto mb-2 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                          <Palette className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">Your Creations</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">AI generated images</p>
                       </button>
                     </div>
                   </div>
@@ -2535,6 +2721,88 @@ const Settings = () => {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Your Creations Gallery */}
+                  {showYourCreations && (
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                          🎨 Your Creations
+                        </h4>
+                        <button
+                          onClick={loadGalleryImages}
+                          className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      
+                      {/* Search Bar */}
+                      <div className="relative mb-4">
+                        <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search your images..."
+                          value={gallerySearchQuery}
+                          onChange={(e) => setGallerySearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 text-sm"
+                        />
+                      </div>
+
+                      {/* Loading State */}
+                      {isLoadingGalleryImages ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="w-6 h-6 border-2 border-green-200 dark:border-green-800 border-t-green-600 dark:border-t-green-400 rounded-full animate-spin"></div>
+                          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading your creations...</span>
+                        </div>
+                      ) : filteredGalleryImages.length === 0 ? (
+                        <div className="text-center py-8">
+                          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center mx-auto mb-3">
+                            <Palette size={24} className="text-gray-400" />
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                            {gallerySearchQuery ? 'No matching images found' : 'No AI creations found'}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500">
+                            {gallerySearchQuery ? 'Try different search terms' : 'Generate some images first to use them as wallpapers'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {filteredGalleryImages.map((image) => (
+                            <div
+                              key={image.id}
+                              className="relative group cursor-pointer"
+                              onClick={() => handleGalleryImageWallpaper(image)}
+                            >
+                              <div className="aspect-video rounded-lg border-2 border-gray-200 dark:border-gray-600 overflow-hidden hover:border-green-400 dark:hover:border-green-500 transition-colors">
+                                <img
+                                  src={image.url}
+                                  alt={image.prompt}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                  <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium bg-black/50 px-2 py-1 rounded">
+                                    Select
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-xs text-center text-gray-600 dark:text-gray-400 mt-1 truncate" title={image.prompt}>
+                                {image.prompt.length > 20 ? `${image.prompt.substring(0, 20)}...` : image.prompt}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {galleryImages.length > 10 && !gallerySearchQuery && (
+                        <p className="text-xs text-gray-500 dark:text-gray-500 text-center mt-3">
+                          Showing 10 most recent images. Use search to find older ones.
+                        </p>
+                      )}
                     </div>
                   )}
 

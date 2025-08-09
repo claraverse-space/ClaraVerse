@@ -5099,7 +5099,7 @@ You can right-click on the image to save it or use it in your projects.`;
 
             {/* Title */}
             <h2 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-3">
-              {isServiceStarting ? 'Starting Clara\'s Pocket' : 'Provider Not Responding'}
+              {isServiceStarting ? 'Starting Clara\'s Pocket' : 'Provider Not Responding (Probably Restarting)'}
             </h2>
 
             {/* Message */}

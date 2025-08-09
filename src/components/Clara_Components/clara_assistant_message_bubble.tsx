@@ -509,7 +509,12 @@ const MessageMetadata: React.FC<{
                         {formatTokensPerSecond(message.metadata.timings.predicted_per_second)} tok/s
                       </span>
                     </div>
+                    
                   )}
+                  <div className="flex justify-between">
+                    {/* <span className="text-gray-600 dark:text-gray-400">Note:</span> */}
+                    <span className="font-mono text-gray-900 dark:text-gray-100"><small>This doesn't mean shit. If it's speed working out for you, great! Otherwise, head over to settings to modify.</small></span>
+                  </div>
                 </div>
               </div>
             )}
