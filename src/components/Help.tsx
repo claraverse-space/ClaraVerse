@@ -24,7 +24,8 @@ import {
   Github,
   MessageSquare,
   Youtube,
-  Heart
+  Heart,
+  Filter
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
@@ -198,6 +199,20 @@ const HighlightedText = ({ text, searchQuery }: { text: string; searchQuery: str
     </>
   );
 };
+
+// Custom Discord icon component
+const DiscordIcon = ({ size = 20, className = "" }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z"/>
+  </svg>
+);
+
+// Custom Reddit icon component  
+const RedditIcon = ({ size = 20, className = "" }: { size?: number; className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12a12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547l-.8 3.747c1.824.07 3.48.632 4.674 1.488c.308-.309.73-.491 1.207-.491c.968 0 1.754.786 1.754 1.754c0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87c-3.874 0-7.004-2.176-7.004-4.87c0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754c.463 0 .898.196 1.207.49c1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197a.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248c.687 0 1.248-.561 1.248-1.249C10.498 12.562 9.937 12 9.25 12zm5.5 0c-.687 0-1.248.561-1.248 1.25c0 .687.561 1.248 1.249 1.248c.688 0 1.249-.561 1.249-1.249C16 12.562 15.438 12 14.75 12zm-3.5 3.5c-.567 0-1.166.093-1.691.26c-.105.033-.156.1-.156.2c0 .553.684 1.017 1.542 1.017c.858 0 1.542-.464 1.542-1.017c0-.1-.052-.167-.157-.2c-.525-.167-1.125-.26-1.691-.26z"/>
+  </svg>
+);
 
 const Help = () => {
   const { theme, setTheme } = useTheme();
@@ -498,16 +513,16 @@ const Help = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.1))] bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+    <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.1))] bg-white dark:bg-black flex flex-col overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-          {/* Header */}
-          <div className="flex-shrink-0 p-6 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-sakura-50 to-pink-50 dark:from-gray-800 dark:to-gray-700">
-            <div className="flex items-center justify-between mb-4">
+        {/* Redesigned Sidebar */}
+        <div className="w-80 shrink-0 p-4">
+          <div className="glassmorphic rounded-xl p-4 space-y-4 sticky top-4 h-[calc(100vh-10rem)] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-sakura-100 dark:bg-sakura-500/20 rounded-xl">
-                  <BookOpen className="h-6 w-6 text-sakura-600 dark:text-sakura-400" />
+                <div className="p-2 bg-sakura-500 rounded-xl">
+                  <BookOpen className="h-6 w-6 text-white" />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -516,166 +531,192 @@ const Help = () => {
                   <p className="text-sm text-gray-500 dark:text-gray-400">ClaraVerse Guide</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                  className="p-2 rounded-lg glassmorphic hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Toggle theme"
-                >
-                  {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                </button>
-                <button
-                  onClick={() => fetchDocs(true)}
-                  disabled={refreshing}
-                  className="p-2 rounded-lg glassmorphic hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                  title="Refresh documentation"
-                >
-                  <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                </button>
-              </div>
+              <button
+                onClick={() => fetchDocs(true)}
+                disabled={refreshing}
+                className="p-2 rounded-lg glassmorphic hover:bg-sakura-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                title="Refresh documentation"
+              >
+                <RefreshCw size={16} className={refreshing ? 'animate-spin text-sakura-500' : 'text-gray-600 dark:text-gray-400'} />
+              </button>
             </div>
             
             {/* Search */}
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />
               <input
                 type="text"
                 placeholder="Search documentation..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 
-                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400
+                className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 dark:border-gray-600 
+                  bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400
                   focus:border-sakura-500 focus:ring-2 focus:ring-sakura-500/20 outline-none transition-all"
               />
             </div>
 
+            {/* Status Indicator */}
             {lastFetch > 0 && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <CheckCircle2 size={12} className="text-emerald-500" />
-                <span>Last updated: {new Date(lastFetch).toLocaleString()}</span>
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 rounded-lg flex-shrink-0">
+                <CheckCircle2 size={14} className="text-emerald-500" />
+                <span>Updated: {new Date(lastFetch).toLocaleString()}</span>
               </div>
             )}
-          </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-4">
-            {searchResults ? (
-              /* Search Results */
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <Search size={16} className="text-gray-400" />
-                  <h3 className="font-semibold text-gray-700 dark:text-gray-300">
-                    Search Results ({searchResults.length})
-                  </h3>
-                </div>
-                {searchResults.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 dark:text-gray-400">No results found</p>
+            {/* Navigation - Now properly scrollable */}
+            <div className="flex-1 overflow-y-auto min-h-0 pb-4">
+              {searchResults ? (
+                /* Search Results */
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-1">
+                    <Search size={16} className="text-sakura-500" />
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      Search Results ({searchResults.length})
+                    </h3>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {searchResults.map(({ file, snippet }) => {
-                      const categoryConfig = getCategoryConfig(file.category);
-                      return (
-                        <button
-                          key={file.id}
-                          onClick={() => setSelectedDoc(file.id)}
-                          className={`w-full text-left p-4 rounded-xl transition-all duration-200 group ${
-                            selectedDoc === file.id
-                              ? 'bg-sakura-100 dark:bg-sakura-500/20 shadow-md'
-                              : 'hover:bg-gray-100 dark:hover:bg-gray-700 glassmorphic'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-lg ${categoryConfig.bgColor} flex-shrink-0 group-hover:scale-110 transition-transform`}>
-                              <categoryConfig.icon size={16} className={categoryConfig.color} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 dark:text-white mb-1 truncate">
-                                <HighlightedText text={file.title} searchQuery={searchQuery} />
-                              </div>
-                              <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                                <HighlightedText text={snippet} searchQuery={searchQuery} />
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Category Navigation */
-              <div className="space-y-4">
-                {config?.categories.map(category => {
-                  const files = groupedDocs[category] || [];
-                  const categoryConfig = getCategoryConfig(category);
-                  const isExpanded = expandedCategories.has(category);
-
-                  return (
-                    <div key={category}>
-                      <button
-                        onClick={() => toggleCategory(category)}
-                        className="w-full flex items-center justify-between p-3 rounded-xl glassmorphic hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${categoryConfig.bgColor} group-hover:scale-110 transition-transform`}>
-                            <categoryConfig.icon size={18} className={categoryConfig.color} />
-                          </div>
-                          <div className="text-left">
-                            <div className="font-semibold text-gray-900 dark:text-white">
-                              {categoryConfig.label}
-                            </div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {files.length} document{files.length !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-                        </div>
-                        {isExpanded ? (
-                          <ChevronDown size={16} className="text-gray-400 group-hover:text-sakura-500 transition-colors" />
-                        ) : (
-                          <ChevronRight size={16} className="text-gray-400 group-hover:text-sakura-500 transition-colors" />
-                        )}
-                      </button>
-                      
-                      {isExpanded && (
-                        <div className="ml-4 mt-2 space-y-1">
-                          {files.map(file => (
-                            <button
-                              key={file.id}
-                              onClick={() => setSelectedDoc(file.id)}
-                              className={`w-full text-left p-3 rounded-lg transition-all duration-200 group ${
-                                selectedDoc === file.id
-                                  ? 'bg-sakura-100 dark:bg-sakura-500/20 shadow-md'
-                                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-sakura-400 transition-colors"></div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-gray-900 dark:text-white truncate">
-                                    {file.title}
-                                  </div>
-                                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">
-                                    {file.description}
-                                  </p>
-                                </div>
-                                <ArrowRight size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                  {searchResults.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                        <p className="text-gray-500 dark:text-gray-400">No results found</p>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </nav>
+                  ) : (
+                    <div className="space-y-2">
+                      {searchResults.map(({ file, snippet }) => {
+                        const categoryConfig = getCategoryConfig(file.category);
+                        return (
+                          <button
+                            key={file.id}
+                            onClick={() => setSelectedDoc(file.id)}
+                            className={`w-full text-left p-4 rounded-lg transition-all duration-200 group ${
+                              selectedDoc === file.id
+                                ? 'bg-sakura-500 text-white shadow-lg'
+                                : 'hover:bg-sakura-100 dark:hover:bg-gray-800 bg-white/50 dark:bg-gray-800/50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`p-2 rounded-lg ${
+                                selectedDoc === file.id 
+                                  ? 'bg-white/20' 
+                                  : categoryConfig.bgColor
+                                } flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                                <categoryConfig.icon size={16} className={
+                                  selectedDoc === file.id 
+                                    ? 'text-white' 
+                                    : categoryConfig.color
+                                } />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`font-medium mb-1 truncate ${
+                                  selectedDoc === file.id 
+                                    ? 'text-white' 
+                                    : 'text-gray-900 dark:text-white'
+                                }`}>
+                                  <HighlightedText text={file.title} searchQuery={searchQuery} />
+                                </div>
+                                <p className={`text-sm line-clamp-2 ${
+                                  selectedDoc === file.id 
+                                    ? 'text-white/80' 
+                                    : 'text-gray-500 dark:text-gray-400'
+                                }`}>
+                                  <HighlightedText text={snippet} searchQuery={searchQuery} />
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Category Navigation */
+                <div className="space-y-3">
+                  {config?.categories.map(category => {
+                    const files = groupedDocs[category] || [];
+                    const categoryConfig = getCategoryConfig(category);
+                    const isExpanded = expandedCategories.has(category);
+
+                    return (
+                      <div key={category}>
+                        <button
+                          onClick={() => toggleCategory(category)}
+                          className="w-full flex items-center justify-between p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 hover:bg-sakura-100 dark:hover:bg-gray-700 transition-all duration-200 group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${categoryConfig.bgColor} group-hover:scale-110 transition-transform`}>
+                              <categoryConfig.icon size={18} className={categoryConfig.color} />
+                            </div>
+                            <div className="text-left">
+                              <div className="font-semibold text-gray-900 dark:text-white">
+                                {categoryConfig.label}
+                              </div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                                {files.length} document{files.length !== 1 ? 's' : ''}
+                              </div>
+                            </div>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronDown size={16} className="text-gray-400 group-hover:text-sakura-500 transition-colors" />
+                          ) : (
+                            <ChevronRight size={16} className="text-gray-400 group-hover:text-sakura-500 transition-colors" />
+                          )}
+                        </button>
+                        
+                        {isExpanded && (
+                          <div className="ml-4 mt-2 space-y-1">
+                            {files.map(file => (
+                              <button
+                                key={file.id}
+                                onClick={() => setSelectedDoc(file.id)}
+                                className={`w-full text-left p-3 rounded-lg transition-all duration-200 group ${
+                                  selectedDoc === file.id
+                                    ? 'bg-sakura-500 text-white shadow-md'
+                                    : 'hover:bg-sakura-100 dark:hover:bg-gray-700 bg-white/30 dark:bg-gray-800/30'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-2 h-2 rounded-full transition-colors ${
+                                    selectedDoc === file.id 
+                                      ? 'bg-white' 
+                                      : 'bg-sakura-300 dark:bg-gray-600 group-hover:bg-sakura-500'
+                                  }`}></div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`font-medium truncate ${
+                                      selectedDoc === file.id 
+                                        ? 'text-white' 
+                                        : 'text-gray-900 dark:text-white'
+                                    }`}>
+                                      {file.title}
+                                    </div>
+                                    <p className={`text-sm line-clamp-1 ${
+                                      selectedDoc === file.id 
+                                        ? 'text-white/80' 
+                                        : 'text-gray-500 dark:text-gray-400'
+                                    }`}>
+                                      {file.description}
+                                    </p>
+                                  </div>
+                                  <ArrowRight size={14} className={`transition-opacity ${
+                                    selectedDoc === file.id 
+                                      ? 'text-white opacity-100' 
+                                      : 'text-gray-400 opacity-0 group-hover:opacity-100'
+                                  }`} />
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Content */}
+        {/* Content - Keep existing content area unchanged */}
         <div className="flex-1 overflow-y-auto">
           {selectedDoc && docs[selectedDoc] ? (
             <div className="h-full overflow-y-auto">
@@ -759,18 +800,16 @@ const Help = () => {
       </div>
 
       {/* Footer */}
-      <div className="bg-gray-900 dark:bg-gray-950 border-gray-800 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-8 py-2">
+      <div className="bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800">
+        <div className="max-w-7xl mx-auto px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-sakura-500/20 rounded-xl">
-                  <BookOpen className="h-6 w-6 text-sakura-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-white">ClaraVerse Documentation</h3>
-                  <p className="text-sm text-gray-400">Join our community</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-sakura-500/20 rounded-xl">
+                <BookOpen className="h-6 w-6 text-sakura-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">ClaraVerse Documentation</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Join our community</p>
               </div>
             </div>
             
@@ -779,44 +818,44 @@ const Help = () => {
                 href="https://discord.gg/j633fsrAne"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors group"
+                className="p-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors group"
+                title="Discord"
               >
-                <MessageSquare size={16} className="text-white" />
-                <span className="text-white font-medium">Discord</span>
+                <DiscordIcon size={20} className="text-white" />
               </a>
 
               <a
                 href="https://github.com/badboysm890/ClaraVerse"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors group"
+                className="p-3 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors group"
+                title="GitHub"
               >
-                <Github size={16} className="text-white" />
-                <span className="text-white font-medium">GitHub</span>
+                <Github size={20} className="text-white" />
               </a>
 
               <a
                 href="https://reddit.com/r/claraverse"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 transition-colors group"
+                className="p-3 rounded-lg bg-orange-600 hover:bg-orange-700 transition-colors group"
+                title="Reddit"
               >
-                <MessageSquare size={16} className="text-white" />
-                <span className="text-white font-medium">Reddit</span>
+                <RedditIcon size={20} className="text-white" />
               </a>
 
               <a
                 href="https://youtube.com/@claraverseai"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors group"
+                className="p-3 rounded-lg bg-red-600 hover:bg-red-700 transition-colors group"
+                title="YouTube"
               >
-                <Youtube size={16} className="text-white" />
-                <span className="text-white font-medium">YouTube</span>
+                <Youtube size={20} className="text-white" />
               </a>
             </div>
 
-            <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <span>Made with</span>
               <Heart size={14} className="text-sakura-400 fill-current" />
               <span>by ClaraVerse Team</span>

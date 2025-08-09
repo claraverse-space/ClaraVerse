@@ -893,7 +893,7 @@ const AdvancedOptions: React.FC<{
     const provider = providers.find(p => p.id === providerId);
     const providerName = provider?.name || 'AI Assistant';
     
-    // Generate user context information if available
+    // Generate user context information (sync version - memory enhancement happens in ClaraAssistant)
     const getUserContext = (): string => {
       if (!userInfo?.name && !userInfo?.email) {
         return '';

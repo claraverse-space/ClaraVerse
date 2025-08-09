@@ -513,7 +513,7 @@ const MessageMetadata: React.FC<{
                   )}
                   <div className="flex justify-between">
                     {/* <span className="text-gray-600 dark:text-gray-400">Note:</span> */}
-                    <span className="font-mono text-gray-900 dark:text-gray-100"><small>This doesn't mean shit. If it's speed working out for you, great! Otherwise, head over to settings to modify.</small></span>
+                    <span className="font-mono text-gray-900 dark:text-gray-100"><small>Token Persecond is just flex until its lower than 10 Tok/s. If this speed working out for you, great! Otherwise, head over to settings to modify (For Power Users).</small></span>
                   </div>
                 </div>
               </div>
