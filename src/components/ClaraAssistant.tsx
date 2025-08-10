@@ -14,7 +14,6 @@ import {
   ClaraFileAttachment, 
   ClaraSessionConfig, 
   ClaraChatSession,
-  ClaraArtifact,
   ClaraProvider,
   ClaraModel,
   ClaraAIConfig,
@@ -466,6 +465,17 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // No models modal state
   const [showNoModelsModal, setShowNoModelsModal] = useState(false);
 
+  // Service startup state tracking
+  const [serviceStartupStatus, setServiceStartupStatus] = useState<{
+    isStarting: boolean;
+    serviceName: string | null;
+    phase: string | null;
+  }>({
+    isStarting: false,
+    serviceName: null,
+    phase: null
+  });
+
   // Wallpaper state
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
 
@@ -633,7 +643,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       // Cache the result
       setProviderHealthCache(prev => {
         const newCache = new Map(prev);
-        newCache.set(provider.id, { isHealthy, timestamp: now });
+        newCache.set(provider.id, {
+          isHealthy,
+          timestamp: now
+        });
         return newCache;
       });
       
@@ -645,13 +658,70 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       // Cache the failure
       setProviderHealthCache(prev => {
         const newCache = new Map(prev);
-        newCache.set(provider.id, { isHealthy: false, timestamp: now });
+        newCache.set(provider.id, {
+          isHealthy: false,
+          timestamp: now
+        });
         return newCache;
       });
       
       return false;
     }
   }, [providerHealthCache, HEALTH_CHECK_CACHE_TIME]);
+
+  // Check if any critical services are starting up
+  const checkServiceStartupStatus = useCallback(async (): Promise<{
+    isStarting: boolean;
+    serviceName: string | null;
+    phase: string | null;
+  }> => {
+    try {
+      // Check Clara's Pocket service status - check regardless of current provider setting
+      // since during startup the provider might not be set yet
+      if (window.llamaSwap) {
+        const status = await window.llamaSwap.getStatus?.();
+        console.log('🔍 Checking llamaSwap service status:', status);
+        
+        if (status?.isStarting) {
+          console.log(`🚀 Service starting detected: ${status.currentStartupPhase || 'Initializing...'}`);
+          return {
+            isStarting: true,
+            serviceName: "Clara's Core",
+            phase: status.currentStartupPhase || 'Initializing...'
+          };
+        }
+        
+        // Also check if service is running but models haven't loaded yet
+        if (status?.isRunning && models.length === 0) {
+          console.log('🔄 Service running but models not loaded yet, checking if it just started...');
+          // If service just started (within last 30 seconds), consider it still starting
+          if (status.startingTimestamp && (Date.now() - status.startingTimestamp) < 30000) {
+            return {
+              isStarting: true,
+              serviceName: "Clara's Core",
+              phase: 'Loading models...'
+            };
+          }
+        }
+      }
+      
+      // Check for other service startup indicators here if needed
+      // For example, check MCP services, other providers, etc.
+      
+      return {
+        isStarting: false,
+        serviceName: null,
+        phase: null
+      };
+    } catch (error) {
+      console.warn('Error checking service startup status:', error);
+      return {
+        isStarting: false,
+        serviceName: null,
+        phase: null
+      };
+    }
+  }, [models.length]);
 
   // Refresh providers, models, and MCP services
   const refreshProvidersAndServices = useCallback(async (force: boolean = false) => {
@@ -955,6 +1025,16 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         let allModels: ClaraModel[] = [];
         for (const provider of loadedProviders) {
           try {
+            // Special handling for Clara's Pocket provider - wait for service to be ready
+            if (provider.type === 'claras-pocket' && window.llamaSwap) {
+              const status = await window.llamaSwap.getStatus?.();
+              if (status?.isStarting) {
+                console.log(`⏳ Clara's Core is starting, skipping model loading for now...`);
+                // Don't load models yet, they will be loaded once startup completes
+                continue;
+              }
+            }
+            
             const providerModels = await claraApiService.getModels(provider.id);
             allModels = [...allModels, ...providerModels];
             console.log(`Loaded ${providerModels.length} models from provider: ${provider.name}`);
@@ -966,6 +1046,14 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         // Set all models for the modal check
         setModels(allModels);
         console.log(`Total models available across all providers: ${allModels.length}`);
+        
+        // Check for service startup status immediately after loading models
+        const startupStatus = await checkServiceStartupStatus();
+        setServiceStartupStatus(startupStatus);
+        
+        if (startupStatus.isStarting) {
+          console.log(`🚀 Service startup detected during provider load: ${startupStatus.serviceName} (${startupStatus.phase})`);
+        }
 
         // Get primary provider and set it in config
         const primaryProvider = loadedProviders.find(p => p.isPrimary) || loadedProviders[0];
@@ -1138,18 +1226,78 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
   // Monitor models availability to show/hide no models modal
   useEffect(() => {
-    if (!isLoadingProviders) {
-      // Check if there are any models available across all providers
-      const hasModels = models.length > 0;
-      setShowNoModelsModal(!hasModels);
-      
-      if (!hasModels) {
-        console.log('No models available - showing no models modal');
-      } else {
-        console.log(`Found ${models.length} models - hiding no models modal`);
+    const checkModelsAndServices = async () => {
+      if (!isLoadingProviders) {
+        // Check if there are any models available across all providers
+        const hasModels = models.length > 0;
+        
+        // Check if any critical services are starting up
+        const startupStatus = await checkServiceStartupStatus();
+        setServiceStartupStatus(startupStatus);
+        
+        // Only show "No Models Available" if:
+        // 1. There are truly no models AND
+        // 2. No critical services are starting up
+        const shouldShowNoModelsModal = !hasModels && !startupStatus.isStarting;
+        setShowNoModelsModal(shouldShowNoModelsModal);
+        
+        if (!hasModels && startupStatus.isStarting) {
+          console.log(`Service startup detected: ${startupStatus.serviceName} (${startupStatus.phase}) - not showing no models modal`);
+        } else if (!hasModels) {
+          console.log('No models available and no services starting - showing no models modal');
+        } else {
+          console.log(`Found ${models.length} models - hiding no models modal`);
+        }
       }
+    };
+
+    checkModelsAndServices();
+  }, [models, isLoadingProviders, checkServiceStartupStatus]);
+
+  // Poll for service startup status changes when a service is starting OR when we have no models
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    // Start polling if service is starting OR if we have no models and llamaSwap is available
+    const shouldPoll = serviceStartupStatus.isStarting || 
+                      (models.length === 0 && window.llamaSwap && !isLoadingProviders);
+    
+    if (shouldPoll) {
+      const reason = serviceStartupStatus.isStarting ? 
+        `${serviceStartupStatus.serviceName} status` : 
+        'potential service startup (no models detected)';
+      console.log(`🔄 Starting polling for ${reason}...`);
+      
+      pollInterval = setInterval(async () => {
+        const startupStatus = await checkServiceStartupStatus();
+        setServiceStartupStatus(startupStatus);
+        
+        // If service is no longer starting, refresh providers and models
+        if (!startupStatus.isStarting && serviceStartupStatus.isStarting) {
+          console.log(`✅ Service startup completed, refreshing providers and models...`);
+          await refreshProvidersAndServices(true);
+          clearInterval(pollInterval!);
+        }
+        
+        // If we found that a service is starting when we didn't know before, continue polling
+        if (startupStatus.isStarting && !serviceStartupStatus.isStarting) {
+          console.log(`🚀 Service startup detected during polling: ${startupStatus.serviceName}`);
+        }
+        
+        // Stop polling if we now have models and no services are starting
+        if (!startupStatus.isStarting && models.length > 0) {
+          console.log(`✅ Stopping polling - models available and no services starting`);
+          clearInterval(pollInterval!);
+        }
+      }, 2000); // Check every 2 seconds
     }
-  }, [models, isLoadingProviders]);
+    
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [serviceStartupStatus.isStarting, models.length, isLoadingProviders, checkServiceStartupStatus, refreshProvidersAndServices]);
 
   // Initialize TTS service
   useEffect(() => {
@@ -1807,20 +1955,32 @@ Please provide your refined response for following user question:
         await claraDB.addClaraMessage(currentSession.id, finalMessage);
         
         // **NEW: Automatic Memory Extraction**
-        // Process memory extraction if conditions are met (fast streaming, reasonable request size)
+        // Process memory extraction if conditions are met (reasonable request size)
         try {
-          const tokenSpeed = finalMessage.metadata?.timings?.predicted_per_second || 0;
-          if (tokenSpeed >= 50 && content.length <= 2000) {
+          // Ensure memory extraction always happens for meaningful messages
+          if (content.length <= 2000 && content.trim().length > 10) {
             // Trigger memory extraction asynchronously to avoid blocking the UI
             setTimeout(async () => {
               try {
-                await ClaraSweetMemoryAPI.processMemory(
+                const extractionResult = await ClaraSweetMemoryAPI.processMemory(
                   content, // User message (display content without voice prefix)
                   finalMessage, // Assistant response
                   conversationHistory, // Conversation context
                   enforcedConfig // AI configuration for memory extraction
                 );
                 console.log('🧠 Memory extraction completed successfully');
+                
+                // Show memory toast if new information was learned
+                if (extractionResult && extractionResult.confidence > 0.3) {
+                  try {
+                    const updatedProfile = await ClaraSweetMemoryAPI.getCurrentUserProfile();
+                    if (updatedProfile) {
+                      claraMemoryToastService.showMemoryToast(updatedProfile);
+                    }
+                  } catch (toastError) {
+                    console.warn('🧠 Memory toast update failed:', toastError);
+                  }
+                }
               } catch (memoryError) {
                 console.warn('🧠 Memory extraction failed:', memoryError);
                 // Memory extraction failure shouldn't affect the main flow
@@ -4107,44 +4267,88 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
         />
       </div>
 
-      {/* No Models Available Modal */}
-      {showNoModelsModal && (
+      {/* No Models Available / Service Starting Modal */}
+      {(showNoModelsModal || serviceStartupStatus.isStarting) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 m-4 max-w-md w-full mx-auto transform transition-all duration-300 ease-out scale-100 animate-in fade-in-0 zoom-in-95">
             {/* Icon */}
             <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                serviceStartupStatus.isStarting 
+                  ? 'bg-yellow-100 dark:bg-yellow-900' 
+                  : 'bg-blue-100 dark:bg-blue-900'
+              }`}>
+                {serviceStartupStatus.isStarting ? (
+                  // Loading/Starting icon
+                  <svg className="w-8 h-8 text-yellow-600 dark:text-yellow-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  // No models icon
+                  <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                )}
               </div>
             </div>
 
             {/* Title */}
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
-              No AI Models Available
+              {serviceStartupStatus.isStarting 
+                ? `${serviceStartupStatus.serviceName} Starting Up`
+                : 'No AI Models Available'
+              }
             </h2>
 
             {/* Message */}
             <p className="text-gray-600 dark:text-gray-300 text-center mb-6 leading-relaxed">
-              You don't seem to have any AI models downloaded yet. To start chatting with Clara, 
-              you'll need to download at least one model from the Model Manager.
+              {serviceStartupStatus.isStarting ? (
+                <>
+                  Clara is starting up her AI services for you. This process may take a moment as we prepare your models and initialize the system.
+                  {serviceStartupStatus.phase && (
+                    <span className="block mt-2 text-sm text-yellow-600 dark:text-yellow-400 font-medium">
+                      Current status: {serviceStartupStatus.phase}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  You don't seem to have any AI models downloaded yet. To start chatting with Clara, 
+                  you'll need to download at least one model from the Model Manager.
+                </>
+              )}
             </p>
 
             {/* Action Buttons */}
             <div className="flex flex-col space-y-3">
-              <button
-                onClick={() => onPageChange('settings')}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span>Go to Model Manager</span>
-              </button>
+              {serviceStartupStatus.isStarting ? (
+                // Service starting - show waiting state
+                <div className="w-full bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 font-semibold py-3 px-6 rounded-lg flex items-center justify-center space-x-2">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Please wait...</span>
+                </div>
+              ) : (
+                // No models - show action button
+                <button
+                  onClick={() => onPageChange('settings')}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>Go to Model Manager</span>
+                </button>
+              )}
               
               <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                This dialog will disappear once you have downloaded a model
+                {serviceStartupStatus.isStarting 
+                  ? 'This dialog will close automatically when the service is ready'
+                  : 'This dialog will disappear once you have downloaded a model'
+                }
               </p>
             </div>
           </div>

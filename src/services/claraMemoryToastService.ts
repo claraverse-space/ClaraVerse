@@ -24,8 +24,7 @@ const COOLDOWN_PERIOD = 60000; // 60 seconds in milliseconds
 const STORAGE_KEY = 'clara-memory-toast-state';
 const KNOWLEDGE_LEVEL_KEY = 'clara-knowledge-level';
 
-// 🎨 DESIGN DEBUG MODE - Always show toasts for testing/design purposes
-const DESIGN_DEBUG_MODE = true; // Set to false to disable
+// Production mode - debug functionality removed
 
 // ==================== SERVICE CLASS ====================
 
@@ -142,20 +141,6 @@ class ClaraMemoryToastService {
     const profileMaturityBonus = Math.min(10, profile.version * 0.5); // Bonus for profile maturity
     
     const knowledgeLevel = Math.min(100, Math.round(sectionScore + fieldScore + profileMaturityBonus));
-    
-    console.log('🧠 Knowledge Level Calculation:', {
-      completedSections,
-      totalPossibleSections,
-      completedFields,
-      totalFields,
-      sectionScore: Math.round(sectionScore),
-      fieldScore: Math.round(fieldScore),
-      profileMaturityBonus: Math.round(profileMaturityBonus),
-      finalLevel: knowledgeLevel,
-      profileVersion: profile.version,
-      confidence: profile.metadata.confidenceLevel,
-      totalDataPoints: completedFields
-    });
 
     return knowledgeLevel;
   }
@@ -231,83 +216,16 @@ class ClaraMemoryToastService {
    * Show memory learning toast if conditions are met
    */
   public showMemoryToast(profile: UserMemoryProfile): boolean {
-    console.log('🧠 🔍 Memory Toast Check - Profile received:', {
-      profileId: profile.id,
-      userId: profile.userId,
-      version: profile.version,
-      confidence: profile.metadata.confidenceLevel,
-      coreIdentityKeys: Object.keys(profile.coreIdentity || {}),
-      personalCharKeys: Object.keys(profile.personalCharacteristics || {}),
-      preferencesKeys: Object.keys(profile.preferences || {}),
-      currentStoredLevel: this.knowledgeLevel,
-      designDebugMode: DESIGN_DEBUG_MODE
-    });
-
-    // 🎨 DESIGN DEBUG MODE: Always show toast
-    if (DESIGN_DEBUG_MODE) {
-      console.log('🎨 DESIGN DEBUG MODE: Forcing memory toast to show for testing/design');
-      
-      // 🎨 Add some design variations for testing different states
-      const designVariations = [
-        { level: 15, info: "loves coding and technology" },
-        { level: 35, info: "enjoys cycling and ice cream" },
-        { level: 55, info: "works with RTX 4090 and dual monitors" },
-        { level: 75, info: "has an iPhone and interesting personality" },
-        { level: 95, info: "is a fascinating person with great taste" }
-      ];
-      
-      const variation = designVariations[Math.floor(Math.random() * designVariations.length)];
-      
-      // Update state with design variation
-      this.state = {
-        isVisible: true,
-        knowledgeLevel: variation.level,
-        learnedInfo: variation.info,
-        lastShownAt: Date.now()
-      };
-
-      // Update stored knowledge level
-      const oldLevel = this.knowledgeLevel;
-      this.knowledgeLevel = variation.level;
-      this.saveKnowledgeLevel();
-      this.saveState();
-
-      // Notify listeners
-      this.notifyListeners();
-
-      console.log('🎨 ✨ Design debug toast shown with variation:', {
-        oldLevel,
-        newLevel: variation.level,
-        learnedInfo: variation.info,
-        profileVersion: profile.version
-      });
-
-      return true;
-    }
-
-    // Check cooldown (normal mode)
+    // Check cooldown
     if (this.isOnCooldown()) {
-      const remaining = this.getCooldownRemaining();
-      console.log(`🧠 Memory toast on cooldown, ${remaining}s remaining`);
       return false;
     }
 
     // Calculate new knowledge level
     const newKnowledgeLevel = this.calculateKnowledgeLevel(profile);
     
-    console.log('🧠 🔍 Knowledge Level Comparison:', {
-      currentLevel: this.knowledgeLevel,
-      newCalculatedLevel: newKnowledgeLevel,
-      difference: newKnowledgeLevel - this.knowledgeLevel,
-      thresholdRequired: 0.5,
-      willShow: newKnowledgeLevel > this.knowledgeLevel + 0.4, // Very sensitive threshold
-      profileVersion: profile?.version || 'unknown',
-      cooldownRemaining: this.getCooldownRemaining()
-    });
-    
-    // Only show if knowledge level increased (very low threshold for testing)
-    if (newKnowledgeLevel <= this.knowledgeLevel + 0.4) {
-      console.log(`🧠 Knowledge level didn't increase enough (${this.knowledgeLevel} -> ${newKnowledgeLevel}), skipping toast`);
+    // Only show if knowledge level increased significantly
+    if (newKnowledgeLevel <= this.knowledgeLevel + 5) {
       return false;
     }
 
@@ -323,21 +241,12 @@ class ClaraMemoryToastService {
     };
 
     // Save the new knowledge level
-    const oldLevel = this.knowledgeLevel;
     this.knowledgeLevel = newKnowledgeLevel;
     this.saveKnowledgeLevel();
     this.saveState();
 
     // Notify listeners
     this.notifyListeners();
-
-    console.log('🧠 ✨ Showing memory toast:', {
-      oldLevel,
-      newLevel: newKnowledgeLevel,
-      increase: newKnowledgeLevel - oldLevel,
-      learnedInfo,
-      profileVersion: profile.version
-    });
 
     return true;
   }
@@ -383,8 +292,6 @@ class ClaraMemoryToastService {
     
     this.saveState();
     this.notifyListeners();
-    
-    console.log('🧠 Reset knowledge level to 0');
   }
 
   /**
@@ -467,7 +374,6 @@ class ClaraMemoryToastService {
       const saved = localStorage.getItem(KNOWLEDGE_LEVEL_KEY);
       if (saved) {
         this.knowledgeLevel = parseInt(saved, 10) || 0;
-        console.log(`🧠 Loaded knowledge level: ${this.knowledgeLevel}%`);
       }
     } catch (error) {
       console.warn('Failed to load knowledge level:', error);
@@ -481,55 +387,6 @@ class ClaraMemoryToastService {
     const remaining = COOLDOWN_PERIOD - (Date.now() - this.state.lastShownAt);
     return Math.max(0, Math.ceil(remaining / 1000));
   }
-
-  /**
-   * Force show toast (bypass cooldown, for testing)
-   */
-  public forceShowToast(knowledgeLevel?: number, learnedInfo?: string): void {
-    this.state = {
-      isVisible: true,
-      knowledgeLevel: knowledgeLevel || this.knowledgeLevel + 5,
-      learnedInfo: learnedInfo || 'something interesting about you (test)',
-      lastShownAt: Date.now()
-    };
-
-    this.saveState();
-    this.notifyListeners();
-    
-    console.log('🧠 🧪 Force showing memory toast for testing');
-  }
-
-  /**
-   * Debug method to analyze current memory profile and knowledge calculation
-   */
-  public debugKnowledgeCalculation(profile?: UserMemoryProfile): void {
-    console.log('🧠 🔍 === MEMORY TOAST DEBUG ===');
-    console.log('Current stored knowledge level:', this.knowledgeLevel);
-    console.log('Cooldown remaining:', this.getCooldownRemaining(), 'seconds');
-    console.log('Last toast shown at:', new Date(this.state.lastShownAt).toLocaleString());
-    
-    if (profile) {
-      console.log('\n📊 Profile Analysis:');
-      const calculatedLevel = this.calculateKnowledgeLevel(profile);
-      console.log('Calculated knowledge level:', calculatedLevel);
-      console.log('Would trigger toast:', calculatedLevel > this.knowledgeLevel + 1);
-      
-      console.log('\n📝 Profile Contents:');
-      console.log('- Core Identity:', profile.coreIdentity);
-      console.log('- Personal Characteristics:', profile.personalCharacteristics);
-      console.log('- Preferences:', profile.preferences);
-      console.log('- Context:', profile.context);
-      console.log('- Interactions:', profile.interactions);
-      console.log('- Practical:', profile.practical);
-      
-      const learnedInfo = this.extractLearnedInfo(profile);
-      console.log('- Extracted learned info:', learnedInfo);
-    } else {
-      console.log('No profile provided for analysis');
-    }
-    
-    console.log('\n🎯 Current State:', this.getState());
-  }
 }
 
 // ==================== EXPORTS ====================
@@ -539,48 +396,3 @@ export const claraMemoryToastService = new ClaraMemoryToastService();
 
 // Export types
 export type { MemoryToastState, MemoryToastListener };
-
-// Make available for debugging in development
-if (import.meta.env.DEV) {
-  (window as any).claraMemoryToastService = claraMemoryToastService;
-  
-  // Add helpful debugging functions
-  (window as any).debugMemoryToast = () => {
-    claraMemoryToastService.debugKnowledgeCalculation();
-  };
-  
-  (window as any).testMemoryToast = () => {
-    console.log('🧪 Testing memory toast...');
-    claraMemoryToastService.forceShowToast(45, 'testing with fake data');
-  };
-  
-  (window as any).resetMemoryKnowledge = () => {
-    console.log('🧪 Resetting memory knowledge level...');
-    claraMemoryToastService.resetKnowledgeLevel();
-  };
-  
-  (window as any).toggleDesignDebugMode = () => {
-    // Note: This is a compile-time constant, so it can't be changed at runtime
-    // But we can provide feedback about the current state
-    console.log('🎨 Design Debug Mode is currently:', DESIGN_DEBUG_MODE ? 'ENABLED' : 'DISABLED');
-    console.log('🎨 To change this, edit DESIGN_DEBUG_MODE in ClaraMemoryToastService.ts');
-    return DESIGN_DEBUG_MODE;
-  };
-  
-  (window as any).getCurrentMemoryProfile = async () => {
-    console.log('🧪 Getting current memory profile...');
-    try {
-      const { ClaraSweetMemoryAPI } = await import('../components/ClaraSweetMemory');
-      const profile = await ClaraSweetMemoryAPI.getCurrentUserProfile();
-      if (profile) {
-        console.log('Current profile:', profile);
-        claraMemoryToastService.debugKnowledgeCalculation(profile);
-      } else {
-        console.log('No profile found');
-      }
-      return profile;
-    } catch (error) {
-      console.error('Failed to get current profile:', error);
-    }
-  };
-}

@@ -546,6 +546,47 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       
       console.log('🧠 DEBUG: Transforming data with keys:', Object.keys(data));
       
+      // 🔧 CRITICAL FIX: Handle extractedInformation array format first
+      if (data.extractedInformation && Array.isArray(data.extractedInformation)) {
+        console.log('🧠 DEBUG: Processing extractedInformation array with', data.extractedInformation.length, 'items');
+        
+        // Process each extracted information item
+        data.extractedInformation.forEach((item: any, index: number) => {
+          console.log(`🧠 DEBUG: Processing item ${index}:`, item);
+          
+          if (item.category && item.data) {
+            // Map categories to our canonical structure
+            const category = item.category.toLowerCase();
+            let targetSection = 'personalCharacteristics'; // Default section
+            
+            if (category.includes('interest') || category.includes('hobby') || category.includes('like')) {
+              targetSection = 'personalCharacteristics';
+              if (!transformed[targetSection]) transformed[targetSection] = {};
+              if (!transformed[targetSection].interests) transformed[targetSection].interests = [];
+              transformed[targetSection].interests.push(item.data);
+              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.interests`);
+            } else if (category.includes('preference') || category.includes('favorite')) {
+              targetSection = 'preferences';
+              if (!transformed[targetSection]) transformed[targetSection] = {};
+              transformed[targetSection][category] = item.data;
+              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category}`);
+            } else if (category.includes('identity') || category.includes('personal')) {
+              targetSection = 'coreIdentity';
+              if (!transformed[targetSection]) transformed[targetSection] = {};
+              transformed[targetSection][category] = item.data;
+              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category}`);
+            } else {
+              // Default to personalCharacteristics for other categories
+              if (!transformed[targetSection]) transformed[targetSection] = {};
+              transformed[targetSection][category] = item.data;
+              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category} (default)`);
+            }
+          }
+        });
+        
+        console.log('🧠 DEBUG: After processing extractedInformation array:', transformed);
+      }
+      
       // Map AI structure variations to our canonical structure
       const mappings = {
         // AI Output → Our Structure
