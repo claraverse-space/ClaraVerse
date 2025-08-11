@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor, Clock, LogOut, Loader2 } from 'lucide-react';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 import NotificationPanel from './common/NotificationPanel';
+import SystemMonitor from './common/SystemMonitor';
 import { db } from '../db';
 
 interface TopbarProps {
@@ -125,7 +126,11 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
 
   return (
     <div className="glassmorphic h-16 px-6 flex items-center justify-between relative z-[10000]">
-      <div className="flex-1" />
+      {/* Left section - System Monitor */}
+      <div className="flex-1 flex items-center">
+        <SystemMonitor />
+      </div>
+      
       {/* Center section - Project Title and Clock */}
       <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center min-w-[120px]">
         {showProjectTitle && projectTitle && (
@@ -139,6 +144,8 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">· {dateString} · {dayString}</span>
         </div>
       </div>
+      
+      {/* Right section - Controls */}
       <div className="flex items-center gap-6">
         <button 
           onClick={cycleTheme}

@@ -8,6 +8,8 @@ export const DEFAULT_UI_PREFERENCES = {
   font_weight: 'normal' as 'light' | 'normal' | 'medium' | 'semibold',
   line_height: 'normal' as 'tight' | 'normal' | 'relaxed' | 'loose',
   letter_spacing: 'normal' as 'tight' | 'normal' | 'wide',
+  // System monitoring
+  show_system_monitor: true, // Show system stats in topbar by default
   // Extended theming options
   background_style: 'default' as 'default' | 'warm' | 'cool' | 'minimal' | 'cozy',
   interface_density: 'normal' as 'compact' | 'normal' | 'comfortable',

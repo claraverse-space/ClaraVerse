@@ -85,6 +85,8 @@ export interface PersonalInfo {
     wallpaper_brightness?: number; // 0.0 - 2.0 (1.0 = normal)
     wallpaper_contrast?: number; // 0.0 - 2.0 (1.0 = normal)
     wallpaper_saturate?: number; // 0.0 - 2.0 (1.0 = normal)
+    // System monitor settings
+    show_system_monitor?: boolean; // Show system stats in topbar
   };
 }
 

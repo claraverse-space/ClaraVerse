@@ -70,7 +70,16 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   };
 
   const getLastMessagePreview = (session: ClaraChatSession) => {
+    // If we have a message count but no loaded messages (light loading), show generic message
+    const messageCount = getMessageCount(session);
+    if (messageCount > 0 && (!session.messages || session.messages.length === 0)) {
+      return 'Chat conversation'; // Generic preview for light-loaded sessions
+    }
+    
+    // If no messages at all
     if (!session.messages || session.messages.length === 0) return 'No messages yet';
+    
+    // Get the last message content
     const lastMessage = session.messages[session.messages.length - 1];
     if (!lastMessage || !lastMessage.content) return 'No messages yet';
     const preview = lastMessage.content.slice(0, 50);

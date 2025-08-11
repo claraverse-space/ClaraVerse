@@ -122,12 +122,12 @@ const ClaraFace: React.FC<{
   const faceImagePath = getClaraFaceImage(isLearning ? 'learning' : expression);
 
   // Debug logging
-  console.log('🎨 Clara Face Debug:', {
-    expression,
-    isLearning,
-    faceImagePath,
-    knowledgeLevel
-  });
+  // console.log('🎨 Clara Face Debug:', {
+  //   expression,
+  //   isLearning,
+  //   faceImagePath,
+  //   knowledgeLevel
+  // });
 
   return (
     <div className="relative w-12 h-12">
