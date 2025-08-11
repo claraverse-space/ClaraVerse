@@ -1139,10 +1139,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
             const defaultConfig = {
               provider: primaryProvider.id,
-              systemPrompt: getDefaultSystemPrompt(primaryProvider, {
-                enableCodeArtifacts: true,
-                autoDetectArtifacts: true
-              }, userInfo || undefined),
+              systemPrompt: '', // Leave empty to indicate default should be used
               models: {
                 text: textModel?.id || '',
                 vision: visionModel?.id || '',
@@ -2547,18 +2544,7 @@ Would you like me to help with text-only responses for now?`,
         
         const defaultConfig = {
           provider: providerId,
-          systemPrompt: getDefaultSystemPrompt(provider, {
-            enableCodeArtifacts: true,
-            enableChartArtifacts: true,
-            enableTableArtifacts: true,
-            enableMermaidArtifacts: true,
-            enableHtmlArtifacts: true,
-            enableMarkdownArtifacts: true,
-            enableJsonArtifacts: true,
-            enableDiagramArtifacts: true,
-            autoDetectArtifacts: true,
-            maxArtifactsPerMessage: 10
-          }, userInfo || undefined),
+          systemPrompt: '', // Leave empty to indicate default should be used
           models: {
             text: textModel?.id || '',
             vision: visionModel?.id || '',
@@ -4220,6 +4206,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                   onProviderChange={handleProviderChange}
                   onModelChange={handleModelChange}
                   show={showAdvancedOptions}
+                  userInfo={userInfo || undefined}
                 />
               </div>
             </div>

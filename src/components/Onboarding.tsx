@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import {db} from '../db';
 import { useProviders } from '../contexts/ProvidersContext';
+import logoImage from '../assets/logo.png';
 
 interface OnboardingProps {
     onComplete: () => void;
@@ -830,7 +831,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                 className="relative bg-white dark:bg-gray-800 rounded-full p-3 sm:p-4 shadow-xl">
                                                 {!logoError ? (
                                                     <img
-                                                        src="/logo.png"
+                                                        src={logoImage}
                                                         alt="Clara Logo"
                                                         className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
                                                         onError={() => setLogoError(true)}
@@ -1680,10 +1681,123 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
                                     >
                                         {[
-                                            'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-                                            'America/Toronto', 'America/Vancouver', 'Europe/London', 'Europe/Paris', 
-                                            'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Seoul', 'Asia/Singapore',
-                                            'Australia/Sydney', 'UTC'
+                                            // UTC
+                                            'UTC',
+                                            
+                                            // Africa
+                                            'Africa/Abidjan',
+                                            'Africa/Algiers',
+                                            'Africa/Cairo',
+                                            'Africa/Casablanca',
+                                            'Africa/Johannesburg',
+                                            'Africa/Lagos',
+                                            'Africa/Nairobi',
+                                            'Africa/Tunis',
+                                            
+                                            // America - North
+                                            'America/Anchorage',
+                                            'America/Chicago',
+                                            'America/Denver',
+                                            'America/Los_Angeles',
+                                            'America/New_York',
+                                            'America/Phoenix',
+                                            'America/Toronto',
+                                            'America/Vancouver',
+                                            'America/Winnipeg',
+                                            
+                                            // America - Central
+                                            'America/Belize',
+                                            'America/Costa_Rica',
+                                            'America/Guatemala',
+                                            'America/Havana',
+                                            'America/Mexico_City',
+                                            'America/Panama',
+                                            'America/Tegucigalpa',
+                                            
+                                            // America - South
+                                            'America/Argentina/Buenos_Aires',
+                                            'America/Bogota',
+                                            'America/Caracas',
+                                            'America/Lima',
+                                            'America/Santiago',
+                                            'America/Sao_Paulo',
+                                            
+                                            // Asia - East
+                                            'Asia/Bangkok',
+                                            'Asia/Hong_Kong',
+                                            'Asia/Jakarta',
+                                            'Asia/Kuala_Lumpur',
+                                            'Asia/Manila',
+                                            'Asia/Seoul',
+                                            'Asia/Shanghai',
+                                            'Asia/Singapore',
+                                            'Asia/Taipei',
+                                            'Asia/Tokyo',
+                                            
+                                            // Asia - South
+                                            'Asia/Calcutta',
+                                            'Asia/Colombo',
+                                            'Asia/Dhaka',
+                                            'Asia/Karachi',
+                                            'Asia/Kathmandu',
+                                            
+                                            // Asia - Central/West
+                                            'Asia/Dubai',
+                                            'Asia/Istanbul',
+                                            'Asia/Jerusalem',
+                                            'Asia/Kuwait',
+                                            'Asia/Qatar',
+                                            'Asia/Riyadh',
+                                            'Asia/Tehran',
+                                            'Asia/Tashkent',
+                                            'Asia/Yekaterinburg',
+                                            
+                                            // Europe
+                                            'Europe/Amsterdam',
+                                            'Europe/Athens',
+                                            'Europe/Berlin',
+                                            'Europe/Brussels',
+                                            'Europe/Budapest',
+                                            'Europe/Dublin',
+                                            'Europe/Helsinki',
+                                            'Europe/Istanbul',
+                                            'Europe/London',
+                                            'Europe/Madrid',
+                                            'Europe/Moscow',
+                                            'Europe/Oslo',
+                                            'Europe/Paris',
+                                            'Europe/Prague',
+                                            'Europe/Rome',
+                                            'Europe/Stockholm',
+                                            'Europe/Vienna',
+                                            'Europe/Warsaw',
+                                            'Europe/Zurich',
+                                            
+                                            // Australia/Oceania
+                                            'Australia/Adelaide',
+                                            'Australia/Brisbane',
+                                            'Australia/Darwin',
+                                            'Australia/Melbourne',
+                                            'Australia/Perth',
+                                            'Australia/Sydney',
+                                            'Pacific/Auckland',
+                                            'Pacific/Fiji',
+                                            'Pacific/Honolulu',
+                                            'Pacific/Port_Moresby',
+                                            'Pacific/Samoa',
+                                            'Pacific/Tahiti',
+                                            'Pacific/Tongatapu',
+                                            
+                                            // Atlantic
+                                            'Atlantic/Azores',
+                                            'Atlantic/Bermuda',
+                                            'Atlantic/Canary',
+                                            'Atlantic/Cape_Verde',
+                                            'Atlantic/Reykjavik',
+                                            
+                                            // Indian Ocean
+                                            'Indian/Maldives',
+                                            'Indian/Mauritius',
                                         ].map(tz => (
                                             <option key={tz} value={tz}>{getTimezoneDisplay(tz)}</option>
                                         ))}
@@ -1715,7 +1829,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             </span>
                                         </div>
                                         <p className="text-xs text-blue-600 dark:text-blue-400">
-                                            Saving your preferences and starting selected services
+                                            Saving your preferences and starting selected services - <b>Note:</b> might require restart of Clara.
                                         </p>
                                     </div>
                                 )}
