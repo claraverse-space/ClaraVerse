@@ -3,7 +3,7 @@
  * 
  * Sweet Memories Feature for ClaraVerse
  * Automatically extracts and stores user information from conversations
- * when streaming responses are fast (>50 tokens/second) and requests are reasonable in size.
+ * when streaming responses are reasonably fast (>10 tokens/second) and requests are reasonable in size.
  * 
  * This component operates independently from the main Clara assistant flow,
  * using OpenAI-compatible structured output for reliable data extraction.
@@ -152,7 +152,7 @@ interface MemoryExtractionResponse {
 
 // ==================== CONSTANTS ====================
 
-const TOKEN_SPEED_THRESHOLD = 50; // tokens per second
+const TOKEN_SPEED_THRESHOLD = 10; // tokens per second
 const MAX_REQUEST_SIZE = 2000; // characters - avoid processing large requests
 const MIN_CONFIDENCE_THRESHOLD = 0.3;
 const EXTRACTION_TIMEOUT = 30000; // 30 seconds max for memory extraction (increased from 10s)
@@ -697,6 +697,26 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       return transformed;
     };
     
+    // NEW: Recursively flatten objects of the form { value, confidence } -> value
+    const flattenValueConfidence = (obj: any): any => {
+      if (Array.isArray(obj)) {
+        return obj.map(item => flattenValueConfidence(item));
+      }
+      if (obj && typeof obj === 'object') {
+        // If this object looks like { value: X, confidence: Y }, return X
+        const keys = Object.keys(obj);
+        if (('value' in obj) && ('confidence' in obj) && keys.length <= 2) {
+          return flattenValueConfidence(obj.value);
+        }
+        const result: any = {};
+        for (const key of keys) {
+          result[key] = flattenValueConfidence(obj[key]);
+        }
+        return result;
+      }
+      return obj;
+    };
+    
     // Step 3: Normalize the structure with fuzzy key matching
     const normalizeMemoryData = (data: any): MemoryExtractionResponse => {
       const keys = Object.keys(data);
@@ -704,29 +724,53 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       
       // Find hasMemoryData or similar
       const hasMemoryDataKey = fuzzyKeyMatch('hasMemoryData', keys) || 'hasMemoryData';
-      const hasMemoryData = data[hasMemoryDataKey] !== undefined ? data[hasMemoryDataKey] : true;
+      const providedHasMemoryData = data[hasMemoryDataKey];
       
-      // Find extractedMemory key with fuzzy matching for common variations
+      // Determine extracted memory payload
+      const canonicalKeys = ['coreIdentity', 'personalCharacteristics', 'preferences', 'relationship', 'interactions', 'context', 'emotional', 'practical'];
+      const hasCanonicalTopLevel = canonicalKeys.some(k => k in data);
+      
+      // Prefer explicit extractedMemory if present, otherwise use top-level canonical sections
       const memoryDataVariations = ['extractedMemory', 'memoryData', 'memory', 'userData', 'userInfo', 'data'];
-      const memoryDataKey = fuzzyKeyMatch('extractedMemory', keys) || 
-                           keys.find(key => memoryDataVariations.some(variation => 
-                             fuzzyKeyMatch(variation, [key], 0.1))) ||
-                           'extractedMemory';
+      const memoryDataKey = keys.find(k => fuzzyKeyMatch('extractedMemory', [k]) || memoryDataVariations.some(variation => fuzzyKeyMatch(variation, [k], 0.1)))
+        || (hasCanonicalTopLevel ? '__top_level__' : 'extractedMemory');
       
       console.log('🧠 DEBUG: Using memory data key:', memoryDataKey, 'from available keys:', keys);
       
-      const rawExtractedMemory = data[memoryDataKey] || {};
+      let rawExtractedMemory: any = {};
+      if (memoryDataKey === '__top_level__') {
+        // Build object from canonical sections present at top level
+        rawExtractedMemory = {};
+        for (const key of canonicalKeys) {
+          if (key in data) rawExtractedMemory[key] = data[key];
+        }
+      } else {
+        rawExtractedMemory = data[memoryDataKey] || {};
+      }
       
-      // 🔧 FIX: Transform AI structure to canonical structure
-      const extractedMemory = transformToCanonicalStructure(rawExtractedMemory);
+      // Transform AI structure to canonical structure
+      let extractedMemory = transformToCanonicalStructure(rawExtractedMemory);
       
-      // Find confidence key
+      // Flatten { value, confidence } pairs to raw values
+      extractedMemory = flattenValueConfidence(extractedMemory);
+      
+      // Determine confidence
       const confidenceKey = fuzzyKeyMatch('confidence', keys) || 'confidence';
-      const confidence = data[confidenceKey] !== undefined ? data[confidenceKey] : 0.5;
+      let confidence = data[confidenceKey];
+      if (confidence === undefined && data.metadata && typeof data.metadata.confidenceLevel === 'number') {
+        confidence = data.metadata.confidenceLevel;
+      }
+      if (typeof confidence !== 'number') {
+        confidence = 0.5;
+      }
       
-      // Find reasoning key
+      // Reasoning if any
       const reasoningKey = fuzzyKeyMatch('reasoning', keys) || 'reasoning';
       const reasoning = data[reasoningKey];
+      
+      // Compute hasMemoryData: require actual data; respect explicit false
+      const hasData = Object.values(extractedMemory || {}).some(section => section && typeof section === 'object' && Object.keys(section).length > 0);
+      const hasMemoryData = hasData && providedHasMemoryData !== false;
       
       const result: MemoryExtractionResponse = {
         hasMemoryData,
@@ -1356,6 +1400,12 @@ Extract and categorize any personal information according to the provided schema
       }
       
       console.log(`🧠 DEBUG: Total sections with data: ${sectionsWithData.length}`, sectionsWithData);
+
+      // Skip saving if there is no meaningful data to persist
+      if (sectionsWithData.length === 0) {
+        console.log('🧠 DEBUG: No non-empty memory sections detected. Skipping save to avoid empty profile updates.');
+        return;
+      }
 
       // Add session context  
       mergedProfile.metadata.messageId = messageId;
