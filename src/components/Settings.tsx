@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock, ChevronRight, ChevronDown } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -951,13 +951,20 @@ const Settings = () => {
   }) => (
     <button
       onClick={() => setActiveMainTab(id)}
-      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${isActive
+      className={`flex items-center justify-between px-4 py-3 w-full rounded-lg transition-colors ${isActive
           ? 'bg-sakura-500 text-white'
           : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
         }`}
     >
-      {icon}
-      <span className="font-medium">{label}</span>
+      <span className="flex items-center gap-3">
+        {icon}
+        <span className="font-medium">{label}</span>
+      </span>
+      {id !== 'profile' && (
+        <span className="ml-3 opacity-80">
+          {isActive ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </span>
+      )}
     </button>
   );
 
