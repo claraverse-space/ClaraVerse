@@ -9,7 +9,7 @@ import {
 import { CustomNodeDefinition, NodePort, NodePropertyDefinition } from '../../../types/agent/types';
 import Monaco from '@monaco-editor/react';
 import { useProviders } from '../../../contexts/ProvidersContext';
-import { claraApiService } from '../../../services/claraApiService';
+import { claraProviderService } from '../../../services/claraProviderService';
 
 interface NodeCreatorProps {
   isOpen: boolean;
@@ -221,11 +221,11 @@ async function execute(inputs, properties, context) {
           updateState({ selectedProvider: primaryProvider.id });
           
           // Load models for the primary provider
-          const models = await claraApiService.getModels(primaryProvider.id);
+          const models = await claraProviderService.getModels(primaryProvider.id);
           setAvailableModels(models);
           
           // Select a default text model
-          const textModel = models.find(m => m.type === 'text' || m.type === 'multimodal');
+          const textModel = models.find((m: any) => m.type === 'text' || m.type === 'multimodal');
           if (textModel) {
             updateState({ selectedModel: textModel.id });
           }
@@ -244,11 +244,11 @@ async function execute(inputs, properties, context) {
   const handleProviderChange = async (providerId: string) => {
     updateState({ selectedProvider: providerId, selectedModel: '' });
     try {
-      const models = await claraApiService.getModels(providerId);
+      const models = await claraProviderService.getModels(providerId);
       setAvailableModels(models);
       
       // Select first available text model
-      const textModel = models.find(m => m.type === 'text' || m.type === 'multimodal');
+      const textModel = models.find((m: any) => m.type === 'text' || m.type === 'multimodal');
       if (textModel) {
         updateState({ selectedModel: textModel.id });
       }
@@ -463,12 +463,12 @@ Requirements:
         throw new Error(`Provider ${state.selectedProvider} not found or not enabled`);
       }
 
-      // Use claraApiService to make the structured output request
+      // Use claraProviderService to make the structured output request
       // First, ensure the provider is set correctly
-      const currentProvider = claraApiService.getCurrentProvider();
+      const currentProvider = claraProviderService.getCurrentProvider();
       if (!currentProvider || currentProvider.id !== state.selectedProvider) {
         // Update the provider if needed
-        claraApiService.updateProvider(selectedProviderData);
+        claraProviderService.updateProvider(selectedProviderData);
       }
 
       // Create the request body for structured output
@@ -491,8 +491,8 @@ Requirements:
         }
       };
 
-      // Make the request using claraApiService's internal client
-      const client = claraApiService['client'];
+      // Make the request using claraProviderService's current client
+      const client = claraProviderService.getCurrentClient();
       if (!client) {
         throw new Error('No API client available');
       }

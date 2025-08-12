@@ -1381,7 +1381,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       console.log('🧠 Memory context for refinement:', memoryContext ? 'Available' : 'Empty');
 
       // Create refinement prompt with memory context
-      const refinementPrompt = `You are Clara, reviewing and refining an AI response to make it more user-friendly and resonant.
+      const refinementPrompt = `
 
 **Original User Question:**
 "${originalUserQuestion}"
@@ -1394,18 +1394,10 @@ ${rawUnfilteredResponse}
 ${memoryContext ? `**Memory Context:**
 ${memoryContext}` : ''}
 
-**Your Task:**
-Please create a refined, conversational response that:
-1. Directly answers the user's original question
-2. Uses the key information from the raw response
-3. Incorporates insights from the memory context (if available)
-4. Removes technical artifacts, console outputs, and execution details
-5. Presents the information in a natural, helpful way
-6. Maintains accuracy while being more engaging
-7. Ends with a friendly offer to help further
+Never lie about anything or fake report say as it is what happened. and when you fail keep it cool and professional.
 
-Please provide your refined response for following user question:
-"${originalUserQuestion}"`;
+
+Now tell me what is the result "`;
 
       // Track the refined content as it streams
       let refinedContent = '';

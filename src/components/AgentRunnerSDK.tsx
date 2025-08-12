@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Terminal, X, FileText, Image, Calculator, Upload } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { agentWorkflowStorage } from '../services/agentWorkflowStorage';
+import { customNodeManager } from './AgentBuilder/NodeCreator/CustomNodeManager';
 
 // Import Clara Flow SDK
 import { ClaraFlowRunner } from '../../sdk/src/ClaraFlowRunner';
@@ -141,7 +142,101 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
   };
 
   const convertToSDKFormat = (agentFlow: any): any => {
-    // Convert AgentBuilder format to Clara Flow SDK format
+    // Get custom nodes from the agent flow or fetch them from the custom node manager
+    let customNodes = agentFlow.customNodes || [];
+    
+    // Check if any nodes in the flow are custom nodes and collect their definitions
+    const customNodeTypes = new Set<string>();
+    
+    console.log('🔍 Analyzing nodes for custom types:', agentFlow.nodes.map((n: any) => `${n.name || 'Unnamed'} (${n.type})`));
+    
+    // Get all known node types from custom node manager first
+    let knownCustomNodeTypes = new Set<string>();
+    if (customNodeManager && customNodeManager.getCustomNodes) {
+      try {
+        const allCustomNodes = customNodeManager.getCustomNodes();
+        allCustomNodes.forEach((customNode: any) => {
+          knownCustomNodeTypes.add(customNode.type);
+        });
+        console.log('📋 Known custom node types:', Array.from(knownCustomNodeTypes));
+      } catch (error) {
+        console.warn('⚠️ Error getting all custom nodes:', error);
+      }
+    }
+    
+    // Identify custom node types in the flow - check against known types AND use isCustomNode if available
+    agentFlow.nodes.forEach((node: any) => {
+      let isCustom = false;
+      
+      // Method 1: Check against known custom node types
+      if (knownCustomNodeTypes.has(node.type)) {
+        isCustom = true;
+        console.log(`✅ Found custom node by type match: ${node.name || node.id} (${node.type})`);
+      }
+      
+      // Method 2: Use isCustomNode method if available
+      if (!isCustom && customNodeManager && customNodeManager.isCustomNode && typeof customNodeManager.isCustomNode === 'function') {
+        try {
+          isCustom = customNodeManager.isCustomNode(node.type);
+          if (isCustom) {
+            console.log(`✅ Found custom node by isCustomNode method: ${node.name || node.id} (${node.type})`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Error checking if ${node.type} is custom node:`, error);
+        }
+      }
+      
+      // Method 3: Fallback - check if it's not a built-in node type
+      if (!isCustom) {
+        const builtInTypes = [
+          'input', 'output', 'text-input', 'number-input', 'image-input', 'file-input', 'pdf-input', 'file-upload',
+          'text-processor', 'math-calculator', 'image-processor', 'pdf-processor', 'llm-text', 'llm-chat',
+          'data-formatter', 'conditional', 'loop', 'delay', 'http-request', 'database-query',
+          'email-sender', 'file-writer', 'code-executor', 'webhook', 'scheduler'
+        ];
+        
+        if (!builtInTypes.includes(node.type)) {
+          isCustom = true;
+          console.log(`✅ Found custom node by exclusion: ${node.name || node.id} (${node.type}) - not in built-in types`);
+        }
+      }
+      
+      if (isCustom) {
+        customNodeTypes.add(node.type);
+      }
+    });
+    
+    // If there are custom nodes in the flow, get their full definitions from the manager
+    if (customNodeTypes.size > 0 && customNodeManager && customNodeManager.getCustomNode) {
+      const customNodeDefinitions = Array.from(customNodeTypes).map(nodeType => {
+        const customNode = customNodeManager.getCustomNode(nodeType);
+        if (customNode) {
+          console.log(`✅ Found custom node definition: ${customNode.name} (${customNode.type})`);
+          return {
+            id: customNode.id,
+            type: customNode.type,
+            name: customNode.name,
+            description: customNode.description,
+            category: customNode.category,
+            icon: customNode.icon,
+            inputs: customNode.inputs,
+            outputs: customNode.outputs,
+            properties: customNode.properties,
+            executionCode: customNode.executionCode,
+            metadata: customNode.metadata
+          };
+        } else {
+          console.warn(`⚠️ Missing custom node definition for type: ${nodeType}`);
+        }
+        return null;
+      }).filter(Boolean);
+      
+      // Merge with any existing custom nodes in the flow data
+      const existingCustomNodeTypes = new Set((customNodes || []).map((node: any) => node.type));
+      const newCustomNodes = customNodeDefinitions.filter(node => node && !existingCustomNodeTypes.has(node.type));
+      customNodes = [...(customNodes || []), ...newCustomNodes];
+    }
+
     return {
       format: 'clara-sdk',
       version: '1.0.0',
@@ -152,7 +247,12 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
         nodes: agentFlow.nodes,
         connections: agentFlow.connections || []
       },
-      customNodes: []
+      customNodes: customNodes,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        exportedFrom: 'Clara Agent Runner SDK',
+        hasCustomNodes: customNodes.length > 0
+      }
     };
   };
 
@@ -172,6 +272,56 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
     console.log('🚀 STARTING AGENT EXECUTION - Clara Flow SDK Approach');
     console.log('📋 Agent Flow:', agentFlow);
     console.log('📥 Input Values:', inputValues);
+    
+    // 🔍 DEBUG: Check custom node manager state
+    console.log('🔧 Custom Node Manager Debug:');
+    console.log('  - Manager available:', !!customNodeManager);
+    if (customNodeManager) {
+      console.log('  - Has isCustomNode method:', typeof customNodeManager.isCustomNode === 'function');
+      console.log('  - Has getCustomNode method:', typeof customNodeManager.getCustomNode === 'function');
+      console.log('  - Has getCustomNodes method:', typeof customNodeManager.getCustomNodes === 'function');
+      
+      try {
+        const allCustomNodes = customNodeManager.getCustomNodes ? customNodeManager.getCustomNodes() : [];
+        console.log('  - Total custom nodes in manager:', allCustomNodes.length);
+        if (allCustomNodes.length > 0) {
+          console.log('  - Available custom nodes:', allCustomNodes.map((n: any) => `${n.name} (${n.type})`));
+          
+          // Check specifically for the uppercase-converter
+          const uppercaseConverter = allCustomNodes.find((n: any) => n.type === 'uppercase-converter');
+          if (uppercaseConverter) {
+            console.log('  - ✅ uppercase-converter found in manager:', {
+              name: uppercaseConverter.name,
+              type: uppercaseConverter.type,
+              hasExecutionCode: !!uppercaseConverter.executionCode,
+              codeLength: uppercaseConverter.executionCode?.length || 0
+            });
+          } else {
+            console.log('  - ❌ uppercase-converter NOT found in manager');
+          }
+        }
+      } catch (error) {
+        console.warn('  - Error getting custom nodes:', error);
+      }
+      
+      // Try to get the uppercase-converter directly
+      if (customNodeManager.getCustomNode) {
+        try {
+          const uppercaseNode = customNodeManager.getCustomNode('uppercase-converter');
+          if (uppercaseNode) {
+            console.log('  - ✅ Direct getCustomNode for uppercase-converter succeeded:', {
+              name: uppercaseNode.name,
+              type: uppercaseNode.type,
+              hasCode: !!uppercaseNode.executionCode
+            });
+          } else {
+            console.log('  - ❌ Direct getCustomNode for uppercase-converter returned null/undefined');
+          }
+        } catch (error) {
+          console.log('  - ❌ Direct getCustomNode for uppercase-converter failed:', error);
+        }
+      }
+    }
 
     try {
       // 🆕 Create Clara Flow SDK Runner - completely isolated
@@ -185,6 +335,104 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
       // Convert agent flow to SDK format
       const sdkFlowData = convertToSDKFormat(agentFlow);
       console.log('🔄 Converted to SDK format:', sdkFlowData);
+      console.log('🎨 Custom nodes in flow:', sdkFlowData.customNodes);
+      
+      // 🔧 EXPLICITLY REGISTER CUSTOM NODES WITH THE SDK RUNNER
+      if (sdkFlowData.customNodes && sdkFlowData.customNodes.length > 0) {
+        console.log('🔧 Registering custom nodes with SDK Runner:');
+        for (const customNode of sdkFlowData.customNodes) {
+          console.log(`  - Registering: ${customNode.name} (${customNode.type})`);
+          console.log(`    Has execution code: ${!!customNode.executionCode}`);
+          if (customNode.executionCode) {
+            console.log(`    Code preview: ${customNode.executionCode.substring(0, 100)}...`);
+          }
+          
+          // Register each custom node with the runner
+          try {
+            runner.registerCustomNode(customNode);
+            console.log(`  ✅ Successfully registered: ${customNode.type}`);
+          } catch (error) {
+            console.error(`  ❌ Failed to register ${customNode.type}:`, error);
+          }
+        }
+      } else {
+        console.log('⚠️ No custom nodes found in SDK flow data, checking for fallback registration...');
+        
+        // 🔍 FALLBACK: Check if there are custom nodes in the workflow that weren't found
+        const customNodeTypesInFlow = agentFlow.nodes
+          .map((n: any) => n.type)
+          .filter((type: string) => {
+            // Use the same detection logic as in convertToSDKFormat
+            let isCustom = false;
+            
+            // Check if it's a known custom node type
+            if (customNodeManager && customNodeManager.getCustomNodes) {
+              try {
+                const allCustomNodes = customNodeManager.getCustomNodes();
+                isCustom = allCustomNodes.some((cn: any) => cn.type === type);
+              } catch (error) {
+                console.warn('Error checking custom nodes:', error);
+              }
+            }
+            
+            // Fallback: check if it's not a built-in type
+            if (!isCustom) {
+              const builtInTypes = [
+                'input', 'output', 'text-input', 'number-input', 'image-input', 'file-input', 'pdf-input', 'file-upload',
+                'text-processor', 'math-calculator', 'image-processor', 'pdf-processor', 'llm-text', 'llm-chat',
+                'data-formatter', 'conditional', 'loop', 'delay', 'http-request', 'database-query',
+                'email-sender', 'file-writer', 'code-executor', 'webhook', 'scheduler'
+              ];
+              isCustom = !builtInTypes.includes(type);
+            }
+            
+            return isCustom;
+          });
+        
+        console.log('🔍 Custom node types found in flow for fallback:', customNodeTypesInFlow);
+        
+        if (customNodeTypesInFlow.length > 0) {
+          console.warn('⚠️ Found custom nodes in workflow but no definitions loaded. Attempting direct registration...');
+          for (const nodeType of customNodeTypesInFlow) {
+            if (customNodeManager && customNodeManager.getCustomNode) {
+              const customNode = customNodeManager.getCustomNode(nodeType);
+              if (customNode) {
+                console.log(`  - Fallback registering: ${customNode.name} (${customNode.type})`);
+                try {
+                  runner.registerCustomNode({
+                    id: customNode.id,
+                    type: customNode.type,
+                    name: customNode.name,
+                    description: customNode.description,
+                    category: customNode.category,
+                    icon: customNode.icon,
+                    inputs: customNode.inputs,
+                    outputs: customNode.outputs,
+                    properties: customNode.properties,
+                    executionCode: customNode.executionCode,
+                    metadata: customNode.metadata
+                  });
+                  console.log(`  ✅ Fallback registration successful: ${customNode.type}`);
+                } catch (error) {
+                  console.error(`  ❌ Fallback registration failed for ${nodeType}:`, error);
+                }
+              } else {
+                console.error(`  ❌ Custom node definition not found for type: ${nodeType}`);
+                
+                // Try to get more info about available custom nodes
+                if (customNodeManager.getCustomNodes) {
+                  try {
+                    const available = customNodeManager.getCustomNodes();
+                    console.log(`  📋 Available custom nodes: ${available.map((cn: any) => cn.type).join(', ')}`);
+                  } catch (error) {
+                    console.warn('  ⚠️ Error listing available custom nodes:', error);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
 
       // Prepare inputs for SDK execution
       const sdkInputs: Record<string, any> = {};
@@ -340,14 +588,27 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
     } catch (error) {
       console.error('❌ Clara Flow SDK execution failed:', error);
       
-      const errorMessage: ChatMessage = {
+      let errorMessage = 'Execution failed: ';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Unknown node type:')) {
+          const nodeType = error.message.split('Unknown node type: ')[1];
+          errorMessage = `Custom node type "${nodeType}" is not registered. This usually means:\n\n• The custom node was not found in the custom node manager\n• The custom node definition is missing execution code\n• There was an error during custom node registration\n\nCheck the console logs for more details.`;
+        } else {
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage += 'Unknown error';
+      }
+      
+      const errorMessage_obj: ChatMessage = {
         id: Date.now() + '_error',
         type: 'assistant',
-        content: `❌ **Execution Failed**\n\n${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ **Execution Failed**\n\n${errorMessage}`,
         timestamp: new Date().toISOString()
       };
       
-      setMessages([errorMessage]);
+      setMessages([errorMessage_obj]);
     } finally {
       setIsLoading(false);
     }

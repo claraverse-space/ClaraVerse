@@ -548,7 +548,7 @@ export class ClaraAgentService {
 
     // Progress tracking
     if (autonomousConfig.enableProgressTracking && onContentChunk) {
-      onContentChunk('**Clara is now operating in autonomous mode.**\n\n');
+      onContentChunk('****\n\n');
     }
 
     try {

@@ -5,7 +5,6 @@
  * for provider management, tools, agents, chat, and attachments.
  */
 
-import type { ChatMessage } from '../utils/APIClient';
 import { 
   ClaraMessage, 
   ClaraFileAttachment, 
@@ -25,13 +24,9 @@ import { claraModelService } from './claraModelService';
 import { claraAttachmentService } from './claraAttachmentService';
 
 export class ClaraApiService {
-  private recoveryService: TokenLimitRecoveryService;
-  private stopExecution: boolean = false;
 
-  constructor() {
-    // Initialize the recovery service
-    this.recoveryService = TokenLimitRecoveryService.getInstance();
-  }
+
+
 
   /**
    * Send a chat message
@@ -249,7 +244,6 @@ export class ClaraApiService {
    */
   public stop(): void {
     // Set stop flag for autonomous mode
-    this.stopExecution = true;
     
     // Stop agent execution
     claraAgentService.stop();
