@@ -24,7 +24,7 @@
     "electron:dev:hot": "cross-env NODE_ENV=development ELECTRON_HOT_RELOAD=true concurrently \"npm run dev\" \"electron .\"",
     "test:llama-swap": "node test-llama-swap.js",
     "test:model-manager": "node test-model-manager.js",
-    "widgets:build": "cd widgets_service_app && go build -ldflags=\"-s -w\" -o widgets-service-windows.exe main.go",
+    "widgets:build": "cd widgets_service_app && go build -ldflags=\"-s -w\" -o widgets-service-windows.exe main.go enhanced_pdf_processor.go",
     "widgets:build-all": "cd widgets_service_app && chmod +x build.sh && ./build.sh",
     "widgets:test": "cd widgets_service_app && ./widgets-service-windows.exe",
     "llama-optimizer:build": "cd clara-core-optimiser && go build -ldflags=\"-s -w\" -o ../electron/services/llama-optimizer-windows.exe llama_optimizer.go",

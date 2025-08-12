@@ -1,12 +1,19 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -14,6 +21,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/ledongthuc/pdf"
 	"github.com/rs/cors"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -99,6 +107,27 @@ type ProcessStats struct {
 	Status string  `json:"status"`
 }
 
+// FileParseResult represents the result of file parsing
+type FileParseResult struct {
+	Filename    string            `json:"filename"`
+	FileType    string            `json:"fileType"`
+	Text        string            `json:"text"`
+	Pages       int               `json:"pages,omitempty"`
+	WordCount   int               `json:"wordCount"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Success     bool              `json:"success"`
+	Error       string            `json:"error,omitempty"`
+	ProcessTime string            `json:"processTime"`
+}
+
+// FileProcessor handles different file types
+type FileProcessor struct{}
+
+// NewFileProcessor creates a new file processor
+func NewFileProcessor() *FileProcessor {
+	return &FileProcessor{}
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // Allow all origins for development
@@ -108,6 +137,8 @@ var upgrader = websocket.Upgrader{
 // Global variables to track active connections
 var activeConnections = make(map[*websocket.Conn]bool)
 var statsInterval = 2 * time.Second
+var fileProcessor = NewFileProcessor()
+var enhancedPDFProcessor = NewEnhancedPDFProcessor()
 
 func main() {
 	port := "8765"
@@ -127,6 +158,13 @@ func main() {
 	router.HandleFunc("/api/stats/processes", getProcessStats).Methods("GET")
 	router.HandleFunc("/api/health", healthCheck).Methods("GET")
 
+	// File processing endpoints
+	router.HandleFunc("/api/file/upload", handleFileUpload).Methods("POST")
+	router.HandleFunc("/api/file/supported-formats", getSupportedFormats).Methods("GET")
+
+	// Serve static files for testing
+	router.PathPrefix("/test/").Handler(http.StripPrefix("/test/", http.FileServer(http.Dir("."))))
+
 	// WebSocket endpoint for real-time updates
 	router.HandleFunc("/ws/stats", handleWebSocket)
 
@@ -142,6 +180,9 @@ func main() {
 	fmt.Printf("Widget Service starting on port %s\n", port)
 	fmt.Printf("Health check: http://localhost:%s/api/health\n", port)
 	fmt.Printf("System stats: http://localhost:%s/api/stats\n", port)
+	fmt.Printf("File upload: http://localhost:%s/api/file/upload\n", port)
+	fmt.Printf("Supported formats: http://localhost:%s/api/file/supported-formats\n", port)
+	fmt.Printf("Test page: http://localhost:%s/test/file_upload_test.html\n", port)
 	fmt.Printf("WebSocket: ws://localhost:%s/ws/stats\n", port)
 
 	log.Fatal(http.ListenAndServe(":"+port, handler))
@@ -197,6 +238,118 @@ func getProcessStats(w http.ResponseWriter, r *http.Request) {
 	procStats := collectProcessStats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(procStats)
+}
+
+func handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	// Set max upload size (10MB)
+	r.ParseMultipartForm(10 << 20)
+
+	// Get file from form
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error retrieving file: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read file data
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error reading file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Validate file size (10MB limit)
+	if len(fileData) > 10<<20 {
+		http.Error(w, "File too large. Maximum size is 10MB", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// Check if it's a PDF file and use enhanced processor
+	if strings.ToLower(filepath.Ext(handler.Filename)) == ".pdf" {
+		// Use enhanced PDF processor
+		enhancedResult, err := enhancedPDFProcessor.ProcessPDF(handler, fileData)
+		if err != nil {
+			log.Printf("Error processing PDF %s: %v", handler.Filename, err)
+		}
+		
+		// Convert enhanced result to standard result format
+		result := &FileParseResult{
+			Filename:    enhancedResult.Filename,
+			FileType:    enhancedResult.FileType,
+			Text:        enhancedResult.Text,
+			Pages:       enhancedResult.Pages,
+			WordCount:   enhancedResult.WordCount,
+			Success:     enhancedResult.Success,
+			Error:       enhancedResult.Error,
+			ProcessTime: enhancedResult.ProcessTime,
+			Metadata:    make(map[string]string),
+		}
+		
+		// Add enhanced metadata
+		result.Metadata["title"] = enhancedResult.Metadata.Title
+		result.Metadata["author"] = enhancedResult.Metadata.Author
+		result.Metadata["subject"] = enhancedResult.Metadata.Subject
+		result.Metadata["creator"] = enhancedResult.Metadata.Creator
+		result.Metadata["producer"] = enhancedResult.Metadata.Producer
+		result.Metadata["keywords"] = enhancedResult.Metadata.Keywords
+		result.Metadata["pdfVersion"] = enhancedResult.Metadata.PDFVersion
+		result.Metadata["fileSize"] = fmt.Sprintf("%d", enhancedResult.Metadata.FileSize)
+		result.Metadata["overallQualityScore"] = fmt.Sprintf("%.2f", enhancedResult.Quality.OverallScore)
+		result.Metadata["textQuality"] = fmt.Sprintf("%.2f", enhancedResult.Quality.TextQuality)
+		result.Metadata["structureQuality"] = fmt.Sprintf("%.2f", enhancedResult.Quality.StructureQuality)
+		result.Metadata["tablesDetected"] = fmt.Sprintf("%d", len(enhancedResult.Tables))
+		result.Metadata["securityEncrypted"] = fmt.Sprintf("%t", enhancedResult.Security.IsEncrypted)
+		result.Metadata["hasBookmarks"] = fmt.Sprintf("%t", enhancedResult.Structure.HasBookmarks)
+		result.Metadata["isTaggedPDF"] = fmt.Sprintf("%t", enhancedResult.Structure.IsTaggedPDF)
+		
+		// Add custom metadata
+		for key, value := range enhancedResult.Metadata.Custom {
+			result.Metadata["custom_"+key] = value
+		}
+		
+		// Add quality recommendations
+		if len(enhancedResult.Quality.Recommendations) > 0 {
+			result.Metadata["recommendations"] = strings.Join(enhancedResult.Quality.Recommendations, "; ")
+		}
+		
+		// Log the enhanced upload
+		log.Printf("Enhanced PDF processed: %s (%s) - Success: %v, Quality: %.2f, Tables: %d",
+			result.Filename, result.FileType, result.Success, enhancedResult.Quality.OverallScore, len(enhancedResult.Tables))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+
+	// Process the file using standard processor for non-PDF files
+	result, err := fileProcessor.ProcessFile(handler, fileData)
+	if err != nil {
+		log.Printf("Error processing file %s: %v", handler.Filename, err)
+		// Still return the result with error information
+	}
+
+	// Log the upload
+	log.Printf("File uploaded and processed: %s (%s) - Success: %v",
+		result.Filename, result.FileType, result.Success)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func getSupportedFormats(w http.ResponseWriter, r *http.Request) {
+	formats := fileProcessor.GetSupportedFormats()
+
+	response := map[string]interface{}{
+		"supportedFormats":  formats,
+		"description":       "Supported file formats for text extraction",
+		"maxFileSize":       "10MB",
+		"basicSupport":      []string{"txt", "md", "csv", "json", "xml", "log", "html", "htm", "rtf"},
+		"requiresLibraries": []string{"pdf", "docx"},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -552,4 +705,394 @@ func getCPUTemperature() float64 {
 	}
 
 	return 0.0 // Unable to get temperature
+}
+
+// ProcessFile processes an uploaded file and extracts text
+func (fp *FileProcessor) ProcessFile(fileHeader *multipart.FileHeader, fileData []byte) (*FileParseResult, error) {
+	startTime := time.Now()
+	filename := fileHeader.Filename
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	result := &FileParseResult{
+		Filename: filename,
+		FileType: ext,
+		Metadata: make(map[string]string),
+	}
+
+	var text string
+	var err error
+	var pages int
+
+	switch ext {
+	case ".txt", ".log":
+		text = string(fileData)
+	case ".md":
+		text = string(fileData)
+		result.FileType = "markdown"
+	case ".csv":
+		text, err = fp.parseCSV(fileData)
+		result.FileType = "csv"
+	case ".json":
+		text, err = fp.parseJSON(fileData)
+		result.FileType = "json"
+	case ".xml":
+		text, err = fp.parseXML(fileData)
+		result.FileType = "xml"
+	case ".html", ".htm":
+		text, err = fp.parseHTML(fileData)
+		result.FileType = "html"
+	case ".rtf":
+		text, err = fp.parseRTF(fileData)
+		result.FileType = "rtf"
+	case ".pdf":
+		text, pages, err = fp.parsePDF(fileData)
+		result.Pages = pages
+		result.FileType = "pdf"
+	case ".docx":
+		text, err = fp.parseDOCX(fileData)
+		result.FileType = "docx"
+	default:
+		// Try to read as plain text for unknown extensions
+		text = string(fileData)
+		result.FileType = "unknown"
+	}
+
+	processingTime := time.Since(startTime)
+
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+		// Still populate text if we have partial results
+	} else {
+		result.Success = true
+	}
+
+	result.Text = text
+	result.WordCount = len(strings.Fields(text))
+	result.ProcessTime = processingTime.String()
+
+	// Add basic metadata
+	result.Metadata["size"] = fmt.Sprintf("%d bytes", len(fileData))
+	result.Metadata["extension"] = ext
+	result.Metadata["originalFilename"] = filename
+
+	return result, nil
+}
+
+// GetSupportedFormats returns a list of supported file formats
+func (fp *FileProcessor) GetSupportedFormats() []string {
+	return []string{
+		"txt", "md", "csv", "json", "xml", "html", "htm", "rtf", "log", "pdf", "docx",
+	}
+}
+
+// ValidateFile checks if the file type is supported
+func (fp *FileProcessor) ValidateFile(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	ext = strings.TrimPrefix(ext, ".")
+
+	supported := fp.GetSupportedFormats()
+	for _, format := range supported {
+		if ext == format {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseCSV extracts and formats CSV data
+func (fp *FileProcessor) parseCSV(data []byte) (string, error) {
+	reader := csv.NewReader(bytes.NewReader(data))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return "", fmt.Errorf("failed to parse CSV: %v", err)
+	}
+
+	var textBuilder strings.Builder
+	for i, record := range records {
+		if i == 0 {
+			textBuilder.WriteString("Headers: ")
+		} else {
+			textBuilder.WriteString(fmt.Sprintf("Row %d: ", i))
+		}
+		textBuilder.WriteString(strings.Join(record, " | "))
+		textBuilder.WriteString("\n")
+	}
+
+	return textBuilder.String(), nil
+}
+
+// parseJSON extracts and formats JSON data
+func (fp *FileProcessor) parseJSON(data []byte) (string, error) {
+	var jsonData interface{}
+	err := json.Unmarshal(data, &jsonData)
+	if err != nil {
+		// If not valid JSON, return as plain text
+		return string(data), nil
+	}
+
+	// Pretty print the JSON
+	prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
+	if err != nil {
+		return string(data), nil
+	}
+
+	return string(prettyJSON), nil
+}
+
+// parseXML extracts text from XML files
+func (fp *FileProcessor) parseXML(data []byte) (string, error) {
+	// Remove XML tags and extract text content
+	content := string(data)
+
+	// Use regex to remove XML tags but keep the content
+	re := regexp.MustCompile(`<[^>]*>`)
+	textOnly := re.ReplaceAllString(content, " ")
+
+	// Clean up whitespace
+	lines := strings.Split(textOnly, "\n")
+	var textBuilder strings.Builder
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			textBuilder.WriteString(trimmed)
+			textBuilder.WriteString("\n")
+		}
+	}
+
+	return textBuilder.String(), nil
+}
+
+// parseRTF extracts text from RTF files (basic implementation)
+func (fp *FileProcessor) parseRTF(data []byte) (string, error) {
+	// This is a basic RTF parser - for production use, consider a proper RTF library
+	content := string(data)
+
+	// Remove RTF control words (very basic approach)
+	lines := strings.Split(content, "\n")
+	var textBuilder strings.Builder
+
+	for _, line := range lines {
+		// Skip lines that start with RTF control sequences
+		if strings.HasPrefix(strings.TrimSpace(line), "{\\") ||
+			strings.HasPrefix(strings.TrimSpace(line), "\\") {
+			continue
+		}
+
+		// Clean up remaining text
+		cleaned := strings.ReplaceAll(line, "}", "")
+		cleaned = strings.ReplaceAll(cleaned, "{", "")
+
+		if strings.TrimSpace(cleaned) != "" {
+			textBuilder.WriteString(cleaned)
+			textBuilder.WriteString("\n")
+		}
+	}
+
+	return textBuilder.String(), nil
+}
+
+// parseHTML extracts text from HTML files (basic implementation)
+func (fp *FileProcessor) parseHTML(data []byte) (string, error) {
+	content := string(data)
+
+	// Very basic HTML tag removal - for production, use a proper HTML parser
+	content = strings.ReplaceAll(content, "<script", "<SCRIPT")
+	content = strings.ReplaceAll(content, "</script>", "</SCRIPT>")
+	content = strings.ReplaceAll(content, "<style", "<STYLE")
+	content = strings.ReplaceAll(content, "</style>", "</STYLE>")
+
+	// Remove script and style content
+	for {
+		start := strings.Index(content, "<SCRIPT")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(content[start:], "</SCRIPT>")
+		if end == -1 {
+			break
+		}
+		content = content[:start] + content[start+end+9:]
+	}
+
+	for {
+		start := strings.Index(content, "<STYLE")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(content[start:], "</STYLE>")
+		if end == -1 {
+			break
+		}
+		content = content[:start] + content[start+end+8:]
+	}
+
+	// Remove HTML tags
+	var textBuilder strings.Builder
+	inTag := false
+
+	for _, char := range content {
+		if char == '<' {
+			inTag = true
+		} else if char == '>' {
+			inTag = false
+		} else if !inTag {
+			textBuilder.WriteRune(char)
+		}
+	}
+
+	return textBuilder.String(), nil
+}
+
+// parsePDF extracts text from PDF files using github.com/ledongthuc/pdf
+func (fp *FileProcessor) parsePDF(data []byte) (string, int, error) {
+	reader := bytes.NewReader(data)
+
+	pdfReader, err := pdf.NewReader(reader, int64(len(data)))
+	if err != nil {
+		// Fallback to helpful message if PDF is corrupted or encrypted
+		text := fmt.Sprintf(`PDF File Detected (%d bytes) - Error Reading
+
+This PDF file could not be parsed. Possible reasons:
+- File is corrupted
+- File is password protected/encrypted
+- File uses unsupported PDF features
+
+Error: %v
+
+You can manually copy and paste the text content if needed.`, len(data), err)
+		return text, 0, err
+	}
+
+	var textBuilder strings.Builder
+	pageCount := pdfReader.NumPage()
+
+	// Track successful page extractions
+	successfulPages := 0
+	totalAttemptedPages := 0
+	var extractionErrors []string
+
+	for i := 1; i <= pageCount; i++ {
+		totalAttemptedPages++
+		page := pdfReader.Page(i)
+		if page.V.IsNull() {
+			extractionErrors = append(extractionErrors, fmt.Sprintf("Page %d: Null page object", i))
+			continue
+		}
+
+		// Try with font map first
+		fonts := make(map[string]*pdf.Font)
+		pageText, err := page.GetPlainText(fonts)
+		if err != nil {
+			// Try without font map as fallback
+			pageText, err = page.GetPlainText(nil)
+			if err != nil {
+				extractionErrors = append(extractionErrors, fmt.Sprintf("Page %d: %v", i, err))
+				continue
+			}
+		}
+
+		cleanText := strings.TrimSpace(pageText)
+		if cleanText != "" {
+			textBuilder.WriteString(fmt.Sprintf("=== Page %d ===\n", i))
+			textBuilder.WriteString(cleanText)
+			textBuilder.WriteString("\n\n")
+			successfulPages++
+		} else {
+			// Try to get content in other ways - check if page has content streams
+			extractionErrors = append(extractionErrors, fmt.Sprintf("Page %d: No extractable text (might contain images/graphics)", i))
+		}
+	}
+
+	extractedText := textBuilder.String()
+
+	// If no text was extracted, provide a detailed diagnostic message
+	if extractedText == "" {
+		var diagnostics strings.Builder
+		diagnostics.WriteString(fmt.Sprintf("PDF File Analysis (%d bytes, %d pages)\n\n", len(data), pageCount))
+		diagnostics.WriteString("✅ PDF file was successfully opened and parsed\n")
+		diagnostics.WriteString("❌ No extractable text content found\n\n")
+
+		diagnostics.WriteString("Possible reasons:\n")
+		diagnostics.WriteString("• PDF contains only scanned images (requires OCR)\n")
+		diagnostics.WriteString("• Text is embedded as graphics/vectors\n")
+		diagnostics.WriteString("• Complex formatting not supported by parser\n")
+		diagnostics.WriteString("• Text uses non-standard encoding\n\n")
+
+		diagnostics.WriteString(fmt.Sprintf("Extraction Details:\n"))
+		diagnostics.WriteString(fmt.Sprintf("• Total pages processed: %d/%d\n", totalAttemptedPages, pageCount))
+		diagnostics.WriteString(fmt.Sprintf("• Pages with extractable text: %d\n", successfulPages))
+
+		if len(extractionErrors) > 0 {
+			diagnostics.WriteString("\nPage-by-page analysis:\n")
+			for _, errMsg := range extractionErrors {
+				diagnostics.WriteString(fmt.Sprintf("• %s\n", errMsg))
+			}
+		}
+
+		diagnostics.WriteString("\n💡 Suggestions:\n")
+		diagnostics.WriteString("• Try copying text directly from PDF viewer\n")
+		diagnostics.WriteString("• Use OCR software for scanned documents\n")
+		diagnostics.WriteString("• Convert PDF to Word/text format first\n")
+
+		return diagnostics.String(), pageCount, nil
+	}
+
+	// Add summary header
+	summaryText := fmt.Sprintf(`PDF Successfully Extracted (%d bytes, %d pages, %d pages with text)
+
+%s`, len(data), pageCount, successfulPages, extractedText)
+
+	return summaryText, pageCount, nil
+}
+
+// parseDOCX extracts text from DOCX files (basic implementation)
+func (fp *FileProcessor) parseDOCX(data []byte) (string, error) {
+	// DOCX files are ZIP archives containing XML files
+	reader := bytes.NewReader(data)
+	zipReader, err := zip.NewReader(reader, int64(len(data)))
+	if err != nil {
+		return "", fmt.Errorf("failed to open DOCX file: %v", err)
+	}
+
+	var textBuilder strings.Builder
+
+	// Look for document.xml which contains the main text
+	for _, file := range zipReader.File {
+		if file.Name == "word/document.xml" {
+			rc, err := file.Open()
+			if err != nil {
+				continue
+			}
+			defer rc.Close()
+
+			content, err := io.ReadAll(rc)
+			if err != nil {
+				continue
+			}
+
+			// Extract text from XML content
+			xmlText, err := fp.parseXML(content)
+			if err == nil {
+				textBuilder.WriteString(xmlText)
+			}
+			break
+		}
+	}
+
+	text := textBuilder.String()
+	if text == "" {
+		return fmt.Sprintf(`DOCX File Detected (%d bytes)
+
+This appears to be a Microsoft Word document. Basic text extraction from the XML structure was attempted.
+For better DOCX parsing, consider using a proper library like:
+
+go get github.com/unidoc/unioffice
+
+The file structure was analyzed but no readable text content was found in the standard location.`, len(data)), nil
+	}
+
+	return text, nil
 }

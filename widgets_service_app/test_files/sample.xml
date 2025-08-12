@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+    <book id="1">
+        <title>The Great Gatsby</title>
+        <author>F. Scott Fitzgerald</author>
+        <genre>Fiction</genre>
+        <price>12.99</price>
+        <description>A classic American novel set in the Jazz Age</description>
+    </book>
+    <book id="2">
+        <title>To Kill a Mockingbird</title>
+        <author>Harper Lee</author>
+        <genre>Fiction</genre>
+        <price>14.99</price>
+        <description>A gripping tale of racial injustice and childhood innocence</description>
+    </book>
+    <book id="3">
+        <title>1984</title>
+        <author>George Orwell</author>
+        <genre>Dystopian Fiction</genre>
+        <price>13.99</price>
+        <description>A dystopian social science fiction novel</description>
+    </book>
+</catalog>

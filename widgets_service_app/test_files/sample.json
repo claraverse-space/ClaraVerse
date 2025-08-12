@@ -1,0 +1,19 @@
+{
+  "name": "Clara File Parser Test",
+  "version": "1.0.0",
+  "description": "This is a sample JSON file for testing the file parser",
+  "features": [
+    "JSON parsing",
+    "Pretty formatting",
+    "Data extraction"
+  ],
+  "config": {
+    "enabled": true,
+    "maxSize": "10MB",
+    "formats": ["json", "csv", "txt", "xml"]
+  },
+  "metadata": {
+    "created": "2025-08-12",
+    "author": "Clara Assistant"
+  }
+}

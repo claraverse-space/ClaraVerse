@@ -38,12 +38,12 @@ chmod +x build.sh
 go mod download
 
 # Build for current platform
-go build -o widgets-service main.go
+go build -ldflags="-s -w" -o widgets-service-windows.exe main.go enhanced_pdf_processor.go
 
-# Or build for specific platform
-GOOS=windows GOARCH=amd64 go build -o widgets-service-windows.exe main.go
-GOOS=linux GOARCH=amd64 go build -o widgets-service-linux main.go
-GOOS=darwin GOARCH=amd64 go build -o widgets-service-macos main.go
+# Or build for specific platform and both files
+GOOS=windows GOARCH=amd64 go build -o widgets-service-windows.exe main.go enhanced_pdf_processor.go
+GOOS=linux GOARCH=amd64 go build  -o widgets-service-linux main.go enhanced_pdf_processor.go
+GOOS=darwin GOARCH=amd64 go build -o widgets-service-macos main.go enhanced_pdf_processor.go
 ```
 
 ## Running
@@ -68,6 +68,7 @@ GOOS=darwin GOARCH=amd64 go build -o widgets-service-macos main.go
 - `GET /api/stats/disk` - Disk usage statistics
 - `GET /api/stats/network` - Network I/O statistics
 - `GET /api/stats/processes` - Process statistics
+
 
 #### WebSocket
 - `WS /ws/stats` - Real-time system statistics stream

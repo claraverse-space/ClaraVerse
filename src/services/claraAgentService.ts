@@ -9,11 +9,9 @@ import {
   ClaraMessage, 
   ClaraFileAttachment, 
   ClaraAIConfig,
-  ClaraArtifact
 } from '../types/clara_assistant_types';
 import type { Tool } from '../db';
 import { claraMemoryService } from './claraMemoryService';
-import { addCompletionNotification, addInfoNotification } from './notificationService';
 import { structuredToolCallService } from './structuredToolCallService';
 import { claraToolService } from './claraToolService';
 import { claraImageExtractionService } from './claraImageExtractionService';
@@ -105,10 +103,8 @@ export class ClaraAgentService {
       tools,
       config,
       attachments,
-      systemPrompt,
       conversationHistory,
       onContentChunk,
-      currentProviderId
     );
   }
 
@@ -449,7 +445,7 @@ export class ClaraAgentService {
     tools: Tool[],
     config: ClaraAIConfig,
     attachments: ClaraFileAttachment[],
-    systemPrompt?: string,
+    // systemPrompt?: string,
     conversationHistory?: ClaraMessage[],
     onContentChunk?: (content: string) => void,
     currentProviderId?: string
@@ -835,40 +831,7 @@ export class ClaraAgentService {
   /**
    * Build enhanced system prompt for autonomous mode
    */
-  private buildAutonomousSystemPrompt(
-    originalPrompt: string | undefined, 
-    tools: Tool[], 
-    config: AutonomousConfig
-  ): string {
-    const toolsList = tools.map(tool => {
-      const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
-      return `${tool.name}: ${tool.description}${requiredParams.length > 0 ? ` (${requiredParams.join(', ')})` : ''}`;
-    }).join('\n');
 
-    return `You are Clara, an autonomous AI agent. Your core directive: ACCOMPLISH THE TASK using available tools.
-
-TOOLS AVAILABLE:
-${toolsList || 'No tools available'}
-
-AUTONOMOUS BEHAVIOR:
-- Use tools to accomplish ANY task - no exceptions
-- If one approach fails, try different tools or approaches
-- Chain multiple tools together when needed
-- Never give up - exhaust all possibilities before declaring failure
-- Be creative and resourceful with tool combinations
-- Learn from failures and adapt your approach
-
-EXECUTION RULES:
-1. ALWAYS attempt to use tools when they can help
-2. If a tool fails, try alternative tools or different parameters
-3. Combine tools creatively to solve complex problems
-4. Keep trying until you succeed or exhaust all options
-5. Provide clear explanations of what you're doing and why
-
-MINDSET: You are capable of solving any problem with the right combination of tools and persistence. Failure is not an option - only learning opportunities that lead to success.
-
-Work autonomously and resourcefully to fulfill the user's request.`;
-  }
 
   /**
    * Create a tool-focused system prompt that emphasizes persistence and exhaustive problem-solving
@@ -953,151 +916,7 @@ MINDSET: Every problem has a solution. Your job is to find it using the tools av
   /**
    * Create iteration-specific prompt that maintains persistence across attempts
    */
-  private createIterationPrompt(
-    iteration: number, 
-    maxIterations: number, 
-    previousFailures: string[],
-    tools: Tool[]
-  ): string {
-    const failureContext = previousFailures.length > 0 
-      ? `\nPREVIOUS ATTEMPTS FAILED:\n${previousFailures.map(f => `- ${f}`).join('\n')}\n`
-      : '';
 
-    return `ITERATION ${iteration}/${maxIterations} - AUTONOMOUS PROBLEM SOLVING
-
-${failureContext}
-CURRENT MISSION: Complete the user's task using available tools.
-
-TOOLS AT YOUR DISPOSAL:
-${tools.map(t => `• ${t.name}: ${t.description}`).join('\n')}
-
-ITERATION STRATEGY:
-- If previous attempts failed, try DIFFERENT approaches
-- Use ALTERNATIVE tools if primary ones didn't work
-- COMBINE multiple tools for complex solutions
-- Be MORE CREATIVE than previous attempts
-- PERSIST - failure is not an option
-
-EXECUTION MINDSET:
-- Every tool is a potential solution
-- Every failure teaches you something
-- Every iteration gets you closer to success
-- NEVER give up until all options are exhausted
-
-PROCEED WITH DETERMINATION.`;
-  }
-
-  /**
-   * Create failure recovery prompt for when tools fail
-   */
-  private createFailureRecoveryPrompt(
-    failedTool: string, 
-    error: string, 
-    availableTools: Tool[]
-  ): string {
-    const alternativeTools = availableTools.filter(t => t.name !== failedTool);
-    
-    return `TOOL FAILURE RECOVERY MODE
-
-FAILED TOOL: ${failedTool}
-ERROR: ${error}
-
-RECOVERY STRATEGY:
-1. ANALYZE why ${failedTool} failed
-2. IDENTIFY alternative approaches
-3. SELECT different tools that might work
-4. MODIFY your approach based on the failure
-5. PERSIST with new strategy
-
-ALTERNATIVE TOOLS AVAILABLE:
-${alternativeTools.map(t => `• ${t.name}: ${t.description}`).join('\n')}
-
-FAILURE LEARNING:
-- This failure gives you valuable information
-- Use it to refine your approach
-- Try different parameters or methods
-- Consider tool combinations
-
-MINDSET: Failure is feedback. Use it to succeed.`;
-  }
-
-  /**
-   * Helper method to build conversation messages
-   */
-  private buildConversationMessages(
-    systemPrompt: string,
-    userMessage: string,
-    attachments: ClaraFileAttachment[],
-    conversationHistory?: ClaraMessage[]
-  ): ChatMessage[] {
-    const messages: ChatMessage[] = [];
-    
-    // Add system prompt
-    messages.push({
-      role: 'system',
-      content: systemPrompt
-    });
-
-    // Add conversation history if provided with proper role alternation
-    if (conversationHistory && conversationHistory.length > 0) {
-      // Filter and organize conversation history to ensure proper alternating pattern
-      const validMessages: ChatMessage[] = [];
-      let lastRole: 'user' | 'assistant' | null = null;
-      
-      for (const historyMessage of conversationHistory) {
-        // Skip system messages and tool messages from history
-        if (historyMessage.role === 'system') {
-          continue;
-        }
-        
-        // Only include user and assistant messages
-        if (historyMessage.role === 'user' || historyMessage.role === 'assistant') {
-          // Ensure alternating pattern - skip consecutive messages of same role
-          if (lastRole !== historyMessage.role) {
-            const chatMessage: ChatMessage = {
-              role: historyMessage.role,
-              content: historyMessage.content
-            };
-
-            if (historyMessage.attachments) {
-              const imageAttachments = historyMessage.attachments.filter(att => att.type === 'image');
-              if (imageAttachments.length > 0) {
-                chatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
-              }
-            }
-
-            validMessages.push(chatMessage);
-            lastRole = historyMessage.role;
-          }
-        }
-      }
-      
-      // Ensure the conversation history ends with an assistant message if we have history
-      // This prevents starting with user->user pattern when we add the current user message
-      if (validMessages.length > 0 && validMessages[validMessages.length - 1].role === 'user') {
-        // Remove the last user message to maintain alternating pattern
-        validMessages.pop();
-      }
-      
-      messages.push(...validMessages);
-    }
-
-    // Add the current user message
-    const userChatMessage: ChatMessage = {
-      role: 'user',
-      content: userMessage
-    };
-
-    // Add images if any attachments are images
-    const imageAttachments = attachments.filter(att => att.type === 'image');
-    if (imageAttachments.length > 0) {
-      userChatMessage.images = imageAttachments.map(att => att.base64 || att.url || '');
-    }
-
-    messages.push(userChatMessage);
-
-    return messages;
-  }
 
   /**
    * Stop the current autonomous agent execution

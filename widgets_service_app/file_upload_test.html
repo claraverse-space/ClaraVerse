@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clara Enhanced File Parser Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            transition: all 0.3s ease;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background: linear-gradient(145deg, #e3f2fd, #bbdefb);
+            transform: scale(1.02);
+        }
+        input[type="file"] {
+            margin: 20px 0;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        button {
+            background: linear-gradient(145deg, #007bff, #0056b3);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+        }
+        button:hover {
+            background: linear-gradient(145deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,123,255,0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 25px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            animation: slideIn 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .success {
+            background: linear-gradient(145deg, #d4edda, #c3e6cb);
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: linear-gradient(145deg, #f8d7da, #f5c6cb);
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .metadata-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .metadata-section h4 {
+            color: #007bff;
+            margin-top: 0;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+        .text-output {
+            max-height: 400px;
+            overflow-y: auto;
+            background: white;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .supported-formats {
+            background: linear-gradient(145deg, #e3f2fd, #bbdefb);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid #90caf9;
+        }
+        .loading {
+            display: none;
+            color: #007bff;
+            font-weight: bold;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .quality-score {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            color: white;
+            margin: 5px;
+        }
+        .score-high { background: #28a745; }
+        .score-medium { background: #ffc107; color: #000; }
+        .score-low { background: #dc3545; }
+        .table-detection {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .security-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .performance-stats {
+            background: #e2e3e5;
+            border: 1px solid #d6d8db;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .metadata-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .metadata-item:last-child {
+            border-bottom: none;
+        }
+        .metadata-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .metadata-value {
+            color: #6c757d;
+            text-align: right;
+            flex: 1;
+            margin-left: 20px;
+        }
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-radius: 10px 10px 0 0;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+            margin-top: 20px;
+        }
+        .tab {
+            padding: 15px 25px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            color: #6c757d;
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            background: white;
+            color: #007bff;
+            border-bottom: 3px solid #007bff;
+        }
+        .tab-content {
+            display: none;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            padding: 25px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗂️ Clara Enhanced File Parser</h1>
+            <p>Advanced PDF processing with metadata extraction, table detection, quality analysis, and more!</p>
+        </div>
+        
+        <div id="supported-formats" class="supported-formats">
+            <h3>📋 Supported Formats:</h3>
+            <p>Loading supported formats...</p>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <h3>📁 Upload File</h3>
+            <p>Drag and drop a file here or click to select</p>
+            <p style="color: #666; font-size: 14px;">
+                For PDF files, experience our enhanced processing with comprehensive metadata, 
+                table detection, quality analysis, and security evaluation!
+            </p>
+            <input type="file" id="fileInput" accept=".txt,.md,.csv,.json,.xml,.html,.htm,.rtf,.pdf,.docx,.log">
+            <br>
+            <button onclick="uploadFile()" id="uploadBtn" disabled>🚀 Process File</button>
+            <div class="loading" id="loading">⏳ Processing file with enhanced algorithms...</div>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8765/api';
+        let selectedFile = null;
+
+        // Load supported formats on page load
+        async function loadSupportedFormats() {
+            try {
+                const response = await fetch(`${API_BASE}/file/supported-formats`);
+                const data = await response.json();
+                
+                const formatsDiv = document.getElementById('supported-formats');
+                formatsDiv.innerHTML = `
+                    <h3>📋 Supported Formats:</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                        <div>
+                            <p><strong>📄 Basic Support:</strong><br>${data.basicSupport.join(', ')}</p>
+                        </div>
+                        <div>
+                            <p><strong>🔧 Enhanced Processing:</strong><br>${data.requiresLibraries.join(', ')}</p>
+                        </div>
+                        <div>
+                            <p><strong>📏 Max File Size:</strong><br>${data.maxFileSize}</p>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading supported formats:', error);
+                document.getElementById('supported-formats').innerHTML = `
+                    <h3>📋 Supported Formats:</h3>
+                    <p style="color: red;">⚠️ Error loading formats. Make sure the Clara Widgets Service is running on port 8765.</p>
+                `;
+            }
+        }
+
+        // File input change handler
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            selectedFile = e.target.files[0];
+            document.getElementById('uploadBtn').disabled = !selectedFile;
+            
+            if (selectedFile) {
+                const fileName = selectedFile.name;
+                const fileSize = (selectedFile.size / 1024 / 1024).toFixed(2);
+                document.querySelector('.upload-area p').innerHTML = 
+                    `Selected: <strong>${fileName}</strong> (${fileSize} MB)`;
+            }
+        });
+
+        // Drag and drop handlers
+        const uploadArea = document.getElementById('uploadArea');
+        
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                selectedFile = files[0];
+                document.getElementById('fileInput').files = files;
+                document.getElementById('uploadBtn').disabled = false;
+                
+                const fileName = selectedFile.name;
+                const fileSize = (selectedFile.size / 1024 / 1024).toFixed(2);
+                document.querySelector('.upload-area p').innerHTML = 
+                    `Selected: <strong>${fileName}</strong> (${fileSize} MB)`;
+            }
+        });
+
+        // Upload file function
+        async function uploadFile() {
+            if (!selectedFile) {
+                alert('Please select a file first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            const loading = document.getElementById('loading');
+            const resultDiv = document.getElementById('result');
+
+            // Show loading state
+            uploadBtn.disabled = true;
+            loading.style.display = 'block';
+            resultDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/file/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                // Hide loading state
+                loading.style.display = 'none';
+                uploadBtn.disabled = false;
+
+                // Display result
+                displayResult(result);
+
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                loading.style.display = 'none';
+                uploadBtn.disabled = false;
+                
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ Upload Error</h3>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>Make sure the Clara Widgets Service is running on port 8765.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Get quality score class
+        function getScoreClass(score) {
+            if (score >= 0.8) return 'score-high';
+            if (score >= 0.5) return 'score-medium';
+            return 'score-low';
+        }
+
+        // Format score display
+        function formatScore(score) {
+            return (score * 100).toFixed(1) + '%';
+        }
+
+        // Switch tabs
+        function switchTab(tabName) {
+            // Remove active class from all tabs and contents
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to clicked tab and corresponding content
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-content`).classList.add('active');
+        }
+
+        // Display result function with enhanced features
+        function displayResult(result) {
+            const resultDiv = document.getElementById('result');
+            const isSuccess = result.success;
+            const statusClass = isSuccess ? 'success' : 'error';
+            const statusIcon = isSuccess ? '✅' : '❌';
+            const isPDF = result.fileType === 'application/pdf';
+
+            let html = `
+                <div class="result ${statusClass}">
+                    <h3>${statusIcon} ${isSuccess ? 'Processing Complete' : 'Processing Error'}</h3>
+                    
+                    <div class="metadata-item">
+                        <span class="metadata-label">📄 Filename:</span>
+                        <span class="metadata-value">${result.filename}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">📋 File Type:</span>
+                        <span class="metadata-value">${result.fileType}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">📊 Word Count:</span>
+                        <span class="metadata-value">${result.wordCount}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">📏 File Size:</span>
+                        <span class="metadata-value">${result.metadata?.size || 'Unknown'}</span>
+                    </div>
+                    ${result.pages ? `
+                    <div class="metadata-item">
+                        <span class="metadata-label">📑 Pages:</span>
+                        <span class="metadata-value">${result.pages}</span>
+                    </div>
+                    ` : ''}
+                    
+                    ${result.error ? `<p style="color: red;"><strong>Error:</strong> ${result.error}</p>` : ''}
+            `;
+
+            // Add enhanced PDF features if available
+            if (isPDF && isSuccess && result.enhancedMetadata) {
+                html += `
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+                        <button class="tab" onclick="switchTab('metadata')">📝 Metadata</button>
+                        <button class="tab" onclick="switchTab('quality')">⭐ Quality</button>
+                        <button class="tab" onclick="switchTab('tables')">📋 Tables</button>
+                        <button class="tab" onclick="switchTab('security')">🔒 Security</button>
+                        <button class="tab" onclick="switchTab('text')">📄 Text</button>
+                    </div>
+
+                    <div id="overview-content" class="tab-content active">
+                        <h4>📊 Processing Overview</h4>
+                        ${result.enhancedMetadata.qualityAnalysis ? `
+                        <div style="margin: 15px 0;">
+                            <strong>Overall Quality:</strong>
+                            <span class="quality-score ${getScoreClass(result.enhancedMetadata.qualityAnalysis.overallScore)}">
+                                ${formatScore(result.enhancedMetadata.qualityAnalysis.overallScore)}
+                            </span>
+                        </div>
+                        ` : ''}
+                        
+                        <div class="performance-stats">
+                            <h5>⚡ Performance Stats</h5>
+                            ${result.enhancedMetadata.processingTime ? `<p><strong>Processing Time:</strong> ${result.enhancedMetadata.processingTime}</p>` : ''}
+                            ${result.enhancedMetadata.processingMethod ? `<p><strong>Method Used:</strong> ${result.enhancedMetadata.processingMethod}</p>` : ''}
+                            ${result.enhancedMetadata.textExtractionSuccess !== undefined ? `<p><strong>Text Extraction:</strong> ${result.enhancedMetadata.textExtractionSuccess ? '✅ Successful' : '❌ Failed'}</p>` : ''}
+                        </div>
+                    </div>
+
+                    <div id="metadata-content" class="tab-content">
+                        <div class="metadata-grid">
+                            <div class="metadata-section">
+                                <h4>📄 Document Info</h4>
+                                ${result.enhancedMetadata.title ? `<div class="metadata-item"><span class="metadata-label">Title:</span><span class="metadata-value">${result.enhancedMetadata.title}</span></div>` : ''}
+                                ${result.enhancedMetadata.author ? `<div class="metadata-item"><span class="metadata-label">Author:</span><span class="metadata-value">${result.enhancedMetadata.author}</span></div>` : ''}
+                                ${result.enhancedMetadata.subject ? `<div class="metadata-item"><span class="metadata-label">Subject:</span><span class="metadata-value">${result.enhancedMetadata.subject}</span></div>` : ''}
+                                ${result.enhancedMetadata.creator ? `<div class="metadata-item"><span class="metadata-label">Creator:</span><span class="metadata-value">${result.enhancedMetadata.creator}</span></div>` : ''}
+                                ${result.enhancedMetadata.producer ? `<div class="metadata-item"><span class="metadata-label">Producer:</span><span class="metadata-value">${result.enhancedMetadata.producer}</span></div>` : ''}
+                                ${result.enhancedMetadata.keywords ? `<div class="metadata-item"><span class="metadata-label">Keywords:</span><span class="metadata-value">${result.enhancedMetadata.keywords}</span></div>` : ''}
+                            </div>
+                            
+                            <div class="metadata-section">
+                                <h4>📅 Dates & Versions</h4>
+                                ${result.enhancedMetadata.creationDate ? `<div class="metadata-item"><span class="metadata-label">Created:</span><span class="metadata-value">${result.enhancedMetadata.creationDate}</span></div>` : ''}
+                                ${result.enhancedMetadata.modificationDate ? `<div class="metadata-item"><span class="metadata-label">Modified:</span><span class="metadata-value">${result.enhancedMetadata.modificationDate}</span></div>` : ''}
+                                ${result.enhancedMetadata.pdfVersion ? `<div class="metadata-item"><span class="metadata-label">PDF Version:</span><span class="metadata-value">${result.enhancedMetadata.pdfVersion}</span></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="quality-content" class="tab-content">
+                        <h4>⭐ Quality Analysis</h4>
+                        ${result.enhancedMetadata.qualityAnalysis ? `
+                        <div class="metadata-grid">
+                            <div class="metadata-section">
+                                <h5>📊 Quality Scores</h5>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Overall Score:</span>
+                                    <span class="quality-score ${getScoreClass(result.enhancedMetadata.qualityAnalysis.overallScore)}">
+                                        ${formatScore(result.enhancedMetadata.qualityAnalysis.overallScore)}
+                                    </span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Text Quality:</span>
+                                    <span class="quality-score ${getScoreClass(result.enhancedMetadata.qualityAnalysis.textQuality)}">
+                                        ${formatScore(result.enhancedMetadata.qualityAnalysis.textQuality)}
+                                    </span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Structure Score:</span>
+                                    <span class="quality-score ${getScoreClass(result.enhancedMetadata.qualityAnalysis.structureScore)}">
+                                        ${formatScore(result.enhancedMetadata.qualityAnalysis.structureScore)}
+                                    </span>
+                                </div>
+                                ${result.enhancedMetadata.qualityAnalysis.imageQuality !== undefined ? `
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Image Quality:</span>
+                                    <span class="quality-score ${getScoreClass(result.enhancedMetadata.qualityAnalysis.imageQuality)}">
+                                        ${formatScore(result.enhancedMetadata.qualityAnalysis.imageQuality)}
+                                    </span>
+                                </div>
+                                ` : ''}
+                            </div>
+                            
+                            <div class="metadata-section">
+                                <h5>🔍 Analysis Details</h5>
+                                ${result.enhancedMetadata.qualityAnalysis.recommendations ? `
+                                    <p><strong>Recommendations:</strong></p>
+                                    <ul>
+                                        ${result.enhancedMetadata.qualityAnalysis.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                                ${result.enhancedMetadata.qualityAnalysis.issues ? `
+                                    <p><strong>Issues Found:</strong></p>
+                                    <ul>
+                                        ${result.enhancedMetadata.qualityAnalysis.issues.map(issue => `<li>${issue}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ` : '<p>Quality analysis not available for this PDF.</p>'}
+                    </div>
+
+                    <div id="tables-content" class="tab-content">
+                        <h4>📋 Table Detection</h4>
+                        <div id="table-detection-content"></div>
+                    </div>
+
+                    <div id="security-content" class="tab-content">
+                        <h4>🔒 Security Analysis</h4>
+                        ${result.enhancedMetadata.securityAnalysis ? `
+                        <div class="security-info">
+                            <div class="metadata-item">
+                                <span class="metadata-label">Encrypted:</span>
+                                <span class="metadata-value">${result.enhancedMetadata.securityAnalysis.encrypted ? '🔒 Yes' : '🔓 No'}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Password Protected:</span>
+                                <span class="metadata-value">${result.enhancedMetadata.securityAnalysis.passwordProtected ? '🔐 Yes' : '🔓 No'}</span>
+                            </div>
+                            ${result.enhancedMetadata.securityAnalysis.permissions ? `
+                                <h5>🛡️ Permissions:</h5>
+                                <ul>
+                                    <li>Print: ${result.enhancedMetadata.securityAnalysis.permissions.print ? '✅' : '❌'}</li>
+                                    <li>Copy: ${result.enhancedMetadata.securityAnalysis.permissions.copy ? '✅' : '❌'}</li>
+                                    <li>Modify: ${result.enhancedMetadata.securityAnalysis.permissions.modify ? '✅' : '❌'}</li>
+                                    <li>Annotate: ${result.enhancedMetadata.securityAnalysis.permissions.annotate ? '✅' : '❌'}</li>
+                                </ul>
+                            ` : ''}
+                            ${result.enhancedMetadata.securityAnalysis.securityLevel ? `
+                                <div class="metadata-item">
+                                    <span class="metadata-label">Security Level:</span>
+                                    <span class="metadata-value">${result.enhancedMetadata.securityAnalysis.securityLevel}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                        ` : '<p>Security analysis not available.</p>'}
+                    </div>
+
+                    <div id="text-content" class="tab-content">
+                        <h4>📄 Extracted Text Content</h4>
+                        ${result.text ? `<div class="text-output">${result.text}</div>` : '<p>No text content extracted.</p>'}
+                    </div>
+                `;
+            } else {
+                // Simple display for non-PDF files
+                html += `
+                    ${result.text ? `
+                        <h4>📄 Extracted Text:</h4>
+                        <div class="text-output">${result.text}</div>
+                    ` : ''}
+                `;
+            }
+
+            html += '</div>';
+            resultDiv.innerHTML = html;
+            
+            // Handle table detection content separately to avoid template literal issues
+            if (isPDF && isSuccess && result.enhancedMetadata && result.enhancedMetadata.tableDetection) {
+                const tableContent = document.getElementById('table-detection-content');
+                if (tableContent) {
+                    let tableHtml = `
+                        <div class="table-detection">
+                            <div class="metadata-item">
+                                <span class="metadata-label">Tables Found:</span>
+                                <span class="metadata-value">${result.enhancedMetadata.tableDetection.tablesFound}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Detection Method:</span>
+                                <span class="metadata-value">${result.enhancedMetadata.tableDetection.method}</span>
+                            </div>
+                            <div class="metadata-item">
+                                <span class="metadata-label">Confidence:</span>
+                                <span class="quality-score ${getScoreClass(result.enhancedMetadata.tableDetection.confidence)}">
+                                    ${formatScore(result.enhancedMetadata.tableDetection.confidence)}
+                                </span>
+                            </div>
+                    `;
+                    
+                    if (result.enhancedMetadata.tableDetection.tables && result.enhancedMetadata.tableDetection.tables.length > 0) {
+                        tableHtml += '<h5>📊 Detected Tables:</h5>';
+                        result.enhancedMetadata.tableDetection.tables.forEach((table, index) => {
+                            tableHtml += `
+                                <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                                    <strong>Table ${index + 1}:</strong>
+                                    <p>Page: ${table.page}, Rows: ${table.rows}, Columns: ${table.columns}</p>
+                                    ${table.preview ? `<p><em>Preview:</em> ${table.preview}</p>` : ''}
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    tableHtml += '</div>';
+                    tableContent.innerHTML = tableHtml;
+                }
+            } else if (document.getElementById('table-detection-content')) {
+                document.getElementById('table-detection-content').innerHTML = '<p>Table detection not performed or no tables found.</p>';
+            }
+        }
+
+        // Load supported formats when page loads
+        loadSupportedFormats();
+    </script>
+</body>
+</html>

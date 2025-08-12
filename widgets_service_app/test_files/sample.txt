@@ -1,0 +1,5 @@
+This is a test text file.
+It contains multiple lines of text.
+This can be used to test the text extraction functionality.
+
+The file should be read exactly as written.

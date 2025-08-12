@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sample HTML Document</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .highlight { background-color: yellow; }
+    </style>
+</head>
+<body>
+    <h1>Welcome to Clara File Parser</h1>
+    <p>This is a <strong>sample HTML document</strong> for testing purposes.</p>
+    
+    <h2>Features</h2>
+    <ul>
+        <li>HTML tag removal</li>
+        <li>Text extraction</li>
+        <li class="highlight">Content preservation</li>
+    </ul>
+    
+    <p>The parser should extract only the visible text content and ignore HTML tags, CSS, and JavaScript.</p>
+    
+    <script>
+        console.log("This JavaScript should be removed");
+        // This comment should also be removed
+    </script>
+    
+    <footer>
+        <p>Footer content should also be extracted.</p>
+    </footer>
+</body>
+</html>
