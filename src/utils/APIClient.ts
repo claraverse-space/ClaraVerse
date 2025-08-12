@@ -100,6 +100,51 @@ export class APIClient {
   }
 
   /**
+   * Filter out model control tokens from content
+   * @param content - The content to filter
+   * @returns Filtered content without control tokens
+   */
+  private filterControlTokens(content: string): string {
+    if (!content) return content;
+
+    // Remove common model control tokens - specifically targeting the <|channel|> issue
+    // IMPORTANT: Only remove tokens, preserve all spacing and formatting
+    let filtered = content
+      // Remove specific problematic tokens like <|channel|>, <|analysis|>, etc.
+      // This targets the exact issue without being too broad
+      .replace(/<\|channel\|>/gi, '')
+      .replace(/<\|analysis\|>/gi, '')
+      .replace(/<\|system\|>/gi, '')
+      .replace(/<\|assistant\|>/gi, '')
+      .replace(/<\|user\|>/gi, '')
+      .replace(/<\|function\|>/gi, '')
+      .replace(/<\|tool\|>/gi, '')
+      // Remove standalone control tokens ONLY when they appear as isolated tokens at start of response
+      // VERY SPECIFIC: Only remove if it's literally just "analysis" or "channel" followed by newline/end
+      .replace(/^analysis(\r?\n|$)/gmi, '')
+      .replace(/^channel(\r?\n|$)/gmi, '')
+      // Keep a more specific pattern for other similar control tokens
+      .replace(/<\|[a-zA-Z0-9_]+\|>/g, '')
+      // Remove instruction tokens
+      .replace(/\[INST\]|\[\/INST\]/g, '')
+      // Remove system tokens  
+      .replace(/<<SYS>>|<\/SYS>>/g, '')
+      // Remove chat template tokens
+      .replace(/<\|im_start\||<\|im_end\|>/g, '')
+      // Remove template variables
+      .replace(/\{\{[^}]*\}\}/g, '')
+      // Remove special tokens
+      .replace(/<\|endoftext\|>/g, '')
+      .replace(/<\|startoftext\|>/g, '')
+      // Remove padding and special tokens
+      .replace(/\[PAD\]|\[UNK\]|\[CLS\]|\[SEP\]|\[MASK\]/g, '')
+      .replace(/<pad>|<\/s>|<s>/g, '');
+      // REMOVED: Don't mess with spacing or trim - preserve original formatting
+
+    return filtered;
+  }
+
+  /**
    * Helper for making API requests.
    */
   private async request(endpoint: string, method: string, body?: any): Promise<any> {
@@ -591,8 +636,15 @@ export class APIClient {
               let content = choice.delta?.content || '';
               let reasoningContent = choice.delta?.reasoning_content || '';
               
+              // Filter out model control tokens from content
+              if (content) {
+                content = this.filterControlTokens(content);
+              }
+              
               // Handle reasoning content from models like QwQ
               if (reasoningContent) {
+                reasoningContent = this.filterControlTokens(reasoningContent);
+                
                 if (!hasStartedReasoning) {
                   // Start of reasoning - open <think> block
                   content = '<think>' + reasoningContent;
