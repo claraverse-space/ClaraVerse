@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock } from 'lucide-react';
+import { Save, User, Globe, Server, Image, Settings as SettingsIcon, Trash2, HardDrive, Plus, Check, X, Edit3, Zap, Router, Bot, Download, RotateCcw, AlertCircle, ExternalLink, Brain, Puzzle, Power, Palette, Type, Search, Clock, ChevronRight, ChevronDown } from 'lucide-react';
 import { db, type PersonalInfo, type APIConfig, type Provider } from '../db';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useProviders } from '../contexts/ProvidersContext';
@@ -85,20 +85,35 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers' >('api');
   const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
 
+  // Ensure first sub-tab is selected when switching main tabs
+  useEffect(() => {
+    if (activeMainTab === 'interface') {
+      setActiveInterfaceTab('appearance');
+    } else if (activeMainTab === 'ai-models') {
+      setActiveAITab('api');
+    } else if (activeMainTab === 'system') {
+      setActiveSystemTab('services');
+    }
+  }, [activeMainTab]);
+
   // Function to get the effective active tab based on new structure
   const getEffectiveActiveTab = (): typeof activeTab => {
     if (activeMainTab === 'profile') return 'personal';
     if (activeMainTab === 'interface') {
-      if (activeInterfaceTab === 'appearance' || activeInterfaceTab === 'ui-preferences') {
-        return 'preferences';
-      }
+      // Default to first sub-tab when main tab is selected
+      const selected = activeInterfaceTab || 'appearance';
+      return selected === 'appearance' || selected === 'ui-preferences' ? 'preferences' : 'preferences';
     }
     if (activeMainTab === 'ai-models') {
-      return activeAITab as 'api' | 'models' | 'mcp';
+      // Default to first sub-tab when main tab is selected
+      const selected = activeAITab || 'api';
+      return selected as 'api' | 'models' | 'mcp';
     }
     if (activeMainTab === 'system') {
-      if (activeSystemTab === 'services') return 'servers';
-      return activeSystemTab as 'toolbelt' | 'updates';
+      // Default to first sub-tab when main tab is selected
+      const selected = activeSystemTab || 'services';
+      if (selected === 'services') return 'servers';
+      return selected as 'toolbelt' | 'updates';
     }
     return 'api'; // default
   };
@@ -936,65 +951,26 @@ const Settings = () => {
   }) => (
     <button
       onClick={() => setActiveMainTab(id)}
-      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${isActive
+      className={`flex items-center justify-between px-4 py-3 w-full rounded-lg transition-colors ${isActive
           ? 'bg-sakura-500 text-white'
           : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
         }`}
     >
-      {icon}
-      <span className="font-medium">{label}</span>
+      <span className="flex items-center gap-3">
+        {icon}
+        <span className="font-medium">{label}</span>
+      </span>
+      {id !== 'profile' && (
+        <span className="ml-3 opacity-80">
+          {isActive ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </span>
+      )}
     </button>
   );
 
-  // Sub-tab components
-  const SubTabItem = ({ 
-    id, 
-    label, 
-    isActive, 
-    onClick 
-  }: { 
-    id: string, 
-    label: string, 
-    isActive: boolean,
-    onClick: () => void
-  }) => (
-    <button
-      onClick={onClick}
-      className={`px-3 py-2 rounded-lg transition-colors text-sm font-medium ${isActive
-          ? 'bg-sakura-100 text-sakura-700 dark:bg-sakura-900/30 dark:text-sakura-300'
-          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-        }`}
-    >
-      {label}
-    </button>
-  );
+  // Sub-tab components removed; replaced by top-of-content segmented controls
 
-  // Legacy tab component (keeping for backward compatibility during transition)
-  const TabItem = ({ id, label, icon, isActive }: { id: typeof activeTab, label: string, icon: React.ReactNode, isActive: boolean }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex items-center gap-3 px-4 py-3 w-full rounded-lg transition-colors ${isActive
-          ? 'bg-sakura-500 text-white'
-          : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
-        }`}
-    >
-      {icon}
-      <span className="font-medium">{label}</span>
-    </button>
-  );
-
-  // Model sub-tab component
-  const ModelTabItem = ({ id, label, isActive }: { id: typeof activeModelTab, label: string, isActive: boolean }) => (
-    <button
-      onClick={() => setActiveModelTab(id)}
-      className={`px-4 py-2 rounded-lg transition-colors font-medium ${isActive
-          ? 'bg-sakura-500 text-white'
-          : 'text-gray-700 dark:text-gray-200 hover:bg-sakura-100 dark:hover:bg-gray-800'
-        }`}
-    >
-      {label}
-    </button>
-  );
+  // Model sub-tab component removed; using segmented controls elsewhere
 
   // Provider management functions
   const handleAddProvider = async () => {
@@ -1635,6 +1611,30 @@ const Settings = () => {
                 icon={<Palette className="w-5 h-5" />}
                 isActive={activeMainTab === 'interface'}
               />
+              {activeMainTab === 'interface' && (
+                <div className="mt-1 ml-2 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'rgb(var(--sakura-500) / 0.7)' }}>
+                  <button
+                    onClick={() => setActiveInterfaceTab('appearance')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeInterfaceTab === 'appearance'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Appearance
+                  </button>
+                  <button
+                    onClick={() => setActiveInterfaceTab('ui-preferences')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeInterfaceTab === 'ui-preferences'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Customize
+                  </button>
+                </div>
+              )}
 
               <MainTabItem
                 id="ai-models"
@@ -1642,6 +1642,40 @@ const Settings = () => {
                 icon={<Bot className="w-5 h-5" />}
                 isActive={activeMainTab === 'ai-models'}
               />
+              {activeMainTab === 'ai-models' && (
+                <div className="mt-1 ml-2 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'rgb(var(--sakura-500) / 0.7)' }}>
+                  <button
+                    onClick={() => setActiveAITab('api')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeAITab === 'api'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    AI Services
+                  </button>
+                  <button
+                    onClick={() => setActiveAITab('models')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeAITab === 'models'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Local Models
+                  </button>
+                  <button
+                    onClick={() => setActiveAITab('mcp')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeAITab === 'mcp'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    MCP Servers
+                  </button>
+                </div>
+              )}
 
               <MainTabItem
                 id="system"
@@ -1649,6 +1683,40 @@ const Settings = () => {
                 icon={<Server className="w-5 h-5" />}
                 isActive={activeMainTab === 'system'}
               />
+              {activeMainTab === 'system' && (
+                <div className="mt-1 ml-2 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'rgb(var(--sakura-500) / 0.7)' }}>
+                  <button
+                    onClick={() => setActiveSystemTab('services')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeSystemTab === 'services'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Services
+                  </button>
+                  <button
+                    onClick={() => setActiveSystemTab('toolbelt')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeSystemTab === 'toolbelt'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Tools
+                  </button>
+                  <button
+                    onClick={() => setActiveSystemTab('updates')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeSystemTab === 'updates'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Updates
+                  </button>
+                </div>
+              )}
 
               <MainTabItem
                 id="profile"
@@ -1658,97 +1726,7 @@ const Settings = () => {
               />
             </div>
 
-            {/* Sub-tabs based on active main tab */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-              {activeMainTab === 'interface' && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
-                    Interface
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    <SubTabItem
-                      id="appearance"
-                      label="Appearance"
-                      isActive={activeInterfaceTab === 'appearance'}
-                      onClick={() => setActiveInterfaceTab('appearance')}
-                    />
-                    <SubTabItem
-                      id="ui-preferences"
-                      label="Customize"
-                      isActive={activeInterfaceTab === 'ui-preferences'}
-                      onClick={() => setActiveInterfaceTab('ui-preferences')}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeMainTab === 'ai-models' && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
-                    AI & Models
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    <SubTabItem
-                      id="api"
-                      label="AI Services"
-                      isActive={activeAITab === 'api'}
-                      onClick={() => setActiveAITab('api')}
-                    />
-                    <SubTabItem
-                      id="models"
-                      label="Local Models"
-                      isActive={activeAITab === 'models'}
-                      onClick={() => setActiveAITab('models')}
-                    />
-                    <SubTabItem
-                      id="mcp"
-                      label="MCP Servers"
-                      isActive={activeAITab === 'mcp'}
-                      onClick={() => setActiveAITab('mcp')}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeMainTab === 'system' && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
-                    System
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    <SubTabItem
-                      id="services"
-                      label="Services"
-                      isActive={activeSystemTab === 'services'}
-                      onClick={() => setActiveSystemTab('services')}
-                    />
-                    <SubTabItem
-                      id="toolbelt"
-                      label="Tools"
-                      isActive={activeSystemTab === 'toolbelt'}
-                      onClick={() => setActiveSystemTab('toolbelt')}
-                    />
-                    <SubTabItem
-                      id="updates"
-                      label="Updates"
-                      isActive={activeSystemTab === 'updates'}
-                      onClick={() => setActiveSystemTab('updates')}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeMainTab === 'profile' && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide px-3 mb-2">
-                    Profile
-                  </p>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 px-3">
-                    Personal information and account settings
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Sub-tabs moved to top of content area for clearer UX */}
 
             {/* Save Status - Only visible when saving/saved/error */}
             {(isSaving || saveStatus !== 'idle') && (
@@ -1770,6 +1748,7 @@ const Settings = () => {
         {/* Content area */}
         <div className={`flex-1 space-y-6 py-2 pb-6 overflow-y-auto overflow-x-hidden ${effectiveActiveTab === 'models' ? '' : 'max-w-4xl'
           }`}>
+          {/* Sub-tabs now shown as dropdowns under the active main tab in the sidebar */}
           {/* Profile Tab */}
           {effectiveActiveTab === 'personal' && (
             <div className="glassmorphic rounded-xl p-6">
@@ -3258,18 +3237,35 @@ const Settings = () => {
                 </div>
 
                 {/* Sub-tabs */}
-                <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 -mb-6 pb-4">
-                  <ModelTabItem
-                    id="models"
-                    label="Models"
-                    isActive={activeModelTab === 'models'}
-                  />
-                  <ModelTabItem
-                    id="gpu-diagnostics"
-                    label="Advanced Settings"
-                    isActive={activeModelTab === 'gpu-diagnostics'}
-                  />
+                <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 -mb-6">
+          <button
+            onClick={() => setActiveModelTab('models')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeModelTab === 'models'
+                ? 'bg-sakura-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <HardDrive className="w-4 h-4" />
+              Models
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveModelTab('gpu-diagnostics')}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeModelTab === 'gpu-diagnostics'
+                ? 'bg-sakura-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Zap className="w-4 h-4" />
+              Hardware Acceleration
+            </div>
+          </button>
                 </div>
+                
               </div>
 
               {/* Model Tab Content */}
