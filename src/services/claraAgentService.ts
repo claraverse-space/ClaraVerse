@@ -428,6 +428,29 @@ export class ClaraAgentService {
 
       return claraMessage;
 
+    } catch (globalError) {
+      console.error('❌ Structured autonomous agent execution failed:', globalError);
+      
+      // Create error message with detailed information
+      const errorMessage = globalError instanceof Error ? globalError.message : 'Unknown error occurred';
+      const status = (globalError as any)?.status;
+      const errorData = (globalError as any)?.errorData;
+      
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: `I encountered an error while executing the autonomous agent: ${errorMessage}`,
+        timestamp: new Date(),
+        metadata: {
+          model: `${config.provider}:${modelId}`,
+          error: errorMessage,
+          serverStatus: status,
+          errorData: errorData,
+          autonomousMode: true,
+          structuredToolCalling: true,
+          failed: true
+        }
+      };
     } finally {
       // Clear memory session after completion
       claraMemoryService.clearCurrentSession();
@@ -695,6 +718,28 @@ export class ClaraAgentService {
 
       return claraMessage;
 
+    } catch (globalError) {
+      console.error('❌ Standard autonomous agent execution failed:', globalError);
+      
+      // Create error message with detailed information
+      const errorMessage = globalError instanceof Error ? globalError.message : 'Unknown error occurred';
+      const status = (globalError as any)?.status;
+      const errorData = (globalError as any)?.errorData;
+      
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: `I encountered an error while executing the autonomous agent: ${errorMessage}`,
+        timestamp: new Date(),
+        metadata: {
+          model: `${config.provider}:${modelId}`,
+          error: errorMessage,
+          serverStatus: status,
+          errorData: errorData,
+          autonomousMode: true,
+          failed: true
+        }
+      };
     } finally {
       // Clear memory session after completion
       claraMemoryService.clearCurrentSession();

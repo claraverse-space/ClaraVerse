@@ -23,7 +23,7 @@ import { saveProviderConfig, loadProviderConfig, cleanInvalidProviderConfigs } f
 import { debugProviderConfigs, clearAllProviderConfigs } from '../utils/providerConfigStorage';
 import { claraMCPService } from '../services/claraMCPService';
 import { claraMemoryService } from '../services/claraMemoryService';
-import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService } from '../services/notificationService';
+import { addCompletionNotification, addBackgroundCompletionNotification, addErrorNotification, addInfoNotification, notificationService, clearErrorNotifications } from '../services/notificationService';
 import { claraBackgroundService } from '../services/claraBackgroundService';
 
 // Import clear data utility
@@ -1753,6 +1753,9 @@ Now tell me what is the result "`;
         }
       };
 
+      // Clear any existing error notifications before starting new request
+      clearErrorNotifications();
+
       // Send message with streaming callback and conversation context
       // Use aiContent (with voice prefix) for AI processing
       // IMPORTANT: Use enforcedConfig to ensure streaming mode settings are applied
@@ -1864,7 +1867,8 @@ Now tell me what is the result "`;
         id: streamingMessageId, // Keep the same ID
         metadata: {
           ...aiMessage.metadata,
-          isStreaming: false // Mark as complete
+          isStreaming: false, // Mark as complete
+          error: undefined // **CRITICAL FIX**: Clear any error metadata on successful completion
         }
       };
 
@@ -1991,6 +1995,9 @@ Now tell me what is the result "`;
               }
             : s
         ));
+        
+        // **CRITICAL FIX**: Clear any error notifications after successful completion
+        clearErrorNotifications();
         
         // Enhanced notification for background operation
         if (!isVisible) {
@@ -2144,15 +2151,88 @@ Would you like me to help with text-only responses for now?`,
             8000
           );
         } else {
-          // Only show generic error message for actual errors (not user aborts)
+          // Extract detailed error information from the server response
+          const getDetailedErrorInfo = (error: any): { title: string; content: string; technical: string } => {
+            let title = 'Chat Error';
+            let content = 'I apologize, but I encountered an error while processing your request.';
+            let technical = 'Unknown error occurred';
+
+            if (error instanceof Error) {
+              technical = error.message;
+              
+              // Check for specific error types and provide better user messages
+              if (error.message.includes('maximum context length') || error.message.includes('token limit')) {
+                title = 'Context Length Exceeded';
+                content = 'The conversation has become too long for the current model. Please start a new chat or try a model with a larger context window.';
+              } else if (error.message.includes('API key') || error.message.includes('authentication')) {
+                title = 'Authentication Error';
+                content = 'There was an issue with the API authentication. Please check your API key configuration.';
+              } else if (error.message.includes('rate limit') || error.message.includes('quota')) {
+                title = 'Rate Limit Exceeded';
+                content = 'Too many requests have been made. Please wait a moment before trying again.';
+              } else if (error.message.includes('model') && error.message.includes('not found')) {
+                title = 'Model Not Available';
+                content = 'The selected model is not available. Please try a different model or check if the service is running.';
+              } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('ECONNREFUSED')) {
+                title = 'Connection Error';
+                content = 'Unable to connect to the AI service. Please check your internet connection and service configuration.';
+              } else if (error.message.includes('timeout')) {
+                title = 'Request Timeout';
+                content = 'The request took too long to complete. Please try again with a shorter message.';
+              } else if (error.message.includes('tool') && error.message.includes('validation')) {
+                title = 'Tool Configuration Error';
+                content = 'There was an issue with the tool configuration. Switching to basic mode may help.';
+              } else {
+                // For other errors, show the actual server response
+                title = 'Server Error';
+                content = `The server returned an error: ${error.message}`;
+              }
+              
+              // Include additional error details if available
+              const errorDetails: any = (error as any);
+              if (errorDetails.status) {
+                technical += ` (HTTP ${errorDetails.status})`;
+              }
+              if (errorDetails.errorData) {
+                try {
+                  const additionalInfo = JSON.stringify(errorDetails.errorData, null, 2);
+                  technical += `\n\nServer Response:\n${additionalInfo}`;
+                } catch (e) {
+                  // If JSON.stringify fails, just add the raw data
+                  technical += `\n\nServer Response: ${errorDetails.errorData}`;
+                }
+              }
+            }
+
+            return { title, content, technical };
+          };
+
+          const errorInfo = getDetailedErrorInfo(error);
+          
           const errorMessage: ClaraMessage = {
             id: streamingMessageId,
             role: 'assistant',
-            content: 'I apologize, but I encountered an error while processing your request.  Please try again. \n Model Response was : \t'+(error instanceof Error ? error.message : 'Unknown error occurred'),
+            content: `**${errorInfo.title}**
+
+${errorInfo.content}
+
+**Technical Details:**
+\`\`\`
+${errorInfo.technical}
+\`\`\`
+
+You can:
+• Try again with a different message
+• Switch to a different model in Advanced Options
+• Check the service status in Settings
+• Start a new chat if the conversation is too long`,
             timestamp: new Date(),
             metadata: {
               error: error instanceof Error ? error.message : 'Failed to generate response',
-              isStreaming: false
+              isStreaming: false,
+              errorType: errorInfo.title,
+              serverStatus: (error as any)?.status,
+              errorData: (error as any)?.errorData
             }
           };
           
@@ -2160,11 +2240,14 @@ Would you like me to help with text-only responses for now?`,
             msg.id === streamingMessageId ? errorMessage : msg
           ));
 
-          // Add error notification
+          // Add error notification with more specific details
+          const notificationTitle = errorInfo.title;
+          const notificationMessage = `${errorInfo.content}${errorInfo.technical ? `\n\nTechnical details: ${errorInfo.technical.split('\n')[0]}` : ''}`;
+          
           addErrorNotification(
-            'Chat Error',
-            'Failed to generate response. Please try again.',
-            6000
+            notificationTitle,
+            notificationMessage,
+            10000  // Show longer for errors with details
           );
 
           // **CRITICAL FIX**: Complete autonomous agent on error to prevent stuck status

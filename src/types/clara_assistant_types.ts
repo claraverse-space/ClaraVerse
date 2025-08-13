@@ -136,6 +136,18 @@ export interface ClaraMessageMetadata {
   /** Error information if message generation failed */
   error?: string;
   
+  /** Categorized error type for better error handling */
+  errorType?: string;
+  
+  /** HTTP status code from server error responses */
+  serverStatus?: number;
+  
+  /** Raw error data from server responses */
+  errorData?: any;
+  
+  /** Whether this message represents a failed operation */
+  failed?: boolean;
+  
   /** Whether this is a vision error (for specific error handling) */
   isVisionError?: boolean;
   

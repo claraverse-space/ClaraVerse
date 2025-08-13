@@ -28,6 +28,15 @@ export interface APIConfig {
   providerId?: string;
 }
 
+// Enhanced error interface for better error handling
+interface EnhancedError extends Error {
+  status?: number;
+  statusText?: string;
+  errorData?: any;
+  isStreaming?: boolean;
+  rawResponse?: string;
+}
+
 interface APIResponse {
   message?: {
     content: string;
@@ -170,26 +179,46 @@ export class APIClient {
     const response = await fetch(`${this.config.baseUrl}${endpoint}`, fetchOptions);
 
     if (!response.ok) {
-      // Try to parse the error response to get detailed error information
+      // Try to get the actual server response (JSON or text)
       let errorData: any = null;
       let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
+      let rawResponseText: string = '';
       
       try {
-        errorData = await response.json();
-        if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
+        // First try to get the raw response text
+        rawResponseText = await response.text();
+        
+        // Try to parse as JSON if it looks like JSON
+        if (rawResponseText.trim().startsWith('{') || rawResponseText.trim().startsWith('[')) {
+          try {
+            errorData = JSON.parse(rawResponseText);
+            if (errorData.error?.message) {
+              errorMessage = errorData.error.message;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+          } catch (jsonParseError) {
+            // If JSON parsing fails, use the raw text as the error message
+            if (rawResponseText.trim()) {
+              errorMessage = rawResponseText.trim();
+            }
+          }
+        } else {
+          // Not JSON, use the raw text as the error message
+          if (rawResponseText.trim()) {
+            errorMessage = rawResponseText.trim();
+          }
         }
-      } catch (parseError) {
-        // If JSON parsing fails, use the original error message
-        console.warn('Failed to parse error response:', parseError);
+      } catch (textParseError) {
+        // If we can't even get text, keep the original error message
+        console.warn('Failed to parse error response as text:', textParseError);
       }
       
       // Create error with detailed information
-      const error = new Error(errorMessage);
-      (error as any).status = response.status;
-      (error as any).errorData = errorData;
+      const error: EnhancedError = new Error(errorMessage);
+      error.status = response.status;
+      error.errorData = errorData;
+      (error as any).rawResponse = rawResponseText;
       throw error;
     }
 
@@ -369,9 +398,15 @@ export class APIClient {
           `chat_${Date.now()}`
         );
         
+        // Ensure all messages have valid content
+        const validatedMessages: ChatMessage[] = recoveredMessages.map(msg => ({
+          ...msg,
+          content: msg.content || '' // Ensure content is never undefined
+        }));
+        
         // Retry with recovered messages
         console.log("🔄 [TOKEN-LIMIT] Retrying with compressed context...");
-        return this.sendChatWithDynamicToolRemoval(model, recoveredMessages, options, tools, attempt + 1);
+        return this.sendChatWithDynamicToolRemoval(model, validatedMessages, options, tools, attempt + 1);
       }
       
       // Check if this is an OpenAI tool validation error (after excluding token limit errors)
@@ -515,34 +550,64 @@ export class APIClient {
       });
 
       if (!streamResponse.ok) {
-        // Try to parse JSON error response
+        // Try to get the actual server response (JSON or text)
         let errorMessage = `Stream request failed: ${streamResponse.status} ${streamResponse.statusText}`;
         let errorData: any = null;
+        let rawResponseText: string = '';
         
         try {
-          errorData = await streamResponse.json();
-          if (errorData.error?.message) {
-            errorMessage = errorData.error.message;
-          } else if (errorData.message) {
-            errorMessage = errorData.message;
+          // First try to get the raw response text
+          rawResponseText = await streamResponse.text();
+          
+          // Try to parse as JSON if it looks like JSON
+          if (rawResponseText.trim().startsWith('{') || rawResponseText.trim().startsWith('[')) {
+            try {
+              errorData = JSON.parse(rawResponseText);
+              if (errorData.error?.message) {
+                errorMessage = errorData.error.message;
+              } else if (errorData.message) {
+                errorMessage = errorData.message;
+              }
+            } catch (jsonParseError) {
+              // If JSON parsing fails, use the raw text as the error message
+              if (rawResponseText.trim()) {
+                errorMessage = rawResponseText.trim();
+              }
+            }
+          } else {
+            // Not JSON, use the raw text as the error message
+            if (rawResponseText.trim()) {
+              errorMessage = rawResponseText.trim();
+            }
           }
-        } catch (parseError) {
-          // If JSON parsing fails, use original error message
+        } catch (textParseError) {
+          // If we can't even get text, keep the original error message
+          console.warn('Failed to parse error response as text:', textParseError);
         }
         
+        // Create enhanced error with detailed information for streaming requests
+        const error: EnhancedError = new Error(errorMessage);
+        error.status = streamResponse.status;
+        error.statusText = streamResponse.statusText;
+        error.errorData = errorData;
+        error.isStreaming = true;
+        
+        // Add raw response text to error for debugging
+        (error as any).rawResponse = rawResponseText;
+        
         // Check if this is a tool validation error
-        const isToolValidationError = this.isOpenAIToolValidationError({ message: errorMessage, errorData });
+        const isToolValidationError = this.isOpenAIToolValidationError(error);
         
         if (isToolValidationError && currentTools && currentTools.length > 0) {
-          const problematicToolIndex = this.extractProblematicToolIndex({ message: errorMessage, errorData });
+          const problematicToolIndex = this.extractProblematicToolIndex(error);
           
           if (problematicToolIndex !== null && problematicToolIndex < currentTools.length) {
             const removedTool = currentTools[problematicToolIndex];
             console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Removing problematic tool at index ${problematicToolIndex}: ${removedTool.name}`);
-            console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Error details:`, errorMessage);
+            console.warn(`⚠️ [DYNAMIC-TOOLS-STREAM] Error details:`, error.message);
             
             // Store the problematic tool so it won't be loaded again
-            this.storeProblematicTool(removedTool, errorMessage, this.config.providerId);
+            this.storeProblematicTool(removedTool, error.message, this.config.providerId);
             
             // Remove the problematic tool
             currentTools.splice(problematicToolIndex, 1);
@@ -575,12 +640,17 @@ export class APIClient {
           // This is the problematic case - tool validation error but no tools to remove
           // This suggests the error is in the message format itself, not the tools
           console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Tool validation error with no tools to remove. This suggests a message format issue.`);
-          console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Error details:`, errorMessage);
+          console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Error details:`, error.message);
           
           // Don't retry indefinitely - throw the error after a few attempts
           if (attempt >= 3) {
             console.error(`🚫 [DYNAMIC-TOOLS-STREAM] Giving up after ${attempt} attempts with message format error`);
-            throw new Error(`Tool validation error that cannot be resolved by removing tools: ${errorMessage}`);
+            const finalError: EnhancedError = new Error(`Tool validation error that cannot be resolved by removing tools: ${error.message}`);
+            finalError.status = (error as any).status;
+            finalError.statusText = (error as any).statusText;
+            finalError.errorData = (error as any).errorData;
+            finalError.isStreaming = true;
+            throw finalError;
           }
           
           // Try once more without tools, but don't loop forever
@@ -588,10 +658,7 @@ export class APIClient {
           yield* this.streamChatWithDynamicToolRemoval(model, messages, options, undefined, attempt + 1);
           return;
         } else {
-          // Not a tool validation error, throw the error
-          const error = new Error(errorMessage);
-          (error as any).status = streamResponse.status;
-          (error as any).errorData = errorData;
+          // Not a tool validation error, throw the enhanced error with all details
           throw error;
         }
       }
@@ -624,8 +691,8 @@ export class APIClient {
             
             // Check for error in streaming response
             if (parsed.error) {
-              const error = new Error(parsed.error.message || 'Streaming error');
-              (error as any).errorData = parsed.error;
+              const error: EnhancedError = new Error(parsed.error.message || 'Streaming error');
+              error.errorData = parsed.error;
               throw error;
             }
             
@@ -709,9 +776,15 @@ export class APIClient {
           `stream_${Date.now()}`
         );
         
+        // Ensure all messages have valid content
+        const validatedMessages: ChatMessage[] = recoveredMessages.map(msg => ({
+          ...msg,
+          content: msg.content || '' // Ensure content is never undefined
+        }));
+        
         // Retry with recovered messages
         console.log("🔄 [TOKEN-LIMIT-STREAM] Retrying streaming with compressed context...");
-        yield* this.streamChatWithDynamicToolRemoval(model, recoveredMessages, options, tools, attempt + 1);
+        yield* this.streamChatWithDynamicToolRemoval(model, validatedMessages, options, tools, attempt + 1);
         return;
       }
       

@@ -21,9 +21,7 @@ import {
   detectSystemFonts
 } from '../utils/uiPreferences';
 import { 
-  createGradientWallpaper,
-  processWallpaper,
-  type ImageEffects
+  createGradientWallpaper
 } from '../utils/imageProcessing';
 import { indexedDBService } from '../services/indexedDB';
 import { GalleryImage } from '../types';
@@ -877,27 +875,17 @@ const Settings = () => {
     try {
       console.log(`🎨 Processing built-in wallpaper: ${wallpaper.name || 'Unknown'}`);
       
-      let processedUrl = wallpaper.url;
+      let finalUrl = wallpaper.url;
       
       // If it's a gradient, create gradient wallpaper
       if (wallpaper.category === 'Gradients' && wallpaper.preview) {
         console.log('🌈 Creating gradient wallpaper...');
-        processedUrl = createGradientWallpaper(wallpaper.preview);
+        finalUrl = createGradientWallpaper(wallpaper.preview);
       }
       
-      // Apply current effects if any
-      const effects: ImageEffects = {
-        opacity: personalInfo.ui_preferences?.wallpaper_opacity || 0.1,
-        blur: personalInfo.ui_preferences?.wallpaper_blur || 1,
-        brightness: personalInfo.ui_preferences?.wallpaper_brightness || 1,
-        contrast: personalInfo.ui_preferences?.wallpaper_contrast || 1,
-        saturate: personalInfo.ui_preferences?.wallpaper_saturate || 1
-      };
-      
-      console.log('🎨 Applying effects:', effects);
-      const finalUrl = await processWallpaper({ imageUrl: processedUrl, effects });
-      
-      // Store processed wallpaper
+      // Store wallpaper directly without processing effects
+      // This matches the behavior of uploaded and gallery wallpapers
+      // The display layer will handle opacity for readability
       await db.setWallpaper(finalUrl);
       setWallpaperUrl(finalUrl);
       setShowBuiltinGallery(false);

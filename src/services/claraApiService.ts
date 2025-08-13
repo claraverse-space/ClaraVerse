@@ -147,14 +147,45 @@ export class ClaraApiService {
         };
       }
       
-      // Return error message only for actual errors (not user aborts)
+      // Return error message with detailed server information
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const status = (error as any)?.status;
+      const errorData = (error as any)?.errorData;
+      const rawResponse = (error as any)?.rawResponse;
+      
+      // Create more informative error message based on the actual server response
+      let userFriendlyMessage = 'I encountered an error processing your request.';
+      
+      if (rawResponse && rawResponse.trim() && rawResponse !== errorMessage) {
+        // If we have raw response text that's different from the error message, show it
+        userFriendlyMessage = `I encountered an error processing your request. Response from server: ${rawResponse}
+
+**If you're using Clara Core:** The model may not be loaded correctly. Please go to Settings and apply the Balanced configuration to resolve this issue.`;
+      } else if (errorMessage.includes('502')) {
+        userFriendlyMessage = 'The server is temporarily unavailable. This could be due to the model loading, server maintenance, or connectivity issues.';
+      } else if (errorMessage.includes('500')) {
+        userFriendlyMessage = 'The server encountered an internal error. Please try again in a moment.';
+      } else if (errorMessage.includes('503')) {
+        userFriendlyMessage = 'The service is temporarily unavailable. The server may be overloaded or under maintenance.';
+      } else if (errorMessage.includes('504')) {
+        userFriendlyMessage = 'The request timed out. Please try again with a shorter message or wait a moment.';
+      } else if (errorMessage.includes('upstream command exited prematurely')) {
+        userFriendlyMessage = 'The AI model process stopped unexpectedly. This is usually temporary - please try your request again.';
+      } else {
+        userFriendlyMessage = `Error: ${errorMessage}`;
+      }
+      
       return {
         id: `${Date.now()}-error`,
         role: 'assistant',
-        content: 'I apologize, but I encountered an error while processing your request. Please try again.',
+        content: userFriendlyMessage,
         timestamp: new Date(),
         metadata: {
-          error: error instanceof Error ? error.message : 'Unknown error occurred'
+          error: errorMessage,
+          serverStatus: status,
+          errorData: errorData,
+          failed: true,
+          isStreaming: false
         }
       };
     }
@@ -163,7 +194,7 @@ export class ClaraApiService {
   /**
    * Ensure we're using the correct provider
    */
-  private async ensureCorrectProvider(config: ClaraAIConfig, onContentChunk?: (content: string) => void): Promise<void> {
+  private async ensureCorrectProvider(config: ClaraAIConfig, _onContentChunk?: (content: string) => void): Promise<void> {
     const currentProvider = claraProviderService.getCurrentProvider();
     
     if (config.provider && (!currentProvider || currentProvider.id !== config.provider)) {

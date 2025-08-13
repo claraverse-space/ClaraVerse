@@ -247,6 +247,16 @@ class NotificationService {
   }
 
   /**
+   * Clear all error notifications
+   */
+  public clearErrorNotifications(): void {
+    this.notifications = this.notifications.filter(n => n.type !== 'error');
+    this.saveNotifications();
+    this.notifyListeners();
+    console.log('🧹 Cleared all error notifications');
+  }
+
+  /**
    * Clear all notifications
    */
   public clearAll(): void {
@@ -372,4 +382,7 @@ export const addErrorNotification = (title: string, message: string, duration?: 
   notificationService.addErrorNotification(title, message, duration);
 
 export const addInfoNotification = (title: string, message: string, duration?: number) => 
-  notificationService.addInfoNotification(title, message, duration); 
+  notificationService.addInfoNotification(title, message, duration);
+
+export const clearErrorNotifications = () => 
+  notificationService.clearErrorNotifications(); 

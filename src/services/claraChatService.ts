@@ -292,7 +292,30 @@ export class ClaraChatService {
 
     } catch (error) {
       console.error('Standard chat execution failed:', error);
-      responseContent = 'I apologize, but I encountered an error while processing your request. Please try again.';
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const rawResponse = (error as any)?.rawResponse;
+      
+      // Create more informative error message based on the actual server response
+      if (rawResponse && rawResponse.trim() && rawResponse !== errorMessage) {
+        // If we have raw response text that's different from the error message, show it
+        responseContent = `The server responded with: ${rawResponse}`;
+      } else if (errorMessage.includes('502')) {
+        responseContent = 'The server is temporarily unavailable. This could be due to the model loading, server maintenance, or connectivity issues.';
+      } else if (errorMessage.includes('500')) {
+        responseContent = 'The server encountered an internal error. Please try again in a moment.';
+      } else if (errorMessage.includes('503')) {
+        responseContent = 'The service is temporarily unavailable. The server may be overloaded or under maintenance.';
+      } else if (errorMessage.includes('504')) {
+        responseContent = 'The request timed out. Please try again with a shorter message or wait a moment.';
+      } else if (errorMessage.includes('upstream command exited prematurely')) {
+        responseContent = 'The AI model process stopped unexpectedly. This is usually temporary - please try your request again.';
+      } else {
+        responseContent = `Error: ${errorMessage}`;
+      }
+      
+      // Store error information for proper propagation
+      (this as any).lastError = error;
     }
 
     // Create final Clara message
@@ -308,7 +331,13 @@ export class ClaraChatService {
         timings: finalTimings,
         temperature: config.parameters.temperature,
         toolsUsed: toolResults.map(tc => tc.toolName),
-        autonomousMode: false
+        autonomousMode: false,
+        // Include error information if available
+        ...(((this as any).lastError) && {
+          error: (this as any).lastError instanceof Error ? (this as any).lastError.message : 'Unknown error',
+          serverStatus: ((this as any).lastError as any)?.status,
+          errorData: ((this as any).lastError as any)?.errorData
+        })
       }
     };
 
@@ -427,7 +456,7 @@ export class ClaraChatService {
   public async preloadModel(
     client: AssistantAPIClient,
     modelId: string,
-    config: ClaraAIConfig,
+    _config: ClaraAIConfig,
     isLocalProvider: boolean
   ): Promise<void> {
     if (!client || !modelId) {
