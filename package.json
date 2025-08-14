@@ -275,7 +275,11 @@
         "filter": [
           "**/*",
           "!*.log",
-          "!config.yaml"
+          "!config.yaml",
+          "!win32-x64-cpu/**",
+          "!win32-x64-cuda/**",
+          "!win32-x64-rocm/**",
+          "!win32-x64-vulkan/**"
         ]
       }
     ],
@@ -381,7 +385,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Clara",
       "license": "LICENSE",
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": true,
+      "artifactName": "${productName}-${version}-barebone.${ext}"
     },
     "afterSign": "notarize.cjs"
   },

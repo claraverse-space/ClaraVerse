@@ -152,6 +152,31 @@ export class ToolSuccessRegistry {
   ): { allowed: boolean; reason: string } {
     this.initialize();
     
+    // HARDCODED PROTECTION: Never blacklist MCP tools - these are core functionality
+    const mcpToolNames = ['mcp_python-mcp_py', 'mcp_python-mcp_powershell', 'mcp_python-mcp_pip', 'mcp_python-mcp_save', 'mcp_python-mcp_load', 'mcp_python-mcp_ls', 'mcp_python-mcp_open', 'mcp_python-mcp_search', 'mcp_python-mcp_fetch_content'];
+    if (mcpToolNames.includes(toolName)) {
+      console.warn(`🛡️ [MCP-PROTECTION] MCP tool ${toolName} is ALWAYS PROTECTED from blacklisting`);
+      console.warn(`🛡️ [MCP-PROTECTION] These are core MCP tools that should never be blacklisted`);
+      console.warn(`🛡️ [MCP-PROTECTION] Original error was likely temporary: ${reason}`);
+      
+      const attempt: ToolBlacklistAttempt = {
+        toolName,
+        providerId,
+        reason: `MCP_PROTECTED: ${reason}`,
+        timestamp: new Date().toISOString(),
+        blocked: true,
+        successHistory: null
+      };
+      
+      this.blacklistAttempts.push(attempt);
+      this.saveBlacklistAttempts();
+      
+      return { 
+        allowed: false, 
+        reason: 'MCP tools are always protected from blacklisting as they are core functionality' 
+      };
+    }
+    
     const key = this.generateToolKey(toolName, toolDescription, providerId);
     const record = this.successRegistry.get(key);
     const isProtected = this.isToolProtected(toolName, toolDescription, providerId);
@@ -245,6 +270,42 @@ export class ToolSuccessRegistry {
       console.log(`🗑️ [TOOL-SUCCESS-REGISTRY] Cleared all success records and blacklist attempts`);
     } catch (error) {
       console.warn('Failed to clear success registry from localStorage:', error);
+    }
+  }
+
+  /**
+   * Clear blacklisted MCP tools from all providers (for fixing false positives)
+   */
+  public static clearMCPToolBlacklists(): void {
+    const mcpToolNames = ['mcp_python-mcp_py', 'mcp_python-mcp_powershell', 'mcp_python-mcp_pip', 'mcp_python-mcp_save', 'mcp_python-mcp_load', 'mcp_python-mcp_ls', 'mcp_python-mcp_open', 'mcp_python-mcp_search', 'mcp_python-mcp_fetch_content'];
+    
+    // Clear from all localStorage entries that might contain MCP tools
+    try {
+      const keysToCheck: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clara-problematic-tools-')) {
+          keysToCheck.push(key);
+        }
+      }
+      
+      for (const storageKey of keysToCheck) {
+        try {
+          const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+          const filtered = stored.filter((tool: any) => !mcpToolNames.includes(tool.name));
+          
+          if (filtered.length !== stored.length) {
+            localStorage.setItem(storageKey, JSON.stringify(filtered));
+            console.log(`🗑️ [MCP-CLEANUP] Removed ${stored.length - filtered.length} MCP tools from ${storageKey}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to clean MCP tools from ${storageKey}:`, error);
+        }
+      }
+      
+      console.log(`✅ [MCP-CLEANUP] Cleared all blacklisted MCP tools from localStorage`);
+    } catch (error) {
+      console.warn('Failed to clear MCP tools from localStorage:', error);
     }
   }
 

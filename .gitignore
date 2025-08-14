@@ -141,3 +141,5 @@ electron/llamacpp-binaries/*
 .vscode
 web-bundles
 docs-internal-agents
+searXNG-Clara
+searxng-config

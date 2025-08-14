@@ -18,8 +18,13 @@ import {
     Download,
     Server,
     HardDrive,
+    Plus,
+    Router,
+    Edit3,
+    X,
+    ExternalLink,
 } from 'lucide-react';
-import {db} from '../db';
+import {db, Provider} from '../db';
 import { useProviders } from '../contexts/ProvidersContext';
 import logoImage from '../assets/logo.png';
 
@@ -52,6 +57,20 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
     const [downloadingModel, setDownloadingModel] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [downloadError, setDownloadError] = useState<string | null>(null);
+    
+    // Provider management state
+    const [providers, setProviders] = useState<Provider[]>([]);
+    const [showAddProviderModal, setShowAddProviderModal] = useState(false);
+    const [setupMethod, setSetupMethod] = useState<'clara-core' | 'external-provider'>('clara-core');
+    const [newProviderForm, setNewProviderForm] = useState({
+        name: '',
+        type: 'openai' as Provider['type'],
+        baseUrl: '',
+        apiKey: '',
+        isEnabled: true
+    });
+    const [addingProvider, setAddingProvider] = useState(false);
+    const [providerError, setProviderError] = useState<string | null>(null);
     const [selectedServices, setSelectedServices] = useState({
         comfyui: false,
         tts: false,
@@ -98,6 +117,13 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
     useEffect(() => {
         if (step === 4) {
             checkClaraCore();
+        }
+    }, [step]);
+
+    // Load providers when reaching step 5
+    useEffect(() => {
+        if (step === 5) {
+            loadProviders();
         }
     }, [step]);
 
@@ -483,76 +509,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         }
     };
 
-    const startSelectedServices = async () => {
-        const servicesToStart = Object.entries(selectedServices)
-            .filter(([_, enabled]) => enabled)
-            .map(([service, _]) => service);
-        
-        if (servicesToStart.length === 0) return;
-        
-        try {
-            for (const serviceName of servicesToStart) {
-                // During onboarding, only start services that the user explicitly wants to start
-                // Skip TTS as it's a complex service that should be started on-demand later
-                if (serviceName === 'tts') {
-                    console.log('TTS service preference saved, but not auto-starting during onboarding');
-                    continue;
-                }
-                
-                const mode = serviceModes[serviceName as keyof typeof serviceModes];
-                const serviceUrl = serviceUrls[serviceName as keyof typeof serviceUrls];
-                
-                setServiceStatuses(prev => ({...prev, [serviceName]: 'starting'}));
-                setServiceStartupProgress(prev => ({...prev, [serviceName]: 'Initializing...'}));
-                
-                if (mode === 'docker') {
-                    // Start Docker service with progress tracking
-                    const result = await window.electronAPI.invoke('start-docker-service', serviceName);
-                    if (result.success) {
-                        setServiceStartupProgress(prev => ({...prev, [serviceName]: 'Service started successfully'}));
-                        setServiceStatuses(prev => ({...prev, [serviceName]: 'available'}));
-                    } else {
-                        setServiceStartupProgress(prev => ({...prev, [serviceName]: `Error: ${result.error}`}));
-                        setServiceStatuses(prev => ({...prev, [serviceName]: 'unavailable'}));
-                    }
-                } else {
-                    // Manual service - save URL and test connection
-                    try {
-                        setServiceStartupProgress(prev => ({...prev, [serviceName]: 'Saving configuration...'}));
-                        
-                        const saveResult = await window.electronAPI.invoke('service-config:set-manual-url', serviceName, serviceUrl);
-                        if (saveResult.success) {
-                            setServiceStartupProgress(prev => ({...prev, [serviceName]: `Configuration saved. Testing connection to ${serviceUrl}...`}));
-                            
-                            // Verify the URL was saved by retrieving it
-                            try {
-                                const configs = await window.electronAPI.invoke('service-config:get-all-configs');
-                                const savedUrl = configs[serviceName]?.serviceUrl;
-                                if (savedUrl === serviceUrl) {
-                                    setServiceStartupProgress(prev => ({...prev, [serviceName]: `✓ Manual service configured at ${serviceUrl}`}));
-                                    setServiceStatuses(prev => ({...prev, [serviceName]: 'available'}));
-                                } else {
-                                    setServiceStartupProgress(prev => ({...prev, [serviceName]: `⚠ URL may not have been saved correctly`}));
-                                    setServiceStatuses(prev => ({...prev, [serviceName]: 'unavailable'}));
-                                }
-                            } catch (verifyError) {
-                                setServiceStartupProgress(prev => ({...prev, [serviceName]: `✓ Configuration saved for ${serviceUrl}`}));
-                                setServiceStatuses(prev => ({...prev, [serviceName]: 'available'}));
-                            }
-                        } else {
-                            setServiceStartupProgress(prev => ({...prev, [serviceName]: `Failed to save URL: ${saveResult.error}`}));
-                            setServiceStatuses(prev => ({...prev, [serviceName]: 'unavailable'}));
-                        }
-                    } catch (configError: any) {
-                        setServiceStartupProgress(prev => ({...prev, [serviceName]: `Configuration error: ${configError.message || configError}`}));
-                        setServiceStatuses(prev => ({...prev, [serviceName]: 'unavailable'}));
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error starting services:', error);
-        }
-    };
+    // Note: Services are not started during onboarding
+    // They will be initialized after the main app starts up based on user preferences
 
     // Check service availability when reaching step 6
     useEffect(() => {
@@ -766,6 +724,103 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
         }
     };
 
+    // Load existing providers
+    const loadProviders = async () => {
+        try {
+            const allProviders = await db.getAllProviders();
+            setProviders(allProviders);
+        } catch (error) {
+            console.error('Error loading providers:', error);
+        }
+    };
+
+    // Provider management functions
+    const getProviderIcon = (type: Provider['type']) => {
+        switch (type) {
+            case 'claras-pocket':
+                return Bot;
+            case 'openai':
+                return Zap;
+            case 'openai_compatible':
+                return Router;
+            case 'ollama':
+                return Server;
+            case 'openrouter':
+                return ExternalLink;
+            default:
+                return Globe;
+        }
+    };
+
+    const getDefaultProviderConfig = (type: Provider['type']) => {
+        switch (type) {
+            case 'openai':
+                return { baseUrl: 'https://api.openai.com/v1', name: 'OpenAI' };
+            case 'openai_compatible':
+                return { baseUrl: 'https://openrouter.ai/api/v1', name: 'OpenRouter' };
+            case 'openrouter':
+                return { baseUrl: 'https://openrouter.ai/api/v1', name: 'OpenRouter' };
+            case 'ollama':
+                return { baseUrl: 'http://localhost:11434/v1', name: 'Ollama' };
+            default:
+                return { baseUrl: '', name: '' };
+        }
+    };
+
+    const handleAddProvider = async () => {
+        setAddingProvider(true);
+        setProviderError(null);
+        try {
+            const providerId = await db.addProvider({
+                name: newProviderForm.name,
+                type: newProviderForm.type,
+                baseUrl: newProviderForm.baseUrl,
+                apiKey: newProviderForm.apiKey,
+                isEnabled: newProviderForm.isEnabled,
+                isPrimary: true // Set as primary since it's the first one being added during onboarding
+            });
+
+            // Set this provider as the API type
+            setFormData(prev => ({...prev, api_type: 'external' as any}));
+
+            // Reload providers
+            await loadProviders();
+
+            setShowAddProviderModal(false);
+            setNewProviderForm({
+                name: '',
+                type: 'openai',
+                baseUrl: '',
+                apiKey: '',
+                isEnabled: true
+            });
+        } catch (error: any) {
+            console.error('Error adding provider:', error);
+            setProviderError(error.message || 'Failed to add provider');
+        } finally {
+            setAddingProvider(false);
+        }
+    };
+
+    const handleDeleteProvider = async (providerId: string) => {
+        try {
+            await db.deleteProvider(providerId);
+            await loadProviders();
+        } catch (error) {
+            console.error('Error deleting provider:', error);
+        }
+    };
+
+    // Check if user has configured something to proceed
+    const hasValidSetup = () => {
+        if (setupMethod === 'clara-core') {
+            return availableModels.length > 0 || formData.model_folder_path;
+        } else {
+            const enabledProviders = providers.filter(p => p.isEnabled);
+            return enabledProviders.length > 0;
+        }
+    };
+
     // Features of Clara
     const features = [
         {
@@ -907,7 +962,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                             step === 2 ? "How can we reach you?" :
                                 step === 3 ? "Choose your preferred theme" :
                                     step === 4 ? "Let's connect to Clara Core" :
-                                        step === 5 ? "Set up your first AI model" :
+                                        step === 5 ? "Set up your AI service" :
                                             step === 6 ? "Choose additional services" :
                                                 step === 7 ? "Configure your services" :
                                                     "Final setup - timezone preferences"}
@@ -945,7 +1000,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                 value={formData.name}
                                 onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
                                 onKeyDown={handleKeyDown}
-                                className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                                className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400"
                                 placeholder="Your name"
                                 autoFocus
                             />
@@ -971,7 +1026,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                 value={formData.email}
                                 onChange={(e) => setFormData(prev => ({...prev, email: e.target.value}))}
                                 onKeyDown={handleKeyDown}
-                                className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                                className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400"
                                 placeholder="your.email@example.com"
                                 autoFocus
                             />
@@ -999,8 +1054,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     onClick={() => setFormData(prev => ({...prev, theme_preference: 'dark'}))}
                                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
                                         formData.theme_preference === 'dark'
-                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20 shadow-md'
+                                            : 'border-gray-200 dark:border-gray-600 hover:border-sakura-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                                     }`}
                                 >
                                     <div
@@ -1020,8 +1075,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     onClick={() => setFormData(prev => ({...prev, theme_preference: 'light'}))}
                                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
                                         formData.theme_preference === 'light'
-                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20 shadow-md'
+                                            : 'border-gray-200 dark:border-gray-600 hover:border-sakura-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                                     }`}
                                 >
                                     <div
@@ -1041,8 +1096,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     onClick={() => setFormData(prev => ({...prev, theme_preference: 'system'}))}
                                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
                                         formData.theme_preference === 'system'
-                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20 shadow-md'
+                                            : 'border-gray-200 dark:border-gray-600 hover:border-sakura-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                                     }`}
                                 >
                                     <div
@@ -1097,139 +1152,213 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     <Download className="w-6 h-6 text-sakura-500"/>
                                 </div>
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                                    Set Up Your First AI Model
+                                    Set Up Your AI Service
                                 </h3>
                             </div>
                             
-                            {checkingModels ? (
-                                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                    <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                                        <Loader className="w-5 h-5 animate-spin"/>
-                                        <span>Checking for existing models...</span>
-                                    </div>
-                                </div>
-                            ) : downloadError ? (
-                                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300 mb-2">
-                                        <span className="text-red-500">⚠</span>
-                                        <span className="font-medium">Download Error</span>
-                                    </div>
-                                    <p className="text-sm text-red-600 dark:text-red-400 mb-3">
-                                        {downloadError}
-                                    </p>
-                                    <button 
-                                        onClick={() => {
-                                            setDownloadError(null);
-                                            handleModelDownload();
-                                        }}
-                                        className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
-                                    >
-                                        Try Again
-                                    </button>
-                                </div>
-                            ) : availableModels.length === 0 ? (
-                                <div className="space-y-4">
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Let's get your first AI model to start conversations with Clara. This will download a real model file (~350MB) to your computer.
-                            </p>                                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 mb-3">
-                                            <Download className="w-5 h-5"/>
-                                            <h4 className="font-medium">Recommended: Qwen3 0.6B</h4>
+                                Choose how you want to use AI models:
+                            </p>
+                            
+                            {/* Setup Method Selection - Compact Cards */}
+                            <div className="grid gap-3">
+                                <button
+                                    onClick={() => setSetupMethod('clara-core')}
+                                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                                        setupMethod === 'clara-core'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20 shadow-sm'
+                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                    }`}
+                                >
+                                    <div className={`p-2 rounded-full ${
+                                        setupMethod === 'clara-core' 
+                                            ? 'bg-sakura-100 text-sakura-500' 
+                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                    }`}>
+                                        <HardDrive className="w-5 h-5"/>
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <h4 className="font-medium text-gray-900 dark:text-white">Clara Core (Recommended)</h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400">Private, local AI models</p>
+                                    </div>
+                                    {setupMethod === 'clara-core' && <Check className="w-4 h-4 text-sakura-500"/>}
+                                </button>
+                                
+                                <button
+                                    onClick={() => setSetupMethod('external-provider')}
+                                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                                        setupMethod === 'external-provider'
+                                            ? 'border-sakura-500 bg-sakura-50 dark:bg-sakura-900/20 shadow-sm'
+                                            : 'border-gray-200 dark:border-gray-700 hover:border-sakura-300'
+                                    }`}
+                                >
+                                    <div className={`p-2 rounded-full ${
+                                        setupMethod === 'external-provider' 
+                                            ? 'bg-sakura-100 text-sakura-500' 
+                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                    }`}>
+                                        <ExternalLink className="w-5 h-5"/>
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <h4 className="font-medium text-gray-900 dark:text-white">External API</h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400">OpenAI, OpenRouter, etc.</p>
+                                    </div>
+                                    {setupMethod === 'external-provider' && <Check className="w-4 h-4 text-sakura-500"/>}
+                                </button>
+                            </div>
+                            
+                            {/* Clara Core Setup - Condensed */}
+                            {setupMethod === 'clara-core' && (
+                                <div className="mt-4 space-y-3">
+                                    {checkingModels ? (
+                                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                            <Loader className="w-4 h-4 animate-spin text-blue-600"/>
+                                            <span className="text-sm text-blue-700 dark:text-blue-300">Checking models...</span>
                                         </div>
-                                        <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">
-                                            Perfect starter model - fast, efficient, and great for conversations (<small>Note: You can always download better models in settings</small>) (~350MB)
-                                        </p>
-                                        <button 
-                                            onClick={handleModelDownload}
-                                            disabled={downloadingModel}
-                                            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors"
-                                        >
-                                            {downloadingModel ? (
-                                                <span className="flex items-center justify-center gap-2">
-                                                    <Loader className="w-4 h-4 animate-spin"/>
-                                                    Downloading... {downloadProgress}%
-                                                </span>
-                                            ) : 'Download Qwen3 0.6B'}
-                                        </button>
-                                        
-                                        {downloadingModel && (
-                                            <div className="mt-3">
-                                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                                    <div 
-                                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                                        style={{ width: `${downloadProgress}%` }}
-                                                    />
+                                    ) : downloadError ? (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-red-500">⚠</span>
+                                                <span className="text-sm font-medium text-red-700 dark:text-red-300">Download failed</span>
+                                            </div>
+                                            <p className="text-xs text-red-600 dark:text-red-400 mb-2">{downloadError}</p>
+                                            <button 
+                                                onClick={() => {
+                                                    setDownloadError(null);
+                                                    handleModelDownload();
+                                                }}
+                                                className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                                            >
+                                                Try Again
+                                            </button>
+                                        </div>
+                                    ) : availableModels.length === 0 ? (
+                                        <div className="space-y-3">
+                                            {/* Quick Download Option */}
+                                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Download className="w-4 h-4 text-blue-600"/>
+                                                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Quick Start (350MB)</span>
                                                 </div>
-                                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 text-center">
-                                                    This may take a few minutes depending on your internet connection
+                                                <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
+                                                    Download Qwen3 0.6B - fast and efficient for getting started
                                                 </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="text-center text-sm text-gray-500 dark:text-gray-400">or</div>
-                                    
-                                    <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                                        <h5 className="font-medium text-gray-800 dark:text-gray-200 mb-2 text-sm">
-                                            I have my own GGUF models
-                                        </h5>
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={formData.model_folder_path}
-                                                    onChange={(e) => {
-                                                        setFormData(prev => ({...prev, model_folder_path: e.target.value}));
-                                                        setFolderPickerMessage(null); // Clear message when typing manually
-                                                    }}
-                                                    placeholder="Select folder path or type manually..."
-                                                    className="flex-1 px-3 py-2 rounded bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm"
-                                                />
-                                                <button
-                                                    onClick={handlePickCustomModelPath}
-                                                    disabled={isSettingCustomPath}
-                                                    className="px-3 py-2 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center gap-2"
+                                                <button 
+                                                    onClick={handleModelDownload}
+                                                    disabled={downloadingModel}
+                                                    className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed"
                                                 >
-                                                    {isSettingCustomPath && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                                                    <HardDrive className="w-4 h-4" />
-                                                    {isSettingCustomPath ? 'Scanning...' : 'Browse'}
+                                                    {downloadingModel ? (
+                                                        <span className="flex items-center justify-center gap-2">
+                                                            <Loader className="w-3 h-3 animate-spin"/>
+                                                            {downloadProgress}%
+                                                        </span>
+                                                    ) : 'Download Model'}
                                                 </button>
+                                                
+                                                {downloadingModel && (
+                                                    <div className="mt-2">
+                                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+                                                            <div 
+                                                                className="bg-blue-600 h-1 rounded-full transition-all"
+                                                                style={{ width: `${downloadProgress}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            {formData.model_folder_path && (
-                                                <p className="text-xs text-gray-600 dark:text-gray-400">
-                                                    Selected: <span className="font-mono">{formData.model_folder_path}</span>
-                                                </p>
-                                            )}
-                                            {folderPickerMessage && (
-                                                <p className="text-xs text-gray-700 dark:text-gray-300">
-                                                    {folderPickerMessage}
-                                                </p>
+                                            
+                                            {/* Advanced Option - Collapsible */}
+                                            <details className="group">
+                                                <summary className="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+                                                    <span className="group-open:rotate-90 transition-transform text-gray-700 dark:text-gray-300">▶</span>
+                                                    <span className="text-gray-700 dark:text-gray-300">I have my own GGUF models</span>
+                                                </summary>
+                                                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded">
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={formData.model_folder_path}
+                                                            onChange={(e) => {
+                                                                setFormData(prev => ({...prev, model_folder_path: e.target.value}));
+                                                                setFolderPickerMessage(null);
+                                                            }}
+                                                            placeholder="Path to your models folder..."
+                                                            className="flex-1 px-2 py-1 rounded bg-white/70 border border-gray-200 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 text-xs"
+                                                        />
+                                                        <button
+                                                            onClick={handlePickCustomModelPath}
+                                                            disabled={isSettingCustomPath}
+                                                            className="px-2 py-1 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 text-xs"
+                                                        >
+                                                            {isSettingCustomPath ? '...' : 'Browse'}
+                                                        </button>
+                                                    </div>
+                                                    {folderPickerMessage && (
+                                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{folderPickerMessage}</p>
+                                                    )}
+                                                </div>
+                                            </details>
+                                        </div>
+                                    ) : (
+                                        <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Check className="w-4 h-4 text-green-600"/>
+                                                <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                                                    {availableModels.length} model{availableModels.length > 1 ? 's' : ''} ready!
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-green-600 dark:text-green-400">
+                                                You're all set to start using Clara
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {/* External Provider Setup - Condensed */}
+                            {setupMethod === 'external-provider' && (
+                                <div className="mt-4 space-y-3">
+                                    {providers.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {providers.slice(0, 2).map((provider) => {
+                                                const ProviderIcon = getProviderIcon(provider.type);
+                                                return (
+                                                    <div key={provider.id} className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                                                        <ProviderIcon className="w-4 h-4 text-green-600"/>
+                                                        <span className="text-sm text-green-700 dark:text-green-300 flex-1">{provider.name}</span>
+                                                        <button
+                                                            onClick={() => handleDeleteProvider(provider.id)}
+                                                            className="p-1 text-red-500 hover:text-red-700"
+                                                        >
+                                                            <X className="w-3 h-3"/>
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                            {providers.length > 2 && (
+                                                <p className="text-xs text-gray-500">+{providers.length - 2} more providers</p>
                                             )}
                                         </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                                    <div className="flex items-center gap-2 text-green-700 dark:text-green-300 mb-2">
-                                        <Check className="w-5 h-5"/>
-                                        <h4 className="font-medium">Great! You have {availableModels.length} model{availableModels.length > 1 ? 's' : ''} ready</h4>
-                                    </div>
-                                    <div className="text-sm text-green-600 dark:text-green-400 space-y-1">
-                                        {availableModels.slice(0, 3).map((model, idx) => (
-                                            <div key={idx} className="flex items-center gap-2">
-                                                <Check className="w-3 h-3"/>
-                                                <span className="font-mono text-xs truncate">{model}</span>
-                                            </div>
-                                        ))}
-                                        {availableModels.length > 3 && (
-                                            <div className="text-green-600 dark:text-green-400 text-xs">
-                                                ...and {availableModels.length - 3} more
-                                            </div>
-                                        )}
-                                    </div>
-                                    {availableModels.length > 0 && (
-                                        <p className="text-xs text-green-600 dark:text-green-400 mt-2">
-                                            🎉 Your models are ready! You can start chatting with Clara right after setup.
+                                    ) : (
+                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                            <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                                                Connect to external AI services
+                                            </p>
+                                        </div>
+                                    )}
+                                    
+                                    <button
+                                        onClick={() => setShowAddProviderModal(true)}
+                                        className="w-full flex items-center justify-center gap-2 p-2 border border-dashed border-gray-300 dark:border-gray-600 rounded hover:border-sakura-400 text-gray-600 dark:text-gray-400 hover:text-sakura-600 text-sm"
+                                    >
+                                        <Plus className="w-4 h-4"/>
+                                        Add Provider
+                                    </button>
+                                    
+                                    {providerError && (
+                                        <p className="text-xs text-red-600 dark:text-red-400 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                                            {providerError}
                                         </p>
                                     )}
                                 </div>
@@ -1265,7 +1394,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             id="comfyui-service"
                                             checked={selectedServices.comfyui}
                                             onChange={(e) => setSelectedServices(prev => ({...prev, comfyui: e.target.checked}))}
-                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500"
+                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-sakura-500 dark:focus:ring-sakura-400"
                                         />
                                         <div className="text-2xl">🎨</div>
                                         <div className="flex-1">
@@ -1288,80 +1417,14 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     </div>
                                     
                                     {selectedServices.comfyui && (
-                                        // small message about docker is not for linux and macOS
-                                        
-                                        <div className="px-4 pb-4 space-y-2">
+                                        <div className="px-4 pb-4 space-y-3">
                                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            Note: Docker Image of Clara-ComfyUI is not supported on Linux and macOS. (Feel free to use your own ComfyUI instance)
+                                                ✅ ComfyUI will be configured after onboarding completes.
                                             </p>
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <span className="text-gray-600 dark:text-gray-400">Mode:</span>
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => setServiceModes(prev => ({...prev, comfyui: 'docker'}))}
-                                                        className={`px-2 py-1 rounded text-xs ${serviceModes.comfyui === 'docker' ? 'bg-sakura-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                                    >
-                                                        Docker (15.7GB - Windows CUDA Only)
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setServiceModes(prev => ({...prev, comfyui: 'manual'}))}
-                                                        className={`px-2 py-1 rounded text-xs ${serviceModes.comfyui === 'manual' ? 'bg-sakura-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                                    >
-                                                        My Own
-                                                    </button>
-                                                </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-2 rounded">
+                                                <strong>Docker:</strong> 15.7GB download (Windows CUDA only)<br/>
+                                                <strong>Manual:</strong> Use your own ComfyUI instance
                                             </div>
-                                            
-                                            {serviceModes.comfyui === 'docker' ? (
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (serviceStatuses.comfyui === 'unavailable') {
-                                                                setServiceStatuses(prev => ({...prev, comfyui: 'starting'}));
-                                                                try {
-                                                                    const result = await window.electronAPI.invoke('start-docker-service', 'comfyui');
-                                                                    if (result.success) {
-                                                                        setServiceStatuses(prev => ({...prev, comfyui: 'available'}));
-                                                                    } else {
-                                                                        setServiceStatuses(prev => ({...prev, comfyui: 'unavailable'}));
-                                                                    }
-                                                                } catch (error) {
-                                                                    setServiceStatuses(prev => ({...prev, comfyui: 'unavailable'}));
-                                                                }
-                                                            }
-                                                        }}
-                                                        disabled={serviceStatuses.comfyui === 'starting' || serviceStatuses.comfyui === 'available'}
-                                                        className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                                    >
-                                                        {serviceStatuses.comfyui === 'starting' ? 'Starting...' : 
-                                                         serviceStatuses.comfyui === 'available' ? 'Running' : 'Download & Start'}
-                                                    </button>
-                                                    <span className="text-xs text-gray-500">Uses Docker container</span>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    <input
-                                                        type="text"
-                                                        value={serviceUrls.comfyui}
-                                                        onChange={(e) => setServiceUrls(prev => ({...prev, comfyui: e.target.value}))}
-                                                        placeholder="http://localhost:8188"
-                                                        className="w-full px-3 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                                                    />
-                                                    <button
-                                                        onClick={async () => {
-                                                            try {
-                                                                await window.electronAPI.invoke('service-config:set-manual-url', 'comfyui', serviceUrls.comfyui);
-                                                                setServiceStatuses(prev => ({...prev, comfyui: 'available'}));
-                                                            } catch (error) {
-                                                                console.error('Failed to configure ComfyUI:', error);
-                                                            }
-                                                        }}
-                                                        className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600"
-                                                    >
-                                                        Configure
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1374,7 +1437,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             id="tts-service"
                                             checked={selectedServices.tts}
                                             onChange={(e) => setSelectedServices(prev => ({...prev, tts: e.target.checked}))}
-                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500"
+                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-sakura-500 dark:focus:ring-sakura-400"
                                         />
                                         <div className="text-2xl">🧠</div>
                                         <div className="flex-1">
@@ -1413,7 +1476,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             id="n8n-service"
                                             checked={selectedServices.n8n}
                                             onChange={(e) => setSelectedServices(prev => ({...prev, n8n: e.target.checked}))}
-                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500"
+                                            className="rounded border-gray-300 text-sakura-500 focus:ring-sakura-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-sakura-500 dark:focus:ring-sakura-400"
                                         />
                                         <div className="text-2xl">⚡</div>
                                         <div className="flex-1">
@@ -1436,116 +1499,29 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     </div>
                                     
                                     {selectedServices.n8n && (
-                                        <div className="px-4 pb-4 space-y-2">
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <span className="text-gray-600 dark:text-gray-400">Mode:</span>
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => setServiceModes(prev => ({...prev, n8n: 'docker'}))}
-                                                        className={`px-2 py-1 rounded text-xs ${serviceModes.n8n === 'docker' ? 'bg-sakura-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                                    >
-                                                        Docker
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setServiceModes(prev => ({...prev, n8n: 'manual'}))}
-                                                        className={`px-2 py-1 rounded text-xs ${serviceModes.n8n === 'manual' ? 'bg-sakura-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
-                                                    >
-                                                        My Own
-                                                    </button>
-                                                </div>
+                                        <div className="px-4 pb-4 space-y-3">
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                ✅ N8N will be configured after onboarding completes.
+                                            </p>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-2 rounded">
+                                                <strong>Docker:</strong> Lightweight container for workflows<br/>
+                                                <strong>Manual:</strong> Use your own N8N instance
                                             </div>
-                                            
-                                            {serviceModes.n8n === 'docker' ? (
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (serviceStatuses.n8n === 'unavailable') {
-                                                                setServiceStatuses(prev => ({...prev, n8n: 'starting'}));
-                                                                try {
-                                                                    const result = await window.electronAPI.invoke('start-docker-service', 'n8n');
-                                                                    if (result.success) {
-                                                                        setServiceStatuses(prev => ({...prev, n8n: 'available'}));
-                                                                    } else {
-                                                                        setServiceStatuses(prev => ({...prev, n8n: 'unavailable'}));
-                                                                    }
-                                                                } catch (error) {
-                                                                    setServiceStatuses(prev => ({...prev, n8n: 'unavailable'}));
-                                                                }
-                                                            }
-                                                        }}
-                                                        disabled={serviceStatuses.n8n === 'starting' || serviceStatuses.n8n === 'available'}
-                                                        className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                                    >
-                                                        {serviceStatuses.n8n === 'starting' ? 'Starting...' : 
-                                                         serviceStatuses.n8n === 'available' ? 'Running' : 'Download & Start'}
-                                                    </button>
-                                                    <span className="text-xs text-gray-500">Uses Docker container</span>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    <input
-                                                        type="text"
-                                                        value={serviceUrls.n8n}
-                                                        onChange={(e) => setServiceUrls(prev => ({...prev, n8n: e.target.value}))}
-                                                        placeholder="http://localhost:5678"
-                                                        className="w-full px-3 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                                                    />
-                                                    <button
-                                                        onClick={async () => {
-                                                            try {
-                                                                await window.electronAPI.invoke('service-config:set-manual-url', 'n8n', serviceUrls.n8n);
-                                                                setServiceStatuses(prev => ({...prev, n8n: 'available'}));
-                                                            } catch (error) {
-                                                                console.error('Failed to configure N8N:', error);
-                                                            }
-                                                        }}
-                                                        className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600"
-                                                    >
-                                                        Configure
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
                                     )}
                                 </div>
                             </div>
                             
-                            {/* Docker status and startup section */}
-                            {Object.values(serviceStatuses).some(status => status === 'unavailable') && 
-                             Object.values(serviceStartupProgress).some(progress => progress.includes('Docker Desktop is installed but not running')) && (
-                                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                                    <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 mb-3">
-                                        <div className="w-5 h-5 text-blue-500">🐳</div>
-                                        <h4 className="font-medium">Docker Desktop Required</h4>
-                                    </div>
-                                    <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">
-                                        Docker Desktop is installed on your system but not currently running. 
-                                        Docker is required to run ComfyUI, N8N, and TTS services locally.
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={startDockerDesktop}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                                        >
-                                            Start Docker Desktop
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                // Clear Docker startup messages and continue without Docker
-                                                setServiceStartupProgress({});
-                                                setServiceStatuses({
-                                                    comfyui: 'unavailable',
-                                                    tts: 'unavailable', 
-                                                    n8n: 'unavailable'
-                                                });
-                                            }}
-                                            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                                        >
-                                            Continue Without Docker
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                            {/* Simplified message */}
+                            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                <p className="text-sm text-blue-600 dark:text-blue-400">
+                                    💡 Your selected services will be configured but not auto-started after onboarding. 
+                                    You can manually start them when needed from the main application.
+                                </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-300 mt-2">
+                                    Note: Clara Core will always be managed automatically as it's essential for the app to function.
+                                </p>
+                            </div>
                         </div>
                     )}
 
@@ -1580,7 +1556,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                 value={serviceUrls.comfyui}
                                                 onChange={(e) => setServiceUrls(prev => ({...prev, comfyui: e.target.value}))}
                                                 placeholder="http://localhost:8188"
-                                                className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100 text-sm"
+                                                className="w-full px-3 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400 text-sm"
                                             />
                                         </div>
                                     )}
@@ -1678,7 +1654,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     <select
                                         value={formData.timezone}
                                         onChange={(e) => setFormData(prev => ({...prev, timezone: e.target.value}))}
-                                        className="w-full px-3 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
+                                        className="w-full px-3 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:focus:border-sakura-400"
                                     >
                                         {[
                                             // UTC
@@ -1799,25 +1775,13 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             'Indian/Maldives',
                                             'Indian/Mauritius',
                                         ].map(tz => (
-                                            <option key={tz} value={tz}>{getTimezoneDisplay(tz)}</option>
+                                            <option key={tz} value={tz} className="dark:bg-gray-800 dark:text-gray-100">{getTimezoneDisplay(tz)}</option>
                                         ))}
                                     </select>
                                 </div>
 
-                                {/* Service startup progress */}
-                                {Object.entries(serviceStartupProgress).map(([serviceName, progress]) => (
-                                    progress && (
-                                        <div key={serviceName} className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                                                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                                    Starting {serviceName.toUpperCase()}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-blue-600 dark:text-blue-400">{progress}</p>
-                                        </div>
-                                    )
-                                ))}
+                                {/* Service startup progress - Hidden during onboarding as services aren't started */}
+                                {/* Services will be initialized after onboarding completes */}
 
                                 {/* Loading state for launch */}
                                 {loading && (
@@ -1829,7 +1793,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             </span>
                                         </div>
                                         <p className="text-xs text-blue-600 dark:text-blue-400">
-                                            Saving your preferences and starting selected services - <b>Note:</b> might require restart of Clara.
+                                            Saving your preferences. Clara will initialize your selected services after startup.
                                         </p>
                                     </div>
                                 )}
@@ -1871,18 +1835,16 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     if (step < 8) {
                                         setStep(step + 1);
                                     } else {
-                                        // Launch Clara - show loading state
+                                        // Launch Clara - just save preferences, don't start services
                                         setLoading(true);
                                         try {
-                                            // Save preferences first
+                                            // Only save preferences during onboarding
                                             await handleSubmit();
-                                            // Then start only the selected services
-                                            await startSelectedServices();
-                                            // Complete onboarding
+                                            // Complete onboarding - services will be started by the main app
                                             onComplete();
                                         } catch (error) {
-                                            console.error('Error launching Clara:', error);
-                                            // Still complete onboarding even if there are service errors
+                                            console.error('Error saving preferences:', error);
+                                            // Still complete onboarding even if there are preference save errors
                                             onComplete();
                                         } finally {
                                             setLoading(false);
@@ -1892,7 +1854,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                 disabled={
                                     (step === 1 && !formData.name) ||
                                     (step === 2 && !formData.email) ||
-                                    (step === 5 && availableModels.length === 0 && !downloadingModel && !formData.model_folder_path) ||
+                                    (step === 5 && !hasValidSetup() && !downloadingModel) ||
                                     downloadingModel ||
                                     loading
                                 }
@@ -1913,6 +1875,146 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                     )}
                 </div>
             </div>
+            
+            {/* Add Provider Modal */}
+            {showAddProviderModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Add AI Provider
+                            </h3>
+                            <button
+                                onClick={() => {
+                                    setShowAddProviderModal(false);
+                                    setProviderError(null);
+                                }}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Provider Type
+                                </label>
+                                <select
+                                    value={newProviderForm.type}
+                                    onChange={(e) => {
+                                        const type = e.target.value as Provider['type'];
+                                        const defaultConfig = getDefaultProviderConfig(type);
+                                        setNewProviderForm(prev => ({
+                                            ...prev,
+                                            type,
+                                            name: defaultConfig.name || prev.name,
+                                            baseUrl: defaultConfig.baseUrl || prev.baseUrl,
+                                            apiKey: type === 'ollama' ? 'ollama' : prev.apiKey
+                                        }));
+                                    }}
+                                    className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:focus:border-sakura-400"
+                                >
+                                    <option value="openai" className="dark:bg-gray-800 dark:text-gray-100">OpenAI</option>
+                                    <option value="openai_compatible" className="dark:bg-gray-800 dark:text-gray-100">OpenAI Compatible</option>
+                                    <option value="openrouter" className="dark:bg-gray-800 dark:text-gray-100">OpenRouter</option>
+                                    <option value="ollama" className="dark:bg-gray-800 dark:text-gray-100">Ollama</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Provider Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newProviderForm.name}
+                                    onChange={(e) => setNewProviderForm(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400"
+                                    placeholder="Enter provider name"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Base URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={newProviderForm.baseUrl}
+                                    onChange={(e) => setNewProviderForm(prev => ({ ...prev, baseUrl: e.target.value }))}
+                                    className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400"
+                                    placeholder="https://api.example.com/v1"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    API Key
+                                </label>
+                                <input
+                                    type="password"
+                                    value={newProviderForm.apiKey}
+                                    onChange={(e) => setNewProviderForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                                    className="w-full px-4 py-2 rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-sakura-300 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-sakura-400"
+                                    placeholder="Enter API key"
+                                />
+                            </div>
+                            
+                            {newProviderForm.type === 'openrouter' && (
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                                        💡 <strong>OpenRouter tip:</strong> Get your API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">openrouter.ai/keys</a>
+                                    </p>
+                                </div>
+                            )}
+                            
+                            {newProviderForm.type === 'openai' && (
+                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                                        💡 <strong>OpenAI tip:</strong> Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com/api-keys</a>
+                                    </p>
+                                </div>
+                            )}
+                            
+                            {providerError && (
+                                <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                    <p className="text-sm text-red-600 dark:text-red-400">{providerError}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={() => {
+                                    setShowAddProviderModal(false);
+                                    setProviderError(null);
+                                }}
+                                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddProvider}
+                                disabled={!newProviderForm.name.trim() || !newProviderForm.baseUrl.trim() || addingProvider}
+                                className="flex-1 px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                            >
+                                {addingProvider ? (
+                                    <>
+                                        <Loader className="w-4 h-4 animate-spin"/>
+                                        Adding...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check className="w-4 h-4" />
+                                        Add Provider
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -908,14 +908,14 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           {/* Local AI Models Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-yellow-500" />
+              <div className="w-2 h-2 rounded-full bg-sakura-500" />
               <h4 className="font-medium text-gray-900 dark:text-white">Local AI Models Integration</h4>
             </div>
             
-            <div className="p-5 bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+            <div className="p-5 bg-gradient-to-br from-sakura-50 to-sakura-100 dark:from-sakura-900/20 dark:to-sakura-800/30 rounded-xl border border-sakura-200 dark:border-sakura-800">
               <div className="space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-sm font-bold text-white">💡</span>
                   </div>
                   <div className="flex-1 space-y-3">
@@ -960,14 +960,14 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           {/* Webhook Tools Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <div className="w-2 h-2 rounded-full bg-sakura-500" />
               <h4 className="font-medium text-gray-900 dark:text-white">Creating Powerful Clara Tools</h4>
             </div>
             
-            <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+            <div className="p-5 bg-gradient-to-br from-sakura-50 to-sakura-100 dark:from-sakura-900/20 dark:to-sakura-800/30 rounded-xl border border-sakura-200 dark:border-sakura-800">
               <div className="space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Webhook className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1 space-y-3">
@@ -979,19 +979,19 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     </p>
                     <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
                       <li className="flex items-center gap-3">
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        <div className="w-1.5 h-1.5 bg-sakura-400 rounded-full"></div>
                         Create webhooks in N8N workflows
                       </li>
                       <li className="flex items-center gap-3">
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        <div className="w-1.5 h-1.5 bg-sakura-400 rounded-full"></div>
                         Test them using our Webhook Tester
                       </li>
                       <li className="flex items-center gap-3">
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        <div className="w-1.5 h-1.5 bg-sakura-400 rounded-full"></div>
                         Convert to Clara tools with one click
                       </li>
                       <li className="flex items-center gap-3">
-                        <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                        <div className="w-1.5 h-1.5 bg-sakura-400 rounded-full"></div>
                         Ask Clara to use your workflows!
                       </li>
                     </ul>
@@ -1004,14 +1004,14 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           {/* Authentication Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <div className="w-2 h-2 rounded-full bg-sakura-500" />
               <h4 className="font-medium text-gray-900 dark:text-white">Authentication & Login</h4>
             </div>
             
-            <div className="p-5 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+            <div className="p-5 bg-gradient-to-br from-sakura-50 to-sakura-100 dark:from-sakura-900/20 dark:to-sakura-800/30 rounded-xl border border-sakura-200 dark:border-sakura-800">
               <div className="space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <ExternalLink className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1 space-y-3">
@@ -1024,15 +1024,15 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => window.open(n8nUrl, '_blank')}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-all duration-200 hover:scale-105"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-sakura-500 hover:bg-sakura-600 text-white text-sm font-medium rounded-lg transition-all duration-200 hover:scale-105"
                       >
                         <ExternalLink className="w-4 h-4" />
                         Open in New Browser
                       </button>
                     </div>
-                    <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                      <p className="text-xs text-purple-800 dark:text-purple-300 flex items-center gap-2">
-                        <span className="text-purple-600">💡</span>
+                    <div className="p-3 bg-sakura-100 dark:bg-sakura-900/30 rounded-lg">
+                      <p className="text-xs text-sakura-800 dark:text-sakura-300 flex items-center gap-2">
+                        <span className="text-sakura-600">💡</span>
                         Use this for OAuth, API key setup, or complex authentication
                       </p>
                     </div>
@@ -1045,14 +1045,14 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
           {/* Pro Tips Section */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div className="w-2 h-2 rounded-full bg-sakura-500" />
               <h4 className="font-medium text-gray-900 dark:text-white">Pro Developer Tips</h4>
             </div>
             
-            <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+            <div className="p-5 bg-gradient-to-br from-sakura-50 to-sakura-100 dark:from-sakura-900/20 dark:to-sakura-800/30 rounded-xl border border-sakura-200 dark:border-sakura-800">
               <div className="space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 bg-sakura-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-sm font-bold text-white">⚡</span>
                   </div>
                   <div className="flex-1 space-y-3">
@@ -1061,19 +1061,19 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
                     </h5>
                     <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-3">
                       <li className="flex items-start gap-3">
-                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="text-sakura-500 font-bold text-sm mt-0.5">•</span>
                         <span className="leading-relaxed">Always test webhooks before creating Clara tools</span>
                       </li>
                       <li className="flex items-start gap-3">
-                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="text-sakura-500 font-bold text-sm mt-0.5">•</span>
                         <span className="leading-relaxed">Use descriptive tool names (lowercase + underscores)</span>
                       </li>
                       <li className="flex items-start gap-3">
-                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="text-sakura-500 font-bold text-sm mt-0.5">•</span>
                         <span className="leading-relaxed">Your Clara tools work across all chat conversations</span>
                       </li>
                       <li className="flex items-start gap-3">
-                        <span className="text-green-500 font-bold text-sm mt-0.5">•</span>
+                        <span className="text-sakura-500 font-bold text-sm mt-0.5">•</span>
                         <span className="leading-relaxed">Check Clara's Tool Belt to manage all your tools</span>
                       </li>
                     </ul>

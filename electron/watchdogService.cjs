@@ -229,18 +229,6 @@ class WatchdogService extends EventEmitter {
     return stateChange;
   }
 
-  // Enable or disable ComfyUI monitoring based on user consent
-  setComfyUIMonitoring(enabled) {
-    if (enabled) {
-      this.services.comfyui.enabled = true;
-      this.logEvent('COMFYUI_MONITORING', 'INFO', 'ComfyUI monitoring enabled by user consent');
-    } else {
-      this.services.comfyui.enabled = false;
-      this.services.comfyui.status = 'disabled';
-      this.logEvent('COMFYUI_MONITORING', 'INFO', 'ComfyUI monitoring disabled - user has not consented');
-    }
-  }
-
   // Start the watchdog monitoring
   start() {
     if (this.isRunning) {
@@ -263,15 +251,17 @@ class WatchdogService extends EventEmitter {
       gracePeriod: this.config.gracePeriod
     });
     
-    // Set all services to "starting" state during startup
+    // Set enabled services to "starting" state during startup (after consent checks)
     for (const [serviceKey, service] of Object.entries(this.services)) {
-      const oldState = service.status;
-      service.status = 'starting';
-      this.trackServiceStateChange(serviceKey, oldState, 'starting', { reason: 'watchdog_startup' });
+      if (service.enabled) {
+        const oldState = service.status;
+        service.status = 'starting';
+        this.trackServiceStateChange(serviceKey, oldState, 'starting', { reason: 'watchdog_startup' });
+      } else {
+        // Ensure disabled services remain disabled
+        service.status = 'disabled';
+      }
     }
-    
-    // Check ComfyUI consent status
-    this.checkComfyUIConsent();
     
     // Wait for startup delay before beginning health checks
     this.logEvent('WATCHDOG_STARTUP_DELAY', 'INFO', 'Waiting for startup delay before health checks', {
@@ -310,26 +300,53 @@ class WatchdogService extends EventEmitter {
         this.logEvent('USER_CONSENT_CHECK', 'INFO', 'User service consent status loaded', {
           hasConsented: consentData.hasConsented,
           servicesConsented: consentData.services,
+          onboardingMode: consentData.onboardingMode,
+          autoStartServices: consentData.autoStartServices,
           consentDate: consentData.timestamp
         });
         
-        // Check if user has auto-start enabled (default: false)
+        // Check if this is from onboarding mode with auto-start disabled
+        const isOnboardingMode = consentData.onboardingMode === true;
+        const autoStartDisabled = consentData.autoStartServices === false;
+        
+        if (isOnboardingMode && autoStartDisabled) {
+          this.logEvent('ONBOARDING_MODE_DETECTED', 'INFO', 'Onboarding mode with auto-start disabled - only Clara Core will be managed');
+          
+          // In onboarding mode with auto-start disabled:
+          // - Clara Core is always managed (it's essential)
+          // - Other services are disabled for auto-management but user preferences are stored
+          for (const [serviceKey, service] of Object.entries(this.services)) {
+            if (serviceKey === 'clarasCore') {
+              // Always enable Clara Core monitoring (using correct service key)
+              service.enabled = true;
+              this.logEvent('SERVICE_CLARA_CORE_ENABLED', 'INFO', 'Clara Core monitoring enabled - essential service');
+            } else {
+              // Disable auto-management for other services during onboarding mode
+              service.enabled = false;
+              service.status = 'disabled';
+              this.logEvent('SERVICE_ONBOARDING_DISABLED', 'INFO', `Service ${serviceKey} disabled - onboarding mode with auto-start off`);
+            }
+          }
+          
+          return true; // Return true so watchdog runs, but only for Clara Core
+        }
+        
+        // Check if user has auto-start enabled for post-onboarding use
         let autoStartEnabled = false;
         try {
           // Since we can't easily access the frontend db from main process,
           // and the default is false (which is what we want for security),
           // we'll default to false unless explicitly set via a dedicated file
           
-          // TODO: In the future, we could save startup preferences to a separate file
-          // that both frontend and backend can access
-          autoStartEnabled = false;
+          // Check if autoStartServices is explicitly set to true (for future use)
+          autoStartEnabled = consentData.autoStartServices === true;
         } catch (error) {
           this.logEvent('AUTO_START_CHECK', 'WARN', 'Could not check auto-start preference', {
             error: error.message
           });
         }
         
-        if (!autoStartEnabled) {
+        if (!autoStartEnabled && !isOnboardingMode) {
           this.logEvent('AUTO_START_DISABLED', 'INFO', 'Auto-start disabled - watchdog will not monitor services');
           // Disable all services if auto-start is disabled
           for (const [serviceKey, service] of Object.entries(this.services)) {
@@ -339,10 +356,14 @@ class WatchdogService extends EventEmitter {
           return false;
         }
         
-        // Only enable services that user has explicitly consented to
-        if (consentData.hasConsented && consentData.services) {
+        // Only enable services that user has explicitly consented to (for full auto-start mode)
+        if (consentData.hasConsented && consentData.services && autoStartEnabled) {
           for (const [serviceKey, service] of Object.entries(this.services)) {
-            if (consentData.services[serviceKey] === true) {
+            if (serviceKey === 'clarasCore') {
+              // Clara Core is always enabled when user has consented
+              service.enabled = true;
+              this.logEvent('SERVICE_CLARA_CORE_ENABLED', 'INFO', 'Clara Core monitoring enabled - essential service');
+            } else if (consentData.services[serviceKey] === true) {
               service.enabled = true;
               this.logEvent('SERVICE_CONSENT_ENABLED', 'INFO', `Service ${serviceKey} enabled by user consent`);
             } else {
@@ -353,58 +374,40 @@ class WatchdogService extends EventEmitter {
           }
         }
         
-        return consentData.hasConsented === true && autoStartEnabled;
+        return consentData.hasConsented === true;
       } else {
-        this.logEvent('USER_CONSENT_CHECK', 'INFO', 'No user consent file found, service monitoring disabled');
+        this.logEvent('USER_CONSENT_CHECK', 'INFO', 'No user consent file found - only Clara Core will be managed');
         
-        // Disable all services if no consent file exists
+        // Without consent file, only enable Clara Core (essential service)
         for (const [serviceKey, service] of Object.entries(this.services)) {
+          if (serviceKey === 'clarasCore') {
+            service.enabled = true;
+            this.logEvent('SERVICE_CLARA_CORE_ENABLED', 'INFO', 'Clara Core monitoring enabled - essential service (no consent file)');
+          } else {
+            service.enabled = false;
+            service.status = 'disabled';
+          }
+        }
+        
+        return true; // Return true so watchdog runs for Clara Core
+      }
+    } catch (error) {
+      this.logEvent('USER_CONSENT_ERROR', 'ERROR', 'Failed to read user consent status - only Clara Core will be managed', {
+        error: error.message
+      });
+      
+      // On error, only enable Clara Core (essential service)
+      for (const [serviceKey, service] of Object.entries(this.services)) {
+        if (serviceKey === 'clarasCore') {
+          service.enabled = true;
+          this.logEvent('SERVICE_CLARA_CORE_ENABLED', 'INFO', 'Clara Core monitoring enabled - essential service (error fallback)');
+        } else {
           service.enabled = false;
           service.status = 'disabled';
         }
-        
-        return false;
-      }
-    } catch (error) {
-      this.logEvent('USER_CONSENT_ERROR', 'ERROR', 'Failed to read user consent status', {
-        error: error.message
-      });
-      
-      // Disable all services on error
-      for (const [serviceKey, service] of Object.entries(this.services)) {
-        service.enabled = false;
-        service.status = 'disabled';
       }
       
-      return false;
-    }
-  }
-
-  checkComfyUIConsent() {
-    const fs = require('fs');
-    const path = require('path');
-    const { app } = require('electron');
-    
-    try {
-      const userDataPath = app.getPath('userData');
-      const consentFile = path.join(userDataPath, 'comfyui-consent.json');
-      
-      if (fs.existsSync(consentFile)) {
-        const consentData = JSON.parse(fs.readFileSync(consentFile, 'utf8'));
-        this.setComfyUIMonitoring(consentData.hasConsented === true);
-        this.logEvent('COMFYUI_CONSENT_CHECK', 'INFO', 'ComfyUI consent status loaded', {
-          consentEnabled: consentData.hasConsented,
-          consentDate: consentData.timestamp
-        });
-      } else {
-        this.setComfyUIMonitoring(false);
-        this.logEvent('COMFYUI_CONSENT_CHECK', 'INFO', 'No ComfyUI consent file found, monitoring disabled');
-      }
-    } catch (error) {
-      this.setComfyUIMonitoring(false);
-      this.logEvent('COMFYUI_CONSENT_ERROR', 'ERROR', 'Failed to read ComfyUI consent status', {
-        error: error.message
-      });
+      return true; // Return true so watchdog runs for Clara Core
     }
   }
 
@@ -1041,6 +1044,56 @@ class WatchdogService extends EventEmitter {
     this.logEvent('FAILURE_COUNTS_RESET', 'INFO', 'All service failure counts reset by admin', {
       preservedGracePeriods: true
     });
+  }
+
+  // Enable monitoring for a specific service (useful after onboarding)
+  enableServiceMonitoring(serviceKey) {
+    if (this.services[serviceKey]) {
+      this.services[serviceKey].enabled = true;
+      this.services[serviceKey].status = 'unknown'; // Reset status to trigger fresh check
+      this.logEvent('SERVICE_MONITORING_ENABLED', 'INFO', `Monitoring enabled for service: ${serviceKey}`);
+      
+      // Trigger immediate health check for this service
+      if (this.isRunning) {
+        setTimeout(() => {
+          this.performHealthChecks();
+        }, 1000);
+      }
+      
+      return true;
+    } else {
+      this.logEvent('SERVICE_MONITORING_ERROR', 'ERROR', `Cannot enable monitoring - service not found: ${serviceKey}`);
+      return false;
+    }
+  }
+
+  // Disable monitoring for a specific service
+  disableServiceMonitoring(serviceKey) {
+    if (this.services[serviceKey]) {
+      this.services[serviceKey].enabled = false;
+      this.services[serviceKey].status = 'disabled';
+      this.logEvent('SERVICE_MONITORING_DISABLED', 'INFO', `Monitoring disabled for service: ${serviceKey}`);
+      return true;
+    } else {
+      this.logEvent('SERVICE_MONITORING_ERROR', 'ERROR', `Cannot disable monitoring - service not found: ${serviceKey}`);
+      return false;
+    }
+  }
+
+  // Get list of services and their monitoring status
+  getServiceMonitoringStatus() {
+    const status = {};
+    for (const [serviceKey, service] of Object.entries(this.services)) {
+      status[serviceKey] = {
+        name: service.name,
+        enabled: service.enabled,
+        status: service.status,
+        lastCheck: service.lastCheck,
+        lastHealthyTime: service.lastHealthyTime,
+        failureCount: service.failureCount
+      };
+    }
+    return status;
   }
 
   // Force end grace period for a specific service (for manual intervention)

@@ -7,6 +7,7 @@ import MCPSettings from './MCPSettings';
 import ModelManager from './ModelManager';
 import ToolBelt from './ToolBelt';
 import UnifiedServiceManager from './Settings/UnifiedServiceManager';
+import StartupTab from './Settings/StartupTab';
 import GPUDiagnostics from './GPUDiagnostics';
 import { 
   DEFAULT_UI_PREFERENCES, 
@@ -77,10 +78,10 @@ const Settings = () => {
   // Sub-tabs for each main category
   const [activeInterfaceTab, setActiveInterfaceTab] = useState<'appearance' | 'ui-preferences'>('appearance');
   const [activeAITab, setActiveAITab] = useState<'api' | 'models' | 'mcp'>('api');
-  const [activeSystemTab, setActiveSystemTab] = useState<'services' | 'toolbelt' | 'updates'>('services');
+  const [activeSystemTab, setActiveSystemTab] = useState<'startup' | 'services' | 'toolbelt' | 'updates'>('startup');
   
   // Keep legacy activeTab for backward compatibility during transition
-  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers' >('api');
+  const [activeTab, setActiveTab] = useState<'personal' | 'api' | 'preferences' | 'models' | 'mcp' | 'toolbelt' | 'updates' | 'sdk-demo' | 'servers' | 'startup'>('api');
   const [activeModelTab, setActiveModelTab] = useState<'models' | 'gpu-diagnostics'>('models');
 
   // Ensure first sub-tab is selected when switching main tabs
@@ -90,7 +91,7 @@ const Settings = () => {
     } else if (activeMainTab === 'ai-models') {
       setActiveAITab('api');
     } else if (activeMainTab === 'system') {
-      setActiveSystemTab('services');
+      setActiveSystemTab('startup');
     }
   }, [activeMainTab]);
 
@@ -109,7 +110,8 @@ const Settings = () => {
     }
     if (activeMainTab === 'system') {
       // Default to first sub-tab when main tab is selected
-      const selected = activeSystemTab || 'services';
+      const selected = activeSystemTab || 'startup';
+      if (selected === 'startup') return 'startup';
       if (selected === 'services') return 'servers';
       return selected as 'toolbelt' | 'updates';
     }
@@ -1673,6 +1675,16 @@ const Settings = () => {
               />
               {activeMainTab === 'system' && (
                 <div className="mt-1 ml-2 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'rgb(var(--sakura-500) / 0.7)' }}>
+                  <button
+                    onClick={() => setActiveSystemTab('startup')}
+                    className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                      activeSystemTab === 'startup'
+                        ? 'text-sakura-600 dark:text-sakura-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Startup
+                  </button>
                   <button
                     onClick={() => setActiveSystemTab('services')}
                     className={`flex items-center px-2.5 py-1.5 rounded-md text-sm transition-colors ${
@@ -3485,6 +3497,11 @@ const ProcessButton = () => {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Startup Tab */}
+          {effectiveActiveTab === 'startup' && (
+            <StartupTab />
           )}
 
           {/* Updates Tab */}

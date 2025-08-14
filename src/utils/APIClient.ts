@@ -485,6 +485,8 @@ export class APIClient {
     // Track reasoning state for proper <think> block handling
     let isInReasoningMode = false;
     let hasStartedReasoning = false;
+    // Track accumulated content for abort preservation
+    let accumulatedContent = '';
     // Set maximum attempts to prevent infinite loops
     const MAX_ATTEMPTS = 10;
     
@@ -496,7 +498,7 @@ export class APIClient {
     // Check if operation was aborted
     if (this.abortController?.signal.aborted) {
       console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Operation aborted at attempt ${attempt}`);
-      throw new Error('Operation was aborted by user');
+      return; // Exit gracefully instead of throwing - no content to preserve at this point
     }
 
     let currentTools = tools ? [...tools] : undefined;
@@ -539,7 +541,7 @@ export class APIClient {
       
       // Check abort signal before making request
       if (signal.aborted) {
-        throw new Error('Operation was aborted by user');
+        return; // Exit gracefully instead of throwing - no content to preserve at this point
       }
       
       const streamResponse = await fetch(`${this.config.baseUrl}/chat/completions`, {
@@ -674,7 +676,18 @@ export class APIClient {
         // Check abort signal during streaming
         if (signal.aborted) {
           console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Stream aborted during reading`);
-          throw new Error('Operation was aborted by user');
+          // Instead of throwing an error, yield the accumulated content with abort flag
+          if (accumulatedContent.trim()) {
+            console.log(`💾 [ABORT-PRESERVE] Preserving ${accumulatedContent.length} characters of streamed content`);
+            yield {
+              message: {
+                content: accumulatedContent,
+                role: 'assistant'
+              },
+              finish_reason: 'aborted'
+            };
+          }
+          return; // Exit gracefully instead of throwing
         }
 
         const { value, done } = await reader.read();
@@ -727,6 +740,11 @@ export class APIClient {
                 isInReasoningMode = false;
               }
               
+              // Accumulate content for abort preservation
+              if (content) {
+                accumulatedContent += content;
+              }
+              
               const data: APIResponse = {
                 message: {
                   content: content,
@@ -757,7 +775,18 @@ export class APIClient {
       // Check if this is an abort error
       if (error.name === 'AbortError' || error.message.includes('aborted') || signal.aborted) {
         console.log(`🛑 [DYNAMIC-TOOLS-STREAM] Request aborted at attempt ${attempt}`);
-        throw new Error('Operation was aborted by user');
+        // Instead of throwing, yield accumulated content if we have any
+        if (accumulatedContent.trim()) {
+          console.log(`💾 [ABORT-PRESERVE] Preserving ${accumulatedContent.length} characters of streamed content from catch block`);
+          yield {
+            message: {
+              content: accumulatedContent,
+              role: 'assistant'
+            },
+            finish_reason: 'aborted'
+          };
+        }
+        return; // Exit gracefully instead of throwing
       }
 
       // CRITICAL: Check token limit errors FIRST in streaming
@@ -1234,6 +1263,49 @@ export class APIClient {
       console.log(`🗑️ [PROBLEMATIC-TOOLS] Cleared all stored problematic tools for all providers`);
     } catch (error) {
       console.warn('Failed to clear problematic tools from localStorage:', error);
+    }
+  }
+
+  /**
+   * Clear blacklisted MCP tools from all providers (for fixing false positives)
+   */
+  public static clearMCPToolBlacklists(): void {
+    const mcpToolNames = ['mcp_python-mcp_py', 'mcp_python-mcp_powershell', 'mcp_python-mcp_pip', 'mcp_python-mcp_save', 'mcp_python-mcp_load', 'mcp_python-mcp_ls', 'mcp_python-mcp_open', 'mcp_python-mcp_search', 'mcp_python-mcp_fetch_content'];
+    
+    // Clear from memory
+    const keysToRemove = Array.from(APIClient.problematicTools).filter(key => {
+      return mcpToolNames.some(mcpName => key.includes(mcpName));
+    });
+    keysToRemove.forEach(key => APIClient.problematicTools.delete(key));
+    
+    // Clear from localStorage for all providers
+    try {
+      const storageKeysToCheck: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clara-problematic-tools-')) {
+          storageKeysToCheck.push(key);
+        }
+      }
+      
+      for (const storageKey of storageKeysToCheck) {
+        try {
+          const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+          const filtered = stored.filter((tool: any) => !mcpToolNames.includes(tool.name));
+          
+          if (filtered.length !== stored.length) {
+            localStorage.setItem(storageKey, JSON.stringify(filtered));
+            console.log(`🗑️ [MCP-CLEANUP] Removed ${stored.length - filtered.length} MCP tools from ${storageKey}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to clean MCP tools from ${storageKey}:`, error);
+        }
+      }
+      
+      console.log(`✅ [MCP-CLEANUP] Cleared all blacklisted MCP tools from memory and localStorage`);
+      console.log(`🗑️ [MCP-CLEANUP] Removed ${keysToRemove.length} MCP tool entries from memory`);
+    } catch (error) {
+      console.warn('Failed to clear MCP tools from localStorage:', error);
     }
   }
 

@@ -534,6 +534,7 @@ export interface ClaraAIConfig {
     enableMCP: boolean;
     enableStructuredToolCalling: boolean;
     enableNativeJSONSchema: boolean;
+    enableMemory: boolean;
   };
 
   /** Artifact generation configuration */

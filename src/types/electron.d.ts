@@ -99,6 +99,10 @@ export interface ElectronAPI {
   
   // Generic invoke method for IPC
   invoke: (channel: string, ...args: any[]) => Promise<any>;
+  
+  // Event handling methods for ComfyUI and other real-time updates
+  on: (channel: string, callback: (data: any) => void) => void;
+  off: (channel: string, callback: (data: any) => void) => void;
 }
 
 interface LlamaSwapAPI {

@@ -19,6 +19,9 @@ export interface GalleryImage {
   views: number;
   model: string;
   resolution: string;
+  source?: 'clara' | 'comfyui';
+  originalPath?: string;
+  fileSize?: number;
 }
 
 export interface Project {

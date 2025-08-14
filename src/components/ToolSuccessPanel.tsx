@@ -58,6 +58,17 @@ export const ToolSuccessPanel: React.FC<ToolSuccessPanelProps> = ({ isOpen, onCl
     }
   };
 
+  const clearMCPBlacklists = () => {
+    if (confirm('Are you sure you want to clear all blacklisted MCP tools? This will restore core MCP functionality.')) {
+      ToolSuccessRegistry.clearMCPToolBlacklists();
+      // Also import and use APIClient to clear from API client level
+      import('../utils/APIClient').then(({ APIClient }) => {
+        APIClient.clearMCPToolBlacklists();
+      });
+      refreshData();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -134,6 +145,12 @@ export const ToolSuccessPanel: React.FC<ToolSuccessPanelProps> = ({ isOpen, onCl
               className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               🔄 Refresh Data
+            </button>
+            <button
+              onClick={clearMCPBlacklists}
+              className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+            >
+              🛡️ Restore MCP Tools
             </button>
             <button
               onClick={clearAllRecords}

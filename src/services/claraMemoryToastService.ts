@@ -12,7 +12,6 @@ import { UserMemoryProfile } from '../components/ClaraSweetMemory';
 interface MemoryToastState {
   isVisible: boolean;
   knowledgeLevel: number;
-  learnedInfo?: string;
   lastShownAt: number;
 }
 
@@ -146,66 +145,6 @@ class ClaraMemoryToastService {
   }
 
   /**
-   * Extract a brief description of what was learned from the profile
-   */
-  private extractLearnedInfo(profile: UserMemoryProfile): string {
-    const recentInfo: string[] = [];
-
-    // Check core identity for interesting tidbits
-    if (profile.coreIdentity?.preferredName && profile.coreIdentity.preferredName !== profile.coreIdentity.fullName) {
-      recentInfo.push(`prefers to be called ${profile.coreIdentity.preferredName}`);
-    }
-    if (profile.coreIdentity?.occupation) {
-      recentInfo.push(`works as a ${profile.coreIdentity.occupation}`);
-    }
-    if (profile.coreIdentity?.location) {
-      recentInfo.push(`lives in ${profile.coreIdentity.location}`);
-    }
-
-    // Check hobbies and interests
-    if (profile.personalCharacteristics?.hobbies?.length) {
-      const hobbies = profile.personalCharacteristics.hobbies.slice(0, 2).join(' & ');
-      recentInfo.push(`enjoys ${hobbies}`);
-    }
-    if (profile.personalCharacteristics?.interests?.length) {
-      const interests = profile.personalCharacteristics.interests.slice(0, 2).join(' & ');
-      recentInfo.push(`interested in ${interests}`);
-    }
-
-    // Check personality traits
-    if (profile.personalCharacteristics?.personalityTraits?.length) {
-      const trait = profile.personalCharacteristics.personalityTraits[0];
-      recentInfo.push(`has a ${trait} personality`);
-    }
-
-    // Check communication style
-    if (profile.personalCharacteristics?.communicationStyle) {
-      recentInfo.push(`prefers ${profile.personalCharacteristics.communicationStyle} communication`);
-    }
-
-    // Check work style
-    if (profile.preferences?.workStyle?.environment) {
-      recentInfo.push(`works in a ${profile.preferences.workStyle.environment} environment`);
-    }
-
-    // Return a random selection or combine a few
-    if (recentInfo.length === 0) {
-      return 'something interesting about your personality';
-    }
-
-    if (recentInfo.length === 1) {
-      return recentInfo[0];
-    }
-
-    // Pick 1-2 random items
-    const selectedInfo = recentInfo
-      .sort(() => Math.random() - 0.5)
-      .slice(0, Math.min(2, recentInfo.length));
-
-    return selectedInfo.join(' and ');
-  }
-
-  /**
    * Check if enough time has passed since last toast
    */
   private isOnCooldown(): boolean {
@@ -229,14 +168,10 @@ class ClaraMemoryToastService {
       return false;
     }
 
-    // Extract what was learned
-    const learnedInfo = this.extractLearnedInfo(profile);
-
     // Update state
     this.state = {
       isVisible: true,
       knowledgeLevel: newKnowledgeLevel,
-      learnedInfo,
       lastShownAt: Date.now()
     };
 

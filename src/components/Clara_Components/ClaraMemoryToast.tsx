@@ -22,7 +22,6 @@ interface ClaraMemoryToastProps {
   isVisible: boolean;
   onHide: () => void;
   knowledgeLevel?: number; // 0-100, how much Clara knows about the user
-  learnedInfo?: string; // Brief description of what was learned
   duration?: number; // How long to show the toast (default 4000ms)
 }
 
@@ -295,7 +294,6 @@ const ClaraMemoryToast: React.FC<ClaraMemoryToastProps> = ({
   isVisible,
   onHide,
   knowledgeLevel = 25,
-  learnedInfo,
   duration = 6000 // 🎨 Design testing: Longer duration to see animations (was 4000)
 }) => {
   const [phrase, setPhrase] = useState(getRandomPhrase());
@@ -363,13 +361,6 @@ const ClaraMemoryToast: React.FC<ClaraMemoryToastProps> = ({
             <p className="text-sm text-gray-300 leading-relaxed">
               {phrase}
             </p>
-            
-            {/* Learned info preview */}
-            {learnedInfo && (
-              <p className="text-xs text-gray-400 mt-1 italic">
-                "{learnedInfo}"
-              </p>
-            )}
           </div>
         </div>
 

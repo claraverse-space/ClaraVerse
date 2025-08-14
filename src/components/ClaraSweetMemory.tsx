@@ -546,86 +546,153 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       
       console.log('🧠 DEBUG: Transforming data with keys:', Object.keys(data));
       
-      // 🔧 CRITICAL FIX: Handle extractedInformation array format first
-      if (data.extractedInformation && Array.isArray(data.extractedInformation)) {
-        console.log('🧠 DEBUG: Processing extractedInformation array with', data.extractedInformation.length, 'items');
+      // 🔧 CRITICAL FIX: Handle extractedInformation and extractedMemories array formats first
+      const processMemoryArray = (arrayData: any[], arrayName: string) => {
+        console.log(`🧠 DEBUG: Processing ${arrayName} array with ${arrayData.length} items`);
         
-        // Process each extracted information item
-        data.extractedInformation.forEach((item: any, index: number) => {
-          console.log(`🧠 DEBUG: Processing item ${index}:`, item);
+        arrayData.forEach((item: any, index: number) => {
+          console.log(`🧠 DEBUG: Processing ${arrayName} item ${index}:`, item);
           
-          if (item.category && item.data) {
-            // Map categories to our canonical structure
-            const category = item.category.toLowerCase();
-            let targetSection = 'personalCharacteristics'; // Default section
-            
-            if (category.includes('interest') || category.includes('hobby') || category.includes('like')) {
-              targetSection = 'personalCharacteristics';
-              if (!transformed[targetSection]) transformed[targetSection] = {};
-              if (!transformed[targetSection].interests) transformed[targetSection].interests = [];
-              transformed[targetSection].interests.push(item.data);
-              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.interests`);
-            } else if (category.includes('preference') || category.includes('favorite')) {
-              targetSection = 'preferences';
-              if (!transformed[targetSection]) transformed[targetSection] = {};
-              transformed[targetSection][category] = item.data;
-              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category}`);
-            } else if (category.includes('identity') || category.includes('personal')) {
-              targetSection = 'coreIdentity';
-              if (!transformed[targetSection]) transformed[targetSection] = {};
-              transformed[targetSection][category] = item.data;
-              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category}`);
-            } else {
-              // Default to personalCharacteristics for other categories
-              if (!transformed[targetSection]) transformed[targetSection] = {};
-              transformed[targetSection][category] = item.data;
-              console.log(`🧠 MAPPED: "${item.data}" → ${targetSection}.${category} (default)`);
-            }
+          // Handle different item structures
+          let category: string, value: any, key: string;
+          
+          if (item.category && (item.data || item.value)) {
+            // Format: {category: "Personal identity", data: "John" / value: "John"}
+            category = item.category.toLowerCase();
+            value = item.data || item.value;
+            key = item.key || category;
+          } else if (item.key && item.value) {
+            // Format: {key: "name", value: "John", category?: "Personal identity"}
+            key = item.key.toLowerCase();
+            value = item.value;
+            category = item.category?.toLowerCase() || key;
+          } else {
+            console.log(`🧠 WARN: Unrecognized ${arrayName} item format:`, item);
+            return;
           }
+          
+          // Map categories to our canonical structure
+          let targetSection = 'personalCharacteristics'; // Default section
+          let fieldName = key;
+          
+          if (category.includes('identity') || category.includes('personal') || 
+              key === 'name' || key === 'firstname' || key === 'lastname' || 
+              key === 'location' || key === 'occupation' || key === 'fullname') {
+            targetSection = 'coreIdentity';
+            // Map specific identity fields
+            if (key === 'name' || key === 'fullname') fieldName = 'fullName';
+            else if (key === 'firstname') fieldName = 'firstName';
+            else if (key === 'lastname') fieldName = 'lastName';
+            else if (key === 'location') fieldName = 'location';
+            else if (key === 'occupation') fieldName = 'occupation';
+          } else if (category.includes('interest') || category.includes('hobby') || category.includes('like')) {
+            targetSection = 'personalCharacteristics';
+            if (!transformed[targetSection]) transformed[targetSection] = {};
+            if (!transformed[targetSection].interests) transformed[targetSection].interests = [];
+            transformed[targetSection].interests.push(value);
+            console.log(`🧠 MAPPED: "${value}" → ${targetSection}.interests`);
+            return; // Early return for interests
+          } else if (category.includes('preference') || category.includes('favorite')) {
+            targetSection = 'preferences';
+            fieldName = category.replace(/[^a-z]/g, '') || key;
+          } else if (category.includes('work') || category.includes('technology') || category.includes('goal')) {
+            targetSection = 'practical';
+          } else if (category.includes('emotion') || category.includes('value') || category.includes('belief')) {
+            targetSection = 'personalCharacteristics';
+            fieldName = category.replace(/[^a-z]/g, '') || key;
+          }
+          
+          // Initialize target section if needed
+          if (!transformed[targetSection]) transformed[targetSection] = {};
+          
+          // Store the value
+          transformed[targetSection][fieldName] = value;
+          console.log(`🧠 MAPPED: "${value}" → ${targetSection}.${fieldName}`);
         });
         
-        console.log('🧠 DEBUG: After processing extractedInformation array:', transformed);
+        console.log(`🧠 DEBUG: After processing ${arrayName} array:`, transformed);
+      };
+      
+      // Handle extractedInformation array format
+      if (data.extractedInformation && Array.isArray(data.extractedInformation)) {
+        processMemoryArray(data.extractedInformation, 'extractedInformation');
       }
       
-      // Map AI structure variations to our canonical structure
-      const mappings = {
-        // AI Output → Our Structure
-        'personalIdentity': 'coreIdentity',
-        'personalInfo': 'coreIdentity', 
-        'identity': 'coreIdentity',
-        'basic': 'coreIdentity',
+      // Handle extractedMemories array format (common LLM output)
+      if (data.extractedMemories && Array.isArray(data.extractedMemories)) {
+        processMemoryArray(data.extractedMemories, 'extractedMemories');
+      }
+      
+      // Map AI structure variations to our canonical structure using dynamic pattern matching
+      const createDynamicMapping = (data: any): { [key: string]: string } => {
+        const mappings: { [key: string]: string } = {};
+        const dataKeys = Object.keys(data);
         
-        'characteristics': 'personalCharacteristics',
-        'personality': 'personalCharacteristics',
-        'traits': 'personalCharacteristics',
-        'interestsAndHobbies': 'personalCharacteristics',
-        'interests': 'personalCharacteristics', // Map interests to personalCharacteristics
+        // Define pattern-based mapping rules
+        const mappingRules = [
+          // Core Identity patterns
+          { patterns: ['identity', 'personal', 'name', 'location', 'occupation', 'basic'], target: 'coreIdentity' },
+          
+          // Personal Characteristics patterns  
+          { patterns: ['characteristics', 'personality', 'traits', 'interests', 'hobbies'], target: 'personalCharacteristics' },
+          
+          // Preferences patterns
+          { patterns: ['preferences', 'likes', 'favorites', 'communication'], target: 'preferences' },
+          
+          // Relationship patterns
+          { patterns: ['relationships', 'family', 'social', 'connections'], target: 'relationship' },
+          
+          // Context patterns
+          { patterns: ['context', 'background', 'situation', 'work', 'life'], target: 'context' },
+          
+          // Emotional patterns
+          { patterns: ['emotional', 'emotions', 'feelings', 'values', 'beliefs'], target: 'emotional' },
+          
+          // Practical patterns
+          { patterns: ['practical', 'logistics', 'details', 'technology', 'goals', 'aspirations'], target: 'practical' },
+          
+          // Interactions patterns
+          { patterns: ['interactions', 'communication', 'history'], target: 'interactions' }
+        ];
         
-        'preferences': 'preferences',
-        'likes': 'preferences',
-        'favorites': 'preferences',
+        // Apply pattern matching to each data key
+        for (const dataKey of dataKeys) {
+          const lowerKey = dataKey.toLowerCase();
+          let bestMatch = { target: 'personalCharacteristics', score: 0 }; // Default fallback
+          
+          for (const rule of mappingRules) {
+            for (const pattern of rule.patterns) {
+              // Calculate similarity score
+              let score = 0;
+              if (lowerKey === pattern) {
+                score = 1.0; // Exact match
+              } else if (lowerKey.includes(pattern) || pattern.includes(lowerKey)) {
+                score = 0.8; // Partial match
+              } else if (lowerKey.replace(/[^a-z]/g, '').includes(pattern.replace(/[^a-z]/g, ''))) {
+                score = 0.6; // Fuzzy match
+              }
+              
+              if (score > bestMatch.score) {
+                bestMatch = { target: rule.target, score };
+              }
+            }
+          }
+          
+          // Only map if we have reasonable confidence
+          if (bestMatch.score > 0.5) {
+            mappings[dataKey] = bestMatch.target;
+            console.log(`🧠 DYNAMIC MAP: "${dataKey}" → "${bestMatch.target}" (score: ${bestMatch.score})`);
+          } else {
+            // Default mapping for unrecognized keys
+            mappings[dataKey] = 'personalCharacteristics';
+            console.log(`🧠 DEFAULT MAP: "${dataKey}" → "personalCharacteristics" (fallback)`);
+          }
+        }
         
-        'relationships': 'relationship',
-        'family': 'relationship',
-        'social': 'relationship',
-        
-        'interactions': 'interactions',
-        'communication': 'interactions',
-        
-        'context': 'context',
-        'background': 'context',
-        'situation': 'context',
-        'workContext': 'practical', // Map work context to practical info
-        
-        'emotional': 'emotional',
-        'emotions': 'emotional',
-        'feelings': 'emotional',
-        
-        'practical': 'practical',
-        'logistics': 'practical',
-        'details': 'practical',
-        'technology': 'practical' // Map technology info to practical
+        return mappings;
       };
+      
+      const mappings = createDynamicMapping(data);
       
       // Transform each section with flexible field handling
       for (const [aiKey, canonicalKey] of Object.entries(mappings)) {
@@ -684,12 +751,26 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
         }
       }
       
-      // Also include any data that already matches our canonical structure
-      const canonicalKeys = ['coreIdentity', 'personalCharacteristics', 'preferences', 'relationship', 'interactions', 'context', 'emotional', 'practical'];
-      for (const key of canonicalKeys) {
-        if (data[key]) {
+      // Also include any data that already matches our canonical structure or is otherwise unmapped
+      const canonicalTargets = ['coreIdentity', 'personalCharacteristics', 'preferences', 'relationship', 'interactions', 'context', 'emotional', 'practical'];
+      const allDataKeys = Object.keys(data);
+      
+      for (const key of allDataKeys) {
+        // Skip metadata keys
+        if (['hasMemoryData', 'confidence', 'reasoning', 'metadata', 'extractedAt', 'source', 'relevanceScore'].includes(key)) {
+          continue;
+        }
+        
+        // If it's already a canonical key, preserve it
+        if (canonicalTargets.includes(key)) {
           console.log(`🧠 CANONICAL: Using existing ${key}:`, data[key]);
           transformed[key] = { ...transformed[key], ...data[key] };
+        }
+        // If we haven't mapped this key yet and it has data, try to include it
+        else if (!mappings[key] && data[key] && typeof data[key] === 'object') {
+          console.log(`🧠 UNMAPPED: Adding unmapped key "${key}" to personalCharacteristics`);
+          if (!transformed.personalCharacteristics) transformed.personalCharacteristics = {};
+          transformed.personalCharacteristics[key] = data[key];
         }
       }
       
@@ -698,6 +779,7 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
     };
     
     // NEW: Recursively flatten objects of the form { value, confidence } -> value
+    // Also remove numbered keys (0, 1, 2, etc.) that represent character arrays
     const flattenValueConfidence = (obj: any): any => {
       if (Array.isArray(obj)) {
         return obj.map(item => flattenValueConfidence(item));
@@ -708,8 +790,28 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
         if (('value' in obj) && ('confidence' in obj) && keys.length <= 2) {
           return flattenValueConfidence(obj.value);
         }
+        
+        // Clean up objects that have both numbered keys and a value field
+        if ('value' in obj) {
+          const hasNumberedKeys = keys.some(key => !isNaN(Number(key)));
+          if (hasNumberedKeys) {
+            // Extract only the value and non-numbered keys
+            const cleanedObj: any = {};
+            for (const key of keys) {
+              if (isNaN(Number(key))) { // Keep non-numbered keys
+                cleanedObj[key] = flattenValueConfidence(obj[key]);
+              }
+            }
+            return cleanedObj;
+          }
+        }
+        
         const result: any = {};
         for (const key of keys) {
+          // Skip numbered keys that represent character arrays
+          if (!isNaN(Number(key))) {
+            continue;
+          }
           result[key] = flattenValueConfidence(obj[key]);
         }
         return result;
@@ -726,27 +828,54 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       const hasMemoryDataKey = fuzzyKeyMatch('hasMemoryData', keys) || 'hasMemoryData';
       const providedHasMemoryData = data[hasMemoryDataKey];
       
-      // Determine extracted memory payload
-      const canonicalKeys = ['coreIdentity', 'personalCharacteristics', 'preferences', 'relationship', 'interactions', 'context', 'emotional', 'practical'];
-      const hasCanonicalTopLevel = canonicalKeys.some(k => k in data);
-      
-      // Prefer explicit extractedMemory if present, otherwise use top-level canonical sections
+      // Dynamically determine what keys are present (excluding metadata keys)
+      const excludeKeys = ['hasMemoryData', 'confidence', 'reasoning', 'metadata', 'extractedAt', 'source', 'relevanceScore'];
       const memoryDataVariations = ['extractedMemory', 'memoryData', 'memory', 'userData', 'userInfo', 'data'];
-      const memoryDataKey = keys.find(k => fuzzyKeyMatch('extractedMemory', [k]) || memoryDataVariations.some(variation => fuzzyKeyMatch(variation, [k], 0.1)))
-        || (hasCanonicalTopLevel ? '__top_level__' : 'extractedMemory');
       
-      console.log('🧠 DEBUG: Using memory data key:', memoryDataKey, 'from available keys:', keys);
+      // Check if there's an explicit memory container key
+      const explicitMemoryKey = keys.find(k => 
+        fuzzyKeyMatch('extractedMemory', [k]) || 
+        memoryDataVariations.some(variation => fuzzyKeyMatch(variation, [k], 0.1))
+      );
+      
+      // Dynamically detect data keys (any key that's not in exclude list and contains object data)
+      const potentialDataKeys = keys.filter(key => {
+        if (excludeKeys.includes(key)) return false;
+        const value = data[key];
+        return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+      });
+      
+      console.log('🧠 DEBUG: Dynamic key detection:');
+      console.log('  - Available keys:', keys);
+      console.log('  - Excluded metadata keys:', excludeKeys);
+      console.log('  - Explicit memory key found:', explicitMemoryKey);
+      console.log('  - Potential data keys detected:', potentialDataKeys);
       
       let rawExtractedMemory: any = {};
-      if (memoryDataKey === '__top_level__') {
-        // Build object from canonical sections present at top level
+      
+      if (explicitMemoryKey) {
+        // Use the explicit memory container
+        rawExtractedMemory = data[explicitMemoryKey] || {};
+        console.log('🧠 DEBUG: Using explicit memory container:', explicitMemoryKey);
+      } else if (potentialDataKeys.length > 0) {
+        // Build from all detected data keys at top level
         rawExtractedMemory = {};
-        for (const key of canonicalKeys) {
-          if (key in data) rawExtractedMemory[key] = data[key];
+        for (const key of potentialDataKeys) {
+          rawExtractedMemory[key] = data[key];
         }
+        console.log('🧠 DEBUG: Built from detected data keys:', potentialDataKeys);
       } else {
-        rawExtractedMemory = data[memoryDataKey] || {};
+        // Fallback: use any non-excluded keys
+        rawExtractedMemory = {};
+        for (const key of keys) {
+          if (!excludeKeys.includes(key)) {
+            rawExtractedMemory[key] = data[key];
+          }
+        }
+        console.log('🧠 DEBUG: Using fallback - all non-excluded keys');
       }
+      
+      console.log('🧠 DEBUG: Raw extracted memory keys:', Object.keys(rawExtractedMemory));
       
       // Transform AI structure to canonical structure
       let extractedMemory = transformToCanonicalStructure(rawExtractedMemory);
@@ -769,8 +898,37 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       const reasoning = data[reasoningKey];
       
       // Compute hasMemoryData: require actual data; respect explicit false
-      const hasData = Object.values(extractedMemory || {}).some(section => section && typeof section === 'object' && Object.keys(section).length > 0);
+      const hasData = Object.values(extractedMemory || {}).some(section => {
+        if (!section) return false;
+        if (typeof section === 'string' && section.trim() !== '' && section !== 'unknown') return true;
+        if (typeof section === 'object' && Object.keys(section).length > 0) {
+          // Check if the object has meaningful values (not just empty objects or metadata)
+          return Object.values(section).some(value => {
+            if (typeof value === 'string') return value.trim() !== '' && value !== 'unknown';
+            if (typeof value === 'number') return true;
+            if (Array.isArray(value)) return value.length > 0;
+            if (typeof value === 'object' && value !== null) {
+              // For nested objects, check if they have any non-empty values
+              return Object.values(value).some(nestedValue => {
+                if (typeof nestedValue === 'string') return nestedValue.trim() !== '' && nestedValue !== 'unknown';
+                if (typeof nestedValue === 'number') return true;
+                if (Array.isArray(nestedValue)) return nestedValue.length > 0;
+                return nestedValue != null;
+              });
+            }
+            return value != null;
+          });
+        }
+        return false;
+      });
+      
       const hasMemoryData = hasData && providedHasMemoryData !== false;
+      
+      console.log('🧠 DEBUG: Data validation result:');
+      console.log('  - extractedMemory keys:', Object.keys(extractedMemory || {}));
+      console.log('  - hasData:', hasData);
+      console.log('  - providedHasMemoryData:', providedHasMemoryData);
+      console.log('  - final hasMemoryData:', hasMemoryData);
       
       const result: MemoryExtractionResponse = {
         hasMemoryData,
@@ -846,7 +1004,8 @@ Extract and categorize any personal information according to the provided schema
           autoModelSelection: false,
           enableMCP: false,
           enableStructuredToolCalling: true, // Force structured output ALWAYS
-          enableNativeJSONSchema: true // Force native JSON schema ALWAYS
+          enableNativeJSONSchema: true, // Force native JSON schema ALWAYS
+          enableMemory: false // Disable memory for memory extraction to avoid recursion
         },
         autonomousAgent: {
           enabled: false,

@@ -7,13 +7,64 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
+
+// SearXNG and Web Content constants
+const (
+	SearXNGImage    = "searxng/searxng:latest"
+	ContainerName   = "clara-searxng"
+	SearXNGPort     = "8080"
+	SearXNGURL      = "http://localhost:8080"
+	HealthCheckPath = "/healthz"
+	SearchPath      = "/search"
+	ConfigPath      = "./searxng-config"
+)
+
+// Web content and search types
+type SearchResult struct {
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	PublishedAt string `json:"publishedDate,omitempty"`
+	Engine      string `json:"engine"`
+}
+
+type SearchResponse struct {
+	Query           string         `json:"query"`
+	NumberOfResults int            `json:"number_of_results"`
+	Results         []SearchResult `json:"results"`
+	Infoboxes       []interface{}  `json:"infoboxes"`
+	Suggestions     []string       `json:"suggestions"`
+	AnswerBox       interface{}    `json:"answer"`
+}
+
+type WebContent struct {
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	Description string `json:"description"`
+	StatusCode  int    `json:"status_code"`
+	Error       string `json:"error,omitempty"`
+}
+
+type SearXNGManager struct {
+	containerID string
+	isRunning   bool
+}
+
+type WebContentFetcher struct {
+	client *http.Client
+}
 
 // Core types
 type MCPRequest struct {
@@ -370,6 +421,41 @@ func (s *PythonMCPServer) getTools() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		{
+			Name:        "search",
+			Description: "Search the web using SearXNG private search engine. Performs privacy-focused web searches using a local SearXNG Docker container. Automatically starts the SearXNG service if needed, searches for the specified query, and returns structured results with titles, URLs, content snippets, and source engines. Perfect for research, fact-checking, finding documentation, or gathering information while maintaining privacy. Results include suggestions and can be filtered by various search engines.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query to execute (e.g., 'golang web scraping', 'machine learning tutorials', 'docker best practices'). Use natural language or specific keywords.",
+					},
+					"num_results": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum number of search results to return (default: 10, max: 20). More results provide broader coverage but take longer to process.",
+						"default":     10,
+						"minimum":     1,
+						"maximum":     20,
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "fetch_content",
+			Description: "Fetch and extract content from web pages. Downloads HTML content from specified URLs and intelligently extracts the main text content, title, and meta description. Handles redirects, validates content types, and cleans extracted text. Perfect for reading articles, documentation, blog posts, or any web content for analysis or summarization. Respects web standards and includes proper browser headers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"url": map[string]interface{}{
+						"type":        "string",
+						"description": "URL to fetch content from (e.g., 'https://example.com/article', 'https://docs.python.org/3/'). Must be a valid HTTP/HTTPS URL pointing to HTML content.",
+					},
+				},
+				"required": []string{"url"},
+			},
+		},
 	}
 }
 
@@ -632,6 +718,588 @@ func (s *PythonMCPServer) open(params map[string]interface{}) string {
 	return fmt.Sprintf("Opened workspace folder: %s", s.workspaceDir)
 }
 
+// Embedded SearXNG and Web Content functionality
+
+// NewSearXNGManager creates a new SearXNG manager
+func NewSearXNGManager() *SearXNGManager {
+	return &SearXNGManager{}
+}
+
+// NewWebContentFetcher creates a new web content fetcher
+func NewWebContentFetcher() *WebContentFetcher {
+	return &WebContentFetcher{
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("too many redirects")
+				}
+				return nil
+			},
+		},
+	}
+}
+
+// CheckDockerInstalled checks if Docker is available
+func (sm *SearXNGManager) CheckDockerInstalled() error {
+	cmd := exec.Command("docker", "--version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Docker is not installed or not running. Please install Docker Desktop and ensure it's running")
+	}
+	return nil
+}
+
+// CheckContainerExists checks if the SearXNG container exists
+func (sm *SearXNGManager) CheckContainerExists() bool {
+	cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("name=%s", ContainerName), "--format", "{{.Names}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(output)) == ContainerName
+}
+
+// CheckContainerRunning checks if the SearXNG container is running
+func (sm *SearXNGManager) CheckContainerRunning() bool {
+	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=%s", ContainerName), "--format", "{{.Names}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(output)) == ContainerName
+}
+
+// CreateSearXNGConfig creates a proper SearXNG configuration
+func (sm *SearXNGManager) CreateSearXNGConfig() error {
+	configDir := "searxng-config"
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %v", err)
+	}
+
+	settingsContent := `# SearXNG settings for Clara MCP
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "Clara SearXNG"
+  contact_url: false
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "clara-secret-key-for-searxng"
+  base_url: false
+  image_proxy: true
+  static_use_hash: false
+
+ui:
+  static_use_hash: false
+  default_locale: "en"
+  query_in_title: false
+  infinite_scroll: false
+  center_alignment: false
+  cache_url: "https://web.archive.org/web/"
+  search_on_category_select: true
+  hotkeys: default
+
+# Disable bot detection for local use
+botdetection:
+  ip_limit:
+    filter_link_local: false
+    link_token: false
+  ip_lists:
+    pass_searx_org: false
+    pass_ip: []
+    block_ip: []
+
+# Enable all default engines
+engines:
+  - name: google
+    engine: google
+    use_mobile_ui: false
+
+  - name: bing
+    engine: bing
+
+  - name: duckduckgo
+    engine: duckduckgo
+    
+  - name: wikipedia
+    engine: wikipedia
+
+  - name: github
+    engine: github
+
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Search on category select'
+  - 'Self Information'
+  - 'Tracker URL remover'
+  - 'Ahmia blacklist'
+`
+
+	settingsPath := filepath.Join(configDir, "settings.yml")
+	if err := ioutil.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		return fmt.Errorf("failed to write settings.yml: %v", err)
+	}
+
+	// Create limiter.toml to avoid warnings
+	limiterContent := `# SearXNG limiter configuration
+[botdetection.ip_limit]
+# Disable aggressive bot detection for local use
+filter_link_local = false
+
+[botdetection.ip_lists]
+pass_ip = ["127.0.0.1", "::1", "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"]
+`
+
+	limiterPath := filepath.Join(configDir, "limiter.toml")
+	if err := ioutil.WriteFile(limiterPath, []byte(limiterContent), 0644); err != nil {
+		return fmt.Errorf("failed to write limiter.toml: %v", err)
+	}
+
+	fmt.Printf("✅ Created SearXNG configuration in %s\n", configDir)
+	return nil
+}
+
+// StartContainer starts the SearXNG container
+func (sm *SearXNGManager) StartContainer() error {
+	if err := sm.CheckDockerInstalled(); err != nil {
+		return err
+	}
+
+	// Check if container is already running
+	if sm.CheckContainerRunning() {
+		fmt.Println("✅ SearXNG container is already running")
+		sm.isRunning = true
+		return nil
+	}
+
+	// Create configuration first
+	if err := sm.CreateSearXNGConfig(); err != nil {
+		return fmt.Errorf("failed to create SearXNG config: %v", err)
+	}
+
+	// Pull image if not exists
+	fmt.Println("🐳 Pulling SearXNG Docker image...")
+	pullCmd := exec.Command("docker", "pull", SearXNGImage)
+	if err := pullCmd.Run(); err != nil {
+		return fmt.Errorf("failed to pull SearXNG image: %v", err)
+	}
+
+	// Get absolute path to config
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %v", err)
+	}
+	configAbsPath := filepath.Join(cwd, "searxng-config")
+
+	// Check if container exists but is stopped
+	if sm.CheckContainerExists() {
+		fmt.Println("🚀 Starting existing SearXNG container...")
+		cmd := exec.Command("docker", "start", ContainerName)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to start existing container: %v", err)
+		}
+	} else {
+		// Create and start new container with proper configuration and volume mount
+		fmt.Println("🚀 Creating and starting SearXNG container...")
+		cmd := exec.Command("docker", "run", "-d",
+			"--name", ContainerName,
+			"-p", fmt.Sprintf("%s:8080", SearXNGPort),
+			"-v", fmt.Sprintf("%s:/etc/searxng", configAbsPath),
+			"-e", "SEARXNG_BASE_URL=http://localhost:8080/",
+			"-e", "SEARXNG_SECRET=clara-secret-key-for-searxng",
+			"--add-host=host.docker.internal:host-gateway", // For localhost access
+			SearXNGImage)
+
+		output, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to create container: %v", err)
+		}
+		sm.containerID = strings.TrimSpace(string(output))
+	}
+
+	// Wait for container to be healthy
+	return sm.WaitForHealthy()
+}
+
+// WaitForHealthy waits for the SearXNG container to be ready
+func (sm *SearXNGManager) WaitForHealthy() error {
+	fmt.Println("⏳ Waiting for SearXNG to be ready...")
+
+	timeout := 60 * time.Second
+	start := time.Now()
+
+	for time.Since(start) < timeout {
+		if !sm.CheckContainerRunning() {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(SearXNGURL + "/")
+		if err == nil && resp.StatusCode == 200 {
+			resp.Body.Close()
+			fmt.Println("✅ SearXNG is ready!")
+			sm.isRunning = true
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+
+	return fmt.Errorf("timeout waiting for SearXNG to be ready")
+}
+
+// SearchSearXNG performs a search using SearXNG
+func (sm *SearXNGManager) SearchSearXNG(query string, numResults int) (*SearchResponse, error) {
+	if !sm.isRunning && !sm.CheckContainerRunning() {
+		return nil, fmt.Errorf("SearXNG container is not running")
+	}
+
+	if numResults <= 0 {
+		numResults = 10
+	}
+
+	// Build search URL
+	searchURL := fmt.Sprintf("%s%s?q=%s&format=json&pageno=1",
+		SearXNGURL, SearchPath,
+		strings.ReplaceAll(query, " ", "+"))
+
+	fmt.Printf("🔍 Searching for: %s\n", query)
+
+	// Perform HTTP request with proper headers for SearXNG
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create search request: %v", err)
+	}
+
+	// Add headers to satisfy SearXNG bot detection
+	req.Header.Set("User-Agent", "Clara-MCP-Client/1.0")
+	req.Header.Set("Accept", "application/json, text/html")
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-IP", "127.0.0.1")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("search request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("search failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse JSON response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var searchResp SearchResponse
+	if err := json.Unmarshal(body, &searchResp); err != nil {
+		return nil, fmt.Errorf("failed to parse search response: %v", err)
+	}
+
+	// Limit results
+	if len(searchResp.Results) > numResults {
+		searchResp.Results = searchResp.Results[:numResults]
+	}
+	searchResp.NumberOfResults = len(searchResp.Results)
+
+	fmt.Printf("✅ Found %d results\n", searchResp.NumberOfResults)
+	return &searchResp, nil
+}
+
+// FetchContent fetches and extracts content from a URL
+func (wf *WebContentFetcher) FetchContent(targetURL string) *WebContent {
+	result := &WebContent{
+		URL: targetURL,
+	}
+
+	// Validate URL
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		result.Error = fmt.Sprintf("Invalid URL: %v", err)
+		return result
+	}
+
+	// Ensure URL has scheme
+	if parsedURL.Scheme == "" {
+		targetURL = "https://" + targetURL
+		result.URL = targetURL
+	}
+
+	// Create request with proper headers
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		result.Error = fmt.Sprintf("Failed to create request: %v", err)
+		return result
+	}
+
+	// Set realistic browser headers
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Connection", "keep-alive")
+
+	// Perform request
+	resp, err := wf.client.Do(req)
+	if err != nil {
+		result.Error = fmt.Sprintf("Request failed: %v", err)
+		return result
+	}
+	defer resp.Body.Close()
+
+	result.StatusCode = resp.StatusCode
+
+	// Check if response is successful
+	if resp.StatusCode >= 400 {
+		result.Error = fmt.Sprintf("HTTP error: %d %s", resp.StatusCode, resp.Status)
+		return result
+	}
+
+	// Check content type
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "text/html") {
+		result.Error = fmt.Sprintf("Content type not supported: %s", contentType)
+		return result
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Error = fmt.Sprintf("Failed to read response: %v", err)
+		return result
+	}
+
+	html := string(body)
+
+	// Extract content
+	result.Title = wf.extractTitle(html)
+	result.Description = wf.extractDescription(html)
+	result.Content = wf.extractTextContent(html)
+
+	return result
+}
+
+// extractTitle extracts the page title
+func (wf *WebContentFetcher) extractTitle(html string) string {
+	titleRegex := regexp.MustCompile(`(?i)<title[^>]*>([^<]*)</title>`)
+	matches := titleRegex.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(wf.cleanText(matches[1]))
+	}
+	return ""
+}
+
+// extractDescription extracts meta description
+func (wf *WebContentFetcher) extractDescription(html string) string {
+	// Try meta description
+	descRegex := regexp.MustCompile(`(?i)<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']*)["\']`)
+	matches := descRegex.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(wf.cleanText(matches[1]))
+	}
+
+	// Try og:description
+	ogDescRegex := regexp.MustCompile(`(?i)<meta[^>]*property=["\']og:description["\'][^>]*content=["\']([^"\']*)["\']`)
+	matches = ogDescRegex.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(wf.cleanText(matches[1]))
+	}
+
+	return ""
+}
+
+// extractTextContent extracts main text content
+func (wf *WebContentFetcher) extractTextContent(html string) string {
+	// Remove script and style tags
+	scriptRegex := regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
+	html = scriptRegex.ReplaceAllString(html, "")
+
+	styleRegex := regexp.MustCompile(`(?i)<style[^>]*>.*?</style>`)
+	html = styleRegex.ReplaceAllString(html, "")
+
+	// Try to extract content from common content containers
+	contentSelectors := []string{
+		`(?i)<article[^>]*>(.*?)</article>`,
+		`(?i)<main[^>]*>(.*?)</main>`,
+		`(?i)<div[^>]*class=["\'][^"\']*content[^"\']*["\'][^>]*>(.*?)</div>`,
+		`(?i)<p[^>]*>(.*?)</p>`,
+	}
+
+	var extractedText []string
+
+	for _, selector := range contentSelectors {
+		regex := regexp.MustCompile(selector)
+		matches := regex.FindAllStringSubmatch(html, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				text := wf.cleanText(match[1])
+				if len(text) > 50 {
+					extractedText = append(extractedText, text)
+				}
+			}
+		}
+		if len(extractedText) > 0 {
+			break
+		}
+	}
+
+	// Fallback: extract all text content
+	if len(extractedText) == 0 {
+		tagRegex := regexp.MustCompile(`<[^>]*>`)
+		text := tagRegex.ReplaceAllString(html, " ")
+		extractedText = append(extractedText, wf.cleanText(text))
+	}
+
+	// Join and limit content
+	content := strings.Join(extractedText, "\n\n")
+	if len(content) > 2000 {
+		content = content[:2000] + "..."
+	}
+
+	return content
+}
+
+// cleanText cleans extracted text
+func (wf *WebContentFetcher) cleanText(text string) string {
+	// Decode HTML entities
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "&lt;", "<")
+	text = strings.ReplaceAll(text, "&gt;", ">")
+	text = strings.ReplaceAll(text, "&quot;", "\"")
+	text = strings.ReplaceAll(text, "&#39;", "'")
+	text = strings.ReplaceAll(text, "&nbsp;", " ")
+
+	// Remove excessive whitespace
+	spaceRegex := regexp.MustCompile(`\s+`)
+	text = spaceRegex.ReplaceAllString(text, " ")
+
+	return strings.TrimSpace(text)
+}
+
+// search performs web search using embedded SearXNG functionality
+func (s *PythonMCPServer) search(params map[string]interface{}) string {
+	query, ok := params["query"].(string)
+	if !ok {
+		return "ERROR: Need 'query' parameter"
+	}
+
+	// Get optional num_results parameter
+	numResults := 10
+	if nr, ok := params["num_results"].(float64); ok {
+		numResults = int(nr)
+		if numResults < 1 {
+			numResults = 1
+		} else if numResults > 20 {
+			numResults = 20
+		}
+	}
+
+	// Create SearXNG manager
+	manager := NewSearXNGManager()
+
+	// Start SearXNG container if not running
+	wasRunning := manager.CheckContainerRunning()
+	if !wasRunning {
+		if err := manager.StartContainer(); err != nil {
+			return fmt.Sprintf("ERROR: Failed to start SearXNG: %v", err)
+		}
+	}
+
+	// Perform search
+	results, err := manager.SearchSearXNG(query, numResults)
+	if err != nil {
+		return fmt.Sprintf("ERROR: Search failed: %v", err)
+	}
+
+	// Format results
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("🔍 SEARCH RESULTS for: %s\n", query))
+	output.WriteString(fmt.Sprintf("📊 Found %d results\n", results.NumberOfResults))
+	output.WriteString("⚡ Privacy-focused search via SearXNG\n\n")
+
+	for i, result := range results.Results {
+		output.WriteString(fmt.Sprintf("%d. %s\n", i+1, result.Title))
+		output.WriteString(fmt.Sprintf("   🔗 %s\n", result.URL))
+		if result.Content != "" {
+			content := strings.TrimSpace(result.Content)
+			if len(content) > 150 {
+				content = content[:150] + "..."
+			}
+			output.WriteString(fmt.Sprintf("   📝 %s\n", content))
+		}
+		if result.Engine != "" {
+			output.WriteString(fmt.Sprintf("   🔍 Source: %s\n", result.Engine))
+		}
+		output.WriteString("\n")
+	}
+
+	if len(results.Suggestions) > 0 {
+		output.WriteString(fmt.Sprintf("� Suggestions: %s\n", strings.Join(results.Suggestions, ", ")))
+	}
+
+	return output.String()
+}
+
+// fetchContent fetches and extracts content from a web page
+// fetchContent fetches and extracts content from a web page using embedded functionality
+func (s *PythonMCPServer) fetchContent(params map[string]interface{}) string {
+	url, ok := params["url"].(string)
+	if !ok {
+		return "ERROR: Need 'url' parameter"
+	}
+
+	// Create web content fetcher
+	fetcher := NewWebContentFetcher()
+
+	// Fetch content
+	result := fetcher.FetchContent(url)
+
+	if result.Error != "" {
+		return fmt.Sprintf("ERROR: %s", result.Error)
+	}
+
+	// Format output
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("🌐 WEB CONTENT EXTRACTED from: %s\n", result.URL))
+	output.WriteString(fmt.Sprintf("✅ Successfully fetched content (Status: %d)\n", result.StatusCode))
+	output.WriteString("📄 Smart content extraction with title, description, and main text\n\n")
+
+	if result.Title != "" {
+		output.WriteString(fmt.Sprintf("📰 Title: %s\n\n", result.Title))
+	}
+
+	if result.Description != "" {
+		output.WriteString(fmt.Sprintf("📝 Description: %s\n\n", result.Description))
+	}
+
+	if result.Content != "" {
+		output.WriteString(fmt.Sprintf("📄 Content:\n%s\n", result.Content))
+	}
+
+	return output.String()
+}
+
 // handleRequest processes requests
 func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 	resp := MCPResponse{
@@ -684,6 +1352,10 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 			result = s.ls(params.Arguments)
 		case "open":
 			result = s.open(params.Arguments)
+		case "search":
+			result = s.search(params.Arguments)
+		case "fetch_content":
+			result = s.fetchContent(params.Arguments)
 		default:
 			resp.Error = &MCPError{Code: -32603, Message: "Unknown tool"}
 			return resp

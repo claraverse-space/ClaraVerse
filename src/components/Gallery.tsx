@@ -64,11 +64,14 @@ const Gallery: React.FC<GalleryProps> = ({
 }) => {
   // States
   const [images, setImages] = useState<GalleryImage[]>([]);
+  const [comfyUIImages, setComfyUIImages] = useState<GalleryImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [imageSource, setImageSource] = useState<'all' | 'clara' | 'comfyui'>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('masonry');
+  const [isLoadingComfyUI, setIsLoadingComfyUI] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'masonry'>('grid');
   const [darkMode, setDarkMode] = useState(isDarkMode);
 
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
@@ -84,7 +87,7 @@ const Gallery: React.FC<GalleryProps> = ({
     setDarkMode(isDarkMode);
   }, [isDarkMode]);
 
-  // Load images on mount
+  // Load Clara images on mount
   useEffect(() => {
     const loadImages = async () => {
       setIsLoading(true);
@@ -104,13 +107,14 @@ const Gallery: React.FC<GalleryProps> = ({
             likes: item.likes ?? 0,
             views: item.views ?? 0,
             model: item.model || 'SD-Model',
-            resolution: item.resolution || '1024x1024'
+            resolution: item.resolution || '1024x1024',
+            source: 'clara'
           };
         });
         setImages(galleryImages);
       } catch (error) {
-        console.error('Error loading images from DB:', error);
-        showToast('Failed to load images', 'error');
+        console.error('Error loading Clara images from DB:', error);
+        showToast('Failed to load Clara images', 'error');
       } finally {
         setIsLoading(false);
       }
@@ -118,6 +122,137 @@ const Gallery: React.FC<GalleryProps> = ({
 
     loadImages();
   }, []);
+
+  // Load ComfyUI images
+  const loadComfyUIImages = async () => {
+    setIsLoadingComfyUI(true);
+    try {
+      const comfyuiImageList = await window.electronAPI?.invoke('comfyui:list-output-images') || [];
+      
+      const processedImages: GalleryImage[] = await Promise.all(
+        comfyuiImageList.map(async (img: any) => {
+          try {
+            // Get the image data as base64
+            const dataUrl = await window.electronAPI?.invoke('comfyui:get-image-data', img.path);
+            
+            return {
+              id: img.id,
+              url: dataUrl || img.url,
+              prompt: img.prompt,
+              createdAt: img.modified,
+              likes: 0,
+              views: 0,
+              model: 'ComfyUI',
+              resolution: 'Unknown',
+              source: 'comfyui',
+              originalPath: img.path,
+              fileSize: img.size
+            };
+          } catch (error) {
+            console.error('Error processing ComfyUI image:', img.name, error);
+            return null;
+          }
+        })
+      );
+
+      const validImages = processedImages.filter(img => img !== null) as GalleryImage[];
+      setComfyUIImages(validImages);
+      
+      if (validImages.length > 0) {
+        showToast(`Loaded ${validImages.length} ComfyUI images`);
+      }
+    } catch (error) {
+      console.error('Error loading ComfyUI images:', error);
+      showToast('Failed to load ComfyUI images', 'error');
+    } finally {
+      setIsLoadingComfyUI(false);
+    }
+  };
+
+  // Load ComfyUI images on mount and start watching
+  useEffect(() => {
+    loadComfyUIImages();
+    
+    // Start ComfyUI output watcher
+    const startWatcher = async () => {
+      try {
+        await window.electronAPI?.invoke('comfyui:start-output-watcher');
+        
+        // Listen for new ComfyUI images
+        const handleNewImage = async (imageInfo: any) => {
+          try {
+            const dataUrl = await window.electronAPI?.invoke('comfyui:get-image-data', imageInfo.path);
+            const newImage: GalleryImage = {
+              id: imageInfo.id,
+              url: dataUrl,
+              prompt: imageInfo.prompt,
+              createdAt: imageInfo.modified,
+              likes: 0,
+              views: 0,
+              model: 'ComfyUI',
+              resolution: 'Unknown',
+              source: 'comfyui',
+              originalPath: imageInfo.path,
+              fileSize: imageInfo.size
+            };
+            
+            setComfyUIImages(prev => [newImage, ...prev]);
+            showToast(`New ComfyUI image: ${imageInfo.name}`);
+          } catch (error) {
+            console.error('Error processing new ComfyUI image:', error);
+          }
+        };
+
+        window.electronAPI?.on('comfyui:new-output-image', handleNewImage);
+        
+        // Cleanup on unmount
+        return () => {
+          window.electronAPI?.off('comfyui:new-output-image', handleNewImage);
+          window.electronAPI?.invoke('comfyui:stop-output-watcher');
+        };
+      } catch (error) {
+        console.error('Error starting ComfyUI watcher:', error);
+      }
+    };
+
+    startWatcher();
+  }, []);
+
+  // Combine images based on source filter
+  const getAllImages = () => {
+    switch (imageSource) {
+      case 'clara':
+        return images;
+      case 'comfyui':
+        return comfyUIImages;
+      case 'all':
+      default:
+        return [...images, ...comfyUIImages];
+    }
+  };
+
+  // Determine which tabs to show and auto-switch if needed
+  const shouldShowTabs = () => {
+    const hasClaraImages = images.length > 0;
+    const hasComfyUIImages = comfyUIImages.length > 0;
+    return hasClaraImages && hasComfyUIImages;
+  };
+
+  // Auto-switch image source if current selection becomes empty
+  useEffect(() => {
+    const hasClaraImages = images.length > 0;
+    const hasComfyUIImages = comfyUIImages.length > 0;
+
+    if (imageSource === 'clara' && !hasClaraImages && hasComfyUIImages) {
+      setImageSource('comfyui');
+    } else if (imageSource === 'comfyui' && !hasComfyUIImages && hasClaraImages) {
+      setImageSource('clara');
+    } else if (imageSource !== 'all' && hasClaraImages && hasComfyUIImages) {
+      // Keep current selection if both sources have images
+    } else if (!hasClaraImages && !hasComfyUIImages) {
+      setImageSource('all');
+    }
+  }, [images.length, comfyUIImages.length, imageSource]);
 
   const showToast = (message: string, type = 'info') => {
     setToast({ show: true, message, type });
@@ -153,7 +288,7 @@ const Gallery: React.FC<GalleryProps> = ({
     return filtered;
   };
 
-  const displayedImages = applyFilterAndSort(images);
+  const displayedImages = applyFilterAndSort(getAllImages());
 
   // Handlers
   const handleImageClick = (image: GalleryImage) => {
@@ -186,15 +321,35 @@ const Gallery: React.FC<GalleryProps> = ({
 
   const handleDelete = async (imageId: string) => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
+    
     try {
-      await (db as any).deleteStorageItem(imageId);
-      setImages(prev => prev.filter(img => img.id !== imageId));
+      // Find the image to determine its source
+      const image = getAllImages().find(img => img.id === imageId);
+      if (!image) {
+        throw new Error('Image not found');
+      }
+
+      if (image.source === 'comfyui' && image.originalPath) {
+        // Delete ComfyUI image
+        const result = await window.electronAPI?.invoke('comfyui:delete-output-image', image.originalPath);
+        if (result?.success) {
+          setComfyUIImages(prev => prev.filter(img => img.id !== imageId));
+          showToast('ComfyUI image deleted successfully');
+        } else {
+          throw new Error('Failed to delete ComfyUI image');
+        }
+      } else {
+        // Delete Clara image
+        await (db as any).deleteStorageItem(imageId);
+        setImages(prev => prev.filter(img => img.id !== imageId));
+        showToast('Image deleted successfully');
+      }
+
       if (selectedImage && selectedImage.id === imageId) {
         setSelectedImage(null);
       }
-      showToast('Image deleted successfully');
     } catch (error) {
-      console.error('Error deleting image from DB:', error);
+      console.error('Error deleting image:', error);
       showToast('Failed to delete image', 'error');
     }
   };
@@ -256,7 +411,7 @@ const Gallery: React.FC<GalleryProps> = ({
           <div className="px-8 pt-6 pb-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-sakura-500 via-sakura-400 to-sakura-600 bg-clip-text text-transparent">
                   AI Gallery
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -271,7 +426,7 @@ const Gallery: React.FC<GalleryProps> = ({
                     onClick={() => setViewMode('grid')}
                     className={`p-2 rounded-lg transition-all duration-200 ${
                       viewMode === 'grid'
-                        ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg'
+                        ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-lg'
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                   >
@@ -281,7 +436,7 @@ const Gallery: React.FC<GalleryProps> = ({
                     onClick={() => setViewMode('masonry')}
                     className={`p-2 rounded-lg transition-all duration-200 ${
                       viewMode === 'masonry'
-                        ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg'
+                        ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-lg'
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                   >
@@ -293,6 +448,42 @@ const Gallery: React.FC<GalleryProps> = ({
 
             {/* Search and Filter Bar */}
             <div className="flex items-center gap-4 flex-wrap">
+              {/* Source Filter Tabs - Only show if both sources have images */}
+              {shouldShowTabs() && (
+                <div className="flex items-center bg-white/50 dark:bg-gray-800/50 rounded-xl p-1 border border-gray-200/50 dark:border-gray-700/50">
+                  <button
+                    onClick={() => setImageSource('all')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      imageSource === 'all'
+                        ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    All ({images.length + comfyUIImages.length})
+                  </button>
+                  <button
+                    onClick={() => setImageSource('clara')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      imageSource === 'clara'
+                        ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Clara ({images.length})
+                  </button>
+                  <button
+                    onClick={() => setImageSource('comfyui')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      imageSource === 'comfyui'
+                        ? 'bg-gradient-to-r from-sakura-500 to-sakura-600 text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    ComfyUI ({comfyUIImages.length})
+                  </button>
+                </div>
+              )}
+
               {/* Search */}
               <div className="relative flex-1 min-w-64">
                 <Search size={20} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -301,7 +492,7 @@ const Gallery: React.FC<GalleryProps> = ({
                   placeholder="Search your creations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full pl-12 pr-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sakura-500/50 focus:border-sakura-500/50 backdrop-blur-sm transition-all duration-200"
                 />
               </div>
               
@@ -310,7 +501,7 @@ const Gallery: React.FC<GalleryProps> = ({
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 backdrop-blur-sm transition-all duration-200"
+                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sakura-500/50 backdrop-blur-sm transition-all duration-200"
                 >
                   <option value="all">All Images</option>
                   <option value="favorites">Favorites</option>
@@ -320,7 +511,7 @@ const Gallery: React.FC<GalleryProps> = ({
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 backdrop-blur-sm transition-all duration-200"
+                  className="px-4 py-3 bg-white/70 dark:bg-gray-800/70 border border-gray-200/50 dark:border-gray-700/50 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sakura-500/50 backdrop-blur-sm transition-all duration-200"
                 >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
@@ -332,15 +523,17 @@ const Gallery: React.FC<GalleryProps> = ({
           
           {/* Gallery Content */}
           <div className="flex-1 overflow-y-auto p-8">
-            {isLoading ? (
+            {(isLoading || isLoadingComfyUI) ? (
               <div className="flex flex-col items-center justify-center h-64">
-                <div className="w-16 h-16 border-4 border-violet-200 dark:border-violet-800 border-t-violet-600 dark:border-t-violet-400 rounded-full animate-spin mb-4"></div>
-                <p className="text-gray-600 dark:text-gray-400">Loading your gallery...</p>
+                <div className="w-16 h-16 border-4 border-sakura-200 dark:border-sakura-800 border-t-sakura-500 dark:border-t-sakura-400 rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-600 dark:text-gray-400">
+                  {isLoading ? 'Loading Clara images...' : 'Loading ComfyUI images...'}
+                </p>
               </div>
             ) : displayedImages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 rounded-2xl flex items-center justify-center mb-4">
-                  <Palette size={32} className="text-violet-600 dark:text-violet-400" />
+                <div className="w-20 h-20 bg-gradient-to-br from-sakura-100 to-sakura-200 dark:from-sakura-900/30 dark:to-sakura-800/30 rounded-2xl flex items-center justify-center mb-4">
+                  <Palette size={32} className="text-sakura-500 dark:text-sakura-400" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No images found</h3>
                 <p className="text-gray-600 dark:text-gray-400 max-w-md">
@@ -349,21 +542,25 @@ const Gallery: React.FC<GalleryProps> = ({
               </div>
             ) : (
               <div 
-                className={`grid gap-6 ${
+                className={`grid gap-4 ${
                   viewMode === 'grid'
-                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+                    ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
                     : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
-                } auto-rows-min`}
+                }`}
               >
                 {displayedImages.map((image) => (
                   <div
                     key={image.id}
-                    className="group relative bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-200/50 dark:border-gray-700/50"
+                    className={`group relative bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-200/50 dark:border-gray-700/50 ${
+                      viewMode === 'grid' ? 'aspect-square' : ''
+                    }`}
                     onMouseEnter={() => setHoveredImageId(image.id)}
                     onMouseLeave={() => setHoveredImageId(null)}
                   >
                     {/* Image */}
-                    <div className="relative aspect-square overflow-hidden cursor-pointer" onClick={() => handleImageClick(image)}>
+                    <div className={`relative overflow-hidden cursor-pointer ${
+                      viewMode === 'grid' ? 'aspect-square' : 'aspect-[4/3]'
+                    }`} onClick={() => handleImageClick(image)}>
                       <img
                         src={image.url}
                         alt={image.prompt}
@@ -412,29 +609,44 @@ const Gallery: React.FC<GalleryProps> = ({
                       </div>
                     </div>
                     
-                    {/* Card Content */}
-                    <div className="p-4">
-                      <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 mb-3 leading-relaxed">
-                        {image.prompt || 'No prompt available'}
-                      </p>
-                      
-                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <div className="flex items-center gap-1">
-                          <Calendar size={12} />
-                          <span>{formatDate(image.createdAt)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
+                    {/* Card Content - Hide in grid mode for compactness */}
+                    {viewMode === 'masonry' && (
+                      <div className="p-4">
+                        <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-2 mb-3 leading-relaxed">
+                          {image.prompt || 'No prompt available'}
+                        </p>
+                        
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                           <div className="flex items-center gap-1">
-                            <Eye size={12} />
-                            <span>{image.views}</span>
+                            <Calendar size={12} />
+                            <span>{formatDate(image.createdAt)}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Heart size={12} className={image.likes > 0 ? 'text-red-500' : ''} />
-                            <span>{image.likes}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1">
+                              <Eye size={12} />
+                              <span>{image.views}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Heart size={12} className={image.likes > 0 ? 'text-red-500' : ''} />
+                              <span>{image.likes}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
+                    
+                    {/* Grid mode - show source badge */}
+                    {viewMode === 'grid' && (
+                      <div className="absolute top-2 right-2">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          image.source === 'comfyui' 
+                            ? 'bg-orange-500/90 text-white' 
+                            : 'bg-sakura-500/90 text-white'
+                        }`}>
+                          {image.source === 'comfyui' ? 'ComfyUI' : 'Clara'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -573,7 +785,7 @@ const Gallery: React.FC<GalleryProps> = ({
                     </button>
                     <button
                       onClick={() => handleDownload(selectedImage)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
                     >
                       <Download size={16} />
                       <span className="text-sm">Download</span>

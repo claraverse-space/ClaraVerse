@@ -13,7 +13,8 @@ import {
   ClaraAIConfig
 } from '../types/clara_assistant_types';
 import { addCompletionNotification, addInfoNotification } from './notificationService';
-import { TokenLimitRecoveryService } from './tokenLimitRecoveryService';
+import { ToolSuccessRegistry } from './toolSuccessRegistry';
+import { APIClient } from '../utils/APIClient';
 
 // Import specialized services
 import { claraProviderService } from './claraProviderService';
@@ -343,7 +344,48 @@ export class ClaraApiService {
         );
     }
   }
+
+  /**
+   * Clear blacklisted MCP tools specifically (for fixing false positives)
+   */
+  public clearMCPToolBlacklists(): void {
+    // Clear from ToolSuccessRegistry
+    ToolSuccessRegistry.clearMCPToolBlacklists();
+    
+    // Clear from APIClient static method
+    APIClient.clearMCPToolBlacklists();
+    
+    addInfoNotification(
+      'MCP Tools Restored',
+      'Cleared all blacklisted MCP tools. These core tools are now protected from future blacklisting.',
+      10000
+    );
+  }
 }
 
 // Export singleton instance
 export const claraApiService = new ClaraApiService(); 
+
+// Expose MCP tool restoration function globally for emergency console access
+if (typeof window !== 'undefined') {
+  (window as any).claraEmergencyRestoreMCPTools = () => {
+    console.log('🚨 Emergency MCP Tool Restoration via Console');
+    claraApiService.clearMCPToolBlacklists();
+    
+    // Also call the static methods directly for immediate effect
+    ToolSuccessRegistry.clearMCPToolBlacklists();
+    APIClient.clearMCPToolBlacklists();
+    
+    console.log('✅ MCP tools have been restored and are now protected');
+    console.log('🔄 Please refresh the page to see the changes');
+    
+    return {
+      success: true,
+      message: 'MCP tools restored successfully',
+      note: 'Please refresh the page to see changes'
+    };
+  };
+  
+  console.log('🔧 Clara Emergency Functions Available:');
+  console.log('- claraEmergencyRestoreMCPTools() - Restore blacklisted MCP tools');
+} 

@@ -276,7 +276,7 @@ const LumaUILite: React.FC = () => {
                     placeholder="Search projects..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 dark:bg-gray-900/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 w-80"
+                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 dark:bg-gray-900/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-sakura-500 w-80"
                   />
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -319,8 +319,8 @@ const LumaUILite: React.FC = () => {
             /* Empty State */
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-full flex items-center justify-center shadow-lg">
-                  <FolderOpen className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-sakura-100 to-sakura-200 dark:from-sakura-900/30 dark:to-sakura-800/30 rounded-full flex items-center justify-center shadow-lg">
+                  <FolderOpen className="w-10 h-10 text-sakura-600 dark:text-sakura-400" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">
                   No Projects Yet
@@ -330,7 +330,7 @@ const LumaUILite: React.FC = () => {
                 </p>
                 <button
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:from-blue-600 hover:to-purple-600 transition-all mx-auto text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sakura-500 to-sakura-600 text-white rounded-xl hover:from-sakura-600 hover:to-sakura-700 transition-all mx-auto text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
                   <Plus className="w-4 h-4" />
                   Create Your First Project
@@ -352,7 +352,7 @@ const LumaUILite: React.FC = () => {
                 </p>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                  className="px-4 py-2 bg-sakura-100 dark:bg-sakura-900/30 hover:bg-sakura-200 dark:hover:bg-sakura-900/50 text-sakura-700 dark:text-sakura-300 rounded-lg text-sm font-medium transition-colors"
                 >
                   Clear Search
                 </button>
@@ -407,7 +407,7 @@ const LumaUILite: React.FC = () => {
                           <div className="flex items-center justify-center gap-4">
                             <button
                               onClick={() => handleOpenApp(project)}
-                              className="group relative w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                              className="group relative w-12 h-12 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                               title="Open Project"
                             >
                               <Play className="w-5 h-5 transition-transform group-hover:scale-110" />
@@ -416,7 +416,7 @@ const LumaUILite: React.FC = () => {
                             
                             <button
                               onClick={() => handleOpenProject(project)}
-                              className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                              className="group relative w-12 h-12 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                               title="Edit Project"
                             >
                               <Edit className="w-5 h-5 transition-transform group-hover:scale-110" />
@@ -485,7 +485,7 @@ const LumaUILite: React.FC = () => {
                             <div className="flex items-center gap-3 ml-4">
                               <button
                                 onClick={() => handleOpenApp(project)}
-                                className="group relative w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                                className="group relative w-12 h-12 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                                 title="Open Project"
                               >
                                 <Play className="w-5 h-5 transition-transform group-hover:scale-110" />
@@ -494,7 +494,7 @@ const LumaUILite: React.FC = () => {
                               
                               <button
                                 onClick={() => handleOpenProject(project)}
-                                className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                                className="group relative w-12 h-12 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                                 title="Edit Project"
                               >
                                 <Edit className="w-5 h-5 transition-transform group-hover:scale-110" />

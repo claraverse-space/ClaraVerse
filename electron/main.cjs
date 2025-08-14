@@ -889,6 +889,51 @@ function registerLlamaSwapHandlers() {
     }
   });
 
+  // Enable monitoring for a specific service
+  ipcMain.handle('watchdog-enable-service', async (event, serviceKey) => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      const result = watchdogService.enableServiceMonitoring(serviceKey);
+      return { success: result };
+    } catch (error) {
+      log.error('Error enabling service monitoring:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Disable monitoring for a specific service
+  ipcMain.handle('watchdog-disable-service', async (event, serviceKey) => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      const result = watchdogService.disableServiceMonitoring(serviceKey);
+      return { success: result };
+    } catch (error) {
+      log.error('Error disabling service monitoring:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get service monitoring status
+  ipcMain.handle('watchdog-get-monitoring-status', async () => {
+    try {
+      if (!watchdogService) {
+        return { success: false, error: 'Watchdog service not initialized' };
+      }
+      
+      const status = watchdogService.getServiceMonitoringStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error getting service monitoring status:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('get-custom-model-paths', async () => {
     try {
       if (!llamaSwapService) {
@@ -6606,6 +6651,167 @@ ipcMain.handle('comfyui-model-manager:get-models-dir', async () => {
   } catch (error) {
     log.error('Error getting ComfyUI models directory:', error);
     return { path: '', exists: false };
+  }
+});
+
+// ==============================================
+// ComfyUI Output Images Management
+// ==============================================
+
+// List ComfyUI output images
+ipcMain.handle('comfyui:list-output-images', async () => {
+  try {
+    const os = require('os');
+    const outputDir = path.join(os.homedir(), '.clara', 'comfyui-data', 'outputs');
+    
+    if (!fs.existsSync(outputDir)) {
+      log.info('ComfyUI outputs directory does not exist:', outputDir);
+      return [];
+    }
+    
+    const files = fs.readdirSync(outputDir)
+      .filter(file => /\.(png|jpg|jpeg|webp|gif)$/i.test(file))
+      .map(filename => {
+        const filePath = path.join(outputDir, filename);
+        const stats = fs.statSync(filePath);
+        
+        // Try to extract prompt from filename if it follows ComfyUI pattern
+        let prompt = 'ComfyUI Generated Image';
+        const promptMatch = filename.match(/^(.+?)_\d+_?\d*\.(png|jpg|jpeg|webp|gif)$/i);
+        if (promptMatch) {
+          prompt = promptMatch[1].replace(/_/g, ' ').trim();
+        }
+        
+        return {
+          id: `comfyui-${filename}`,
+          name: filename,
+          path: filePath,
+          size: stats.size,
+          modified: stats.mtime.toISOString(),
+          created: stats.birthtime.toISOString(),
+          prompt: prompt,
+          source: 'comfyui',
+          url: `file://${filePath}`,
+          // Convert to base64 for web display
+          dataUrl: null // Will be populated on demand
+        };
+      })
+      .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime()); // newest first
+    
+    log.info(`Found ${files.length} ComfyUI output images`);
+    return files;
+  } catch (error) {
+    log.error('Error listing ComfyUI output images:', error);
+    return [];
+  }
+});
+
+// Get ComfyUI image as base64 data URL
+ipcMain.handle('comfyui:get-image-data', async (event, imagePath) => {
+  try {
+    if (!fs.existsSync(imagePath)) {
+      throw new Error('Image file not found');
+    }
+    
+    const imageBuffer = fs.readFileSync(imagePath);
+    const ext = path.extname(imagePath).toLowerCase().slice(1);
+    const mimeType = ext === 'jpg' ? 'jpeg' : ext;
+    const base64 = imageBuffer.toString('base64');
+    const dataUrl = `data:image/${mimeType};base64,${base64}`;
+    
+    return dataUrl;
+  } catch (error) {
+    log.error('Error reading ComfyUI image:', error);
+    throw error;
+  }
+});
+
+// Watch ComfyUI outputs directory for changes
+let comfyuiOutputWatcher = null;
+
+ipcMain.handle('comfyui:start-output-watcher', async (event) => {
+  try {
+    // Stop existing watcher if running
+    if (comfyuiOutputWatcher) {
+      comfyuiOutputWatcher.close();
+    }
+    
+    const os = require('os');
+    const outputDir = path.join(os.homedir(), '.clara', 'comfyui-data', 'outputs');
+    
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    const chokidar = require('chokidar');
+    comfyuiOutputWatcher = chokidar.watch(outputDir, {
+      ignored: /^\./,
+      persistent: true,
+      ignoreInitial: true
+    });
+    
+    comfyuiOutputWatcher.on('add', (filePath) => {
+      if (/\.(png|jpg|jpeg|webp|gif)$/i.test(filePath)) {
+        const filename = path.basename(filePath);
+        const stats = fs.statSync(filePath);
+        
+        // Extract prompt from filename
+        let prompt = 'ComfyUI Generated Image';
+        const promptMatch = filename.match(/^(.+?)_\d+_?\d*\.(png|jpg|jpeg|webp|gif)$/i);
+        if (promptMatch) {
+          prompt = promptMatch[1].replace(/_/g, ' ').trim();
+        }
+        
+        const imageInfo = {
+          id: `comfyui-${filename}`,
+          name: filename,
+          path: filePath,
+          size: stats.size,
+          modified: stats.mtime.toISOString(),
+          created: stats.birthtime.toISOString(),
+          prompt: prompt,
+          source: 'comfyui'
+        };
+        
+        event.sender.send('comfyui:new-output-image', imageInfo);
+        log.info('New ComfyUI image detected:', filename);
+      }
+    });
+    
+    log.info('ComfyUI output watcher started');
+    return { success: true };
+  } catch (error) {
+    log.error('Error starting ComfyUI output watcher:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('comfyui:stop-output-watcher', async () => {
+  try {
+    if (comfyuiOutputWatcher) {
+      comfyuiOutputWatcher.close();
+      comfyuiOutputWatcher = null;
+      log.info('ComfyUI output watcher stopped');
+    }
+    return { success: true };
+  } catch (error) {
+    log.error('Error stopping ComfyUI output watcher:', error);
+    throw error;
+  }
+});
+
+// Delete ComfyUI output image
+ipcMain.handle('comfyui:delete-output-image', async (event, imagePath) => {
+  try {
+    if (fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+      log.info('ComfyUI output image deleted:', imagePath);
+      return { success: true };
+    }
+    return { success: false, error: 'File not found' };
+  } catch (error) {
+    log.error('Error deleting ComfyUI output image:', error);
+    throw error;
   }
 });
 

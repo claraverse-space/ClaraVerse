@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor, Clock, LogOut, Loader2 } from 'lucide-react';
+import { Sun, Moon, Monitor, Clock, LogOut, Loader2, MessageCircle, Brain } from 'lucide-react';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import UserProfileButton from './common/UserProfileButton';
 import NotificationPanel from './common/NotificationPanel';
@@ -11,9 +11,25 @@ interface TopbarProps {
   onPageChange?: (page: string) => void;
   projectTitle?: string;
   showProjectTitle?: boolean;
+  // Clara brain switch props (only used on Clara page)
+  showClaraBrainSwitch?: boolean;
+  claraBrainActiveTab?: 'chat' | 'brain';
+  onClaraBrainTabChange?: (tab: 'chat' | 'brain') => void;
+  claraBrainMemoryLevel?: number;
+  claraBrainIsLoading?: boolean;
 }
 
-const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false }: TopbarProps) => {
+const Topbar = ({ 
+  userName, 
+  onPageChange, 
+  projectTitle, 
+  showProjectTitle = false,
+  showClaraBrainSwitch = false,
+  claraBrainActiveTab = 'chat',
+  onClaraBrainTabChange,
+  claraBrainMemoryLevel = 0,
+  claraBrainIsLoading = false
+}: TopbarProps) => {
   const { theme, setTheme } = useTheme();
   const [now, setNow] = useState(new Date());
   const [timezone, setTimezone] = useState<string>(Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -147,6 +163,34 @@ const Topbar = ({ userName, onPageChange, projectTitle, showProjectTitle = false
       
       {/* Right section - Controls */}
       <div className="flex items-center gap-6">
+        {/* Clara Brain Switch - Single toggle icon only visible on Clara page */}
+        {showClaraBrainSwitch && (
+          <button
+            onClick={() => onClaraBrainTabChange?.(claraBrainActiveTab === 'chat' ? 'brain' : 'chat')}
+            className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors relative"
+            title={claraBrainActiveTab === 'chat' ? "Switch to Clara's Brain" : "Switch to Chat"}
+            aria-label={claraBrainActiveTab === 'chat' ? "Switch to Clara's Brain" : "Switch to Chat"}
+          >
+            {claraBrainActiveTab === 'chat' ? (
+              <Brain className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            ) : (
+              <MessageCircle className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            )}
+            
+            {/* Activity indicator for chat when on brain tab */}
+            {claraBrainActiveTab === 'brain' && claraBrainIsLoading && (
+              <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+            )}
+            
+            {/* Memory indicator for brain when on chat tab */}
+            {claraBrainActiveTab === 'chat' && claraBrainMemoryLevel > 0 && (
+              <div className="absolute -top-1 -right-1 px-1 py-0.5 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full min-w-[16px] text-center">
+                {claraBrainMemoryLevel}%
+              </div>
+            )}
+          </button>
+        )}
+        
         <button 
           onClick={cycleTheme}
           className="p-2 rounded-lg hover:bg-sakura-50 dark:hover:bg-sakura-100/10 transition-colors"

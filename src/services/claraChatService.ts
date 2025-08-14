@@ -69,6 +69,7 @@ export class ClaraChatService {
     let toolResults: any[] = [];
     let finalUsage: any = {};
     let finalTimings: any = {};
+    let streamWasAborted = false;
 
     // Build conversation messages
     const messages = this.buildConversationMessages(
@@ -106,7 +107,7 @@ export class ClaraChatService {
           try {
             const collectedToolCalls: any[] = [];
             let streamContent = '';
-
+            
             for await (const chunk of client.streamChat(modelId, messages, options, tools)) {
               if (chunk.message?.content) {
                 streamContent += chunk.message.content;
@@ -114,6 +115,14 @@ export class ClaraChatService {
                 if (onContentChunk) {
                   onContentChunk(chunk.message.content);
                 }
+              }
+
+              // Check if stream was aborted
+              if (chunk.finish_reason === 'aborted') {
+                console.log(`🛑 [CHAT-SERVICE] Stream was aborted, preserving ${streamContent.length} characters`);
+                streamWasAborted = true;
+                // Break out of loop gracefully - content is already accumulated
+                break;
               }
 
               // Collect tool calls
@@ -332,6 +341,8 @@ export class ClaraChatService {
         temperature: config.parameters.temperature,
         toolsUsed: toolResults.map(tc => tc.toolName),
         autonomousMode: false,
+        // Include abort information if stream was aborted
+        aborted: streamWasAborted,
         // Include error information if available
         ...(((this as any).lastError) && {
           error: (this as any).lastError instanceof Error ? (this as any).lastError.message : 'Unknown error',

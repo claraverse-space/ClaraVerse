@@ -77,6 +77,12 @@ import {
 // Import PDF.js for PDF processing
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url
+).toString();
+
 // Import MCP service
 import { claraMCPService } from '../../services/claraMCPService';
 
@@ -92,11 +98,12 @@ import { claraDB } from '../../db/claraDatabase';
 // Import API service
 import { claraApiService } from '../../services/claraApiService';
 
-// Import TTS service
-import { claraTTSService } from '../../services/claraTTSService';
 
 // Import notification service
 import { addErrorNotification, addInfoNotification } from '../../services/notificationService';
+
+// Import memory integration service
+import { claraMemoryIntegration } from '../../services/ClaraMemoryIntegration';
 
 // Import image generation widget
 import ChatImageGenWidget from './ChatImageGenWidget';
@@ -850,6 +857,9 @@ const AdvancedOptions: React.FC<{
     artifacts: false
   });
 
+  // State for default system prompt (async loaded)
+  const [defaultSystemPrompt, setDefaultSystemPrompt] = useState<string>('');
+
   // State for advanced parameters visibility
   const [showAdvancedParameters, setShowAdvancedParameters] = useState(false);
 
@@ -873,6 +883,28 @@ const AdvancedOptions: React.FC<{
     loadMcpServers();
   }, [aiConfig?.features.enableMCP]);
 
+  // Load default system prompt when provider or userInfo changes
+  useEffect(() => {
+    const loadDefaultSystemPrompt = async () => {
+      if (!aiConfig) return; // Guard against undefined
+      
+      try {
+        const defaultPrompt = await getDefaultSystemPrompt(
+          aiConfig.provider, 
+          aiConfig.artifacts, 
+          userInfo, 
+          aiConfig.features?.enableMemory ?? true
+        );
+        setDefaultSystemPrompt(defaultPrompt);
+      } catch (error) {
+        console.error('Failed to load default system prompt:', error);
+        setDefaultSystemPrompt('You are Clara, a helpful AI assistant.');
+      }
+    };
+
+    loadDefaultSystemPrompt();
+  }, [aiConfig?.provider, aiConfig?.artifacts, aiConfig?.features?.enableMemory, userInfo]);  // Re-load when these change
+
   if (!show || !aiConfig) return null;
 
   const handleParameterChange = (key: string, value: any) => {
@@ -890,7 +922,7 @@ const AdvancedOptions: React.FC<{
     });
   };
 
-  const getDefaultSystemPrompt = (providerId: string, artifactConfig?: any, userInfo?: { name?: string; email?: string; timezone?: string }): string => {
+  const getDefaultSystemPrompt = async (providerId: string, artifactConfig?: any, userInfo?: { name?: string; email?: string; timezone?: string }, memoryEnabled?: boolean): Promise<string> => {
     const provider = providers.find(p => p.id === providerId);
     const providerName = provider?.name || 'AI Assistant';
     
@@ -931,6 +963,24 @@ const AdvancedOptions: React.FC<{
     };
     
     const userContext = getUserContext();
+    
+    // 🧠 MEMORY ENHANCEMENT: Add memory enhancement AFTER user context (only if enabled)
+    let memoryContext = '';
+    if (memoryEnabled !== false) { // Default to true if not specified
+      try {
+        console.log('🧠 clara_assistant_input: Enhancing system prompt with memory data...');
+        const basePromptWithUser = userContext;
+        const enhancedPrompt = await claraMemoryIntegration.enhanceSystemPromptWithMemory(basePromptWithUser, userInfo);
+        // Extract just the memory part (everything after user context)
+        memoryContext = enhancedPrompt.replace(basePromptWithUser, '');
+        console.log('🧠 clara_assistant_input: Memory context successfully added:', memoryContext.length, 'characters');
+      } catch (error) {
+        console.error('🧠 clara_assistant_input: Failed to enhance system prompt with memory:', error);
+        // Continue without memory enhancement
+      }
+    } else {
+      console.log('🧠 clara_assistant_input: Memory enhancement disabled by user setting');
+    }
     
     // Check if artifact generation is enabled
     const artifactsEnabled = artifactConfig?.autoDetectArtifacts ?? true;
@@ -977,16 +1027,16 @@ when you are asked for something always resort to writing a python script and ru
 
     switch (provider?.type) {
       case 'ollama':
-        return `${userContext}You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}${memoryContext}You are Clara, a helpful AI assistant powered by ${providerName}. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. When using tools, be thorough and explain your actions clearly.${artifactGuidance} ${toolsGuidance}`;
         
       case 'openai':
-        return `${userContext}You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}${memoryContext}You are Clara, an intelligent AI assistant powered by OpenAI. You are helpful, harmless, and honest. You excel at reasoning, analysis, creative tasks, and problem-solving. Always strive to provide accurate, well-structured responses and use available tools effectively when needed.${artifactGuidance} ${toolsGuidance}`;
         
       case 'openrouter':
-        return `${userContext}You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}${memoryContext}You are Clara, a versatile AI assistant with access to various models through OpenRouter. You adapt your communication style based on the task at hand and leverage the strengths of different AI models. Be helpful, accurate, and efficient in your responses.${artifactGuidance} ${toolsGuidance}`;
         
       case 'claras-pocket':
-        return `${userContext}# Clara - Privacy-First AI 🎯
+        return `${userContext}${memoryContext}# Clara - Privacy-First AI 🎯
 
 You're Clara, a tech-savvy friend on user's device. Be real, helpful, chill.
 
@@ -1017,17 +1067,16 @@ Skip for: quick answers, simple lists
 - **Be honest** - "That's wrong, here's what's right..."
 - **Be creative** - Think outside the box
 
-## GO-TO PHRASES
-- "Here's what I'm thinking..."
-- "You got this!"
-- "Ngl, that's tricky but..."
-- "Want me to dig deeper?"
-- "Lemme check real quick..."
+## Regarding Memory
+
+- don't use the memories's content unless required only for context.
+- always use the memories only to enhance user experience and provide personalized responses.
+
 
 **Remember:** Knowledge friend who wants to help. When limited, suggest agent mode for full capabilities..${artifactGuidance} ${toolsGuidance}`;
         
       default:
-        return `${userContext}You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
+        return `${userContext}${memoryContext}You are Clara, a helpful AI assistant. You are knowledgeable, friendly, and provide accurate information. You can help with various tasks including analysis, coding, writing, and general questions. Always be helpful and respectful in your interactions.${artifactGuidance} ${toolsGuidance}`;
     }
   };
 
@@ -1215,7 +1264,7 @@ Skip for: quick answers, simple lists
               icon={<MessageCircle className="w-4 h-4 text-sakura-500" />}
               isExpanded={expandedSections.systemPrompt}
               onToggle={() => toggleSection('systemPrompt')}
-              badge={aiConfig.systemPrompt && aiConfig.systemPrompt.trim() !== '' && aiConfig.systemPrompt !== getDefaultSystemPrompt(aiConfig.provider, aiConfig.artifacts, userInfo) ? 'Custom' : 'Default'}
+              badge={aiConfig.systemPrompt && aiConfig.systemPrompt.trim() !== '' && aiConfig.systemPrompt !== defaultSystemPrompt ? 'Custom' : 'Default'}
             />
             
             {expandedSections.systemPrompt && (
@@ -1224,22 +1273,41 @@ Skip for: quick answers, simple lists
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
                     System Prompt for {providers.find(p => p.id === aiConfig.provider)?.name || 'Current Provider'}
                   </label>
-                  <button
-                    onClick={() => handleSystemPromptChange('')}
-                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-                  >
-                    Reset to Default
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* Memory Toggle */}
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={aiConfig.features.enableMemory ?? true}
+                        onChange={(e) => handleFeatureChange('enableMemory', e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                        🧠
+                        Include Memory
+                      </span>
+                    </label>
+                    
+                    <button
+                      onClick={() => handleSystemPromptChange('')}
+                      className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
                 </div>
                 <textarea
-                  value={aiConfig.systemPrompt || getDefaultSystemPrompt(aiConfig.provider, aiConfig.artifacts, userInfo)}
+                  value={aiConfig.systemPrompt || defaultSystemPrompt}
                   onChange={(e) => handleSystemPromptChange(e.target.value)}
                   placeholder="Enter custom system prompt for this provider..."
                   className="w-full min-h-[80px] max-h-[200px] p-3 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-colors text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500"
                   rows={4}
                 />
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  This prompt will be used for all conversations with this provider. Leave empty to use the default prompt.
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                  <div>This prompt will be used for all conversations with this provider. Leave empty to use the default prompt.</div>
+                  <div className="flex items-center gap-1">
+                    🧠 <strong>Include Memory:</strong> When enabled, your personal memory data will be automatically added to the system prompt to personalize responses.
+                  </div>
                 </div>
               </div>
             )}
@@ -2812,6 +2880,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true,
       enableStructuredToolCalling: sessionConfig?.aiConfig?.features.enableStructuredToolCalling ?? false,
       enableNativeJSONSchema: sessionConfig?.aiConfig?.features.enableNativeJSONSchema ?? false,
+      enableMemory: sessionConfig?.aiConfig?.features.enableMemory ?? true,
     }
   };
 
@@ -3582,6 +3651,28 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         enableTools: !newStreamingMode,
         enableMCP: !newStreamingMode
       },
+      // Configure MCP servers based on mode
+      mcp: {
+        ...currentAIConfig.mcp,
+        enableTools: !newStreamingMode,
+        enableResources: !newStreamingMode,
+        enabledServers: newStreamingMode 
+          ? [] // Streaming mode: disable all MCP servers
+          : (() => {
+              // Agent mode: ensure python-mcp is included by default
+              const currentServers = currentAIConfig.mcp?.enabledServers || [];
+              const hasPythonMCP = currentServers.includes('python-mcp');
+              
+              if (!hasPythonMCP) {
+                console.log('🐍 Adding python-mcp server to enabled servers for agent mode');
+                return ['python-mcp', ...currentServers];
+              }
+              
+              return currentServers;
+            })(),
+        autoDiscoverTools: !newStreamingMode,
+        maxToolCalls: currentAIConfig.mcp?.maxToolCalls || 5
+      },
       // When streaming mode is enabled, disable autonomous agent mode
       // When tools mode is enabled, automatically enable autonomous agent mode
       autonomousAgent: newStreamingMode ? {
@@ -3615,7 +3706,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     if (newStreamingMode) {
       console.log('🌊 Switched to streaming mode - autonomous agent automatically disabled');
     } else {
-      console.log('🛠️ Switched to tools mode - autonomous agent automatically enabled');
+      console.log('🛠️ Switched to tools mode - autonomous agent automatically enabled with python-mcp');
     }
     
     handleAIConfigChange(newConfig);

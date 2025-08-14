@@ -40,12 +40,18 @@ import { claraTTSService } from '../services/claraTTSService';
   // Import artifact detection service
 import ArtifactDetectionService, { DetectionContext } from '../services/artifactDetectionService';
 
-// Import ClaraSweetMemory for automatic memory extraction
+// Import ClaraSweetMemory for automatic memory extraction (legacy)
 import ClaraSweetMemory, { ClaraSweetMemoryAPI } from './ClaraSweetMemory';
 
 // Import ClaraMemoryToast for learning notifications
 import ClaraMemoryToast from './Clara_Components/ClaraMemoryToast';
 import { claraMemoryToastService, type MemoryToastState } from '../services/claraMemoryToastService';
+
+// Import the new memory integration service
+import { claraMemoryIntegration } from '../services/ClaraMemoryIntegration';
+
+// Clara Memory Dashboard
+import ClaraBrainDashboard from './Clara_Components/ClaraBrainDashboard';
 
 // Import clipboard test functions for development
 if (process.env.NODE_ENV === 'development') {
@@ -385,12 +391,10 @@ Skip for: quick answers, simple lists
 - **Be honest** - "That's wrong, here's what's right..."
 - **Be creative** - Think outside the box
 
-## GO-TO PHRASES
-- "Here's what I'm thinking..."
-- "You got this!"
-- "Ngl, that's tricky but..."
-- "Want me to dig deeper?"
-- "Lemme check real quick..."
+## Regarding Memory
+
+- don't use the memories's content unless required only for context.
+- always use the memories only to enhance user experience and provide personalized responses.
 
 **Remember:** Knowledge friend who wants to help. When limited, suggest agent mode for full capabilities..${artifactGuidance} ${toolsGuidance}`;
       
@@ -490,9 +494,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   const [memoryToastState, setMemoryToastState] = useState<MemoryToastState>({
     isVisible: false,
     knowledgeLevel: 0,
-    learnedInfo: undefined,
     lastShownAt: 0
   });
+
+  // Clara Brain tab state
+  const [activeTab, setActiveTab] = useState<'chat' | 'brain'>('chat');
 
   // Parse status updates from streaming chunks for autonomous agent
   const parseAndUpdateAgentStatus = useCallback((chunk: string) => {
@@ -1167,6 +1173,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 enableMCP: false,              // **CHANGED**: Default to false for streaming mode
                 enableStructuredToolCalling: false, // **NEW**: Default to false
                 enableNativeJSONSchema: false, // **NEW**: Default to false
+                enableMemory: true,           // **NEW**: Default to enabled for memory functionality
               },
                           artifacts: {
               enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
@@ -1705,17 +1712,18 @@ Now tell me what is the result "`;
       let baseSystemPrompt = enforcedConfig.systemPrompt || 
                           (currentProvider ? getDefaultSystemPrompt(currentProvider, enforcedConfig.artifacts, userInfo || undefined) : 'You are Clara, a helpful AI assistant.');
       
-      // Enhance system prompt with memory data
+      // Enhance system prompt with memory data using new integration service (only if memory is enabled)
       let systemPrompt = baseSystemPrompt;
-      try {
-        const enhanceFunction = (getDefaultSystemPrompt as any).enhanceWithMemory;
-        if (enhanceFunction) {
-          systemPrompt = await enhanceFunction(baseSystemPrompt);
-          console.log('🧠 System prompt enhanced with user memory data');
+      if (enforcedConfig.features?.enableMemory !== false) { // Default to true if not specified
+        try {
+          systemPrompt = await claraMemoryIntegration.enhanceSystemPromptWithMemory(baseSystemPrompt, userInfo || undefined);
+          console.log('🧠 System prompt enhanced with user memory data via integration service');
+        } catch (error) {
+          console.error('🧠 Failed to enhance system prompt with memory:', error);
+          // Continue with base system prompt
         }
-      } catch (error) {
-        console.error('🧠 Failed to enhance system prompt with memory:', error);
-        // Continue with base system prompt
+      } else {
+        console.log('🧠 Memory enhancement disabled by user setting - using base system prompt only');
       }
       
       // Create enhanced streaming callback that updates both message content and status panel
@@ -1872,6 +1880,12 @@ Now tell me what is the result "`;
         }
       };
 
+      // **NEW**: Handle aborted messages specially
+      if (aiMessage.metadata?.aborted) {
+        console.log('🛑 Message was aborted, preserving streamed content with abort metadata');
+        finalMessage.metadata.aborted = true;
+      }
+
       // If autonomous agent was used, create a clean, simple completion message
       if (enforcedConfig.autonomousAgent?.enabled && autonomousAgentStatus.isActive) {
         const toolExecutions = autonomousAgentStatus.toolExecutions;
@@ -1947,38 +1961,46 @@ Now tell me what is the result "`;
       try {
         await claraDB.addClaraMessage(currentSession.id, finalMessage);
         
-        // **NEW: Automatic Memory Extraction**
-        // Process memory extraction if conditions are met (reasonable request size)
+        // **NEW: Automatic Memory Extraction with new Memory Manager**
+        // Process memory extraction if conditions are met (reasonable request size) AND memory is enabled
         try {
-          // Ensure memory extraction always happens for meaningful messages
-          if (content.length <= 2000 && content.trim().length > 10) {
+          // Only process memory if enabled by user setting
+          if (enforcedConfig.features?.enableMemory !== false && content.length <= 2000 && content.trim().length > 10) {
             // Trigger memory extraction asynchronously to avoid blocking the UI
             setTimeout(async () => {
               try {
-                const extractionResult = await ClaraSweetMemoryAPI.processMemory(
+                console.log('🧠 Starting memory extraction with new integration service...');
+                const success = await claraMemoryIntegration.processConversationMemory(
                   content, // User message (display content without voice prefix)
                   finalMessage, // Assistant response
                   conversationHistory, // Conversation context
                   enforcedConfig // AI configuration for memory extraction
                 );
-                console.log('🧠 Memory extraction completed successfully');
                 
-                // Show memory toast if new information was learned
-                if (extractionResult && extractionResult.confidence > 0.3) {
+                if (success) {
+                  console.log('🧠 Memory extraction completed successfully with new integration service');
+                  
+                  // Show memory toast if new information was learned
                   try {
-                    const updatedProfile = await ClaraSweetMemoryAPI.getCurrentUserProfile();
+                    const updatedProfile = await claraMemoryIntegration.getCurrentUserProfile();
                     if (updatedProfile) {
                       claraMemoryToastService.showMemoryToast(updatedProfile);
                     }
                   } catch (toastError) {
                     console.warn('🧠 Memory toast update failed:', toastError);
                   }
+                } else {
+                  console.log('🧠 Memory extraction completed with no updates needed');
                 }
               } catch (memoryError) {
-                console.warn('🧠 Memory extraction failed:', memoryError);
-                // Memory extraction failure shouldn't affect the main flow
+                console.error('🧠 Memory extraction failed:', memoryError);
+                // Don't block the normal conversation flow
               }
-            }, 1000); // Small delay to ensure DB operations complete first
+            }, 1000); // 1 second delay
+          } else if (enforcedConfig.features?.enableMemory === false) {
+            console.log('🧠 Memory extraction disabled by user setting - conversation will not be processed for memory');
+          } else {
+            console.log('🧠 Memory extraction skipped - message too long or too short');
           }
         } catch (memoryError) {
           console.warn('🧠 Memory extraction setup failed:', memoryError);
@@ -2647,6 +2669,7 @@ You can:
             enableMCP: false,              // **CHANGED**: Default to false for streaming mode
             enableStructuredToolCalling: false, // **NEW**: Default to false
             enableNativeJSONSchema: false, // **NEW**: Default to false
+            enableMemory: true,           // **NEW**: Default to enabled for memory functionality
           },
           mcp: {
             enableTools: true,
@@ -4163,47 +4186,55 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
           <Topbar 
             userName={userName}
             onPageChange={onPageChange}
+            showClaraBrainSwitch={true}
+            claraBrainActiveTab={activeTab}
+            onClaraBrainTabChange={setActiveTab}
+            claraBrainMemoryLevel={memoryToastState.knowledgeLevel}
+            claraBrainIsLoading={isLoading}
           />
           
-          {/* Chat Window */}
-          <ClaraChatWindow
-            messages={messages}
-            userName={userName}
-            isLoading={isLoading}
-            isInitializing={isLoadingSessions || isLoadingProviders}
-            onRetryMessage={handleRetryMessage}
-            onCopyMessage={handleCopyMessage}
-            onEditMessage={handleEditMessage}
-          />
-          
-          {/* Autonomous Agent Status Panel - Above Advanced Options */}
-          {autonomousAgentStatus.isActive && (
-            <div className="px-6 py-4">
-              <div className="max-w-4xl mx-auto">
-                <AutonomousAgentStatusPanel
-                  status={autonomousAgentStatus.status}
-                  toolExecutions={autonomousAgentStatus.toolExecutions}
-                  onPause={() => {
-                    // TODO: Implement pause functionality
-                    console.log('Pause autonomous agent');
-                  }}
-                  onStop={() => {
-                    autonomousAgentStatus.stopAgent();
-                    claraApiService.stop();
-                  }}
-                  onComplete={() => {
-                    console.log('🔧 Manual completion triggered by user');
-                    autonomousAgentStatus.updatePhase('completed', 'Task completed (manual)');
-                    autonomousAgentStatus.completeAgent('Task completed manually', 1000);
-                  }}
-                  className="mb-4"
-                />
-              </div>
-            </div>
-          )}
+          {/* Tab Content */}
+          {activeTab === 'chat' ? (
+            <>
+              {/* Chat Window */}
+              <ClaraChatWindow
+                messages={messages}
+                userName={userName}
+                isLoading={isLoading}
+                isInitializing={isLoadingSessions || isLoadingProviders}
+                onRetryMessage={handleRetryMessage}
+                onCopyMessage={handleCopyMessage}
+                onEditMessage={handleEditMessage}
+              />
+              
+              {/* Autonomous Agent Status Panel - Above Advanced Options */}
+              {autonomousAgentStatus.isActive && (
+                <div className="px-6 py-4">
+                  <div className="max-w-4xl mx-auto">
+                    <AutonomousAgentStatusPanel
+                      status={autonomousAgentStatus.status}
+                      toolExecutions={autonomousAgentStatus.toolExecutions}
+                      onPause={() => {
+                        // TODO: Implement pause functionality
+                        console.log('Pause autonomous agent');
+                      }}
+                      onStop={() => {
+                        autonomousAgentStatus.stopAgent();
+                        claraApiService.stop();
+                      }}
+                      onComplete={() => {
+                        console.log('🔧 Manual completion triggered by user');
+                        autonomousAgentStatus.updatePhase('completed', 'Task completed (manual)');
+                        autonomousAgentStatus.completeAgent('Task completed manually', 1000);
+                      }}
+                      className="mb-4"
+                    />
+                  </div>
+                </div>
+              )}
 
-          {/* Advanced Options Panel - Above Chat Input */}
-          {showAdvancedOptions && (
+              {/* Advanced Options Panel - Above Chat Input */}
+              {showAdvancedOptions && (
             <div className="px-6 py-4 transition-all duration-300 ease-out transform animate-in slide-in-from-top-2 fade-in-0">
               <div className="max-w-4xl mx-auto transition-all duration-300">
                 <AdvancedOptions
@@ -4240,6 +4271,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                         enableMCP: newConfig.features?.enableMCP ?? currentConfig.features.enableMCP,
                         enableStructuredToolCalling: newConfig.features?.enableStructuredToolCalling ?? currentConfig.features.enableStructuredToolCalling,
                         enableNativeJSONSchema: newConfig.features?.enableNativeJSONSchema ?? currentConfig.features.enableNativeJSONSchema,
+                        enableMemory: newConfig.features?.enableMemory ?? currentConfig.features.enableMemory,
                       },
                       mcp: newConfig.mcp ? {
                         enableTools: newConfig.mcp.enableTools ?? currentConfig.mcp?.enableTools ?? true,
@@ -4313,6 +4345,11 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
               completeAgent: autonomousAgentStatus.completeAgent
             }}
           />
+        </>
+      ) : (
+        /* Clara's Brain Dashboard */
+        <ClaraBrainDashboard />
+      )}
         </div>
 
         {/* Clara Chat History Sidebar on the right */}
@@ -4418,6 +4455,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
       )}
       
       {/* Clara Sweet Memory Component */}
+      {/* Legacy ClaraSweetMemory component - kept for backward compatibility */}
       <ClaraSweetMemory />
 
       {/* Clara Memory Learning Toast */}
@@ -4425,7 +4463,6 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
         isVisible={memoryToastState.isVisible}
         onHide={() => claraMemoryToastService.hideMemoryToast()}
         knowledgeLevel={memoryToastState.knowledgeLevel}
-        learnedInfo={memoryToastState.learnedInfo}
         duration={4000}
       />
     </div>

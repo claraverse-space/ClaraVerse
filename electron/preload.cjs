@@ -193,6 +193,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, subscription);
     return () => ipcRenderer.removeListener(channel, subscription);
   },
+  off: (channel, callback) => ipcRenderer.removeListener(channel, callback),
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
 });
 
