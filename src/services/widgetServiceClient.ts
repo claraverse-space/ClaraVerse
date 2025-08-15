@@ -193,6 +193,38 @@ export class WidgetServiceClient implements WidgetServiceManager {
   }
 
   /**
+   * Enable auto-start for current platform
+   */
+  async enableAutoStart(): Promise<WidgetServiceResponse> {
+    try {
+      await this.ensureInitialized();
+      return await this.electronAPI.invoke(WIDGET_SERVICE_CHANNELS.ENABLE_AUTOSTART);
+    } catch (error) {
+      console.error('Error enabling widget service auto-start:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Disable auto-start for current platform
+   */
+  async disableAutoStart(): Promise<WidgetServiceResponse> {
+    try {
+      await this.ensureInitialized();
+      return await this.electronAPI.invoke(WIDGET_SERVICE_CHANNELS.DISABLE_AUTOSTART);
+    } catch (error) {
+      console.error('Error disabling widget service auto-start:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
    * Ensure the service is initialized
    */
   private async ensureInitialized(): Promise<void> {

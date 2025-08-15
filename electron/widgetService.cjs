@@ -12,6 +12,13 @@ class WidgetService {
     this.requiredWidgets = new Set(['gpu-monitor', 'system-monitor', 'process-monitor']);
     this.activeWidgets = new Set();
     this.healthCheckInterval = null;
+    
+    // Platform-specific auto-start settings
+    this.platformSettings = {
+      darwin: false,  // Disable auto-start on Mac by default (reduces heat)
+      win32: true,    // Enable on Windows
+      linux: true     // Enable on Linux
+    };
   }
 
   /**
@@ -84,9 +91,23 @@ class WidgetService {
   }
 
   /**
+   * Check if auto-start is enabled for the current platform
+   */
+  isAutoStartEnabled() {
+    const currentPlatform = platform();
+    return this.platformSettings[currentPlatform] !== false;
+  }
+
+  /**
    * Check if any active widgets require the service
    */
   shouldServiceRun() {
+    // Don't auto-start service if disabled for this platform
+    if (!this.isAutoStartEnabled()) {
+      log.info(`Widget service auto-start disabled for platform: ${platform()}`);
+      return false;
+    }
+    
     for (const widget of this.activeWidgets) {
       if (this.requiredWidgets.has(widget)) {
         return true;
@@ -298,16 +319,37 @@ class WidgetService {
   }
 
   /**
+   * Enable auto-start for current platform
+   */
+  enableAutoStart() {
+    const currentPlatform = platform();
+    this.platformSettings[currentPlatform] = true;
+    log.info(`Widget service auto-start enabled for platform: ${currentPlatform}`);
+  }
+
+  /**
+   * Disable auto-start for current platform
+   */
+  disableAutoStart() {
+    const currentPlatform = platform();
+    this.platformSettings[currentPlatform] = false;
+    log.info(`Widget service auto-start disabled for platform: ${currentPlatform}`);
+  }
+
+  /**
    * Get current service status
    */
   async getStatus() {
     const running = await this.isServiceRunning();
+    const currentPlatform = platform();
     return {
       running,
       port: this.port,
       pid: this.process?.pid,
       activeWidgets: Array.from(this.activeWidgets),
-      shouldRun: this.shouldServiceRun()
+      shouldRun: this.shouldServiceRun(),
+      autoStartEnabled: this.isAutoStartEnabled(),
+      platform: currentPlatform
     };
   }
 

@@ -11,6 +11,8 @@ export interface WidgetServiceStatus {
   shouldRun: boolean;
   pid?: number;
   uptime?: number;
+  autoStartEnabled: boolean;
+  platform: string;
 }
 
 export interface WidgetServiceResponse {
@@ -36,6 +38,10 @@ export interface WidgetServiceManager {
   getStatus(): Promise<WidgetServiceResponse>;
   checkHealth(): Promise<WidgetServiceResponse>;
   manage(): Promise<WidgetServiceResponse>;
+  
+  // Auto-start control
+  enableAutoStart(): Promise<WidgetServiceResponse>;
+  disableAutoStart(): Promise<WidgetServiceResponse>;
 }
 
 export type WidgetType = 'gpu-monitor' | 'system-monitor' | 'network-monitor' | 'system-resources';
@@ -50,7 +56,9 @@ export const WIDGET_SERVICE_CHANNELS = {
   UNREGISTER_WIDGET: 'widget-service:unregister-widget',
   GET_STATUS: 'widget-service:get-status',
   HEALTH: 'widget-service:health',
-  MANAGE: 'widget-service:manage'
+  MANAGE: 'widget-service:manage',
+  ENABLE_AUTOSTART: 'widget-service:enable-autostart',
+  DISABLE_AUTOSTART: 'widget-service:disable-autostart'
 } as const;
 
 // System stats interfaces (from the Go service)

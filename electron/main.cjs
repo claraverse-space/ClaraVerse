@@ -2920,6 +2920,38 @@ function registerWidgetServiceHandlers() {
     }
   });
 
+  // Enable auto-start for current platform
+  ipcMain.handle('widget-service:enable-autostart', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      widgetService.enableAutoStart();
+      const status = await widgetService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error enabling widget service auto-start:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Disable auto-start for current platform
+  ipcMain.handle('widget-service:disable-autostart', async () => {
+    try {
+      if (!widgetService) {
+        widgetService = new WidgetService();
+      }
+      
+      widgetService.disableAutoStart();
+      const status = await widgetService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      log.error('Error disabling widget service auto-start:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   log.info('Widget service IPC handlers registered');
 }
 

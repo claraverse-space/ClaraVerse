@@ -58,7 +58,10 @@
     "electron:build-mac-permissions": "npm run build && electron-builder --mac --universal --config.mac.hardenedRuntime=true --config.mac.entitlements=build/entitlements.mac.plist --config.mac.entitlementsInherit=build/entitlements.mac.plist --publish always",
     "clean:install": "rimraf node_modules package-lock.json && npm install",
     "start": "react-scripts start",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "services:build": "mkdir -p electron/services && npm run llama-optimizer:build-all && (cd widgets_service_app && cross-env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/widgets-service-windows.exe main.go enhanced_pdf_processor.go && cross-env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/widgets-service-linux main.go enhanced_pdf_processor.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/widgets-service-darwin-amd64 main.go enhanced_pdf_processor.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../electron/services/widgets-service-darwin-arm64 main.go enhanced_pdf_processor.go) && (cd clara-mcp && cross-env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-windows.exe python-mcp-server.go && cross-env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-linux python-mcp-server.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-darwin-amd64 python-mcp-server.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-darwin-arm64 python-mcp-server.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-mac-amd64 python-mcp-server.go && cross-env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o ../electron/services/python-mcp-server-mac-arm64 python-mcp-server.go)",
+    "build:services": "npm run services:build",
+    "services": "npm run services:build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
