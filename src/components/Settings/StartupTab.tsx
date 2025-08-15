@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Power, Maximize2, Minimize2, History } from 'lucide-react';
+import { Power, Maximize2, Minimize2, History, AlertTriangle } from 'lucide-react';
 import { StartupService, type StartupSettings } from '../../services/startupService';
 
 const StartupTab = () => {
@@ -8,7 +8,8 @@ const StartupTab = () => {
     startMinimized: false,
     autoStart: false,
     checkUpdates: true, // Keep this for compatibility but don't show it
-    restoreLastSession: true
+    restoreLastSession: true,
+    isDevelopment: false
   });
 
   useEffect(() => {
@@ -44,6 +45,22 @@ const StartupTab = () => {
         
         {/* System Startup Behavior */}
         <div className="space-y-6">
+          {/* Development Mode Warning */}
+          {settings.isDevelopment && (
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl p-4 border border-amber-200/50 dark:border-amber-800/30">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1">Development Mode</h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Auto-start is disabled in development mode to prevent startup issues. 
+                    Use the built production version for auto-start functionality.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">System Integration</h3>
             <div className="space-y-4">
@@ -53,18 +70,24 @@ const StartupTab = () => {
                   <Power className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   <div>
                     <h4 className="font-medium text-gray-900 dark:text-white">Auto Start with System</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Launch Clara automatically when you start your computer</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Launch Clara automatically when you start your computer
+                      {settings.isDevelopment && (
+                        <span className="text-amber-600 dark:text-amber-400 ml-1">(Disabled in development mode)</span>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer" aria-label="Toggle auto start with system">
                   <input
                     type="checkbox"
                     className="sr-only peer"
-                    checked={settings.autoStart}
+                    checked={settings.autoStart && !settings.isDevelopment}
                     onChange={(e) => handleStartupSettingChange('autoStart', e.target.checked)}
                     aria-describedby="auto-start-description"
+                    disabled={settings.isDevelopment}
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300/20 dark:peer-focus:ring-blue-800/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 ${settings.isDevelopment ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
                 </label>
               </div>
 

@@ -1274,28 +1274,42 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                     <span className="group-open:rotate-90 transition-transform text-gray-700 dark:text-gray-300">▶</span>
                                                     <span className="text-gray-700 dark:text-gray-300">I have my own GGUF models</span>
                                                 </summary>
-                                                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded">
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            value={formData.model_folder_path}
-                                                            onChange={(e) => {
-                                                                setFormData(prev => ({...prev, model_folder_path: e.target.value}));
-                                                                setFolderPickerMessage(null);
-                                                            }}
-                                                            placeholder="Path to your models folder..."
-                                                            className="flex-1 px-2 py-1 rounded bg-white/70 border border-gray-200 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 text-xs"
-                                                        />
-                                                        <button
-                                                            onClick={handlePickCustomModelPath}
-                                                            disabled={isSettingCustomPath}
-                                                            className="px-2 py-1 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 text-xs"
-                                                        >
-                                                            {isSettingCustomPath ? '...' : 'Browse'}
-                                                        </button>
-                                                    </div>
-                                                    {folderPickerMessage && (
-                                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{folderPickerMessage}</p>
+                                                <div className="mt-2 space-y-3">
+                                                    {/* Loading State */}
+                                                    {isSettingCustomPath ? (
+                                                        <div className="flex items-center gap-3 p-3 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+                                                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Scanning folder for models</p>
+                                                                <p className="text-xs text-blue-600 dark:text-blue-400">Looking for .gguf files...</p>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded">
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={formData.model_folder_path}
+                                                                    onChange={(e) => {
+                                                                        setFormData(prev => ({...prev, model_folder_path: e.target.value}));
+                                                                        setFolderPickerMessage(null);
+                                                                    }}
+                                                                    placeholder="Path to your models folder..."
+                                                                    className="flex-1 px-2 py-1 rounded bg-white/70 border border-gray-200 text-gray-900 placeholder-gray-500 dark:bg-gray-800/80 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 text-xs"
+                                                                />
+                                                                <button
+                                                                    onClick={handlePickCustomModelPath}
+                                                                    disabled={isSettingCustomPath}
+                                                                    className="px-3 py-1 bg-sakura-500 text-white rounded hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs flex items-center gap-2"
+                                                                >
+                                                                    {isSettingCustomPath && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                                                                    {isSettingCustomPath ? 'Scanning...' : 'Browse'}
+                                                                </button>
+                                                            </div>
+                                                            {folderPickerMessage && (
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">{folderPickerMessage}</p>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
                                             </details>

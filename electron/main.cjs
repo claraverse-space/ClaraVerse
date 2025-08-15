@@ -5945,10 +5945,27 @@ ipcMain.handle('set-startup-settings', async (event, settings) => {
     
     // Apply auto-start setting immediately if provided
     if (settings.autoStart !== undefined) {
-      app.setLoginItemSettings({
-        openAtLogin: settings.autoStart,
-        openAsHidden: settings.startMinimized || false
-      });
+      // Check if we're in development mode
+      const isDevelopment = process.env.NODE_ENV === 'development' || !app.isPackaged;
+      
+      if (isDevelopment) {
+        // In development mode, disable auto-start to prevent issues
+        // with the Electron development executable
+        log.warn('Auto-start disabled in development mode to prevent startup issues');
+        app.setLoginItemSettings({
+          openAtLogin: false,
+          openAsHidden: false
+        });
+      } else {
+        // In production, use the built executable
+        app.setLoginItemSettings({
+          openAtLogin: settings.autoStart,
+          openAsHidden: settings.startMinimized || false,
+          // Explicitly specify the path to avoid issues with electron templates
+          path: process.execPath,
+          args: []
+        });
+      }
     }
     
     log.info('Startup settings updated successfully:', settings);
@@ -5962,14 +5979,22 @@ ipcMain.handle('set-startup-settings', async (event, settings) => {
 ipcMain.handle('get-startup-settings', async () => {
   try {
     const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+    const isDevelopment = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    
+    let startupSettings = {};
     if (fs.existsSync(settingsPath)) {
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      return settings.startup || {};
+      startupSettings = settings.startup || {};
     }
-    return {};
+    
+    // Add development mode flag
+    return {
+      ...startupSettings,
+      isDevelopment
+    };
   } catch (error) {
     log.error('Error reading startup settings:', error);
-    return {};
+    return { isDevelopment: false };
   }
 });
 

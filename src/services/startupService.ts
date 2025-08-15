@@ -6,6 +6,7 @@ export interface StartupSettings {
   autoStart: boolean;
   checkUpdates: boolean;
   restoreLastSession: boolean;
+  isDevelopment?: boolean;
 }
 
 export class StartupService {
@@ -15,7 +16,8 @@ export class StartupService {
     startMinimized: false,
     autoStart: false,
     checkUpdates: true,
-    restoreLastSession: true
+    restoreLastSession: true,
+    isDevelopment: false
   };
 
   private constructor() {
