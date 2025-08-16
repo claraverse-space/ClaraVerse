@@ -29,6 +29,10 @@ class LlamaSwapService {
     // Progress tracking for UI feedback
     this.progressCallback = null;
     
+    // Set up automatic progress callback if main window is available
+    // This ensures progress is always captured even if setProgressCallback isn't called
+    this.ensureProgressCallback();
+    
     // Custom model paths
     this.customModelPaths = [];
     
@@ -3146,6 +3150,9 @@ ${cmdLine}`;
       this.ipcLogger.logServiceCall('LlamaSwapService', 'start');
     }
     
+    // Ensure progress callback is available
+    this.ensureProgressCallback();
+    
     // Prevent concurrent start attempts
     if (this.isRunning) {
       log.info('Llama-swap service is already running');
@@ -4879,6 +4886,34 @@ ${cmdLine}`;
    */
   setProgressCallback(callback) {
     this.progressCallback = callback;
+    console.log('✅ Progress callback has been set for llama-swap service');
+  }
+
+  /**
+   * Ensure a progress callback is available, setting a default if none exists
+   */
+  ensureProgressCallback() {
+    if (!this.progressCallback) {
+      // Try to get the main window from electron if available
+      try {
+        const { BrowserWindow } = require('electron');
+        const mainWindow = BrowserWindow.getAllWindows().find(win => !win.isDestroyed());
+        
+        if (mainWindow) {
+          this.progressCallback = (progressData) => {
+            try {
+              mainWindow.webContents.send('llama-progress-update', progressData);
+            } catch (error) {
+              console.warn('Failed to send progress update:', error);
+            }
+          };
+          console.log('🔄 Auto-configured progress callback for llama-swap service');
+        }
+      } catch (error) {
+        // Electron might not be available in some contexts, ignore
+        console.log('⚠️ Could not auto-configure progress callback:', error.message);
+      }
+    }
   }
 
   /**
@@ -4911,8 +4946,6 @@ ${cmdLine}`;
           details: details
         });
         
-        // Log progress to console for debugging
-        console.log(`📊 Context Loading Progress: ${progress}% - ${details}`);
         return;
       }
 
@@ -4925,7 +4958,6 @@ ${cmdLine}`;
           details: 'Clearing conversation cache...'
         });
         
-        console.log('🧹 Memory Optimization: Clearing cache');
         return;
       }
 
@@ -4939,7 +4971,6 @@ ${cmdLine}`;
           details: `Chat format: ${chatFormatMatch[1]}`
         });
         
-        console.log(`🔧 Initializing chat format: ${chatFormatMatch[1]}`);
         return;
       }
 
@@ -4952,22 +4983,61 @@ ${cmdLine}`;
           details: 'Preparing AI model...'
         });
         
-        console.log('🤖 Loading/warming up model');
         return;
       }
 
-      // Task processing (new prompt)
-      const taskMatch = output.match(/slot launch_slot_: id\s+(\d+) \| task (\d+) \| processing task/);
-      if (taskMatch) {
+      // Single dot pattern for model loading progress (common in llama.cpp)
+      if (output.trim() === '.') {
         this.progressCallback({
-          type: 'task_processing',
+          type: 'model_loading',
           progress: -1,
-          message: 'Processing Request',
-          details: `Starting task ${taskMatch[2]} on slot ${taskMatch[1]}`
+          message: 'Loading Model',
+          details: 'Loading model layers...'
         });
         
-        console.log(`⚡ Starting new task: ${taskMatch[2]} on slot ${taskMatch[1]}`);
         return;
+      }
+
+      // Alternative model loading patterns
+      if (output.includes('llama_model_load') || output.includes('loading') || output.match(/\.\.\./)) {
+        this.progressCallback({
+          type: 'model_loading',
+          progress: -1,
+          message: 'Loading Model',
+          details: 'Loading model components...'
+        });
+        
+        console.log('🔄 Model loading detected');
+        return;
+      }
+
+      // Model fully loaded and ready
+      if (output.includes('server is listening') || output.includes('starting the main loop')) {
+        this.progressCallback({
+          type: 'ready',
+          progress: 100,
+          message: 'Model Ready',
+          details: 'AI model loaded and ready for use'
+        });
+        
+        return;
+      }
+
+      // Slot initialization and management
+      if (output.includes('slot launch_slot_') || output.includes('slot update_slots')) {
+        this.progressCallback({
+          type: 'slot_management',
+          progress: -1,
+          message: 'Preparing Conversation',
+          details: 'Setting up conversation context...'
+        });
+        
+        return;
+      }
+
+      // Debug: Log when no patterns match
+      if (output.trim().length > 0 && !output.includes('stderr') && !output.includes('INFO') && !output.includes('GET /health') && !output.includes('log_server_r')) {
+        console.log('⚠️ No progress pattern matched for output:', output.trim().substring(0, 100));
       }
 
     } catch (error) {

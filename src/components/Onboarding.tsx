@@ -1281,7 +1281,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                             <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                                             <div>
                                                                 <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Scanning folder for models</p>
-                                                                <p className="text-xs text-blue-600 dark:text-blue-400">Looking for .gguf files...</p>
+                                                                <p className="text-xs text-blue-600 dark:text-blue-400">Looking for .gguf files... Adding them, gimme a minute</p>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -1562,7 +1562,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                             <div className="flex items-center gap-2">
                                                 <div className="text-lg">🎨</div>
                                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                    ComfyUI URL
+                                                    ComfyUI URL - optional only if using a custom server or else ignore
                                                 </label>
                                             </div>
                                             <input
@@ -1803,7 +1803,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                         <div className="flex items-center gap-2 mb-1">
                                             <Loader className="w-4 h-4 animate-spin text-blue-500"/>
                                             <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                                Launching Clara...
+                                                Launching Clara... (I will take a min to download Llama.cpp Binaries)
                                             </span>
                                         </div>
                                         <p className="text-xs text-blue-600 dark:text-blue-400">
@@ -1880,7 +1880,7 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     loading ? (
                                         <span className="flex items-center justify-center gap-2">
                                             <Loader className="w-4 h-4 animate-spin"/>
-                                            Launching Clara...
+                                            Launching Clara... (I will take a min to download Llama.cpp Binaries)
                                         </span>
                                     ) : 'Launch Clara'
                                 ) : 'Continue'}

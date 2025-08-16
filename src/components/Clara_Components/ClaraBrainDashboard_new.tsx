@@ -250,23 +250,14 @@ const getMemoryCards = (profile: UserMemoryProfile | null): MemoryCard[] => {
     if (sectionData && typeof sectionData === 'object') {
       Object.entries(sectionData).forEach(([key, value]) => {
         if (value && typeof value === 'object') {
-          // Extract title and content with better parsing
           const title = value.category || formatTitle(key);
-          let content = value.details || value.value || value;
-          
-          // If content is still an object or JSON string, format it properly
-          if (typeof content === 'object' || 
-              (typeof content === 'string' && 
-               ((content.startsWith('{') && content.endsWith('}')) || 
-                (content.startsWith('[') && content.endsWith(']'))))) {
-            content = formatValue(content);
-          }
+          const content = value.details || value.value || formatValue(value);
           
           cards.push({
             id: `${section.key}-${key}`,
             category: section.category,
             title: title,
-            content: String(content),
+            content: content,
             confidence: value.confidence || 0.7,
             frequency: value.frequency || 'occasional',
             lastUpdated: new Date(profile.updatedAt),
@@ -286,115 +277,40 @@ const formatTitle = (str: string): string => {
 };
 
 const formatValue = (value: any): string => {
-  // Helper function to parse JSON string and extract meaningful content
-  const parseJsonString = (str: string): string => {
-    try {
-      const parsed = JSON.parse(str);
-      return formatParsedObject(parsed);
-    } catch {
-      // If it's not valid JSON, return as is
-      return str;
-    }
-  };
-
-  // Helper function to format parsed objects into readable text
-  const formatParsedObject = (obj: any): string => {
-    if (typeof obj === 'string') return obj;
-    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
-    
-    if (Array.isArray(obj)) {
-      return obj.map(item => formatParsedObject(item)).join(', ');
-    }
-    
-    if (typeof obj === 'object' && obj !== null) {
-      // Extract known meaningful fields first
-      if (obj.value !== undefined) return String(obj.value);
-      if (obj.details !== undefined) return String(obj.details);
-      if (obj.category !== undefined) return String(obj.category);
-      if (obj.name !== undefined) return String(obj.name);
-      if (obj.title !== undefined) return String(obj.title);
-      
-      // For location objects
-      if (obj.city || obj.state || obj.country) {
-        const parts = [];
-        if (obj.city) parts.push(obj.city);
-        if (obj.state) parts.push(obj.state);
-        if (obj.country) parts.push(obj.country);
-        return parts.join(', ');
-      }
-      
-      // For company/employer objects
-      if (obj.company || obj.currentEmployer) {
-        return obj.company || obj.currentEmployer;
-      }
-      
-      // For preference objects
-      if (obj.preferredFollowUpDay || obj.preferredMethod) {
-        const parts = [];
-        if (obj.preferredFollowUpDay) parts.push(`Follow-up: ${obj.preferredFollowUpDay}`);
-        if (obj.preferredMethod) parts.push(`Method: ${obj.preferredMethod}`);
-        return parts.join(', ');
-      }
-      
-      // For interest/intent objects
-      if (obj.interest !== undefined || obj.intent !== undefined) {
-        return obj.interest !== undefined ? 
-          (obj.interest ? 'Interested' : 'Not interested') :
-          (obj.intent ? 'Has intent' : 'No intent');
-      }
-      
-      // Generic key-value formatting for other objects
-      const entries = Object.entries(obj).filter(([key, val]) => 
-        val !== null && val !== undefined && val !== '' && key !== 'confidence'
-      );
-      
-      if (entries.length === 0) return 'No details available';
-      
-      if (entries.length === 1) {
-        const [, val] = entries[0];
-        return typeof val === 'object' ? formatParsedObject(val) : String(val);
-      }
-      
-      // Multiple key-value pairs - format nicely
-      return entries.map(([key, val]) => {
-        const formattedKey = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
-        const formattedVal = typeof val === 'object' ? formatParsedObject(val) : String(val);
-        return `${formattedKey}: ${formattedVal}`;
-      }).join(', ');
-    }
-    
-    return String(obj);
-  };
-
-  // Handle arrays
   if (Array.isArray(value)) {
     return value.map(item => {
       if (typeof item === 'object') {
-        return formatParsedObject(item);
+        if (item.language) return item.language;
+        if (item.culture) return item.culture;
+        if (item.value) return item.value;
+        if (item.details) return item.details;
+        if (item.category) return item.category;
+        return JSON.stringify(item);
       }
-      if (typeof item === 'string' && (item.startsWith('{') || item.startsWith('['))) {
-        return parseJsonString(item);
-      }
-      return String(item);
+      return item;
     }).join(', ');
   }
   
-  // Handle objects
   if (typeof value === 'object' && value !== null) {
-    return formatParsedObject(value);
-  }
-  
-  // Handle strings that might be JSON
-  if (typeof value === 'string') {
-    // Check if it looks like JSON
-    if ((value.startsWith('{') && value.endsWith('}')) || 
-        (value.startsWith('[') && value.endsWith(']'))) {
-      return parseJsonString(value);
+    const keys = Object.keys(value);
+    const hasNumberedKeys = keys.some(key => !isNaN(Number(key)));
+    
+    if (hasNumberedKeys && value.value) {
+      return String(value.value);
     }
-    return value;
+    
+    if (value.value !== undefined) {
+      return String(value.value);
+    }
+    if (value.details) {
+      return String(value.details);
+    }
+    if (value.category) {
+      return String(value.category);
+    }
+    return JSON.stringify(value);
   }
   
-  // Handle primitives
   return String(value);
 };
 

@@ -108,6 +108,18 @@ import { claraMemoryIntegration } from '../../services/ClaraMemoryIntegration';
 // Import image generation widget
 import ChatImageGenWidget from './ChatImageGenWidget';
 
+// Import command line parser types and utilities
+import { 
+  ParsedModelConfig, 
+  parseJsonConfiguration, 
+  updateCommandLineParameter, 
+  cleanCommandLine, 
+  estimateModelTotalLayers,
+  getModelMaxContextSize,
+  getSafeContextSize,
+  getContextWarningLevel,
+} from '../../utils/commandLineParser';
+
 /**
  * Custom Tooltip Component
  */
@@ -466,8 +478,10 @@ const ModelSelector: React.FC<{
     // Finally filter by search term
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
+      const cleanModelName = getCleanModelName(model.name);
       return (
         model.name.toLowerCase().includes(searchLower) ||
+        cleanModelName.toLowerCase().includes(searchLower) ||
         model.provider.toLowerCase().includes(searchLower) ||
         model.id.toLowerCase().includes(searchLower)
       );
@@ -525,6 +539,20 @@ const ModelSelector: React.FC<{
     return truncated.substring(0, maxLength - 3) + '...';
   };
 
+  // Helper function to extract clean model name from ID (removes UUID prefix if present)
+  const getCleanModelName = (modelId: string): string => {
+    // If the model ID contains a UUID prefix followed by a colon, extract just the model name part
+    // Format: "d78b6daf-e14a-435e-a1ce-cd584c9a18fc:gpt-oss-20b-q5-k-m:20b" -> "gpt-oss-20b-q5-k-m:20b"
+    if (modelId.includes(':')) {
+      const parts = modelId.split(':');
+      // Check if first part looks like a UUID (36 characters with dashes)
+      if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
+        return parts.slice(1).join(':'); // Join remaining parts in case model name itself contains colons
+      }
+    }
+    return modelId;
+  };
+
   return (
     <div className="relative">
       <button
@@ -538,8 +566,8 @@ const ModelSelector: React.FC<{
               {React.createElement(getModelTypeIcon(modelType), {
                 className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(selectedModelObj)}`
               })}
-              <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={selectedModelObj.name}>
-                {truncateModelName(selectedModelObj.name)}
+              <span className="text-gray-700 dark:text-gray-300 truncate text-left" title={getCleanModelName(selectedModelObj.name)}>
+                {truncateModelName(getCleanModelName(selectedModelObj.name))}
               </span>
             </>
           ) : (
@@ -586,14 +614,14 @@ const ModelSelector: React.FC<{
                   className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                     model.id === selectedModel ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
                   }`}
-                  title={model.name} // Show full name on hover
+                  title={getCleanModelName(model.name)} // Show full clean name on hover
                 >
                   {React.createElement(getModelTypeIcon(modelType), {
                     className: `w-4 h-4 flex-shrink-0 ${getModelTypeColor(model)}`
                   })}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {model.name}
+                      {getCleanModelName(model.name)}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 truncate">
                       <span className="truncate">{model.provider}</span>
@@ -830,6 +858,515 @@ const ScreenSourcePicker: React.FC<{
 };
 
 /**
+ * Simple Model Configuration Component - Shows layers and context for the selected model
+ */
+const SimpleModelConfig: React.FC<{
+  modelName: string;
+  isEditing: boolean;
+  isLoading: boolean;
+  onEdit: () => void;
+  onSave: (modelName: string, config: Partial<ParsedModelConfig>) => void;
+  onCancel: () => void;
+}> = ({ modelName, isEditing, isLoading, onEdit, onSave, onCancel }) => {
+  const [gpuLayers, setGpuLayers] = useState(0);
+  const [contextSize, setContextSize] = useState(8192);
+  const [originalConfig, setOriginalConfig] = useState<{gpuLayers: number, contextSize: number} | null>(null);
+
+  // Helper function to extract clean model name from ID (removes UUID prefix if present)
+  const getCleanModelName = (modelId: string): string => {
+    if (modelId.includes(':')) {
+      const parts = modelId.split(':');
+      if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
+        return parts.slice(1).join(':');
+      }
+    }
+    return modelId;
+  };
+
+  // Load current configuration when component mounts or model changes
+  useEffect(() => {
+    const loadCurrentConfig = async () => {
+      try {
+        const llamaSwap = (window as any).llamaSwap;
+        if (!llamaSwap) return;
+
+        const result = await llamaSwap.getConfigurationInfo();
+        if (result.success && result.configuration?.models) {
+          const cleanName = getCleanModelName(modelName);
+          
+          // Try to find the model by both original name and clean name
+          let modelConfig = null;
+          for (const [configModelName, configData] of Object.entries(result.configuration.models)) {
+            if (configModelName === modelName || configModelName === cleanName || 
+                getCleanModelName(configModelName) === cleanName) {
+              modelConfig = configData;
+              break;
+            }
+          }
+
+          if (modelConfig) {
+            const parsedModels = parseJsonConfiguration(result.configuration);
+            const parsed = parsedModels.find(m => 
+              m.name === modelName || m.name === cleanName || getCleanModelName(m.name) === cleanName
+            );
+            
+            if (parsed) {
+              const layers = parsed.gpuLayers || 0;
+              const context = parsed.contextSize || 8192;
+              setGpuLayers(layers);
+              setContextSize(context);
+              setOriginalConfig({ gpuLayers: layers, contextSize: context });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load model configuration:', error);
+      }
+    };
+
+    loadCurrentConfig();
+  }, [modelName]);
+
+  const hasChanges = originalConfig && 
+    (gpuLayers !== originalConfig.gpuLayers || contextSize !== originalConfig.contextSize);
+
+  const handleSave = () => {
+    onSave(modelName, {
+      gpuLayers,
+      contextSize
+    });
+  };
+
+  const cleanDisplayName = getCleanModelName(modelName);
+
+  if (!isEditing) {
+    return (
+      <div className="space-y-3 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+            {cleanDisplayName}
+          </h4>
+          <button
+            onClick={onEdit}
+            className="px-3 py-1 text-xs bg-sakura-500 text-white rounded hover:bg-sakura-600 transition-colors"
+          >
+            Edit
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <span className="font-medium text-gray-600 dark:text-gray-400">GPU Layers:</span>
+            <div className="text-gray-900 dark:text-white">{gpuLayers}</div>
+          </div>
+          <div>
+            <span className="font-medium text-gray-600 dark:text-gray-400">Context Size:</span>
+            <div className="text-gray-900 dark:text-white">{(contextSize / 1000).toFixed(0)}K</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-600">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+          Configure: {cleanDisplayName}
+        </h4>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isLoading || !hasChanges}
+            className="px-3 py-1 text-xs bg-sakura-500 text-white rounded hover:bg-sakura-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save & Load'
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {/* GPU Layers */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            GPU Layers: {gpuLayers}
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="80"
+            step="1"
+            value={gpuLayers}
+            onChange={(e) => setGpuLayers(parseInt(e.target.value))}
+            className="w-full"
+            disabled={isLoading}
+          />
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <span>CPU Only (0)</span>
+            <span>Full GPU (80)</span>
+          </div>
+        </div>
+
+        {/* Context Size */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            Context Size: {(contextSize / 1000).toFixed(0)}K
+          </label>
+          <input
+            type="range"
+            min="2048"
+            max="131072"
+            step="1024"
+            value={contextSize}
+            onChange={(e) => setContextSize(parseInt(e.target.value))}
+            className="w-full"
+            disabled={isLoading}
+          />
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <span>2K</span>
+            <span>128K</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Model Configuration Display Component (Read-only)
+ */
+const ModelConfigurationDisplay: React.FC<{
+  modelName: string;
+  availableModels: ParsedModelConfig[];
+  modelMetadata: {[modelName: string]: {nativeContextSize?: number, estimatedLayers?: number}};
+  gpuInfo?: {
+    hasGPU: boolean;
+    gpuMemoryMB: number;
+    gpuMemoryGB: number;
+    gpuType: string;
+    systemMemoryGB: number;
+    platform: string;
+  };
+}> = ({ modelName, availableModels, modelMetadata, gpuInfo }) => {
+  const modelConfig = availableModels.find(m => m.name === modelName);
+  const metadata = modelMetadata[modelName];
+
+  if (!modelConfig) {
+    return (
+      <div className="text-center py-4">
+        <AlertCircle className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+        <p className="text-sm text-gray-600 dark:text-gray-400">Model configuration not found</p>
+      </div>
+    );
+  }
+
+  const totalLayers = metadata?.estimatedLayers || estimateModelTotalLayers(modelName, modelConfig.modelSizeGB);
+  const maxContextSize = getModelMaxContextSize(modelName, metadata?.nativeContextSize);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <span className="font-medium text-gray-600 dark:text-gray-400">GPU Layers:</span>
+          <div className="text-gray-900 dark:text-white">
+            {modelConfig.gpuLayers || 0} / {totalLayers}
+            {gpuInfo && (
+              <span className="text-gray-500 dark:text-gray-400 ml-1">
+                ({((modelConfig.gpuLayers || 0) / totalLayers * 100).toFixed(0)}%)
+              </span>
+            )}
+          </div>
+        </div>
+        <div>
+          <span className="font-medium text-gray-600 dark:text-gray-400">Context Size:</span>
+          <div className="text-gray-900 dark:text-white">
+            {modelConfig.contextSize ? `${(modelConfig.contextSize / 1000).toFixed(0)}K` : 'Default'}
+            <span className="text-gray-500 dark:text-gray-400 ml-1">
+              (max: {(maxContextSize / 1000).toFixed(0)}K)
+            </span>
+          </div>
+        </div>
+        <div>
+          <span className="font-medium text-gray-600 dark:text-gray-400">Threads:</span>
+          <div className="text-gray-900 dark:text-white">{modelConfig.threads || 'Auto'}</div>
+        </div>
+        <div>
+          <span className="font-medium text-gray-600 dark:text-gray-400">Batch Size:</span>
+          <div className="text-gray-900 dark:text-white">{modelConfig.batchSize || 'Default'}</div>
+        </div>
+      </div>
+
+      {gpuInfo && modelConfig.gpuLayers && modelConfig.gpuLayers > 0 && (
+        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
+          <div className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+            <Zap className="w-3 h-3" />
+            <span className="font-medium">GPU Acceleration</span>
+          </div>
+          <div className="text-blue-600 dark:text-blue-400 mt-1">
+            Using {gpuInfo.gpuType} GPU with {gpuInfo.gpuMemoryGB}GB VRAM
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Model Configuration Editor Component
+ */
+const ModelConfigurationEditor: React.FC<{
+  modelName: string;
+  availableModels: ParsedModelConfig[];
+  modelMetadata: {[modelName: string]: {nativeContextSize?: number, estimatedLayers?: number}};
+  gpuInfo?: {
+    hasGPU: boolean;
+    gpuMemoryMB: number;
+    gpuMemoryGB: number;
+    gpuType: string;
+    systemMemoryGB: number;
+    platform: string;
+  };
+  onSave: (modelName: string, config: Partial<ParsedModelConfig>) => void;
+  onCancel: () => void;
+  onParameterChange: (field: keyof ParsedModelConfig, value: any) => void;
+  isLoading: boolean;
+  hasUnsavedChanges: boolean;
+}> = ({ 
+  modelName, 
+  availableModels, 
+  modelMetadata, 
+  gpuInfo, 
+  onSave, 
+  onCancel, 
+  onParameterChange,
+  isLoading,
+  hasUnsavedChanges 
+}) => {
+  const modelConfig = availableModels.find(m => m.name === modelName);
+  const metadata = modelMetadata[modelName];
+  
+  const [editedConfig, setEditedConfig] = useState<Partial<ParsedModelConfig>>({});
+
+  useEffect(() => {
+    if (modelConfig) {
+      setEditedConfig({
+        gpuLayers: modelConfig.gpuLayers || 0,
+        contextSize: modelConfig.contextSize || 8192,
+        threads: modelConfig.threads,
+        batchSize: modelConfig.batchSize
+      });
+    }
+  }, [modelConfig]);
+
+  if (!modelConfig) {
+    return (
+      <div className="text-center py-4">
+        <AlertCircle className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+        <p className="text-sm text-gray-600 dark:text-gray-400">Model configuration not found</p>
+      </div>
+    );
+  }
+
+  const totalLayers = metadata?.estimatedLayers || estimateModelTotalLayers(modelName, modelConfig.modelSizeGB);
+  const maxContextSize = getModelMaxContextSize(modelName, metadata?.nativeContextSize);
+  
+  // Calculate safe context size if GPU info is available
+  const safeContextInfo = gpuInfo ? getSafeContextSize(
+    modelName,
+    modelConfig.modelSizeGB || 7,
+    editedConfig.gpuLayers || 0,
+    totalLayers,
+    gpuInfo.gpuMemoryGB,
+    metadata?.nativeContextSize
+  ) : null;
+
+  // Get context warning
+  const contextWarning = gpuInfo ? getContextWarningLevel(
+    editedConfig.contextSize || 8192,
+    modelConfig.modelSizeGB || 7,
+    editedConfig.gpuLayers || 0,
+    totalLayers,
+    gpuInfo.gpuMemoryGB
+  ) : null;
+
+  const handleParameterChange = (field: keyof ParsedModelConfig, value: any) => {
+    setEditedConfig(prev => ({ ...prev, [field]: value }));
+    onParameterChange(field, value);
+  };
+
+  const handleSave = () => {
+    onSave(modelName, editedConfig);
+  };
+
+  return (
+    <div className="space-y-4 border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+          <Settings className="w-4 h-4 text-sakura-500" />
+          Configuring: {modelName}
+        </h4>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isLoading || !hasUnsavedChanges}
+            className="px-3 py-1 text-xs bg-sakura-500 text-white rounded hover:bg-sakura-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3 h-3" />
+                Load Model
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {/* GPU Layers Configuration */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            GPU Layers: {editedConfig.gpuLayers || 0} / {totalLayers}
+            {gpuInfo && (
+              <span className="ml-2 text-gray-500">
+                ({((editedConfig.gpuLayers || 0) / totalLayers * 100).toFixed(0)}% on GPU)
+              </span>
+            )}
+          </label>
+          <input
+            type="range"
+            min="0"
+            max={totalLayers}
+            step="1"
+            value={editedConfig.gpuLayers || 0}
+            onChange={(e) => handleParameterChange('gpuLayers', parseInt(e.target.value))}
+            className="w-full"
+            disabled={isLoading}
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>CPU Only</span>
+            <span>Full GPU</span>
+          </div>
+          {gpuInfo && editedConfig.gpuLayers && editedConfig.gpuLayers > 0 && (
+            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              Estimated GPU memory: ~{((editedConfig.gpuLayers / totalLayers) * (modelConfig.modelSizeGB || 7)).toFixed(1)}GB
+            </div>
+          )}
+        </div>
+
+        {/* Context Size Configuration */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            Context Size: {(editedConfig.contextSize || 8192) / 1000}K
+            {safeContextInfo && (
+              <span className="ml-2 text-gray-500">
+                (safe: {safeContextInfo.safeContextSize / 1000}K, max: {safeContextInfo.maxContextSize / 1000}K)
+              </span>
+            )}
+          </label>
+          <input
+            type="range"
+            min="2048"
+            max={maxContextSize}
+            step="1024"
+            value={editedConfig.contextSize || 8192}
+            onChange={(e) => handleParameterChange('contextSize', parseInt(e.target.value))}
+            className="w-full"
+            disabled={isLoading}
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>2K</span>
+            <span>{maxContextSize / 1000}K</span>
+          </div>
+          {contextWarning && (
+            <div className={`text-xs mt-1 ${
+              contextWarning.warningLevel === 'danger' 
+                ? 'text-red-600 dark:text-red-400' 
+                : contextWarning.warningLevel === 'warning'
+                ? 'text-yellow-600 dark:text-yellow-400'
+                : 'text-green-600 dark:text-green-400'
+            }`}>
+              {contextWarning.message}
+            </div>
+          )}
+        </div>
+
+        {/* Additional Parameters */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Threads: {editedConfig.threads || 'Auto'}
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="32"
+              value={editedConfig.threads || ''}
+              onChange={(e) => handleParameterChange('threads', e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder="Auto"
+              className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+              disabled={isLoading}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Batch Size: {editedConfig.batchSize || 'Default'}
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="2048"
+              value={editedConfig.batchSize || ''}
+              onChange={(e) => handleParameterChange('batchSize', e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder="Default"
+              className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+              disabled={isLoading}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Warning/Info Messages */}
+      {!gpuInfo && (
+        <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs">
+          <div className="flex items-center gap-1 text-yellow-700 dark:text-yellow-300">
+            <AlertCircle className="w-3 h-3" />
+            <span className="font-medium">No GPU Information</span>
+          </div>
+          <div className="text-yellow-600 dark:text-yellow-400 mt-1">
+            GPU memory calculations are not available. Configure carefully to avoid crashes.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * Advanced options panel
  */
 const AdvancedOptions: React.FC<{
@@ -851,6 +1388,7 @@ const AdvancedOptions: React.FC<{
     systemPrompt: false,
     models: false,
     parameters: false,
+    modelConfig: false,
     features: false,
     mcp: false,
     autonomous: false,
@@ -862,6 +1400,32 @@ const AdvancedOptions: React.FC<{
 
   // State for advanced parameters visibility
   const [showAdvancedParameters, setShowAdvancedParameters] = useState(false);
+
+  // Model configuration state
+  const [modelConfigState, setModelConfigState] = useState<{
+    currentModel: string | null;
+    isEditing: boolean;
+    isLoading: boolean;
+    hasUnsavedChanges: boolean;
+    availableModels: ParsedModelConfig[];
+    modelMetadata: {[modelName: string]: {nativeContextSize?: number, estimatedLayers?: number}};
+    gpuInfo?: {
+      hasGPU: boolean;
+      gpuMemoryMB: number;
+      gpuMemoryGB: number;
+      gpuType: string;
+      systemMemoryGB: number;
+      platform: string;
+    };
+  }>({
+    currentModel: null,
+    isEditing: false,
+    isLoading: false,
+    hasUnsavedChanges: false,
+    availableModels: [],
+    modelMetadata: {},
+    gpuInfo: undefined
+  });
 
   // Load MCP servers when component mounts or when MCP is enabled
   useEffect(() => {
@@ -882,6 +1446,195 @@ const AdvancedOptions: React.FC<{
 
     loadMcpServers();
   }, [aiConfig?.features.enableMCP]);
+
+  // Load model configuration information when component mounts
+  useEffect(() => {
+    const loadModelConfigInfo = async () => {
+      setModelConfigState(prev => ({ ...prev, isLoading: true }));
+      
+      try {
+        const llamaSwap = (window as any).llamaSwap;
+        if (!llamaSwap) {
+          console.warn('LlamaSwap service not available');
+          return;
+        }
+
+        // Get configuration info and model metadata
+        const [configResult, metadataResult] = await Promise.all([
+          llamaSwap.getConfigurationInfo(),
+          llamaSwap.getModelConfigurations()
+        ]);
+
+        if (configResult.success) {
+          // Parse available models from configuration
+          const availableModels = configResult.configuration?.models 
+            ? parseJsonConfiguration(configResult.configuration)
+            : [];
+
+          // Extract model metadata
+          const modelMetadata: {[modelName: string]: {nativeContextSize?: number, estimatedLayers?: number}} = {};
+          if (metadataResult.success && metadataResult.models) {
+            metadataResult.models.forEach((model: any) => {
+              modelMetadata[model.name] = {
+                nativeContextSize: model.nativeContextSize,
+                estimatedLayers: estimateModelTotalLayers(model.name, model.sizeGB)
+              };
+            });
+          }
+
+          setModelConfigState(prev => ({
+            ...prev,
+            availableModels,
+            modelMetadata,
+            gpuInfo: configResult.gpuInfo,
+            currentModel: aiConfig?.models.text || null
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load model configuration info:', error);
+      } finally {
+        setModelConfigState(prev => ({ ...prev, isLoading: false }));
+      }
+    };
+
+    loadModelConfigInfo();
+  }, [aiConfig?.models.text]);
+
+  // Model configuration handlers
+  const handleModelConfigEdit = useCallback((modelName: string) => {
+    setModelConfigState(prev => ({
+      ...prev,
+      currentModel: modelName,
+      isEditing: true,
+      hasUnsavedChanges: false
+    }));
+  }, []);
+
+  const handleModelConfigCancel = useCallback(() => {
+    setModelConfigState(prev => ({
+      ...prev,
+      isEditing: false,
+      hasUnsavedChanges: false
+    }));
+  }, []);
+
+  const handleModelConfigSave = useCallback(async (modelName: string, config: Partial<ParsedModelConfig>) => {
+    if (!modelName) return;
+    
+    setModelConfigState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const llamaSwap = (window as any).llamaSwap;
+      if (!llamaSwap) {
+        throw new Error('LlamaSwap service not available');
+      }
+
+      // Get current configuration
+      const configResult = await llamaSwap.getConfigurationInfo();
+      if (!configResult.success) {
+        throw new Error('Failed to get current configuration');
+      }
+
+      const currentConfig = configResult.configuration;
+      
+      // Helper function to extract clean model name
+      const getCleanModelName = (modelId: string): string => {
+        if (modelId.includes(':')) {
+          const parts = modelId.split(':');
+          if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
+            return parts.slice(1).join(':');
+          }
+        }
+        return modelId;
+      };
+
+      // Try to find the model in configuration by multiple name variations
+      let foundModelKey = null;
+      let foundModelConfig = null;
+      const cleanModelName = getCleanModelName(modelName);
+
+      if (currentConfig?.models) {
+        // Try exact match first
+        if (currentConfig.models[modelName]) {
+          foundModelKey = modelName;
+          foundModelConfig = currentConfig.models[modelName];
+        }
+        // Try clean name match
+        else if (currentConfig.models[cleanModelName]) {
+          foundModelKey = cleanModelName;
+          foundModelConfig = currentConfig.models[cleanModelName];
+        }
+        // Try finding by cleaning all config model names
+        else {
+          for (const [configKey, configData] of Object.entries(currentConfig.models)) {
+            if (getCleanModelName(configKey) === cleanModelName) {
+              foundModelKey = configKey;
+              foundModelConfig = configData;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!foundModelKey || !foundModelConfig) {
+        // List available models for debugging
+        const availableModels = currentConfig?.models ? Object.keys(currentConfig.models) : [];
+        console.error('Available models in config:', availableModels);
+        console.error('Looking for model:', modelName, 'or clean name:', cleanModelName);
+        throw new Error(`Model not found in configuration. Available models: ${availableModels.join(', ')}`);
+      }
+
+      // Update command line with new parameters
+      let updatedCmd = foundModelConfig.cmd;
+      
+      // Update each changed parameter
+      Object.entries(config).forEach(([field, value]) => {
+        if (value !== undefined && field !== 'name') {
+          updatedCmd = updateCommandLineParameter(updatedCmd, field as keyof ParsedModelConfig, value);
+        }
+      });
+
+      // Clean up the command line
+      updatedCmd = cleanCommandLine(updatedCmd);
+      
+      // Update the configuration
+      currentConfig.models[foundModelKey].cmd = updatedCmd;
+      
+      // Save the configuration and restart the model
+      const saveResult = await llamaSwap.saveConfigAndRestart(JSON.stringify(currentConfig, null, 2));
+      
+      if (saveResult.success) {
+        addInfoNotification('Model Configuration', `Model configuration updated successfully!`);
+        
+        // Reload model configuration info
+        const updatedConfigResult = await llamaSwap.getConfigurationInfo();
+        if (updatedConfigResult.success) {
+          const availableModels = updatedConfigResult.configuration?.models 
+            ? parseJsonConfiguration(updatedConfigResult.configuration)
+            : [];
+          
+          setModelConfigState(prev => ({
+            ...prev,
+            availableModels,
+            isEditing: false,
+            hasUnsavedChanges: false
+          }));
+        }
+      } else {
+        throw new Error(saveResult.error || 'Failed to save configuration');
+      }
+    } catch (error) {
+      console.error('Failed to save model configuration:', error);
+      addErrorNotification('Model Configuration Error', `Failed to save model configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setModelConfigState(prev => ({ ...prev, isLoading: false }));
+    }
+  }, []);
+
+  const handleModelConfigParameterChange = useCallback((field: keyof ParsedModelConfig, value: any) => {
+    // Not used in simplified version, but keeping for compatibility
+    setModelConfigState(prev => ({ ...prev, hasUnsavedChanges: true }));
+  }, []);
 
   // Load default system prompt when provider or userInfo changes
   useEffect(() => {
@@ -1717,6 +2470,80 @@ Skip for: quick answers, simple lists
                     Reset to Defaults
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Model Configuration */}
+          <div className="space-y-2">
+            <SectionHeader
+              title="Model Configuration"
+              icon={<Cpu className="w-4 h-4 text-sakura-500" />}
+              isExpanded={expandedSections.modelConfig}
+              onToggle={() => toggleSection('modelConfig')}
+              badge={modelConfigState.currentModel ? 1 : 0}
+            />
+            
+            {expandedSections.modelConfig && (
+              <div className="p-3 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg space-y-4">
+                {modelConfigState.isLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-sakura-500 mr-2" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Loading model configuration...</span>
+                  </div>
+                ) : modelConfigState.availableModels.length === 0 ? (
+                  <div className="text-center py-4">
+                    <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600 dark:text-gray-400">No models available for configuration</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">LlamaSwap service might not be running</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Current Model Display */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        Selected Model - it alters the model's configuration - (Don't change it Unless you know what you are doing)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 p-2 bg-white dark:bg-gray-700 rounded text-sm text-gray-900 dark:text-white">
+                          {modelConfigState.currentModel ? 
+                            (() => {
+                              const modelId = modelConfigState.currentModel;
+                              if (modelId.includes(':')) {
+                                const parts = modelId.split(':');
+                                if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
+                                  return parts.slice(1).join(':');
+                                }
+                              }
+                              return modelId;
+                            })() 
+                            : 'No model selected'
+                          }
+                        </div>
+                        {modelConfigState.currentModel && !modelConfigState.isEditing && (
+                          <button
+                            onClick={() => handleModelConfigEdit(modelConfigState.currentModel!)}
+                            className="px-3 py-2 bg-sakura-500 text-white rounded hover:bg-sakura-600 transition-colors text-xs"
+                          >
+                            Configure
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Show configuration for current model */}
+                    {modelConfigState.currentModel && (
+                      <SimpleModelConfig
+                        modelName={modelConfigState.currentModel}
+                        isEditing={modelConfigState.isEditing}
+                        isLoading={modelConfigState.isLoading}
+                        onEdit={() => handleModelConfigEdit(modelConfigState.currentModel!)}
+                        onSave={handleModelConfigSave}
+                        onCancel={handleModelConfigCancel}
+                      />
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -2691,20 +3518,28 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       return;
     }
 
-    // console.log('🔧 Setting up progress event listeners...');
+    console.log('🔧 Setting up progress event listeners...');
+    console.log('📡 Electron API available:', !!electron);
+    console.log('📡 Electron receive function:', !!electron?.receive);
 
     const handleProgressUpdate = (progressData: any) => {
-      // console.log('📊 Progress Update Received:', progressData);
-      // console.log('  Type:', progressData.type);
-      // console.log('  Progress:', progressData.progress);
-      // console.log('  Message:', progressData.message);
-      // console.log('  Details:', progressData.details);
-      // console.log('  Current isLoading:', isLoading);
+      console.log('📊 Progress Update Received:', progressData);
+      console.log('  Type:', progressData.type);
+      console.log('  Progress:', progressData.progress);
+      console.log('  Message:', progressData.message);
+      console.log('  Details:', progressData.details);
+      console.log('  Current isLoading:', isLoading);
       
-      // **CRITICAL FIX: Only show progress UI when actively sending a message**
-      // This prevents progress from showing during preloading or input focus
-      if (!isLoading) {
-        console.log('📊 Ignoring progress update - not actively sending message (isLoading=false)');
+      // Show progress for message sending, model loading, and other important operations
+      // Allow progress for model loading/preloading even when not actively sending messages
+      const allowedProgressTypes = ['model', 'context', 'loading', 'preload', 'download'];
+      const isAllowedOperation = allowedProgressTypes.some(type => 
+        progressData.type?.toLowerCase().includes(type) || 
+        progressData.message?.toLowerCase().includes(type)
+      );
+      
+      if (!isLoading && !isAllowedOperation) {
+        console.log('📊 Ignoring progress update - not actively sending message and not an allowed operation');
         return;
       }
       
@@ -2716,7 +3551,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           message: progressData.message,
           details: progressData.details
         };
-        // console.log('  Setting new progressState (message send active):', newState);
+        console.log('  Setting new progressState (message send active):', newState);
         return newState;
       });
 
@@ -2783,44 +3618,82 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     const testProgressUI = () => {
       console.log('🧪 Testing Progress UI with auto-hide...');
       
-      // Test context loading progress
+      // Test model loading progress
       setProgressState({
         isActive: true,
-        type: 'context',
+        type: 'model',
         progress: 25,
-        message: 'Loading context',
-        details: 'Processing 512 tokens'
+        message: 'Loading model',
+        details: 'Initializing layers'
       });
       
       setTimeout(() => {
         setProgressState({
           isActive: true,
-          type: 'context', 
+          type: 'model', 
           progress: 75,
-          message: 'Loading context',
-          details: 'Processing 1024 tokens'
+          message: 'Loading model',
+          details: 'Processing weights'
         });
       }, 2000);
       
       setTimeout(() => {
         setProgressState({
           isActive: true,
-          type: 'context',
+          type: 'model',
           progress: 100,
-          message: 'Context loaded',
-          details: 'Processing complete - 1652 tokens'
+          message: 'Model loaded',
+          details: 'Ready for inference'
         });
-        console.log('🧪 Progress reached 100% - should auto-hide in 1.5s');
       }, 4000);
       
-      // Note: Progress will auto-hide after reaching 100% due to the new logic
+      setTimeout(() => {
+        setProgressState(prev => ({ ...prev, isActive: false }));
+      }, 6000);
     };
 
-    // Expose test function to window for debugging
+    const testContextProgress = () => {
+      console.log('🧪 Testing Context Loading Progress...');
+      
+      setProgressState({
+        isActive: true,
+        type: 'context',
+        progress: 0,
+        message: 'Processing context',
+        details: 'Analyzing input...'
+      });
+      
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 20;
+        setProgressState({
+          isActive: true,
+          type: 'context',
+          progress: progress,
+          message: 'Processing context',
+          details: `Processing ${progress * 10} tokens...`
+        });
+        
+        if (progress >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setProgressState(prev => ({ ...prev, isActive: false }));
+          }, 1500);
+        }
+      }, 500);
+    };
+
+    // Expose test functions to window for debugging
     (window as any).testProgressUI = testProgressUI;
+    (window as any).testContextProgress = testContextProgress;
+    
+    console.log('🔧 Progress UI test functions available:');
+    console.log('  - testProgressUI() - Test model loading progress');
+    console.log('  - testContextProgress() - Test context processing progress');
     
     return () => {
       delete (window as any).testProgressUI;
+      delete (window as any).testContextProgress;
     };
   }, []);
 
@@ -4782,21 +5655,10 @@ You can right-click on the image to save it or use it in your projects.`;
               />
             ) : (
               /* Chat Input Mode */
-              <div 
-                className={`glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300 ${
-                  progressState.isActive && isLoading
-                    ? 'border-2 border-blue-400 dark:border-blue-500 shadow-blue-200/50 dark:shadow-blue-800/50 shadow-lg' 
-                    : 'border border-transparent'
-                }`}
-                style={{
-                  background: progressState.isActive && isLoading && progressState.progress > 0 
-                    ? `linear-gradient(90deg, rgba(59, 130, 246, 0.1) ${progressState.progress}%, transparent ${progressState.progress}%)`
-                    : undefined
-                }}
-              >
+              <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
                 
-                {/* Progress Indicator */}
-                {progressState.isActive && isLoading && (
+                {/* Simple Progress Indicator - Show when loading */}
+                {isLoading && (
                   <div className="flex items-center gap-3 mb-3 p-2 bg-blue-50/80 dark:bg-blue-900/30 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                       {progressState.progress > 0 ? (
@@ -4812,7 +5674,9 @@ You can right-click on the image to save it or use it in your projects.`;
                       
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{progressState.message}</span>
+                          <span className="font-medium text-sm">
+                            {progressState.isActive && progressState.message ? progressState.message : 'Processing...'}
+                          </span>
                           {progressState.progress > 0 && (
                             <span className="text-blue-500 font-mono text-xs bg-blue-100 dark:bg-blue-800/50 px-2 py-0.5 rounded">
                               {progressState.progress}%

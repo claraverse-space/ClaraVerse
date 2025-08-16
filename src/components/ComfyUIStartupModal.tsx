@@ -23,6 +23,8 @@ interface ServiceStatus {
 interface StartupProgress {
   message: string;
   progress: number;
+  type?: string;
+  stage?: 'pulling' | 'starting' | 'network' | 'health';
 }
 
 const ComfyUIStartupModal: React.FC<ComfyUIStartupModalProps> = ({
@@ -248,9 +250,26 @@ const ComfyUIStartupModal: React.FC<ComfyUIStartupModalProps> = ({
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <div className="flex items-center space-x-3 mb-2">
                     <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      {startupProgress.message}
-                    </p>
+                    <div className="flex-1">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        {startupProgress.message}
+                      </p>
+                      {startupProgress.stage === 'pulling' && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          Downloading Docker image - this may take several minutes on first run
+                        </p>
+                      )}
+                      {startupProgress.message.includes('network') && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          Setting up container networking for ComfyUI
+                        </p>
+                      )}
+                      {(startupProgress.message.includes('health') || startupProgress.message.includes('Health')) && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          Verifying ComfyUI service is responding properly
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
                     <div 
@@ -258,6 +277,24 @@ const ComfyUIStartupModal: React.FC<ComfyUIStartupModalProps> = ({
                       style={{ width: `${startupProgress.progress}%` }}
                     />
                   </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      {startupProgress.stage === 'pulling' ? 'Downloading' : 
+                       startupProgress.stage === 'network' ? 'Setting up' :
+                       startupProgress.stage === 'health' ? 'Verifying' : 'Starting'}
+                    </span>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      {startupProgress.progress}%
+                    </span>
+                  </div>
+                  {startupProgress.stage === 'pulling' && startupProgress.progress < 100 && (
+                    <div className="mt-2 p-2 bg-blue-100 dark:bg-blue-800/30 rounded text-xs text-blue-700 dark:text-blue-300">
+                      <p className="font-medium">First-time setup in progress:</p>
+                      <p>• Downloading ComfyUI Docker image (~2-4 GB)</p>
+                      <p>• This only happens once - future starts will be much faster</p>
+                      <p>• You can safely minimize this window while downloading</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -285,7 +322,11 @@ const ComfyUIStartupModal: React.FC<ComfyUIStartupModalProps> = ({
                       <Play className="w-4 h-4" />
                     )}
                     <span>
-                      {isStarting ? 'Starting...' : serviceStatus?.running ? 'Running' : 'Start ComfyUI'}
+                      {isStarting ? (
+                        startupProgress?.stage === 'pulling' 
+                          ? 'Downloading Docker Image...' 
+                          : 'Starting... (First Launch may take a while)'
+                      ) : serviceStatus?.running ? 'Running' : 'Start ComfyUI'}
                     </span>
                   </button>
                 ) : (

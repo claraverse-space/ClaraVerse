@@ -12,6 +12,8 @@ interface N8NStartupModalProps {
 interface StartupProgress {
   message: string;
   progress: number;
+  type?: string;
+  stage?: 'pulling' | 'starting' | 'network' | 'health';
 }
 
 const N8NStartupModal: React.FC<N8NStartupModalProps> = ({ isOpen, onClose, onSuccess, n8nMode, n8nUrl }) => {
@@ -34,11 +36,13 @@ const N8NStartupModal: React.FC<N8NStartupModalProps> = ({ isOpen, onClose, onSu
         setStartupProgress(progress);
       };
 
-      if ((window as any).electronAPI?.ipcRenderer) {
-        (window as any).electronAPI.ipcRenderer.on('n8n:startup-progress', handleStartupProgress);
+      if ((window as any).electronAPI?.on) {
+        (window as any).electronAPI.on('n8n:startup-progress', handleStartupProgress);
         
         return () => {
-          (window as any).electronAPI.ipcRenderer.removeListener('n8n:startup-progress', handleStartupProgress);
+          if ((window as any).electronAPI?.removeListener) {
+            (window as any).electronAPI.removeListener('n8n:startup-progress', handleStartupProgress);
+          }
         };
       }
     }
@@ -283,11 +287,28 @@ const N8NStartupModal: React.FC<N8NStartupModalProps> = ({ isOpen, onClose, onSu
           {/* Startup Progress */}
           {startupProgress && (
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Loader className="w-4 h-4 animate-spin text-blue-500" />
-                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  {startupProgress.message}
-                </span>
+              <div className="flex items-center space-x-3 mb-2">
+                <Loader className="w-4 h-4 text-blue-500 animate-spin" />
+                <div className="flex-1">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    {startupProgress.message}
+                  </p>
+                  {startupProgress.stage === 'pulling' && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Downloading Docker image - this may take several minutes on first run
+                    </p>
+                  )}
+                  {(startupProgress.message.includes('network') || startupProgress.message.includes('Network')) && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Setting up container networking for N8N
+                    </p>
+                  )}
+                  {(startupProgress.message.includes('health') || startupProgress.message.includes('Health')) && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Verifying N8N service is responding properly
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
                 <div
@@ -295,6 +316,24 @@ const N8NStartupModal: React.FC<N8NStartupModalProps> = ({ isOpen, onClose, onSu
                   style={{ width: `${startupProgress.progress}%` }}
                 />
               </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {startupProgress.stage === 'pulling' ? 'Downloading' : 
+                   startupProgress.stage === 'network' ? 'Setting up' :
+                   startupProgress.stage === 'health' ? 'Verifying' : 'Starting'}
+                </span>
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {startupProgress.progress}%
+                </span>
+              </div>
+              {startupProgress.stage === 'pulling' && startupProgress.progress < 100 && (
+                <div className="mt-2 p-2 bg-blue-100 dark:bg-blue-800/30 rounded text-xs text-blue-700 dark:text-blue-300">
+                  <p className="font-medium">First-time setup in progress:</p>
+                  <p>• Downloading N8N Docker image (~1-2 GB)</p>
+                  <p>• This only happens once - future starts will be much faster</p>
+                  <p>• You can safely minimize this window while downloading</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -344,7 +383,9 @@ const N8NStartupModal: React.FC<N8NStartupModalProps> = ({ isOpen, onClose, onSu
                   {isStarting ? (
                     <>
                       <Loader className="w-4 h-4 animate-spin" />
-                      Starting...
+                      {startupProgress?.stage === 'pulling' 
+                        ? 'Downloading Docker Image...' 
+                        : 'Starting...'}
                     </>
                   ) : (
                     <>

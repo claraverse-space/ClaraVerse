@@ -1705,9 +1705,13 @@ class DockerSetup extends EventEmitter {
       
       // Create the network if it doesn't exist
       try {
+        console.log('Creating clara_network...');
         await this.docker.createNetwork({
           Name: 'clara_network',
-          Driver: 'bridge'
+          Driver: 'bridge',
+          Attachable: true,
+          Internal: false,
+          Scope: 'local'
         });
         console.log('Successfully created clara_network');
       } catch (error) {
@@ -1727,12 +1731,18 @@ class DockerSetup extends EventEmitter {
           console.log('Try restarting Docker Desktop if issues persist');
         }
         
+        // For Windows-specific issues
+        if (process.platform === 'win32') {
+          console.log('On Windows, ensure Docker Desktop is running and WSL2 backend is enabled');
+          console.log('Try restarting Docker Desktop if issues persist');
+        }
+        
         throw new Error(`Failed to create network: ${error.message}`);
       }
     } catch (error) {
       console.error('Error in createNetwork:', error.message);
-      // Don't throw here to allow the application to continue even if network creation fails
-      // We'll let containers attempt to connect, which might work if the network exists but we failed to detect it
+      // Re-throw the error so the caller can handle it appropriately
+      throw error;
     }
   }
 
@@ -1819,6 +1829,16 @@ class DockerSetup extends EventEmitter {
         throw new Error(`Container configuration for "${config.name}" is missing required "image" property`);
       }
 
+      // First, verify Docker daemon is responsive
+      try {
+        if (config.statusCallback) {
+          config.statusCallback('Verifying Docker daemon...', 'info', { percentage: 0 });
+        }
+        await this.docker.ping();
+      } catch (pingError) {
+        throw new Error(`Docker daemon is not responsive: ${pingError.message}. Please ensure Docker Desktop is running.`);
+      }
+
       // Check if container exists and is running
       try {
         const existingContainer = await this.docker.getContainer(config.name);
@@ -1855,10 +1875,36 @@ class DockerSetup extends EventEmitter {
       } catch (error) {
         if (error.statusCode === 404) {
           console.log(`Image ${config.image} not found locally, pulling for ${this.systemArch}...`);
-          await this.pullImageWithProgress(config.image, (status) => console.log(status));
+          
+          // Use the statusCallback if provided, otherwise fallback to console.log
+          const statusCallback = config.statusCallback || ((status) => console.log(status));
+          await this.pullImageWithProgress(config.image, statusCallback);
         } else {
           throw error;
         }
+      }
+
+      // Ensure the Clara network exists before creating the container
+      try {
+        console.log('Ensuring clara_network exists...');
+        
+        // Send progress update if callback is available
+        if (config.statusCallback) {
+          config.statusCallback('Setting up container network...', 'info', { percentage: 0 });
+        }
+        
+        await this.createNetwork();
+        
+        if (config.statusCallback) {
+          config.statusCallback('Network setup complete', 'success', { percentage: 10 });
+        }
+      } catch (networkError) {
+        console.error('Failed to create/verify network:', networkError);
+        if (config.statusCallback) {
+          config.statusCallback('Network setup failed, attempting to continue...', 'warning', { percentage: 5 });
+        }
+        // Don't throw immediately - try to continue as the network might exist
+        console.log('Attempting to continue despite network setup issues...');
       }
 
       console.log(`Creating container ${config.name} with port mapping ${config.internalPort} -> ${config.port}`);
@@ -1875,6 +1921,24 @@ class DockerSetup extends EventEmitter {
       }
       
       // Create and start container
+      let networkMode = 'clara_network';
+      
+      // Check if clara_network actually exists before using it
+      try {
+        const networks = await this.docker.listNetworks();
+        const networkExists = networks.some(network => network.Name === 'clara_network');
+        if (!networkExists) {
+          console.warn('clara_network not found, falling back to bridge network');
+          networkMode = 'bridge';
+          if (config.statusCallback) {
+            config.statusCallback('Using default bridge network (some features may be limited)', 'warning', { percentage: 15 });
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to check network status, using bridge network:', error.message);
+        networkMode = 'bridge';
+      }
+
       const containerConfig = {
         Image: config.image,
         name: config.name,
@@ -1886,7 +1950,7 @@ class DockerSetup extends EventEmitter {
             [`${config.internalPort}/tcp`]: [{ HostPort: config.port.toString() }]
           },
           Binds: config.volumes,
-          NetworkMode: 'clara_network',
+          NetworkMode: networkMode,
           // Add GPU runtime support if available
           ...(useGPURuntime && { Runtime: 'nvidia' }),
           // Add restart policy if specified
@@ -1913,22 +1977,60 @@ class DockerSetup extends EventEmitter {
         ]
       };
 
-      const newContainer = await this.docker.createContainer(containerConfig);
-      console.log(`Container ${config.name} created, starting...`);
-      await newContainer.start();
-      console.log(`Container ${config.name} started, waiting for health check...`);
+      try {
+        if (config.statusCallback) {
+          config.statusCallback(`Creating container ${config.name}...`, 'info', { percentage: 20 });
+        }
+        
+        const newContainer = await this.docker.createContainer(containerConfig);
+        console.log(`Container ${config.name} created, starting...`);
+        
+        if (config.statusCallback) {
+          config.statusCallback(`Starting container ${config.name}...`, 'info', { percentage: 30 });
+        }
+        
+        await newContainer.start();
+        console.log(`Container ${config.name} started, waiting for health check...`);
+        
+        if (config.statusCallback) {
+          config.statusCallback(`Container started, performing health checks...`, 'info', { percentage: 40 });
+        }
+      } catch (containerError) {
+        console.error(`Failed to create/start container ${config.name}:`, containerError);
+        
+        // Provide more specific error messages
+        if (containerError.message.includes('network')) {
+          throw new Error(`Network error: ${containerError.message}. Try restarting Docker Desktop.`);
+        } else if (containerError.message.includes('port')) {
+          throw new Error(`Port binding error: ${containerError.message}. Port ${config.port} may be in use.`);
+        } else {
+          throw new Error(`Container creation failed: ${containerError.message}`);
+        }
+      }
 
       // Initial delay to give the container time to fully start
       await new Promise(resolve => setTimeout(resolve, 5000));
 
       // Wait for health check
       let healthy = false;
-      for (let i = 0; i < 5; i++) {
+      const maxHealthChecks = 5;
+      for (let i = 0; i < maxHealthChecks; i++) {
         console.log(`Health check attempt ${i + 1} for ${config.name}...`);
+        
+        if (config.statusCallback) {
+          const healthProgress = 40 + (i / maxHealthChecks) * 50; // Progress from 40% to 90%
+          config.statusCallback(`Health check ${i + 1}/${maxHealthChecks} for ${config.name}...`, 'info', { percentage: Math.round(healthProgress) });
+        }
+        
         try {
           healthy = await config.healthCheck();
           console.log(`Health check result for ${config.name}: ${healthy}`);
-          if (healthy) break;
+          if (healthy) {
+            if (config.statusCallback) {
+              config.statusCallback(`${config.name} is healthy and ready!`, 'success', { percentage: 100 });
+            }
+            break;
+          }
         } catch (error) {
           console.error(`Health check error for ${config.name}:`, error);
         }

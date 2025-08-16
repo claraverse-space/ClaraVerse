@@ -13,6 +13,13 @@ interface ServiceStatus {
   mode: 'docker' | 'manual';
 }
 
+interface StartupProgress {
+  message: string;
+  progress: number;
+  type?: string;
+  stage?: 'pulling' | 'starting' | 'network' | 'health';
+}
+
 const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
   isOpen,
   onClose,
@@ -23,6 +30,7 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
   const [error, setError] = useState<string>('');
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [dockerAvailable, setDockerAvailable] = useState<boolean>(false);
+  const [startupProgress, setStartupProgress] = useState<StartupProgress | null>(null);
 
   const checkStatus = async () => {
     try {
@@ -67,7 +75,8 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
     try {
       setIsLoading(true);
       setError('');
-      setStatus('Starting Python backend container... (if its the first time i would suggesting waiting a bit (Needs to download ~9 GB))');
+      setStartupProgress(null);
+      setStatus('Starting Python backend container...');
 
       // Check if electronAPI is available
       if (!(window as any).electronAPI) {
@@ -78,15 +87,18 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
       
       if (result.success) {
         setStatus('Python backend container started successfully');
+        setStartupProgress(null);
         // Wait a bit for the service to fully initialize
         setTimeout(async () => {
           await checkStatus();
         }, 3000);
       } else {
         setError(result.error || 'Failed to start Python backend container');
+        setStartupProgress(null);
       }
     } catch (err) {
       setError(`Failed to start Python backend container: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setStartupProgress(null);
     } finally {
       setIsLoading(false);
     }
@@ -95,6 +107,21 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       checkStatus();
+      
+      // Listen for startup progress updates
+      const handleStartupProgress = (_event: any, progress: StartupProgress) => {
+        setStartupProgress(progress);
+      };
+
+      if ((window as any).electronAPI?.on) {
+        (window as any).electronAPI.on('python:startup-progress', handleStartupProgress);
+        
+        return () => {
+          if ((window as any).electronAPI?.removeListener) {
+            (window as any).electronAPI.removeListener('python:startup-progress', handleStartupProgress);
+          }
+        };
+      }
     }
   }, [isOpen]);
 
@@ -184,10 +211,63 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
           )}
 
           {/* Current Status */}
-          {status && (
+          {status && !startupProgress && (
             <div className="flex items-center space-x-2">
               {isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
               <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
+            </div>
+          )}
+
+          {/* Startup Progress */}
+          {startupProgress && (
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <div className="flex items-center space-x-3 mb-2">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <div className="flex-1">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    {startupProgress.message}
+                  </p>
+                  {startupProgress.stage === 'pulling' && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Downloading Docker image - this may take several minutes on first run
+                    </p>
+                  )}
+                  {(startupProgress.message.includes('network') || startupProgress.message.includes('Network')) && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Setting up container networking for Python backend
+                    </p>
+                  )}
+                  {(startupProgress.message.includes('health') || startupProgress.message.includes('Health')) && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Verifying Python backend service is responding properly
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${startupProgress.progress}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {startupProgress.stage === 'pulling' ? 'Downloading' : 
+                   startupProgress.stage === 'network' ? 'Setting up' :
+                   startupProgress.stage === 'health' ? 'Verifying' : 'Starting'}
+                </span>
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {startupProgress.progress}%
+                </span>
+              </div>
+              {startupProgress.stage === 'pulling' && startupProgress.progress < 100 && (
+                <div className="mt-2 p-2 bg-blue-100 dark:bg-blue-800/30 rounded text-xs text-blue-700 dark:text-blue-300">
+                  <p className="font-medium">First-time setup in progress:</p>
+                  <p>• Downloading Python backend Docker image (~8-9 GB)</p>
+                  <p>• This only happens once - future starts will be much faster</p>
+                  <p>• You can safely minimize this window while downloading</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -214,7 +294,9 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
                     {isLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Starting...
+                        {startupProgress?.stage === 'pulling' 
+                          ? 'Downloading Docker Image...' 
+                          : 'Starting...'}
                       </>
                     ) : (
                       'Start Python Backend'

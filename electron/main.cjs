@@ -14,6 +14,18 @@ const { setupAutoUpdater, checkForUpdates, getUpdateInfo, checkLlamacppUpdates, 
 // const LoadingScreen = require('./loadingScreen.cjs');
 const FeatureSelectionScreen = require('./featureSelection.cjs');
 const { createAppMenu } = require('./menu.cjs');
+
+// Helper function to set progress callback for llama-swap service
+function setupLlamaSwapProgressCallback(service) {
+  if (service && typeof service.setProgressCallback === 'function') {
+    service.setProgressCallback((progressData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('llama-progress-update', progressData);
+      }
+    });
+    log.info('✅ Progress callback set for llama-swap service instance');
+  }
+}
 const LlamaSwapService = require('./llamaSwapService.cjs');
 const MCPService = require('./mcpService.cjs');
 const WatchdogService = require('./watchdogService.cjs');
@@ -489,6 +501,7 @@ function registerLlamaSwapHandlers() {
     try {
       if (!llamaSwapService) {
         llamaSwapService = new LlamaSwapService(ipcLogger);
+        setupLlamaSwapProgressCallback(llamaSwapService);
       }
       
       const result = await llamaSwapService.start();
@@ -524,6 +537,7 @@ function registerLlamaSwapHandlers() {
     try {
       if (!llamaSwapService) {
         llamaSwapService = new LlamaSwapService(ipcLogger);
+        setupLlamaSwapProgressCallback(llamaSwapService);
       }
       
       const result = await llamaSwapService.restart();
@@ -3047,7 +3061,23 @@ function registerN8NHandlers() {
       // Get N8N configuration (creates it if needed)
       const n8nConfig = getN8NConfig();
       
-      await dockerSetup.startContainer(n8nConfig);
+      // Add progress callback for docker pull operations
+      const n8nConfigWithProgress = {
+        ...n8nConfig,
+        statusCallback: (message, type, details) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            // Send docker pull progress events
+            mainWindow.webContents.send('n8n:startup-progress', {
+              message: message,
+              progress: details?.percentage || 0,
+              type: type || 'info',
+              stage: 'pulling'
+            });
+          }
+        }
+      };
+      
+      await dockerSetup.startContainer(n8nConfigWithProgress);
       
       // Wait for the service to be healthy with timeout
       const maxAttempts = 30; // 30 seconds timeout
@@ -3062,7 +3092,8 @@ function registerN8NHandlers() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('n8n:startup-progress', {
             message: `Starting N8N... (${attempts}/${maxAttempts})`,
-            progress: Math.round((attempts / maxAttempts) * 100)
+            progress: Math.round((attempts / maxAttempts) * 100),
+            stage: 'starting'
           });
         }
       }
@@ -3176,9 +3207,26 @@ function registerComfyUIHandlers() {
       // Get ComfyUI configuration (creates it if needed)
       const comfyuiConfig = getComfyUIConfig();
 
+      // Add progress callback for docker pull operations
+      const originalHealthCheck = comfyuiConfig.healthCheck;
+      const comfyuiConfigWithProgress = {
+        ...comfyuiConfig,
+        statusCallback: (message, type, details) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            // Send docker pull progress events
+            mainWindow.webContents.send('comfyui:startup-progress', {
+              message: message,
+              progress: details?.percentage || 0,
+              type: type || 'info',
+              stage: 'pulling'
+            });
+          }
+        }
+      };
+
       // Start the ComfyUI container
       log.info('Starting ComfyUI container...');
-      await dockerSetup.startContainer(comfyuiConfig);
+      await dockerSetup.startContainer(comfyuiConfigWithProgress);
       
       // Wait for the service to be healthy with timeout (ComfyUI takes longer)
       const maxAttempts = 60; // 60 seconds timeout
@@ -3193,7 +3241,8 @@ function registerComfyUIHandlers() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('comfyui:startup-progress', {
             message: `Starting ComfyUI... (${attempts}/${maxAttempts})`,
-            progress: Math.round((attempts / maxAttempts) * 100)
+            progress: Math.round((attempts / maxAttempts) * 100),
+            stage: 'starting'
           });
         }
       }
@@ -3303,9 +3352,25 @@ function registerPythonBackendHandlers() {
 
       // Get Python container configuration (creates it if needed)
       const pythonConfig = getPythonConfig();
+      
+      // Add progress callback for docker pull operations
+      const pythonConfigWithProgress = {
+        ...pythonConfig,
+        statusCallback: (message, type, details) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            // Send docker pull progress events
+            mainWindow.webContents.send('python:startup-progress', {
+              message: message,
+              progress: details?.percentage || 0,
+              type: type || 'info',
+              stage: 'pulling'
+            });
+          }
+        }
+      };
 
       log.info('Starting Python backend container...');
-      await dockerSetup.startContainer(pythonConfig);
+      await dockerSetup.startContainer(pythonConfigWithProgress);
 
       // Wait for the container to be healthy with timeout
       const maxAttempts = 30; // 60 seconds max
@@ -3313,9 +3378,25 @@ function registerPythonBackendHandlers() {
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('python:startup-progress', {
+            message: `Health check ${attempts + 1}/${maxAttempts} for Python backend...`,
+            progress: Math.round(((attempts + 1) / maxAttempts) * 100),
+            stage: 'starting'
+          });
+        }
+        
         const isHealthy = await dockerSetup.isPythonRunning();
         
         if (isHealthy) {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('python:startup-progress', {
+              message: 'Python backend is healthy and ready!',
+              progress: 100,
+              stage: 'ready'
+            });
+          }
           log.info('Python backend container started and is healthy');
           return { success: true };
         }
@@ -5325,11 +5406,7 @@ async function initializeWithDocker() {
     await loadCustomModelPath();
     
     // Set up progress callback to forward to renderer
-    llamaSwapService.setProgressCallback((progressData) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('llama-progress-update', progressData);
-      }
-    });
+    setupLlamaSwapProgressCallback(llamaSwapService);
     
     // Setup Docker services with progress updates to splash screen
     loadingScreen.setStatus('Setting up Docker environment...', 'info');
@@ -5386,11 +5463,7 @@ async function initializeWithoutDocker() {
     await loadCustomModelPath();
     
     // Set up progress callback to forward to renderer
-    llamaSwapService.setProgressCallback((progressData) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('llama-progress-update', progressData);
-      }
-    });
+    setupLlamaSwapProgressCallback(llamaSwapService);
     
     loadingScreen.setStatus('Initializing core services...', 'info');
     

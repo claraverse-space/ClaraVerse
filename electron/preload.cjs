@@ -43,7 +43,10 @@ const validChannels = [
   'show-from-tray',
   'app-initialization-state',
   'service-status-update',
-  'service-init-progress'
+  'service-init-progress',
+  'comfyui:startup-progress',
+  'n8n:startup-progress',
+  'python:startup-progress'
 ];
 
 // Add explicit logging for debugging

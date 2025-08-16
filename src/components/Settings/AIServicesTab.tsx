@@ -370,29 +370,7 @@ const AIServicesTab: React.FC<AIServicesTabProps> = ({
         </div>
 
         {/* Image Generation Section */}
-        <div className="glassmorphic rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Image className="w-6 h-6 text-sakura-500" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Image Generation
-            </h2>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              ComfyUI Server URL
-            </label>
-            <input
-              type="url"
-              value={apiConfig.comfyui_base_url}
-              onChange={(e) => setApiConfig(prev => ({ ...prev, comfyui_base_url: e.target.value }))}
-              className="w-full px-4 py-2 rounded-lg bg-white/50 border border-gray-200 focus:outline-none focus:border-sakura-300 dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-100"
-              placeholder="http://localhost:8188"
-            />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Connect to your ComfyUI instance for AI image generation
-            </p>
-          </div>
-        </div>
+       
       </div>
 
       {/* Delete Confirmation Modal */}
