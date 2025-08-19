@@ -297,6 +297,65 @@ export class APIClient {
   }
 
   /**
+   * Check if a model is a GPT-4o series model that requires max_completion_tokens
+   */
+  private isGPT4oModel(model: string): boolean {
+    const modelName = model.toLowerCase();
+    return modelName.includes('gpt-4o') || 
+           modelName.includes('gpt-4o-mini') ||
+           modelName.includes('gpt-4o-2024') ||
+           modelName.startsWith('gpt-4o');
+  }
+
+  /**
+   * Check if a model is a GPT-5 series model that has specific parameter restrictions
+   */
+  private isGPT5Model(model: string): boolean {
+    const modelName = model.toLowerCase();
+    return modelName.includes('gpt-5') || 
+           modelName.includes('gpt-5-mini') ||
+           modelName.includes('gpt-5-2024') ||
+           modelName.startsWith('gpt-5');
+  }
+
+  /**
+   * Transform API parameters for modern OpenAI model compatibility (GPT-4o, GPT-5)
+   */
+  private transformParametersForModernModels(options: RequestOptions, model: string): RequestOptions {
+    // Create a new options object to avoid mutating the original
+    const transformedOptions = { ...options };
+
+    // GPT-4o specific transformations
+    if (this.isGPT4oModel(model)) {
+      // Transform max_tokens to max_completion_tokens for GPT-4o models
+      if (transformedOptions.max_tokens && !transformedOptions.max_completion_tokens) {
+        transformedOptions.max_completion_tokens = transformedOptions.max_tokens;
+        delete transformedOptions.max_tokens;
+        console.log(`🔧 [GPT-4o] Transformed max_tokens (${transformedOptions.max_completion_tokens}) to max_completion_tokens for GPT-4o model: ${model}`);
+      }
+    }
+
+    // GPT-5 specific transformations
+    if (this.isGPT5Model(model)) {
+      // GPT-5 models only support temperature = 1 (default)
+      if (transformedOptions.temperature !== undefined && transformedOptions.temperature !== 1) {
+        const originalTemp = transformedOptions.temperature;
+        transformedOptions.temperature = 1;
+        console.log(`🔧 [GPT-5] Transformed temperature (${originalTemp} → 1) for GPT-5 model: ${model} (GPT-5 only supports default temperature)`);
+      }
+
+      // GPT-5 models also require max_completion_tokens instead of max_tokens
+      if (transformedOptions.max_tokens && !transformedOptions.max_completion_tokens) {
+        transformedOptions.max_completion_tokens = transformedOptions.max_tokens;
+        delete transformedOptions.max_tokens;
+        console.log(`🔧 [GPT-5] Transformed max_tokens (${transformedOptions.max_completion_tokens}) to max_completion_tokens for GPT-5 model: ${model}`);
+      }
+    }
+
+    return transformedOptions;
+  }
+
+  /**
    * Send a chat message with dynamic tool removal on validation errors
    */
   private async sendChatWithDynamicToolRemoval(
@@ -338,11 +397,14 @@ export class APIClient {
     
     const formattedTools = currentTools?.map(tool => this.formatTool(tool));
     
+    // Transform parameters for GPT-4o compatibility BEFORE creating payload
+    const transformedOptions = this.transformParametersForModernModels(options, model);
+    
     const payload = {
       model,
       messages: this.prepareMessages(messages),
       stream: false,
-      ...options
+      ...transformedOptions
     };
 
     if (formattedTools && formattedTools.length > 0) {
@@ -517,11 +579,14 @@ export class APIClient {
     
     const formattedTools = currentTools?.map(tool => this.formatTool(tool));
     
+    // Transform parameters for GPT-4o compatibility BEFORE creating payload
+    const transformedOptions = this.transformParametersForModernModels(options, model);
+    
     const payload = { 
       model, 
       messages: this.prepareMessages(messages), 
       stream: true,
-      ...options 
+      ...transformedOptions 
     };
 
     if (formattedTools && formattedTools.length > 0) {
@@ -1013,12 +1078,26 @@ export class APIClient {
       }
     ];
 
-    const response = await this.request("/chat/completions", "POST", {
+    // Transform parameters for GPT-4o compatibility BEFORE creating payload
+    const transformedOptions = this.transformParametersForModernModels(options, model);
+    
+    // Handle the default max_tokens value
+    const payload: any = {
       model,
       messages,
-      max_tokens: options.max_tokens || 1000,
-      ...options
-    });
+      ...transformedOptions
+    };
+    
+    // Add max_tokens or max_completion_tokens based on model type
+    if (!payload.max_tokens && !payload.max_completion_tokens) {
+      if (this.isGPT4oModel(model) || this.isGPT5Model(model)) {
+        payload.max_completion_tokens = 1000;
+      } else {
+        payload.max_tokens = 1000;
+      }
+    }
+
+    const response = await this.request("/chat/completions", "POST", payload);
 
     if (!response.choices?.[0]?.message) {
       throw new Error('Invalid response format from image generation');

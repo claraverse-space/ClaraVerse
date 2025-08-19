@@ -158,16 +158,45 @@ export default class LumaUILiteAPIClient {
     try {
       this.abortController = new AbortController();
 
+      // Transform parameters for modern OpenAI models (GPT-4o, GPT-5)
+      const transformedOptions = { ...options };
+      const modelName = model.toLowerCase();
+      const isGPT4oModel = modelName.includes('gpt-4o');
+      const isGPT5Model = modelName.includes('gpt-5');
+      const isModernModel = isGPT4oModel || isGPT5Model;
+      
+      // Transform max_tokens to max_completion_tokens for GPT-4o/GPT-5 models
+      if (isModernModel && transformedOptions.max_tokens && !transformedOptions.max_completion_tokens) {
+        transformedOptions.max_completion_tokens = transformedOptions.max_tokens;
+        delete transformedOptions.max_tokens;
+        console.log(`🔧 [${isGPT5Model ? 'GPT-5' : 'GPT-4o'}] LumaUILite: Transformed max_tokens to max_completion_tokens for ${model}`);
+      }
+
+      // GPT-5 specific: Force temperature to 1
+      if (isGPT5Model && transformedOptions.temperature !== undefined && transformedOptions.temperature !== 1) {
+        const originalTemp = transformedOptions.temperature;
+        transformedOptions.temperature = 1;
+        console.log(`🔧 [GPT-5] LumaUILite: Transformed temperature (${originalTemp} → 1) for ${model} (GPT-5 only supports default temperature)`);
+      }
+
       const requestBody: any = {
         model,
         messages: this.prepareMessages(messages),
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.max_tokens ?? 16000,
-        top_p: options.top_p ?? 0.9,
-        frequency_penalty: options.frequency_penalty ?? 0,
-        presence_penalty: options.presence_penalty ?? 0,
-        ...options
+        temperature: transformedOptions.temperature ?? 0.7,
+        top_p: transformedOptions.top_p ?? 0.9,
+        frequency_penalty: transformedOptions.frequency_penalty ?? 0,
+        presence_penalty: transformedOptions.presence_penalty ?? 0,
+        ...transformedOptions
       };
+      
+      // Handle default max_tokens/max_completion_tokens
+      if (!requestBody.max_tokens && !requestBody.max_completion_tokens) {
+        if (isModernModel) {
+          requestBody.max_completion_tokens = 16000;
+        } else {
+          requestBody.max_tokens = 16000;
+        }
+      }
 
       // Add tools if provided
       if (options.tools && options.tools.length > 0) {
