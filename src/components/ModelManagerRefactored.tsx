@@ -80,7 +80,6 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
-      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModel(modelId, fileName, downloadPath);
       if (result.success) {
         // Refresh local models
@@ -138,7 +137,6 @@ const ModelManager: React.FC = () => {
       // Pass custom download path if enabled and custom path is set
       const downloadPath = (downloadToCustomPath && customModelPath) ? customModelPath : undefined;
       
-      // @ts-expect-error Backend API is injected and not typed
       const result = await window.modelManager.downloadModelWithDependencies(modelId, fileName, allFiles, downloadPath);
       if (result.success) {
         console.log('Downloaded files:', result.downloadedFiles);
@@ -343,6 +341,9 @@ const ModelManager: React.FC = () => {
             onDeleteModel={deleteLocalModel}
             deleting={deleting}
             onModelManagerTabChange={setModelManagerTab}
+            onManageMmproj={() => {}} // Provide a suitable handler or stub
+            onNotification={setNotification}
+            onConfirmation={handleConfirmation}
           />
         )}
       </div>
@@ -355,6 +356,7 @@ const ModelManager: React.FC = () => {
       
       <ConfirmationModal 
         confirmation={confirmation}
+        onClose={() => setConfirmation(null)}
       />
     </div>
   );
