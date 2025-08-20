@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Search, HardDrive, Zap, CheckCircle, TrendingUp, Clock, Star, RefreshCw, AlertCircle, Download, ExternalLink, FolderOpen, PlayCircle, PauseCircle, Trash2 } from 'lucide-react';
 import { HuggingFaceModel, DownloadProgress } from './types';
 import EnhancedModelCard from './EnhancedModelCard';
-import e from 'express';
-import { b } from 'vitest/dist/suite-dWqIFb_-.js';
 
 interface EnhancedModelDiscoveryProps {
   onDownload: (modelId: string, fileName: string) => void;
@@ -313,7 +311,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
 
   // Enhanced model analysis with file size fetching
   const analyzeModel = async (model: HuggingFaceModel): Promise<EnhancedModel> => {
-    // Filter and prioritize GGUF files, exclude non-model files and split files
+    // Filter and prioritize GGUF files, exclude non-model files but include split files
     const filteredFiles = model.files.filter(file => {
       const filename = file.rfilename.toLowerCase();
       
@@ -324,10 +322,11 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
         return false;
       }
       
-      // Exclude split files (not supported) - files with pattern like "001-of-003"
+      // Include split files (now supported) - files with pattern like "001-of-003"
+      // Split files are essential for very large models (>50B parameters)
       if (filename.match(/\d+-of-\d+\.gguf$/)) {
-        console.log(`Filtering out split file: ${file.rfilename}`);
-        return false;
+        console.log(`Including split file: ${file.rfilename}`);
+        return true;
       }
       
       // Include GGUF files and mmproj files (mmproj are essential for vision models)
@@ -457,6 +456,58 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       
       if (!quantGroups.has(quantType)) quantGroups.set(quantType, []);
       quantGroups.get(quantType)!.push(file);
+    });
+    
+    // Handle split files: group split files together for each quantization
+    // Split files have patterns like "model-001-of-003.gguf", "model-002-of-003.gguf"
+    const splitFileGroups = new Map<string, typeof processedModelFiles>();
+    quantGroups.forEach((files, quantType) => {
+      const splitFiles = files.filter(file => file.rfilename.match(/\d+-of-\d+\.gguf$/));
+      const nonSplitFiles = files.filter(file => !file.rfilename.match(/\d+-of-\d+\.gguf$/));
+      
+      if (splitFiles.length > 0) {
+        // Group split files by their base name and total parts
+        const splitGroups = new Map<string, typeof processedModelFiles>();
+        splitFiles.forEach(file => {
+          const match = file.rfilename.match(/^(.+)-(\d+)-of-(\d+)\.gguf$/);
+          if (match) {
+            const [, baseName, , totalParts] = match;
+            const groupKey = `${baseName}-split-${totalParts}`;
+            if (!splitGroups.has(groupKey)) splitGroups.set(groupKey, []);
+            splitGroups.get(groupKey)!.push(file);
+          }
+        });
+        
+        // For each complete split file set, treat as one downloadable unit
+        splitGroups.forEach((splitFiles, groupKey) => {
+          const match = groupKey.match(/^(.+)-split-(\d+)$/);
+          if (match) {
+            const [, , totalParts] = match;
+            const expectedParts = parseInt(totalParts, 10);
+            
+            // Only include complete split sets
+            if (splitFiles.length === expectedParts) {
+              console.log(`Found complete split file set: ${groupKey} with ${splitFiles.length} parts`);
+              splitFileGroups.set(`${quantType}_split_${groupKey}`, splitFiles);
+            } else {
+              console.warn(`Incomplete split file set: ${groupKey}, found ${splitFiles.length}/${expectedParts} parts`);
+            }
+          }
+        });
+      }
+      
+      // Keep non-split files in original quantization groups
+      if (nonSplitFiles.length > 0) {
+        quantGroups.set(quantType, nonSplitFiles);
+      } else {
+        quantGroups.delete(quantType); // Remove if only split files existed
+      }
+    });
+    
+    // Merge split file groups back into quantization groups for unified handling
+    // This enables support for very large models (>50B parameters) that are split into multiple files
+    splitFileGroups.forEach((files, splitKey) => {
+      quantGroups.set(splitKey, files);
     });
     
     // Find the best quantization that fits the system
@@ -811,11 +862,63 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     };
   };
 
+  // Cache management functions
+  const CACHE_KEY = 'clara_recommended_models_cache';
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day in milliseconds
+
+  const getCachedRecommendedModels = (): EnhancedModel[] | null => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return null;
+
+      const { data, timestamp } = JSON.parse(cached);
+      const now = Date.now();
+
+      // Check if cache is still valid (within TTL)
+      if (now - timestamp < CACHE_TTL) {
+        console.log('Using cached recommended models (cache age:', Math.round((now - timestamp) / (60 * 60 * 1000)), 'hours)');
+        return data;
+      } else {
+        // Cache expired, remove it
+        localStorage.removeItem(CACHE_KEY);
+        console.log('Recommended models cache expired, will fetch fresh data');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error reading cached models:', error);
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+  };
+
+  const setCachedRecommendedModels = (models: EnhancedModel[]): void => {
+    try {
+      const cacheData = {
+        data: models,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      console.log('Cached', models.length, 'recommended models for 1 day');
+    } catch (error) {
+      console.error('Error caching models:', error);
+    }
+  };
+
   // Load and analyze models
   const loadModels = async (filter: typeof activeFilter, query: string = '') => {
     if (!window.modelManager?.searchHuggingFaceModels) return;
     
     console.log(`Loading models - Filter: ${filter}, Query: "${query}"`);
+
+    // Check cache for recommended models without search query
+    if (filter === 'recommended' && (!query || !query.trim())) {
+      const cachedModels = getCachedRecommendedModels();
+      if (cachedModels && cachedModels.length > 0) {
+        setModels(cachedModels);
+        setIsLoading(false);
+        return;
+      }
+    }
     
     setIsLoading(true);
     setApiError(null);
@@ -827,16 +930,23 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       
       switch (filter) {
         case 'recommended':
-          // For recommended, if there's a search query, use it, otherwise use default efficient model queries
+          // For recommended, if there's a search query, use it, otherwise use expanded model queries
           if (query && query.trim()) {
             searchQueries = [query];
             sortParam = 'downloads'; // Sort by popularity for search results
             console.log('Using search query for recommended:', query);
           } else {
-            // Focus on smaller, efficient models for recommendations
-            searchQueries = ['7b q4', '3b q4', '1.5b q4', 'instruct q4'];
+            // Expanded recommendations to include various model sizes and quantizations
+            // Support for small to very large models (1.5B to 70B+ parameters)
+            searchQueries = [
+              '7b q4', '3b q4', '1.5b q4', 'instruct q4',  // Original efficient models
+              '13b q4', '30b q4', '70b q4',                // Medium to large models
+              '8b q4', '14b q4', '22b q4',                 // Additional popular sizes
+              'q8_0', 'f16',                               // Higher quality quantizations
+              'vision q4', 'multimodal q4'                 // Vision/multimodal models
+            ];
             sortParam = 'downloads';
-            console.log('Using default recommended queries');
+            console.log('Using expanded recommended queries for all model sizes');
           }
           break;
         case 'latest':
@@ -862,7 +972,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       for (const searchQuery of searchQueries) {
         const result = await window.modelManager.searchHuggingFaceModels(
           searchQuery, 
-          filter === 'recommended' ? 15 : 20, 
+          filter === 'recommended' ? 25 : 30, // Increased limits to show more models including large ones
           sortParam
         );
         
@@ -908,7 +1018,13 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
         });
       }
 
-      setModels(enhancedModels.slice(0, 12)); // Show top 12 results
+      const finalModels = enhancedModels.slice(0, 18); // Show top 18 results to accommodate larger variety
+      setModels(finalModels);
+
+      // Cache recommended models (without search query) for 1 day to reduce API calls
+      if (filter === 'recommended' && (!query || !query.trim())) {
+        setCachedRecommendedModels(finalModels);
+      }
     } catch (error) {
       console.error('Error loading models:', error);
       
@@ -949,6 +1065,43 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
     // Always perform search when user clicks search or presses Enter
     console.log('Performing search with query:', searchQuery);
     loadModels(activeFilter, searchQuery);
+  };
+
+  // Clear cache function
+  const clearRecommendedCache = () => {
+    try {
+      localStorage.removeItem(CACHE_KEY);
+      console.log('Cleared recommended models cache');
+      // Reload if we're currently on recommended tab without search
+      if (activeFilter === 'recommended' && (!searchQuery || !searchQuery.trim())) {
+        loadModels(activeFilter, '');
+      }
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
+  };
+
+  // Check if cache exists and is valid
+  const getCacheStatus = () => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return null;
+
+      const { timestamp } = JSON.parse(cached);
+      const now = Date.now();
+      const age = now - timestamp;
+      
+      if (age < CACHE_TTL) {
+        return {
+          isValid: true,
+          ageHours: Math.round(age / (60 * 60 * 1000)),
+          remainingHours: Math.round((CACHE_TTL - age) / (60 * 60 * 1000))
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
   };
 
   const formatBytes = (bytes: number): string => {
@@ -1139,7 +1292,7 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           {[
             { id: 'recommended', label: 'Recommended', icon: CheckCircle },
             { id: 'latest', label: 'Latest', icon: Clock },
@@ -1157,8 +1310,25 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
             >
               <Icon className="w-4 h-4" />
               <span className="text-sm font-medium">{label}</span>
+              {id === 'recommended' && getCacheStatus() && (
+                <span className="text-xs opacity-75 ml-1">
+                  📄{getCacheStatus()!.ageHours}h
+                </span>
+              )}
             </button>
           ))}
+          
+          {/* Cache controls for recommended tab */}
+          {activeFilter === 'recommended' && getCacheStatus() && (
+            <button
+              onClick={clearRecommendedCache}
+              className="flex items-center gap-1 px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              title={`Cache expires in ${getCacheStatus()!.remainingHours}h. Click to refresh now.`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Clear Cache
+            </button>
+          )}
         </div>
       </div>
 
@@ -1183,6 +1353,10 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
             </p>
             <p className="text-amber-600 dark:text-amber-400 text-sm mb-6">
               Please wait a moment and try again. The models will be available shortly!
+              <br />
+              <small className="text-amber-500 dark:text-amber-400">
+                💡 Tip: Recommended models are now cached for 24 hours to reduce API calls and prevent rate limits.
+              </small>
               <br />
               <small>Dev Note: We don't have any server and we never wanted to check the models you use so yeah thats the reason. You are safe that your data is not being logged or monitored in any way.</small>
             </p>
@@ -1254,11 +1428,20 @@ const EnhancedModelDiscovery: React.FC<EnhancedModelDiscoveryProps> = ({
       {/* API Status Footer */}
       <div className="glassmorphic rounded-xl p-4">
         <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-green-500" />
-            <span className="text-gray-600 dark:text-gray-400">
-              Powered by Hugging Face Public API
-            </span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span className="text-gray-600 dark:text-gray-400">
+                Powered by Hugging Face Public API
+              </span>
+            </div>
+            {activeFilter === 'recommended' && getCacheStatus() && !searchQuery.trim() && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
+                  📄 From cache ({getCacheStatus()!.ageHours}h old)
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             {downloadQueue.length > 0 && (

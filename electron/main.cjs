@@ -1627,7 +1627,22 @@ function registerModelManagerHandlers() {
     const path = require('path');
     
     const downloadUrl = `https://huggingface.co/${modelId}/resolve/main/${sourceFileName}`;
-    const filePath = path.join(modelsDir, targetFileName);
+    
+    // Extract just the filename from targetFileName to avoid creating subdirectories
+    // This flattens the file structure so all models go directly into the models folder
+    const flattenedFileName = path.basename(targetFileName);
+    const filePath = path.join(modelsDir, flattenedFileName);
+    
+    // Ensure the models directory exists
+    if (!fs.existsSync(modelsDir)) {
+      try {
+        fs.mkdirSync(modelsDir, { recursive: true });
+        log.info(`Created models directory: ${modelsDir}`);
+      } catch (dirError) {
+        log.error(`Failed to create models directory ${modelsDir}:`, dirError);
+        return { success: false, error: `Failed to create directory: ${dirError.message}` };
+      }
+    }
     
     // Check if file already exists
     if (fs.existsSync(filePath)) {
@@ -1641,17 +1656,17 @@ function registerModelManagerHandlers() {
       const file = fs.createWriteStream(filePath);
       let stopped = false;
       
-      // Store download info for stop functionality (use target filename for tracking)
+      // Store download info for stop functionality (use flattened filename for tracking)
       const downloadInfo = {
         request: null,
         file,
         filePath,
         stopped: false
       };
-      activeDownloads.set(targetFileName, downloadInfo);
+      activeDownloads.set(flattenedFileName, downloadInfo);
       
       const cleanup = () => {
-        activeDownloads.delete(targetFileName);
+        activeDownloads.delete(flattenedFileName);
         if (file && !file.destroyed) {
           file.close();
         }
@@ -1922,6 +1937,32 @@ function registerModelManagerHandlers() {
       
       const filesToDownload = [fileName];
       
+      // Check if this is a split model (multiple parts)
+      const splitFiles = allFiles.filter(file => {
+        const filename = file.rfilename.toLowerCase();
+        // Look for split files that match the same base name and quantization as the main file
+        if (filename.match(/\d+-of-\d+\.gguf$/)) {
+          // Extract base name and quantization from both files to match them
+          const mainFileBase = fileName.toLowerCase().replace(/\.gguf$/, '').replace(/-\d+-of-\d+$/, '');
+          const splitFileBase = filename.replace(/\.gguf$/, '').replace(/-\d+-of-\d+$/, '');
+          
+          // Check if this split file belongs to the same model
+          return splitFileBase.includes(mainFileBase) || mainFileBase.includes(splitFileBase);
+        }
+        return false;
+      });
+      
+      // If we found split files, download all parts instead of just the main file
+      if (splitFiles.length > 0) {
+        // Remove the single file and add all split files
+        filesToDownload.splice(0, 1); // Remove the single fileName
+        splitFiles.forEach(splitFile => {
+          filesToDownload.push(splitFile.rfilename);
+          log.info(`🧩 Adding split file to download queue: ${splitFile.rfilename}`);
+        });
+        log.info(`📦 Split model detected: ${splitFiles.length} parts to download`);
+      }
+      
       // Download mmproj files if they exist (regardless of main model name detection)
       // This ensures we don't miss vision capabilities due to naming variations
       if (mmprojFiles.length > 0) {
@@ -1931,9 +1972,12 @@ function registerModelManagerHandlers() {
           log.info(`👁️ Adding mmproj file to download queue: ${mmprojFile.rfilename}`);
         });
         
-        log.info(`🎯 Total files to download: ${filesToDownload.length} (1 model + ${mmprojFiles.length} mmproj)`);
+        const modelFileCount = splitFiles.length > 0 ? splitFiles.length : 1;
+        log.info(`🎯 Total files to download: ${filesToDownload.length} (${modelFileCount} model + ${mmprojFiles.length} mmproj)`);
       } else if (isVision) {
         log.warn(`⚠️ Vision model detected by name but no mmproj files found in repository`);
+      } else if (splitFiles.length > 0) {
+        log.info(`🎯 Total split files to download: ${splitFiles.length}`);
       }
       
       // Download all required files
@@ -2034,7 +2078,11 @@ function registerModelManagerHandlers() {
       }
       
       const downloadUrl = `https://huggingface.co/${modelId}/resolve/main/${fileName}`;
-      const filePath = path.join(modelsDir, fileName);
+      
+      // Extract just the filename to avoid creating subdirectories
+      // This flattens the file structure so all models go directly into the models folder
+      const flattenedFileName = path.basename(fileName);
+      const filePath = path.join(modelsDir, flattenedFileName);
       
       // Check if file already exists
       if (fs.existsSync(filePath)) {
@@ -2056,10 +2104,10 @@ function registerModelManagerHandlers() {
           filePath,
           stopped: false
         };
-        activeDownloads.set(fileName, downloadInfo);
+        activeDownloads.set(flattenedFileName, downloadInfo);
         
         const cleanup = () => {
-          activeDownloads.delete(fileName);
+          activeDownloads.delete(flattenedFileName);
           if (file && !file.destroyed) {
             file.close();
           }

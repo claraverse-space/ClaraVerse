@@ -161,7 +161,7 @@ const ModelManager: React.FC = () => {
         setNotification({
           type: 'error',
           title: 'Download Failed',
-          message: result.error || 'Unknown error occurred during download with dependencies'
+          message: result.error || 'Unknown error occurred during download with dependencies - probably due to the rate limiting, hit download after 30s'
         });
       }
     } catch (error) {
