@@ -20,17 +20,7 @@ import { Buffer } from 'buffer';
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string;
-        allowpopups?: boolean;
-        webpreferences?: string;
-        partition?: string;
-        useragent?: string;
-        preload?: string;
-        nodeintegration?: boolean;
-        contextIsolation?: boolean;
-        webSecurity?: boolean;
-      };
+      webview: React.DetailedHTMLProps<React.WebViewHTMLAttributes<HTMLWebViewElement>, HTMLWebViewElement>;
     }
   }
 }
@@ -576,7 +566,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  const [showSettings, setShowSettings] = useState(false);
   const [mustSelectModel, setMustSelectModel] = useState(false);
   const [progress, setProgress] = useState<{ value: number; max: number } | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -687,6 +676,19 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   const [selectedResolution, setSelectedResolution] = useState<Resolution>(RESOLUTIONS[0]);
   const [customWidth, setCustomWidth] = useState<number>(1024);
   const [customHeight, setCustomHeight] = useState<number>(1024);
+  
+  // Load initial expanded state from localStorage, default to true (expanded)
+  const [showSettings, setShowSettings] = useState(() => {
+    const saved = localStorage.getItem('clara-imagegen-settings-expanded');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  
+  // Track if user manually collapsed it - if so, don't auto-expand on hover
+  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() => {
+    const saved = localStorage.getItem('clara-imagegen-settings-manually-collapsed');
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+  
   const [expandedSections, setExpandedSections] = useState({
     model: true,
     lora: false,
@@ -696,6 +698,40 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     controlnet: false,
     upscaler: false,
   });
+
+  // Save expanded state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('clara-imagegen-settings-expanded', JSON.stringify(showSettings));
+  }, [showSettings]);
+
+  // Save manually collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('clara-imagegen-settings-manually-collapsed', JSON.stringify(isManuallyCollapsed));
+  }, [isManuallyCollapsed]);
+
+  // Toggle settings panel - when user manually toggles
+  const toggleSettingsPanel = () => {
+    const newExpandedState = !showSettings;
+    setShowSettings(newExpandedState);
+    
+    // If user manually collapses, mark as manually collapsed
+    // If user manually expands, unmark manual collapse
+    setIsManuallyCollapsed(!newExpandedState);
+  };
+
+  // Handle mouse enter - only expand if not manually collapsed
+  const handleSettingsMouseEnter = () => {
+    if (!isManuallyCollapsed) {
+      setShowSettings(true);
+    }
+  };
+
+  // Handle mouse leave - only collapse if it was manually collapsed
+  const handleSettingsMouseLeave = () => {
+    if (isManuallyCollapsed) {
+      setShowSettings(false);
+    }
+  };
 
   const [controlNetModels, setControlNetModels] = useState<string[]>([]);
   const [selectedControlNet, setSelectedControlNet] = useState<string>('');
@@ -1030,7 +1066,7 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   }, [isGenerating, generationError]);
 
   const handleSettingsClick = () => {
-    setShowSettings(!showSettings);
+    toggleSettingsPanel();
   };
 
   // Function to cancel the current generation with cleanup
@@ -1553,10 +1589,10 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
   }, []);
 
   // Add enhance prompt handler
-  const handleEnhancePrompt = async (currentPrompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }) => {
+  const handleEnhancePrompt = async (currentPrompt: string, imageData?: { preview: string; buffer: ArrayBuffer; base64: string }): Promise<string> => {
     if (!isLLMConnected || !enhanceSettings.selectedModel) {
       console.warn('⚠️ No LLM connected or no model selected for enhancement');
-      return;
+      return currentPrompt;
     }
     
     setIsEnhancing(true);
@@ -1616,32 +1652,41 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
       // Update prompt and notification based on the case
       if (imageData && currentPrompt) {
         // Case 3: Image + Text
-        setPrompt(`${currentPrompt}\n\n${enhancedPrompt}`);
+        const combinedPrompt = `${currentPrompt}\n\n${enhancedPrompt}`;
+        setPrompt(combinedPrompt);
         setNotificationMessage(`Enhanced prompt using image context and original text via ${provider.name}`);
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 3000);
+        return combinedPrompt;
       } else if (imageData) {
         // Case 1: Image only
         setPrompt(enhancedPrompt);
         setNotificationMessage(`Generated prompt from image using ${selectedModel.name} via ${provider.name}`);
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 3000);
+        return enhancedPrompt;
       } else {
         // Case 2: Text only
         if (enhancedPrompt === currentPrompt) {
           setNotificationMessage('No changes needed to your prompt');
+          setShowNotification(true);
+          setTimeout(() => setShowNotification(false), 3000);
+          return currentPrompt;
         } else {
           setPrompt(enhancedPrompt);
           setNotificationMessage(`Prompt enhanced with ${selectedModel.name} via ${provider.name}`);
+          setShowNotification(true);
+          setTimeout(() => setShowNotification(false), 3000);
+          return enhancedPrompt;
         }
       }
-      
-      setShowNotification(true);
-      setTimeout(() => setShowNotification(false), 3000);
-      return enhancedPrompt;
     } catch (error) {
       console.error('❌ Error enhancing prompt:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setNotificationMessage(`Failed to enhance prompt: ${errorMessage}`);
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
-      throw error;
+      return currentPrompt; // Return original prompt on error
     } finally {
       setIsEnhancing(false);
     }
@@ -1768,6 +1813,16 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
     }, 2000); // Wait 2 seconds before retrying
   };
 
+  // System compatibility modal handlers
+  const handleUserRejection = () => {
+    setShowCompatibilityModal(false);
+  };
+
+  const handleUserConsent = () => {
+    setShowCompatibilityModal(false);
+    setUserHasConsented(true);
+  };
+
   // Replace the fetchLLMModels function with provider-based system
   const fetchLLMModels = async (): Promise<ClaraModel[]> => {
     try {
@@ -1858,10 +1913,6 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         <Sidebar
           activePage="image-gen"
           onPageChange={onPageChange || (() => {})}
-          sdModels={sdModels}
-          loras={loras}
-          vaes={vaes}
-          systemStats={systemStats}
         />
         <div className="flex-1 flex flex-col">
           <ImageGenHeader 
@@ -2026,18 +2077,35 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
               minWidth: showSettings ? '20rem' : '4rem', 
               maxWidth: showSettings ? '20rem' : '4rem' 
             }}
-            onMouseEnter={() => setShowSettings(true)}
-            onMouseLeave={() => setShowSettings(false)}
+            onMouseEnter={handleSettingsMouseEnter}
+            onMouseLeave={handleSettingsMouseLeave}
           >
             {showSettings ? (
-              // Expanded settings panel
-              <SettingsDrawer
-                drawerRef={edgeRef}
-                showSettings={showSettings}
-                expandedSections={expandedSections}
-                toggleSection={toggleSection}
-                sdModels={sdModels}
-                selectedModel={selectedModel}
+              // Expanded settings panel with toggle button
+              <div className="h-full flex flex-col">
+                {/* Header with toggle button */}
+                <div className="flex items-center justify-between p-4 border-b border-gray-200/30 dark:border-gray-700/50">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Settings</h3>
+                  <button
+                    onClick={toggleSettingsPanel}
+                    className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    title="Collapse settings"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Settings content */}
+                <div className="flex-1 overflow-y-auto">
+                  <SettingsDrawer
+                    drawerRef={edgeRef}
+                    showSettings={showSettings}
+                    expandedSections={expandedSections}
+                    toggleSection={toggleSection}
+                    sdModels={sdModels}
+                    selectedModel={selectedModel}
                 setSelectedModel={handleModelSelection}
                 loras={loras}
                 selectedLora={selectedLora}
@@ -2076,34 +2144,52 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
                 setSampler={setSampler}
                 scheduler={scheduler}
                 setScheduler={setScheduler}
-              />
-            ) : (
-              // Collapsed vertical tab
-              <div className="flex flex-col items-center justify-center h-full p-2">
-                <div 
-                  className="writing-mode-vertical text-center cursor-pointer select-none"
-                  style={{ 
-                    writingMode: 'vertical-rl',
-                    textOrientation: 'mixed',
-                    transform: 'rotate(180deg)'
-                  }}
-                >
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400 tracking-wider uppercase">
-                    Configuration
-                  </span>
+                  />
                 </div>
-                <div className="mt-4 space-y-3 flex flex-col items-center">
-                  {/* Settings icon */}
-                  <div className="w-6 h-6 text-gray-500 dark:text-gray-400">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </div>
+            ) : (
+              // Collapsed vertical tab with toggle button
+              <div className="flex flex-col items-center h-full">
+                {/* Toggle button at top */}
+                <div className="flex justify-center py-4">
+                  <button
+                    onClick={toggleSettingsPanel}
+                    className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    title="Expand settings"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
+                  </button>
+                </div>
+                
+                {/* Centered content */}
+                <div className="flex-1 flex flex-col items-center justify-center p-2">
+                  <div 
+                    className="writing-mode-vertical text-center cursor-pointer select-none"
+                    style={{ 
+                      writingMode: 'vertical-rl',
+                      textOrientation: 'mixed',
+                      transform: 'rotate(180deg)'
+                    }}
+                  >
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400 tracking-wider uppercase">
+                      Configuration
+                    </span>
                   </div>
-                  {/* Model indicator */}
-                  {selectedModel && (
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  )}
+                  <div className="mt-4 space-y-3 flex flex-col items-center">
+                    {/* Settings icon */}
+                    <div className="w-6 h-6 text-gray-500 dark:text-gray-400">
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    {/* Model indicator */}
+                    {selectedModel && (
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

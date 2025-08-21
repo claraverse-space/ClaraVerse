@@ -17,6 +17,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// GGUF constants for Python-style reading
+const GGUF_MAGIC = 0x46554747
+
+var GGUF_VALUE_TYPE = map[uint32]string{
+	0: "UINT8", 1: "INT8", 2: "UINT16", 3: "INT16", 4: "UINT32",
+	5: "INT32", 6: "FLOAT32", 7: "BOOL", 8: "STRING", 9: "ARRAY",
+}
+
 // Config structures for YAML parsing
 type Config struct {
 	HealthCheckTimeout int              `yaml:"healthCheckTimeout"`
@@ -54,21 +62,24 @@ type SystemSpecs struct {
 
 // Model metadata from llama-server
 type ModelMetadata struct {
-	Name             string
-	TotalParams      int64
-	Architecture     string
-	ContextLength    int
-	EmbeddingSize    int
-	NumLayers        int
-	NumHeads         int
-	NumKVHeads       int
-	NumExperts       int
-	NumActiveExperts int
-	IsMoE            bool
-	Quantization     string
-	FileSize         int64
-	RopeScaling      float64
-	VocabSize        int
+	Name              string
+	TotalParams       int64
+	Architecture      string
+	ContextLength     int
+	EmbeddingSize     int
+	NumLayers         int
+	NumHeads          int
+	NumKVHeads        int
+	KeyLength         int
+	ValueLength       int
+	SlidingWindowSize int
+	NumExperts        int
+	NumActiveExperts  int
+	IsMoE             bool
+	Quantization      string
+	FileSize          int64
+	RopeScaling       float64
+	VocabSize         int
 }
 
 // Optimization presets
@@ -490,7 +501,7 @@ func (o *Optimizer) FetchModelMetadata(modelPath string) (*ModelMetadata, error)
 	return metadata, nil
 }
 
-// readGGUFMetadata reads metadata directly from GGUF file
+// readGGUFMetadata reads metadata directly from GGUF file using Python-style simple approach
 func (o *Optimizer) readGGUFMetadata(modelPath string, metadata *ModelMetadata) error {
 	file, err := os.Open(modelPath)
 	if err != nil {
@@ -498,164 +509,249 @@ func (o *Optimizer) readGGUFMetadata(modelPath string, metadata *ModelMetadata) 
 	}
 	defer file.Close()
 
-	// Read GGUF header
-	var magic [4]byte
-	if _, err := file.Read(magic[:]); err != nil {
-		return fmt.Errorf("failed to read magic: %w", err)
+	// Read header: magic(4) + version(4) + tensor_count(8) + metadata_kv_count(8)
+	header := make([]byte, 24)
+	if _, err := file.Read(header); err != nil {
+		return fmt.Errorf("failed to read header: %w", err)
 	}
 
-	if string(magic[:]) != "GGUF" {
-		return fmt.Errorf("not a GGUF file")
+	magic := binary.LittleEndian.Uint32(header[0:4])
+	if magic != GGUF_MAGIC {
+		return fmt.Errorf("invalid GGUF magic number: 0x%x", magic)
 	}
 
-	// Read version (uint32)
-	var version uint32
-	if err := binary.Read(file, binary.LittleEndian, &version); err != nil {
-		return fmt.Errorf("failed to read version: %w", err)
+	metadataKVCount := binary.LittleEndian.Uint64(header[16:24])
+	fmt.Printf("  📋 GGUF INFO: metadata_entries=%d\n", metadataKVCount)
+
+	return o.readMetadataEntries(file, int(metadataKVCount), metadata)
+}
+
+// readMetadataEntries reads metadata entries using simplified approach
+func (o *Optimizer) readMetadataEntries(file *os.File, count int, metadata *ModelMetadata) error {
+	keysToRead := map[string]bool{
+		"general.architecture": true,
+		"general.name":         true,
 	}
 
-	// Read tensor count (uint64)
-	var tensorCount uint64
-	if err := binary.Read(file, binary.LittleEndian, &tensorCount); err != nil {
-		return fmt.Errorf("failed to read tensor count: %w", err)
-	}
-
-	// Read metadata count (uint64)
-	var metadataCount uint64
-	if err := binary.Read(file, binary.LittleEndian, &metadataCount); err != nil {
-		return fmt.Errorf("failed to read metadata count: %w", err)
-	}
-
-	fmt.Printf("  📋 GGUF INFO: version=%d, tensors=%d, metadata_entries=%d\n", version, tensorCount, metadataCount)
-
-	// Read metadata entries with better error recovery
+	archSpecificKeysAdded := false
 	successCount := 0
-	consecutiveFailures := 0
-	maxConsecutiveFailures := 5 // Stop if we get too many consecutive failures
 
-	for i := uint64(0); i < metadataCount; i++ {
-		// Record current position for recovery
-		currentPos, _ := file.Seek(0, 1)
-
-		key, value, err := o.readGGUFMetadataEntry(file)
+	for i := 0; i < count; i++ {
+		key, err := o.readString(file)
 		if err != nil {
-			consecutiveFailures++
-			fmt.Printf("  ⚠️ Failed to read metadata entry %d: %v (pos: %d)\n", i, err, currentPos)
+			continue // Skip on error
+		}
 
-			// If we get too many consecutive failures, the file is likely corrupted beyond repair
-			if consecutiveFailures >= maxConsecutiveFailures {
-				fmt.Printf("  🚨 Too many consecutive failures (%d), stopping metadata parsing\n", consecutiveFailures)
-				break
-			}
-
-			// Try intelligent recovery based on error type
-			if err := o.recoverFromMetadataError(file, currentPos, err); err != nil {
-				// Recovery failed, skip this entire region
-				fmt.Printf("  🔧 Recovery failed, skipping ahead\n")
-				newPos := currentPos + 64 // Skip ahead 64 bytes
-				if _, seekErr := file.Seek(newPos, 0); seekErr != nil {
-					break // Can't seek, give up
-				}
-			}
+		valueTypeBytes := make([]byte, 4)
+		if _, err := file.Read(valueTypeBytes); err != nil {
 			continue
 		}
+		valueTypeIdx := binary.LittleEndian.Uint32(valueTypeBytes)
 
-		// Reset consecutive failure count on success
-		consecutiveFailures = 0
-		successCount++
-
-		// Parse relevant metadata based on architecture
-		switch key {
-		case "general.architecture":
-			if archStr, ok := value.(string); ok {
-				metadata.Architecture = archStr
-				fmt.Printf("  🎯 FOUND ARCHITECTURE: %s\n", metadata.Architecture)
-
-				// Detect MoE based on architecture
-				if strings.Contains(archStr, "moe") {
-					metadata.IsMoE = true
-					fmt.Printf("  🧩 DETECTED MoE ARCHITECTURE\n")
-				}
-			}
-		case "general.parameter_count":
-			if paramCount, ok := value.(uint64); ok {
-				metadata.TotalParams = int64(paramCount)
-				fmt.Printf("  🎯 FOUND PARAMETER COUNT: %d\n", metadata.TotalParams)
-			}
+		// Add architecture-specific keys once we know the architecture
+		if !archSpecificKeysAdded && metadata.Architecture != "" {
+			arch := metadata.Architecture
+			keysToRead[arch+".block_count"] = true
+			keysToRead[arch+".context_length"] = true
+			keysToRead[arch+".attention.head_count_kv"] = true
+			keysToRead[arch+".attention.key_length"] = true
+			keysToRead[arch+".attention.value_length"] = true
+			keysToRead[arch+".attention.sliding_window_size"] = true
+			keysToRead[arch+".embedding_length"] = true
+			archSpecificKeysAdded = true
 		}
 
-		// Architecture-specific metadata parsing
-		if strings.HasPrefix(key, metadata.Architecture+".") {
-			switch {
-			case strings.HasSuffix(key, ".context_length"):
-				if ctxLen, ok := value.(uint64); ok {
-					metadata.ContextLength = int(ctxLen)
-					fmt.Printf("  🎯 FOUND CONTEXT LENGTH: %d\n", metadata.ContextLength)
-				}
-			case strings.HasSuffix(key, ".embedding_length"):
-				if embLen, ok := value.(uint64); ok {
-					metadata.EmbeddingSize = int(embLen)
-					fmt.Printf("  🎯 FOUND EMBEDDING SIZE: %d\n", metadata.EmbeddingSize)
-				}
-			case strings.HasSuffix(key, ".block_count"):
-				if blockCount, ok := value.(uint64); ok {
-					metadata.NumLayers = int(blockCount)
-					fmt.Printf("  🎯 FOUND LAYER COUNT: %d\n", metadata.NumLayers)
-				}
-			case strings.HasSuffix(key, ".expert_count"):
-				if expertCount, ok := value.(uint64); ok {
-					metadata.NumExperts = int(expertCount)
-					fmt.Printf("  🎯 FOUND EXPERT COUNT: %d\n", metadata.NumExperts)
-				}
-			case strings.HasSuffix(key, ".expert_used_count"):
-				if activeCount, ok := value.(uint64); ok {
-					metadata.NumActiveExperts = int(activeCount)
-					fmt.Printf("  🎯 FOUND ACTIVE EXPERTS: %d\n", metadata.NumActiveExperts)
-				}
+		if keysToRead[key] {
+			if value, err := o.readValue(file, valueTypeIdx); err == nil {
+				o.parseMetadataValue(key, value, metadata)
+				successCount++
+			} else {
+				o.skipValue(file, valueTypeIdx)
 			}
-		}
-
-		// Legacy fallbacks (for older GGUF files without architecture prefixes)
-		switch key {
-		case "llama.context_length":
-			if metadata.ContextLength == 0 {
-				if ctxLen, ok := value.(uint64); ok {
-					metadata.ContextLength = int(ctxLen)
-					fmt.Printf("  🎯 FOUND CONTEXT LENGTH (legacy): %d\n", metadata.ContextLength)
-				}
-			}
-		case "llama.embedding_length":
-			if metadata.EmbeddingSize == 0 {
-				if embLen, ok := value.(uint64); ok {
-					metadata.EmbeddingSize = int(embLen)
-					fmt.Printf("  🎯 FOUND EMBEDDING SIZE (legacy): %d\n", metadata.EmbeddingSize)
-				}
-			}
-		case "llama.block_count":
-			if metadata.NumLayers == 0 {
-				if blockCount, ok := value.(uint64); ok {
-					metadata.NumLayers = int(blockCount)
-					fmt.Printf("  🎯 FOUND LAYER COUNT (legacy): %d\n", metadata.NumLayers)
-				}
-			}
-		}
-
-		// Early exit if we have all the important metadata we need
-		if metadata.Architecture != "" && metadata.ContextLength > 0 &&
-			metadata.EmbeddingSize > 0 && metadata.NumLayers > 0 &&
-			metadata.TotalParams > 0 {
-			fmt.Printf("  ✅ All essential metadata found, stopping early parsing\n")
-			break
+		} else {
+			o.skipValue(file, valueTypeIdx)
 		}
 	}
 
-	fmt.Printf("  ✅ Successfully parsed %d/%d metadata entries\n", successCount, metadataCount)
-
-	if successCount == 0 {
-		return fmt.Errorf("no metadata entries could be parsed")
-	}
-
+	fmt.Printf("  ✅ Successfully parsed %d/%d metadata entries\n", successCount, count)
 	return nil
+}
+
+// readString reads a string from the file
+func (o *Optimizer) readString(file *os.File) (string, error) {
+	lengthBytes := make([]byte, 8)
+	if _, err := file.Read(lengthBytes); err != nil {
+		return "", err
+	}
+	length := binary.LittleEndian.Uint64(lengthBytes)
+
+	if length > 1024 { // Reasonable limit
+		return "", fmt.Errorf("string length too large: %d", length)
+	}
+
+	strBytes := make([]byte, length)
+	if _, err := file.Read(strBytes); err != nil {
+		return "", err
+	}
+	return string(strBytes), nil
+}
+
+// readValue reads a value based on its type
+func (o *Optimizer) readValue(file *os.File, valueTypeIdx uint32) (interface{}, error) {
+	valueType, ok := GGUF_VALUE_TYPE[valueTypeIdx]
+	if !ok {
+		return nil, fmt.Errorf("unknown GGUF value type: %d", valueTypeIdx)
+	}
+
+	switch valueType {
+	case "STRING":
+		return o.readString(file)
+	case "UINT32":
+		bytes := make([]byte, 4)
+		if _, err := file.Read(bytes); err != nil {
+			return nil, err
+		}
+		return binary.LittleEndian.Uint32(bytes), nil
+	case "INT32":
+		bytes := make([]byte, 4)
+		if _, err := file.Read(bytes); err != nil {
+			return nil, err
+		}
+		return int32(binary.LittleEndian.Uint32(bytes)), nil
+	default:
+		return nil, o.skipValue(file, valueTypeIdx)
+	}
+}
+
+// skipValue skips a value based on its type
+func (o *Optimizer) skipValue(file *os.File, valueTypeIdx uint32) error {
+	valueType, ok := GGUF_VALUE_TYPE[valueTypeIdx]
+	if !ok {
+		return nil
+	}
+
+	switch valueType {
+	case "UINT8", "INT8", "BOOL":
+		_, err := file.Seek(1, 1)
+		return err
+	case "UINT16", "INT16":
+		_, err := file.Seek(2, 1)
+		return err
+	case "UINT32", "INT32", "FLOAT32":
+		_, err := file.Seek(4, 1)
+		return err
+	case "STRING":
+		lengthBytes := make([]byte, 8)
+		if _, err := file.Read(lengthBytes); err != nil {
+			return err
+		}
+		length := binary.LittleEndian.Uint64(lengthBytes)
+		_, err := file.Seek(int64(length), 1)
+		return err
+	case "ARRAY":
+		// Read array type and count
+		arrayHeader := make([]byte, 12)
+		if _, err := file.Read(arrayHeader); err != nil {
+			return err
+		}
+		arrayTypeIdx := binary.LittleEndian.Uint32(arrayHeader[0:4])
+		count := binary.LittleEndian.Uint64(arrayHeader[4:12])
+
+		// Skip array elements
+		typeMap := map[uint32]int64{
+			0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8,
+		}
+
+		if elementSize, ok := typeMap[arrayTypeIdx]; ok {
+			_, err := file.Seek(int64(count)*elementSize, 1)
+			return err
+		} else {
+			// Skip string arrays element by element
+			for i := uint64(0); i < count; i++ {
+				if err := o.skipValue(file, 8); err != nil { // STRING type
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// parseMetadataValue parses a metadata value and stores it in the ModelMetadata
+func (o *Optimizer) parseMetadataValue(key string, value interface{}, metadata *ModelMetadata) {
+	switch key {
+	case "general.architecture":
+		if archStr, ok := value.(string); ok {
+			metadata.Architecture = archStr
+			fmt.Printf("  🎯 FOUND ARCHITECTURE: %s\n", metadata.Architecture)
+
+			// Detect MoE based on architecture
+			if strings.Contains(archStr, "moe") {
+				metadata.IsMoE = true
+				fmt.Printf("  🧩 DETECTED MoE ARCHITECTURE\n")
+			}
+		}
+	case "general.name":
+		if nameStr, ok := value.(string); ok {
+			metadata.Name = nameStr
+			fmt.Printf("  🎯 FOUND MODEL NAME: %s\n", metadata.Name)
+		}
+	default:
+		// Handle architecture-specific keys
+		if strings.HasSuffix(key, ".context_length") {
+			if ctxLen := getIntFromValue(value); ctxLen > 0 {
+				metadata.ContextLength = ctxLen
+				fmt.Printf("  🎯 FOUND CONTEXT LENGTH: %d\n", metadata.ContextLength)
+			}
+		} else if strings.HasSuffix(key, ".embedding_length") {
+			if embLen := getIntFromValue(value); embLen > 0 {
+				metadata.EmbeddingSize = embLen
+				fmt.Printf("  🎯 FOUND EMBEDDING SIZE: %d\n", metadata.EmbeddingSize)
+			}
+		} else if strings.HasSuffix(key, ".block_count") {
+			if blockCount := getIntFromValue(value); blockCount > 0 {
+				metadata.NumLayers = blockCount
+				fmt.Printf("  🎯 FOUND LAYER COUNT: %d\n", metadata.NumLayers)
+			}
+		} else if strings.HasSuffix(key, ".attention.head_count_kv") {
+			if headCount := getIntFromValue(value); headCount > 0 {
+				metadata.NumKVHeads = headCount
+				fmt.Printf("  🎯 FOUND KV HEAD COUNT: %d\n", metadata.NumKVHeads)
+			}
+		} else if strings.HasSuffix(key, ".attention.key_length") {
+			if keyLen := getIntFromValue(value); keyLen > 0 {
+				metadata.KeyLength = keyLen
+				fmt.Printf("  🎯 FOUND KEY LENGTH: %d\n", metadata.KeyLength)
+			}
+		} else if strings.HasSuffix(key, ".attention.value_length") {
+			if valueLen := getIntFromValue(value); valueLen > 0 {
+				metadata.ValueLength = valueLen
+				fmt.Printf("  🎯 FOUND VALUE LENGTH: %d\n", metadata.ValueLength)
+			}
+		} else if strings.HasSuffix(key, ".attention.sliding_window_size") {
+			if windowSize := getIntFromValue(value); windowSize > 0 {
+				metadata.SlidingWindowSize = windowSize
+				fmt.Printf("  🎯 FOUND SLIDING WINDOW SIZE: %d\n", metadata.SlidingWindowSize)
+			}
+		}
+	}
+}
+
+// getIntFromValue extracts an integer from various value types
+func getIntFromValue(value interface{}) int {
+	switch v := value.(type) {
+	case uint32:
+		return int(v)
+	case int32:
+		return int(v)
+	case uint64:
+		return int(v)
+	case int64:
+		return int(v)
+	case int:
+		return v
+	}
+	return 0
 }
 
 // recoverFromMetadataError attempts to recover from GGUF parsing errors
@@ -1040,6 +1136,12 @@ func (o *Optimizer) Optimize(modelName string, preset Preset) (*OptimizedParams,
 		fmt.Printf("  MoE: %v (Experts: %d, Active: %d)\n", metadata.IsMoE, metadata.NumExperts, metadata.NumActiveExperts)
 	}
 
+	// Run Python-style GPU memory estimation
+	fmt.Printf("\n=== Running GPU Memory Estimation ===\n")
+	if err := o.runGPUEstimator(modelPath, metadata, 2.0); err != nil {
+		fmt.Printf("Warning: GPU estimation failed: %v\n", err)
+	}
+
 	// Generate optimized parameters based on preset
 	params := o.generateParams(metadata, preset, modelPath)
 
@@ -1174,6 +1276,10 @@ func (o *Optimizer) generateParams(metadata *ModelMetadata, preset Preset, model
 		o.optimizeUltra(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
 	case PresetMoE:
 		o.optimizeMoESpecific(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode)
+	default:
+		// Fallback to balanced if somehow we get here
+		fmt.Printf("  ⚠️ Unknown preset %s, falling back to balanced\n", preset)
+		o.optimizeBalanced(params, metadata, modelSizeGB, availableMemoryMB, isGPUMode, modelPath)
 	}
 
 	// Backend-specific adjustments
@@ -2293,6 +2399,171 @@ func (o *Optimizer) validateContextMemory(params *OptimizedParams, metadata *Mod
 	}
 }
 
+// getTotalModelSizeFromDisk calculates the total model size by finding all parts on disk (Python-style)
+func getTotalModelSizeFromDisk(ggufFilePath string) (int64, error) {
+	// Check for multi-part pattern: -00001-of-00002.gguf
+	re := regexp.MustCompile(`-(\d{5})-of-(\d{5})\.gguf$`)
+	match := re.FindStringSubmatch(ggufFilePath)
+
+	if match == nil {
+		// Single file
+		info, err := os.Stat(ggufFilePath)
+		if err != nil {
+			return 0, err
+		}
+		return info.Size(), nil
+	}
+
+	// Multi-part file
+	basePath := ggufFilePath[:strings.LastIndex(ggufFilePath, match[0])]
+	totalPartsStr := match[2]
+	totalParts, _ := strconv.Atoi(totalPartsStr)
+
+	var totalSize int64
+	foundParts := 0
+
+	for i := 1; i <= totalParts; i++ {
+		partFileName := fmt.Sprintf("%s-%05d-of-%s.gguf", basePath, i, totalPartsStr)
+		if info, err := os.Stat(partFileName); err == nil {
+			totalSize += info.Size()
+			foundParts++
+		}
+	}
+
+	if foundParts != totalParts {
+		fmt.Printf("WARNING: Expected %d parts, found %d. Size calculation may be incomplete.\n", totalParts, foundParts)
+	}
+
+	return totalSize, nil
+}
+
+// formatMem formats memory size in human readable format (Python-style)
+func formatMem(sizeBytes int64) string {
+	mib := float64(sizeBytes) / (1024 * 1024)
+	if mib < 1024 {
+		return fmt.Sprintf("%8.2f MiB", mib)
+	}
+	return fmt.Sprintf("%8.2f GiB", mib/1024)
+}
+
+// formatNumber formats numbers with commas (Python-style)
+func formatNumber(n int) string {
+	str := strconv.Itoa(n)
+	if len(str) <= 3 {
+		return str
+	}
+
+	// Add commas
+	result := ""
+	for i, digit := range str {
+		if i > 0 && (len(str)-i)%3 == 0 {
+			result += ","
+		}
+		result += string(digit)
+	}
+	return result
+}
+
+// runGPUEstimator runs Python-style memory estimation and prints results
+func (o *Optimizer) runGPUEstimator(modelPath string, metadata *ModelMetadata, overheadGiB float64) error {
+	prefix := metadata.Architecture
+	if prefix == "" {
+		return fmt.Errorf("could not read 'general.architecture' from model metadata")
+	}
+
+	modelSizeBytes, err := getTotalModelSizeFromDisk(modelPath)
+	if err != nil {
+		return fmt.Errorf("failed to get model size: %v", err)
+	}
+
+	overheadBytes := int64(overheadGiB * 1024 * 1024 * 1024)
+
+	// Extract required metadata
+	nLayers := metadata.NumLayers
+	nHeadKV := metadata.NumKVHeads
+	trainingContext := metadata.ContextLength
+	nEmbdHeadK := metadata.KeyLength
+	nEmbdHeadV := metadata.ValueLength
+	swaWindowSize := metadata.SlidingWindowSize
+
+	modelName := metadata.Name
+	isScoutModel := strings.Contains(strings.ToLower(modelName), "scout")
+
+	var nLayersSwa, nLayersFull int
+	if isScoutModel && swaWindowSize == 0 {
+		nLayersSwa, nLayersFull, swaWindowSize = 36, 12, 8192
+	} else if swaWindowSize > 0 {
+		nLayersSwa, nLayersFull = nLayers, 0
+	} else {
+		nLayersSwa, nLayersFull = 0, nLayers
+	}
+
+	// Print model information
+	fmt.Printf("\n--- Model '%s' ---\n", modelName)
+	if trainingContext > 0 {
+		fmt.Printf("Max Context: %s tokens\n", formatNumber(trainingContext))
+	}
+	fmt.Printf("Model Size: %s (from file size)\n", strings.TrimSpace(formatMem(modelSizeBytes)))
+	fmt.Printf("Incl. Overhead: %.2f GiB (for compute buffer, etc.)\n", overheadGiB)
+
+	// Default context sizes for estimation
+	contextSizes := []int{4096, 8192, 16384, 32768, 65536, 131072}
+
+	// Filter context sizes based on training context
+	if trainingContext > 0 {
+		filteredSizes := make([]int, 0)
+		sizeSet := make(map[int]bool)
+
+		// Add sizes that are <= training context
+		for _, size := range contextSizes {
+			if size <= trainingContext {
+				filteredSizes = append(filteredSizes, size)
+				sizeSet[size] = true
+			}
+		}
+
+		// Add training context if not already included
+		if !sizeSet[trainingContext] {
+			filteredSizes = append(filteredSizes, trainingContext)
+		}
+
+		contextSizes = filteredSizes
+	}
+
+	if nEmbdHeadK == 0 || nEmbdHeadV == 0 || nHeadKV == 0 {
+		fmt.Printf("WARNING: Missing key/value head information. Using fallback calculations.\n")
+		// Use embedding size as fallback
+		if metadata.EmbeddingSize > 0 {
+			nEmbdHeadK = metadata.EmbeddingSize / max(nHeadKV, 1)
+			nEmbdHeadV = nEmbdHeadK
+		} else {
+			nEmbdHeadK = 128 // Default fallback
+			nEmbdHeadV = 128
+		}
+	}
+
+	bytesPerTokenPerLayer := int64(nHeadKV * (nEmbdHeadK + nEmbdHeadV) * 2)
+
+	// Print memory estimation table
+	fmt.Println("\n--- Memory Footprint Estimation ---")
+	fmt.Printf("%15s | %15s | %15s\n", "Context Size", "Context Memory", "Est. Total VRAM")
+	fmt.Println(strings.Repeat("-", 51))
+
+	for _, nCtx := range contextSizes {
+		memFull := int64(nCtx*nLayersFull) * bytesPerTokenPerLayer
+		memSwa := int64(min(nCtx, swaWindowSize)*nLayersSwa) * bytesPerTokenPerLayer
+		kvCacheBytes := memFull + memSwa
+		totalBytes := modelSizeBytes + kvCacheBytes + overheadBytes
+
+		fmt.Printf("%15s | %15s | %15s\n",
+			formatNumber(nCtx),
+			strings.TrimSpace(formatMem(kvCacheBytes)),
+			strings.TrimSpace(formatMem(totalBytes)))
+	}
+
+	return nil
+}
+
 func main() {
 	var (
 		configPath = flag.String("config", "llama-swap.yaml", "Path to YAML config file")
@@ -2333,6 +2604,40 @@ func main() {
 
 	// Parse preset
 	presetEnum := Preset(*preset)
+
+	// Handle preset aliases and validation
+	switch *preset {
+	case "performance":
+		presetEnum = PresetUltra
+		fmt.Printf("  📝 Using 'ultra_performance' for 'performance' preset\n")
+	case "speed":
+		presetEnum = PresetHighSpeed
+		fmt.Printf("  📝 Using 'high_speed' for 'speed' preset\n")
+	case "context":
+		presetEnum = PresetMoreContext
+		fmt.Printf("  📝 Using 'more_context' for 'context' preset\n")
+	case "safe":
+		presetEnum = PresetSystemSafe
+		fmt.Printf("  📝 Using 'system_safe' for 'safe' preset\n")
+	case "moe":
+		presetEnum = PresetMoE
+		fmt.Printf("  📝 Using 'moe_optimized' for 'moe' preset\n")
+	default:
+		// Validate preset
+		validPresets := []string{"high_speed", "more_context", "balanced", "system_safe", "ultra_performance", "moe_optimized"}
+		isValid := false
+		for _, valid := range validPresets {
+			if *preset == valid {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			fmt.Printf("⚠️  Invalid preset '%s'. Using 'balanced' instead.\n", *preset)
+			fmt.Printf("Valid presets: %s\n", strings.Join(validPresets, ", "))
+			presetEnum = PresetBalanced
+		}
+	}
 
 	// Optimize
 	if *modelName != "" {

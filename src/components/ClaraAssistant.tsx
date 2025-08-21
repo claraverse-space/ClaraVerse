@@ -594,6 +594,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         enableMCP: false,               // **CHANGED**: Default to false for streaming mode
         enableStructuredToolCalling: false, // **NEW**: Default to false
         enableNativeJSONSchema: false, // **NEW**: Default to false
+        enableMemory: true,            // **NEW**: Added to fix type error
       },
       artifacts: {
         enableCodeArtifacts: false,        // **DISABLED**: No code artifacts

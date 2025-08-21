@@ -1,0 +1,14 @@
+# Ignore node modules and other artifacts
+node_modules/
+npm-debug.log*
+.git/
+.DS_Store
+Thumbs.db
+
+# Ignore parent directory files
+../../*
+
+# Keep our specific files
+!server.js
+!package.json
+!package-lock.json

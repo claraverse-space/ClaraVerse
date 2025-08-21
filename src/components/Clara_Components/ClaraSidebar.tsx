@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MessageSquare, Archive, Star, Trash2, Plus, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MessageSquare, Archive, Star, Trash2, Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ClaraChatSession } from '../../types/clara_assistant_types';
 
 interface ClaraSidebarProps {
@@ -25,9 +25,54 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   onSessionAction = () => {},
   onLoadMore = () => {}
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Load initial expanded state from localStorage, default to true (expanded)
+  const [isExpanded, setIsExpanded] = useState(() => {
+    const saved = localStorage.getItem('clara-sidebar-expanded');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  
+  // Track if user manually collapsed it - if so, don't auto-expand on hover
+  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() => {
+    const saved = localStorage.getItem('clara-sidebar-manually-collapsed');
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+  
   const [filter, setFilter] = useState<'all' | 'starred' | 'archived'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Save expanded state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('clara-sidebar-expanded', JSON.stringify(isExpanded));
+  }, [isExpanded]);
+
+  // Save manually collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('clara-sidebar-manually-collapsed', JSON.stringify(isManuallyCollapsed));
+  }, [isManuallyCollapsed]);
+
+  // Toggle sidebar expanded state - when user manually toggles
+  const toggleSidebar = () => {
+    const newExpandedState = !isExpanded;
+    setIsExpanded(newExpandedState);
+    
+    // If user manually collapses, mark as manually collapsed
+    // If user manually expands, unmark manual collapse
+    setIsManuallyCollapsed(!newExpandedState);
+  };
+
+  // Handle mouse enter - only expand if not manually collapsed
+  const handleMouseEnter = () => {
+    if (!isManuallyCollapsed) {
+      setIsExpanded(true);
+    }
+  };
+
+  // Handle mouse leave - only collapse if not manually expanded or if it was manually collapsed
+  const handleMouseLeave = () => {
+    if (isManuallyCollapsed) {
+      setIsExpanded(false);
+    }
+  };
 
   // Filter sessions based on current filter and search
   const filteredSessions = sessions.filter(session => {
@@ -102,14 +147,21 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
     <div
       className={`glassmorphic h-full flex flex-col transition-all duration-300 z-[10000] ${isExpanded ? 'w-80' : 'w-16'}`}
       style={{ minWidth: isExpanded ? '20rem' : '4rem', maxWidth: isExpanded ? '20rem' : '4rem' }}
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {isExpanded ? (
         <>
-          {/* Header */}
+          {/* Header with Toggle Button */}
           <div className="flex items-center py-4 px-4 justify-between">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Chat Histories</h2>
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              title="Collapse sidebar"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Search */}
@@ -281,11 +333,25 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
         </>
       ) : (
-        /* Collapsed State - Center the title vertically */
-        <div className="h-full flex flex-col items-center justify-center">
-          <span className="text-xs font-semibold tracking-widest text-gray-700 dark:text-gray-300 rotate-180" style={{ writingMode: 'vertical-rl' }}>
-            Chat Histories
-          </span>
+        /* Collapsed State - Toggle button at top, title centered */
+        <div className="h-full flex flex-col">
+          {/* Toggle button at top */}
+          <div className="flex justify-center py-4">
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              title="Expand sidebar"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          </div>
+          
+          {/* Centered title */}
+          <div className="flex-1 flex items-center justify-center">
+            <span className="text-xs font-semibold tracking-widest text-gray-700 dark:text-gray-300 rotate-180" style={{ writingMode: 'vertical-rl' }}>
+              Chat Histories
+            </span>
+          </div>
         </div>
       )}
     </div>
