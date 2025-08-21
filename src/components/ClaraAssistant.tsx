@@ -4431,24 +4431,40 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                   <span>Please wait...</span>
                 </div>
               ) : (
-                // No models - show action button
-                <button
-                  onClick={() => onPageChange('settings')}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>Go to Model Manager</span>
-                </button>
+                // No models - show action buttons
+                <>
+                  <button
+                    onClick={() => onPageChange('settings')}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>Go to Model Manager</span>
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      // Soft reload - just re-check models and services without full page refresh
+                      const hasModels = models.length > 0;
+                      const startupStatus = await checkServiceStartupStatus();
+                      setServiceStartupStatus(startupStatus);
+                      const shouldShowNoModelsModal = !hasModels && !startupStatus.isStarting;
+                      setShowNoModelsModal(shouldShowNoModelsModal);
+                    }}
+                    className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Refresh Detection</span>
+                  </button>
+                  
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
+                    Sometimes this error appears when the server is not running. Try refreshing detection if you have models installed.
+                  </p>
+                </>
               )}
-              
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                {serviceStartupStatus.isStarting 
-                  ? 'This dialog will close automatically when the service is ready'
-                  : 'This dialog will disappear once you have downloaded a model'
-                }
-              </p>
             </div>
           </div>
         </div>

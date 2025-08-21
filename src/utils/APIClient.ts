@@ -1125,8 +1125,10 @@ export class APIClient {
             }
           }))
         ];
-        // CRITICAL FIX: Preserve ALL message properties (especially tool_call_id) when converting for images
-        return { ...msg, content };
+        // CRITICAL FIX: Don't include 'images' property in final message (OpenAI API doesn't support it)
+        // Only preserve essential properties for OpenAI API compatibility
+        const { images, ...msgWithoutImages } = msg;
+        return { ...msgWithoutImages, content };
       }
       return msg;
     });
