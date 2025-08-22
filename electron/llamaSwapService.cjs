@@ -1193,6 +1193,13 @@ class LlamaSwapService {
       
       // First, try to extract and check the structure
       const listCommand = spawn('unzip', ['-l', zipPath], { stdio: 'pipe' });
+      
+      // Handle spawn errors (e.g., unzip not found)
+      listCommand.on('error', (error) => {
+        log.error(`unzip command not found: ${error.message}`);
+        resolve(false);
+      });
+      
       let zipContents = '';
       
       listCommand.stdout.on('data', (data) => {
@@ -1257,6 +1264,12 @@ class LlamaSwapService {
         
         // Extract everything to temp directory first
         const extractCommand = spawn('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'pipe' });
+        
+        // Handle spawn errors (e.g., unzip not found)
+        extractCommand.on('error', (error) => {
+          log.error(`unzip command not found: ${error.message}`);
+          resolve(false);
+        });
         
         extractCommand.on('close', async (code) => {
           if (code !== 0) {
@@ -1661,6 +1674,11 @@ class LlamaSwapService {
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
+      // Handle spawn errors (e.g., tar not found)
+      tar.on('error', (error) => {
+        reject(new Error(`tar command not found: ${error.message}`));
+      });
+
       let stdout = '';
       let stderr = '';
       
@@ -1703,6 +1721,11 @@ class LlamaSwapService {
       // Find the llama-swap binary (might be in a subdirectory)
       const find = spawn('find', [targetDir, '-name', 'llama-swap', '-type', 'f'], {
         stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      // Handle spawn errors (e.g., find not found)
+      find.on('error', (error) => {
+        reject(new Error(`find command not found: ${error.message}`));
       });
 
       let stdout = '';
@@ -4107,6 +4130,12 @@ ${cmdLine}`;
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
+      // Handle spawn errors (e.g., system_profiler not found)
+      process.on('error', (error) => {
+        log.warn('system_profiler command not found on macOS:', error.message);
+        resolve(this.estimateGPUCapabilities());
+      });
+
       let stdout = '';
       process.stdout.on('data', (data) => {
         stdout += data.toString();
@@ -4205,6 +4234,64 @@ ${cmdLine}`;
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
+      // Handle spawn errors (e.g., wmic not found)
+      process.on('error', (error) => {
+        log.warn('WMIC command not found, trying PowerShell fallback:', error.message);
+        
+        // Try PowerShell as fallback
+        try {
+          const powershell = spawnSync('powershell', [
+            '-Command',
+            'Get-WmiObject -Class Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json'
+          ], { encoding: 'utf8', timeout: 10000 });
+
+          if (powershell.status === 0 && powershell.stdout) {
+            try {
+              const gpuData = JSON.parse(powershell.stdout);
+              const gpus = Array.isArray(gpuData) ? gpuData : [gpuData];
+              
+              let maxMemoryMB = 0;
+              let gpuType = 'integrated';
+              
+              gpus.forEach(gpu => {
+                if (gpu.AdapterRAM && gpu.Name) {
+                  const ramMB = Math.round(gpu.AdapterRAM / (1024 * 1024));
+                  if (ramMB > maxMemoryMB) {
+                    maxMemoryMB = ramMB;
+                    const lowerName = gpu.Name.toLowerCase();
+                    if (lowerName.includes('nvidia') || lowerName.includes('geforce') || lowerName.includes('rtx') || lowerName.includes('gtx')) {
+                      gpuType = 'nvidia';
+                    } else if (lowerName.includes('amd') || lowerName.includes('radeon')) {
+                      gpuType = 'amd';
+                    } else if (lowerName.includes('intel')) {
+                      gpuType = 'intel';
+                    } else {
+                      gpuType = 'dedicated';
+                    }
+                  }
+                }
+              });
+              
+              if (maxMemoryMB > 0) {
+                log.info(`GPU detected via PowerShell: ${gpuType} (${maxMemoryMB}MB)`);
+                return resolve({
+                  hasGPU: true,
+                  gpuMemoryMB: maxMemoryMB,
+                  gpuType
+                });
+              }
+            } catch (parseError) {
+              log.warn('Failed to parse PowerShell GPU data:', parseError.message);
+            }
+          }
+        } catch (psError) {
+          log.warn('PowerShell GPU detection failed:', psError.message);
+        }
+        
+        // Final fallback to estimation
+        resolve(this.estimateGPUCapabilities());
+      });
+
       let stdout = '';
       process.stdout.on('data', (data) => {
         stdout += data.toString();
@@ -4278,6 +4365,12 @@ ${cmdLine}`;
       // Try nvidia-smi first
       const process = spawn('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits'], {
         stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      // Handle spawn errors (e.g., nvidia-smi not found)
+      process.on('error', (error) => {
+        log.debug('nvidia-smi command not found on Linux:', error.message);
+        resolve(this.estimateGPUCapabilities());
       });
 
       let stdout = '';

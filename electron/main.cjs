@@ -4846,6 +4846,9 @@ async function startDockerDesktop(dockerPath) {
           detached: true, 
           stdio: 'ignore' 
         });
+        dockerProcess.on('error', (error) => {
+          log.warn('Docker Desktop spawn error:', error.message);
+        });
         dockerProcess.unref();
         
         log.info('Docker Desktop startup initiated');
@@ -4924,12 +4927,18 @@ async function startDockerDesktop(dockerPath) {
               detached: true, 
               stdio: 'ignore' 
             });
+            dockerProcess.on('error', (error) => {
+              log.warn('Docker Desktop spawn error:', error.message);
+            });
             dockerProcess.unref();
           } else {
             // Docker Desktop is at specific path
             const dockerProcess = spawn(dockerPath, [], { 
               detached: true, 
               stdio: 'ignore' 
+            });
+            dockerProcess.on('error', (error) => {
+              log.warn('Docker Desktop spawn error:', error.message);
             });
             dockerProcess.unref();
           }
