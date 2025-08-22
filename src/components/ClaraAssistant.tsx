@@ -4182,7 +4182,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
         <Sidebar activePage="clara" onPageChange={onPageChange} />
 
         {/* Main: Chat Area */}
-        <div className="flex-1 flex flex-col h-full">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Header */}
           <Topbar 
             userName={userName}
@@ -4194,19 +4194,22 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
             claraBrainIsLoading={isLoading}
           />
           
-          {/* Tab Content */}
-          {activeTab === 'chat' ? (
-            <>
-              {/* Chat Window */}
-              <ClaraChatWindow
-                messages={messages}
-                userName={userName}
-                isLoading={isLoading}
-                isInitializing={isLoadingSessions || isLoadingProviders}
-                onRetryMessage={handleRetryMessage}
-                onCopyMessage={handleCopyMessage}
-                onEditMessage={handleEditMessage}
-              />
+          {/* Content area below topbar */}
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Tab Content */}
+            <div className="flex-1 flex flex-col">
+              {activeTab === 'chat' ? (
+                <>
+                  {/* Chat Window */}
+                  <ClaraChatWindow
+                    messages={messages}
+                    userName={userName}
+                    isLoading={isLoading}
+                    isInitializing={isLoadingSessions || isLoadingProviders}
+                    onRetryMessage={handleRetryMessage}
+                    onCopyMessage={handleCopyMessage}
+                    onEditMessage={handleEditMessage}
+                  />
               
               {/* Autonomous Agent Status Panel - Above Advanced Options */}
               {autonomousAgentStatus.isActive && (
@@ -4351,20 +4354,22 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
         /* Clara's Brain Dashboard */
         <ClaraBrainDashboard />
       )}
-        </div>
+            </div>
 
-        {/* Clara Chat History Sidebar on the right */}
-        <ClaraSidebar 
-          sessions={sessions}
-          currentSessionId={currentSession?.id}
-          isLoading={isLoadingSessions}
-          isLoadingMore={isLoadingMoreSessions}
-          hasMoreSessions={hasMoreSessions}
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          onSessionAction={handleSessionAction}
-          onLoadMore={loadMoreSessions}
-        />
+            {/* Clara Chat History Sidebar on the right */}
+            <ClaraSidebar 
+              sessions={sessions}
+              currentSessionId={currentSession?.id}
+              isLoading={isLoadingSessions}
+              isLoadingMore={isLoadingMoreSessions}
+              hasMoreSessions={hasMoreSessions}
+              onSelectSession={handleSelectSession}
+              onNewChat={handleNewChat}
+              onSessionAction={handleSessionAction}
+              onLoadMore={loadMoreSessions}
+            />
+          </div>
+        </div>
       </div>
 
       {/* No Models Available / Service Starting Modal */}
