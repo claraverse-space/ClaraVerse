@@ -28,17 +28,19 @@ COPY requirements.txt .
 RUN uv pip install -r requirements.txt --system && \
     rm -rf /root/.cache/pip/*
 
-# Install spaCy and download the English model explicitly
-RUN uv pip install spacy>=3.4.0 --system && \
-    python -m spacy download en_core_web_sm && \
-    python -c "import spacy; nlp = spacy.load('en_core_web_sm'); print('✅ spaCy model loaded successfully')" && \
-    rm -rf /root/.cache/pip/*
-
-# Copy application code
+# Copy application code first
 COPY . .
 
 # Create data directory
 RUN mkdir -p /app/data
+
+# Create startup script that downloads spaCy model if needed
+RUN echo '#!/bin/bash\n\
+if ! python -c "import spacy; spacy.load(\"en_core_web_sm\")" 2>/dev/null; then\n\
+    echo "Downloading spaCy model..."\n\
+    python -m spacy download en_core_web_sm || echo "SpaCy model download failed, continuing anyway..."\n\
+fi\n\
+exec "$@"' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Set environment variables
 ENV HOST="0.0.0.0" \
@@ -62,4 +64,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Run the application with environment variables
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["sh", "-c", "python main.py --host $HOST --port $PORT"] 
