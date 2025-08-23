@@ -459,6 +459,20 @@ const ModelSelector: React.FC<{
   const [searchTerm, setSearchTerm] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   
+  // Helper function to extract clean model name from ID (removes UUID prefix if present)
+  const getCleanModelName = (modelId: string): string => {
+    // If the model ID contains a UUID prefix followed by a colon, extract just the model name part
+    // Format: "d78b6daf-e14a-435e-a1ce-cd584c9a18fc:gpt-oss-20b-q5-k-m:20b" -> "gpt-oss-20b-q5-k-m:20b"
+    if (modelId.includes(':')) {
+      const parts = modelId.split(':');
+      // Check if first part looks like a UUID (36 characters with dashes)
+      if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
+        return parts.slice(1).join(':'); // Join remaining parts in case model name itself contains colons
+      }
+    }
+    return modelId;
+  };
+  
   // Filter models by provider first, then by type and capability, then by search term
   const filteredModels = models.filter(model => {
     // First filter by current provider
@@ -537,20 +551,6 @@ const ModelSelector: React.FC<{
     
     // If still too long, truncate from the end and add ellipsis
     return truncated.substring(0, maxLength - 3) + '...';
-  };
-
-  // Helper function to extract clean model name from ID (removes UUID prefix if present)
-  const getCleanModelName = (modelId: string): string => {
-    // If the model ID contains a UUID prefix followed by a colon, extract just the model name part
-    // Format: "d78b6daf-e14a-435e-a1ce-cd584c9a18fc:gpt-oss-20b-q5-k-m:20b" -> "gpt-oss-20b-q5-k-m:20b"
-    if (modelId.includes(':')) {
-      const parts = modelId.split(':');
-      // Check if first part looks like a UUID (36 characters with dashes)
-      if (parts.length >= 2 && parts[0].length === 36 && parts[0].includes('-')) {
-        return parts.slice(1).join(':'); // Join remaining parts in case model name itself contains colons
-      }
-    }
-    return modelId;
   };
 
   return (

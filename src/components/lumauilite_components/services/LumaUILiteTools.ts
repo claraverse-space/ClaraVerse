@@ -38,15 +38,11 @@ export default class LumaUILiteTools {
   // File Operations
   async createFile(path: string, content: string = ''): Promise<ToolResult> {
     try {
-      // Check if file already exists
+      // Check if file already exists and delete it if it does
       const existingFile = this.config.projectFiles.find(f => f.path === path);
       if (existingFile) {
-        this.log(`\x1b[31m❌ File already exists: ${path}\x1b[0m\n`);
-        return {
-          success: false,
-          message: `File already exists: ${path}`,
-          error: 'FILE_EXISTS'
-        };
+        this.log(`\x1b[33m🔄 File already exists, replacing: ${path}\x1b[0m\n`);
+        this.config.onDeleteFile(existingFile.id);
       }
 
       // Determine file properties
@@ -72,12 +68,13 @@ export default class LumaUILiteTools {
       // Auto-select the new file
       this.config.onFileSelect(path, content);
 
-      this.log(`\x1b[32m✅ Created file: ${path}\x1b[0m\n`);
+      const action = existingFile ? 'replaced' : 'created';
+      this.log(`\x1b[32m✅ File ${action}: ${path}\x1b[0m\n`);
 
       return {
         success: true,
-        message: `File created successfully: ${path}`,
-        data: { path, content, size: content.length }
+        message: `File ${action} successfully: ${path}`,
+        data: { path, content, size: content.length, replaced: !!existingFile }
       };
     } catch (error) {
       const errorMsg = `Failed to create file ${path}: ${error}`;
