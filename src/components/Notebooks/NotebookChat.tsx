@@ -482,7 +482,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
             {!isSummaryCollapsed && (
               <div className="mt-3">
                 {(isGeneratingSummary || showSkeletonLoading) ? (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 glassmorphic">
                     {/* Skeleton Loading for Summary */}
                     <div className="space-y-3">
                       <div className="flex items-center space-x-2 mb-3">
@@ -761,9 +761,9 @@ const NotebookChat: React.FC<NotebookChatProps> = ({ notebookId, documentCount, 
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 p-4 bg-white dark:bg-black">
+      <div className="flex-shrink-0 p-4 bg-white dark:bg-black glassmorphic">
         <div className="max-w-4xl mx-auto">
-          <div className="relative bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="relative bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 glassmorphic">
             <textarea
               ref={textareaRef}
               value={inputMessage}

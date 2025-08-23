@@ -935,6 +935,11 @@ class NotebookQueryResponse(BaseModel):
     context_used: bool = Field(True, description="Whether context was used")
     citations: Optional[List[Dict[str, Any]]] = Field(None, description="Citation information with sources")
 
+class DocumentRetryResponse(BaseModel):
+    message: str = Field(..., description="Success message")
+    document_id: str = Field(..., description="Document ID that was retried")
+    status: str = Field(..., description="New document status after retry initiation")
+
 @app.get("/")
 def read_root():
     """Root endpoint for basic health check"""
@@ -1155,14 +1160,15 @@ if LIGHTRAG_AVAILABLE:
                 # Create file path for citation tracking
                 file_path = f"notebooks/{notebook_id}/{file.filename}"
                 
-                # Create document record
+                # Create document record with content stored for potential retry
                 document_data = {
                     "id": document_id,
                     "filename": file.filename,
                     "notebook_id": notebook_id,
                     "uploaded_at": datetime.now(),
                     "status": "processing",
-                    "file_path": file_path
+                    "file_path": file_path,
+                    "content": text_content  # Store content for retry functionality
                 }
                 
                 lightrag_documents_db[document_id] = document_data
@@ -1255,6 +1261,83 @@ if LIGHTRAG_AVAILABLE:
         except Exception as e:
             logger.error(f"Error deleting document {document_id}: {e}")
             raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
+
+    @app.post("/notebooks/{notebook_id}/documents/{document_id}/retry", response_model=DocumentRetryResponse)
+    async def retry_failed_document(notebook_id: str, document_id: str, background_tasks: BackgroundTasks):
+        """Retry processing a failed document"""
+        validate_notebook_exists(notebook_id)
+        
+        if document_id not in lightrag_documents_db:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document_data = lightrag_documents_db[document_id]
+        
+        if document_data["notebook_id"] != notebook_id:
+            raise HTTPException(status_code=400, detail="Document does not belong to this notebook")
+        
+        # Check if document is in a retryable state
+        if document_data["status"] not in ["failed"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Document is in '{document_data['status']}' state. Only 'failed' documents can be retried."
+            )
+        
+        try:
+            logger.info(f"Retrying document {document_id} in notebook {notebook_id}")
+            
+            # Get the original text content from the failed document
+            # Check if we have stored content or need to re-extract it
+            text_content = document_data.get("content")
+            
+            if not text_content:
+                # If content wasn't stored, we need the original file to retry
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Original document content not available for retry. Please re-upload the document."
+                )
+            
+            # Reset document status to processing
+            document_data["status"] = "processing"
+            document_data["processed_at"] = datetime.now()
+            
+            # Clear previous error information
+            if "failed_at" in document_data:
+                del document_data["failed_at"]
+            if "error_message" in document_data:
+                del document_data["error_message"]
+            if "error_details" in document_data:
+                del document_data["error_details"]
+            
+            # Update the document in database
+            lightrag_documents_db[document_id] = document_data
+            save_documents_db()
+            
+            # Add background task to retry processing
+            # The LightRAG cache will automatically skip chunks that were already processed
+            background_tasks.add_task(
+                process_notebook_document, 
+                notebook_id, 
+                document_id, 
+                text_content
+            )
+            
+            logger.info(f"Retry initiated for document {document_id}")
+            return DocumentRetryResponse(
+                message="Document retry initiated successfully",
+                document_id=document_id,
+                status="processing"
+            )
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Error retrying document {document_id}: {e}")
+            # Reset status back to failed if retry setup failed
+            document_data["status"] = "failed"
+            lightrag_documents_db[document_id] = document_data
+            save_documents_db()
+            raise HTTPException(status_code=500, detail=f"Error initiating retry: {str(e)}")
 
     @app.post("/notebooks/{notebook_id}/query", response_model=NotebookQueryResponse)
     async def query_notebook(notebook_id: str, query: NotebookQueryRequest):
@@ -2020,6 +2103,10 @@ async def transcribe_audio(
     """Transcribe an audio file using faster-whisper (CPU mode)"""
     # Validate file extension
     supported_formats = ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'opus']
+    
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    
     file_extension = file.filename.lower().split('.')[-1]
     
     if file_extension not in supported_formats:
@@ -2149,7 +2236,9 @@ async def synthesize_text_to_file(
             content_type = "audio/mpeg"
         
         # Ensure filename has correct extension
-        if not filename.endswith(file_ext):
+        if not filename:
+            filename = "speech" + file_ext
+        elif not filename.endswith(file_ext):
             filename = os.path.splitext(filename)[0] + file_ext
         
         # Create temporary file

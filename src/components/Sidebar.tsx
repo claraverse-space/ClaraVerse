@@ -370,7 +370,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
     { icon: Home, label: 'Dashboard', id: 'dashboard' },
     { icon: Bot, label: 'Chat', id: 'clara' },
     { icon: BrainCircuit, label: 'Agents', id: 'agents' },
-    { icon: BookOpen, label: 'Notebooks', id: 'notebooks' },
+    { icon: BookOpen, label: 'RAG', id: 'notebooks' },
     ...(alphaFeaturesEnabled ? [{ icon: Zap, label: 'Lumaui (Alpha)', id: 'lumaui' }] : []),
     { icon: Code2, label: 'LumaUI (Beta)', id: 'lumaui-lite' },
     // Show Image Gen if ComfyUI feature is enabled OR if ComfyUI service is running

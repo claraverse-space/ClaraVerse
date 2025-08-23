@@ -13,7 +13,7 @@ import {
   Clock
 } from 'lucide-react';
 import CreateNotebookModal from './CreateNotebookModal';
-import NotebookDetails from './NotebookDetails';
+import NotebookDetails from './NotebookDetails_new';
 import PythonStartupModal from '../PythonStartupModal';
 import { claraNotebookService, NotebookResponse, ProviderConfig } from '../../services/claraNotebookService';
 import { ProvidersProvider } from '../../contexts/ProvidersContext';
