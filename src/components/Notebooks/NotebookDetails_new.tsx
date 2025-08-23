@@ -844,7 +844,7 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
 
           <div className="flex flex-1 min-h-0">
               {/* Studio Sidebar Navigation */}
-              <div className="flex-shrink-0 w-16 sm:w-20 bg-white/20 dark:bg-gray-800/20 border-r border-white/20 dark:border-gray-800/30 backdrop-blur-sm">
+              <div className=" flex-shrink-0 w-16 sm:w-20 border-r border-white/20 dark:border-gray-800/30 ">
                 <div className="flex flex-col items-center gap-2 p-2">
                   {[
                     { id: 'sources', label: 'Sources', icon: FileText, color: 'from-blue-500 to-cyan-500', solidColor: 'bg-blue-600' },
