@@ -2793,7 +2793,7 @@ models:
       }
       
       // 6. Parallel processing optimization - use saved setting
-      cmdLine += ` --parallel ${perfConfig.parallelSequences || 1}`;
+      // cmdLine += ` --parallel ${perfConfig.parallelSequences || 1}`;
       
       // 7. Flash attention if enabled in individual model config or global settings
       const useFlashAttention = customConfig?.flashAttention !== undefined ? 

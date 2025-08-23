@@ -1876,7 +1876,7 @@ func (o *Optimizer) GenerateCommand(modelName string, params *OptimizedParams) s
 	cmd.WriteString(fmt.Sprintf(" --ubatch-size %d", params.UBatchSize))
 	cmd.WriteString(fmt.Sprintf(" --keep %d", params.Keep))
 	cmd.WriteString(fmt.Sprintf(" --defrag-thold %.2f", params.DefragThreshold))
-	cmd.WriteString(fmt.Sprintf(" --parallel %d", params.Parallel))
+	// cmd.WriteString(fmt.Sprintf(" --parallel %d", params.Parallel))
 
 	// KV cache quantization (critical for memory optimization)
 	if params.CacheTypeK != "" && params.CacheTypeK != "f16" {

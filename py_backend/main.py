@@ -116,10 +116,13 @@ if LIGHTRAG_AVAILABLE:
     lightrag_notebooks_db: Dict[str, Dict] = {}
     lightrag_documents_db: Dict[str, Dict] = {}
     lightrag_instances: Dict[str, LightRAG] = {}
+    # Chat history storage for maintaining conversation context
+    chat_history_db: Dict[str, List[Dict]] = {}  # notebook_id -> [messages]
 
     # Persistence files
     NOTEBOOKS_DB_FILE = LIGHTRAG_METADATA_PATH / "notebooks.json"
     DOCUMENTS_DB_FILE = LIGHTRAG_METADATA_PATH / "documents.json"
+    CHAT_HISTORY_DB_FILE = LIGHTRAG_METADATA_PATH / "chat_history.json"
 
     def save_notebooks_db():
         """Save notebooks database to disk"""
@@ -203,9 +206,55 @@ if LIGHTRAG_AVAILABLE:
             logger.error(f"Error loading documents database: {e}")
             lightrag_documents_db = {}
 
+    def save_chat_history_db():
+        """Save chat history database to disk"""
+        try:
+            # Convert datetime objects to ISO strings for JSON serialization
+            serializable_data = {}
+            for notebook_id, messages in chat_history_db.items():
+                serializable_messages = []
+                for message in messages:
+                    serializable_message = message.copy()
+                    if isinstance(serializable_message.get('timestamp'), datetime):
+                        serializable_message['timestamp'] = serializable_message['timestamp'].isoformat()
+                    serializable_messages.append(serializable_message)
+                serializable_data[notebook_id] = serializable_messages
+            
+            with open(CHAT_HISTORY_DB_FILE, 'w') as f:
+                json.dump(serializable_data, f, indent=2)
+            logger.info(f"Saved chat history for {len(serializable_data)} notebooks to {CHAT_HISTORY_DB_FILE}")
+        except Exception as e:
+            logger.error(f"Error saving chat history database: {e}")
+
+    def load_chat_history_db():
+        """Load chat history database from disk"""
+        global chat_history_db
+        try:
+            if CHAT_HISTORY_DB_FILE.exists():
+                with open(CHAT_HISTORY_DB_FILE, 'r') as f:
+                    data = json.load(f)
+                
+                # Convert ISO strings back to datetime objects
+                for notebook_id, messages in data.items():
+                    for message in messages:
+                        if isinstance(message.get('timestamp'), str):
+                            try:
+                                message['timestamp'] = datetime.fromisoformat(message['timestamp'])
+                            except ValueError:
+                                pass  # Keep as string if not a valid ISO datetime
+                
+                chat_history_db = data
+                logger.info(f"Loaded chat history for {len(data)} notebooks from {CHAT_HISTORY_DB_FILE}")
+            else:
+                logger.info("No existing chat history database found")
+        except Exception as e:
+            logger.error(f"Error loading chat history database: {e}")
+            chat_history_db = {}
+
     # Load existing data on startup
     load_notebooks_db()
     load_documents_db()
+    load_chat_history_db()
 
 # Speech2Text instance cache
 speech2text_instance = None
@@ -858,6 +907,25 @@ if LIGHTRAG_AVAILABLE:
                 # Clear any previous error
                 if "error" in lightrag_documents_db[document_id]:
                     del lightrag_documents_db[document_id]["error"]
+                
+                # Optional: Clear content after successful processing to save space
+                # Keep content for failed documents so they can be retried
+                # For completed documents, the content is already in LightRAG
+                if "content" in lightrag_documents_db[document_id]:
+                    content_size = len(lightrag_documents_db[document_id]["content"])
+                    del lightrag_documents_db[document_id]["content"]
+                    logger.info(f"Cleared content ({content_size} chars) for completed document {document_id}")
+                
+                # Also clean up content file if it exists (document is now safely in LightRAG)
+                if "content_file" in lightrag_documents_db[document_id]:
+                    try:
+                        content_file = Path(lightrag_documents_db[document_id]["content_file"])
+                        if content_file.exists():
+                            content_file.unlink()
+                            logger.info(f"Cleaned up content file: {content_file}")
+                        del lightrag_documents_db[document_id]["content_file"]
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up content file: {e}")
             
             # Clear summary cache since a new document has been processed
             if notebook_id in lightrag_notebooks_db:
@@ -928,12 +996,40 @@ class NotebookQueryRequest(BaseModel):
     top_k: int = Field(60, description="Number of top items to retrieve")
     # Add optional provider override for query
     llm_provider: Optional[Dict[str, Any]] = Field(None, description="Override LLM provider for this query")
+    # Add chat history support
+    use_chat_history: bool = Field(True, description="Whether to use chat history for context")
 
 class NotebookQueryResponse(BaseModel):
     answer: str = Field(..., description="Generated answer")
     mode: str = Field(..., description="Query mode used")
     context_used: bool = Field(True, description="Whether context was used")
     citations: Optional[List[Dict[str, Any]]] = Field(None, description="Citation information with sources")
+    # Enhanced citation support
+    source_documents: Optional[List[Dict[str, Any]]] = Field(None, description="Source documents with highlighted passages")
+    chat_context_used: bool = Field(False, description="Whether previous chat history was used")
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Message role: user or assistant")
+    content: str = Field(..., description="Message content")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Message timestamp")
+    citations: Optional[List[Dict[str, Any]]] = Field(None, description="Citations for assistant messages")
+
+class ChatHistoryResponse(BaseModel):
+    notebook_id: str = Field(..., description="Notebook ID")
+    messages: List[ChatMessage] = Field(..., description="Chat messages")
+    total_messages: int = Field(..., description="Total number of messages")
+
+class DocumentSummaryRequest(BaseModel):
+    include_details: bool = Field(True, description="Include document-level details")
+    max_length: str = Field("medium", description="Summary length: short, medium, long")
+
+class QueryTemplate(BaseModel):
+    id: str = Field(..., description="Template ID")
+    name: str = Field(..., description="Template name")
+    description: str = Field(..., description="Template description")
+    question_template: str = Field(..., description="Question template with placeholders")
+    category: str = Field(..., description="Template category")
+    use_case: str = Field(..., description="When to use this template")
 
 class DocumentRetryResponse(BaseModel):
     message: str = Field(..., description="Success message")
@@ -1171,6 +1267,27 @@ if LIGHTRAG_AVAILABLE:
                     "content": text_content  # Store content for retry functionality
                 }
                 
+                # Debug: Log that content is being stored
+                content_length = len(text_content)
+                logger.info(f"Storing document {document_id} with content length: {content_length} characters")
+                
+                # Add content size info for monitoring
+                document_data["content_size"] = content_length
+                
+                # For very large documents, consider storing content in a separate file
+                # This prevents JSON serialization issues with very large documents
+                if content_length > 1000000:  # 1MB threshold
+                    logger.info(f"Large document detected ({content_length} chars), using file storage for content")
+                    content_file = Path(data_dir) / f"content_{document_id}.txt"
+                    try:
+                        with open(content_file, 'w', encoding='utf-8') as f:
+                            f.write(text_content)
+                        document_data["content_file"] = str(content_file)
+                        # Still store content in memory for immediate use, but fallback exists
+                        logger.info(f"Content backed up to {content_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to create content backup file: {e}")
+                
                 lightrag_documents_db[document_id] = document_data
                 
                 # Add background task for document processing with a slight delay to avoid conflicts
@@ -1239,6 +1356,16 @@ if LIGHTRAG_AVAILABLE:
             # Clear cache after deleting document
             await rag.aclear_cache()
             
+            # Clean up content file if it exists
+            if "content_file" in document_data:
+                try:
+                    content_file = Path(document_data["content_file"])
+                    if content_file.exists():
+                        content_file.unlink()
+                        logger.info(f"Cleaned up content file during deletion: {content_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up content file during deletion: {e}")
+            
             # Remove from database
             del lightrag_documents_db[document_id]
             
@@ -1285,9 +1412,31 @@ if LIGHTRAG_AVAILABLE:
         try:
             logger.info(f"Retrying document {document_id} in notebook {notebook_id}")
             
+            # Debug: Log document data keys
+            logger.info(f"Document data keys: {list(document_data.keys())}")
+            
             # Get the original text content from the failed document
             # Check if we have stored content or need to re-extract it
             text_content = document_data.get("content")
+            
+            # If content is not in memory, try to load from content file (for large documents)
+            if not text_content and "content_file" in document_data:
+                try:
+                    content_file = Path(document_data["content_file"])
+                    if content_file.exists():
+                        with open(content_file, 'r', encoding='utf-8') as f:
+                            text_content = f.read()
+                        logger.info(f"Loaded content from backup file: {content_file}")
+                    else:
+                        logger.warning(f"Content file not found: {content_file}")
+                except Exception as e:
+                    logger.error(f"Failed to load content from file: {e}")
+            
+            # Debug: Log content availability
+            if text_content:
+                logger.info(f"Content available for retry, length: {len(text_content)} characters")
+            else:
+                logger.warning(f"No content found in document data. Available keys: {list(document_data.keys())}")
             
             if not text_content:
                 # If content wasn't stored, we need the original file to retry
@@ -1465,7 +1614,9 @@ if LIGHTRAG_AVAILABLE:
                 answer=result,
                 mode=adjusted_mode,
                 context_used=True,
-                citations=citations
+                citations=citations,
+                source_documents=None,  # Will be enhanced later
+                chat_context_used=False  # Will be enhanced when chat history is implemented
             )
             
         except Exception as e:
@@ -1491,7 +1642,9 @@ if LIGHTRAG_AVAILABLE:
                     answer="No documents have been processed yet. Please upload and wait for documents to be processed before generating a summary.",
                     mode="hybrid",
                     context_used=False,
-                    citations=None
+                    citations=None,
+                    source_documents=None,
+                    chat_context_used=False
                 )
             
             # Create a fingerprint of current documents (using document IDs and upload times)
@@ -1529,7 +1682,9 @@ if LIGHTRAG_AVAILABLE:
                     answer=cached_summary["answer"],
                     mode=cached_summary["mode"],
                     context_used=cached_summary["context_used"],
-                    citations=citations
+                    citations=citations,
+                    source_documents=None,
+                    chat_context_used=False
                 )
             
             # Generate new summary if no valid cache exists
@@ -1591,7 +1746,9 @@ if LIGHTRAG_AVAILABLE:
                 answer=result,
                 mode="hybrid",
                 context_used=True,
-                citations=citations
+                citations=citations,
+                source_documents=None,
+                chat_context_used=False
             )
             
         except Exception as e:
@@ -2091,6 +2248,310 @@ if LIGHTRAG_AVAILABLE:
         except Exception as e:
             logger.error(f"Error in debug endpoint: {e}")
             raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
+
+    # Chat History Endpoints
+    @app.get("/notebooks/{notebook_id}/chat/history", response_model=ChatHistoryResponse)
+    async def get_chat_history(notebook_id: str, limit: int = Query(50, description="Maximum number of messages to return")):
+        """Get chat history for a notebook"""
+        validate_notebook_exists(notebook_id)
+        
+        messages = chat_history_db.get(notebook_id, [])
+        
+        # Limit messages and convert to ChatMessage objects
+        limited_messages = messages[-limit:] if limit > 0 else messages
+        chat_messages = [ChatMessage(**msg) for msg in limited_messages]
+        
+        return ChatHistoryResponse(
+            notebook_id=notebook_id,
+            messages=chat_messages,
+            total_messages=len(messages)
+        )
+
+    @app.delete("/notebooks/{notebook_id}/chat/history")
+    async def clear_chat_history(notebook_id: str):
+        """Clear chat history for a notebook"""
+        validate_notebook_exists(notebook_id)
+        
+        if notebook_id in chat_history_db:
+            del chat_history_db[notebook_id]
+            save_chat_history_db()
+        
+        return {"message": "Chat history cleared successfully"}
+
+    # Enhanced Query with Chat History
+    @app.post("/notebooks/{notebook_id}/chat", response_model=NotebookQueryResponse)
+    async def chat_with_notebook(notebook_id: str, query: NotebookQueryRequest):
+        """Chat with a notebook using conversation history"""
+        validate_notebook_exists(notebook_id)
+        
+        try:
+            # Initialize chat history if it doesn't exist
+            if notebook_id not in chat_history_db:
+                chat_history_db[notebook_id] = []
+            
+            # Add user message to history
+            user_message = {
+                "role": "user",
+                "content": query.question,
+                "timestamp": datetime.now()
+            }
+            chat_history_db[notebook_id].append(user_message)
+            
+            # Get LightRAG instance
+            rag = await get_lightrag_instance(notebook_id)
+            
+            # Build context from chat history if enabled
+            chat_context = ""
+            if query.use_chat_history and len(chat_history_db[notebook_id]) > 1:
+                recent_messages = chat_history_db[notebook_id][-10:]  # Last 10 messages
+                chat_context = "Previous conversation context:\n"
+                for msg in recent_messages[:-1]:  # Exclude the current message
+                    chat_context += f"{msg['role'].title()}: {msg['content']}\n"
+                chat_context += "\nCurrent question: "
+            
+            # Enhance question with chat context
+            enhanced_question = chat_context + query.question if chat_context else query.question
+            
+            # Map mode string to QueryParam
+            mode_mapping = {
+                "naive": "naive",
+                "local": "local", 
+                "global": "global",
+                "hybrid": "hybrid",
+                "mix": "mix"
+            }
+            adjusted_mode = mode_mapping.get(query.mode, "hybrid")
+            
+            # Execute query
+            query_param = QueryParam(
+                mode=adjusted_mode,
+                response_type=query.response_type,
+                top_k=query.top_k
+            )
+            
+            result = await rag.aquery(enhanced_question, param=query_param)
+            
+            # Extract citations (basic implementation)
+            citations = []
+            try:
+                # This is a basic implementation - can be enhanced based on LightRAG output format
+                citations = [{"source": "Document Context", "relevance": "High"}]
+            except Exception as citation_error:
+                logger.warning(f"Error extracting citations: {citation_error}")
+            
+            # Add assistant message to history
+            assistant_message = {
+                "role": "assistant",
+                "content": str(result),
+                "timestamp": datetime.now(),
+                "citations": citations
+            }
+            chat_history_db[notebook_id].append(assistant_message)
+            
+            # Save chat history
+            save_chat_history_db()
+            
+            return NotebookQueryResponse(
+                answer=str(result),
+                mode=adjusted_mode,
+                context_used=True,
+                citations=citations,
+                source_documents=None,  # Will be enhanced later
+                chat_context_used=bool(chat_context)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in chat query for notebook {notebook_id}: {e}")
+            logger.error(f"Full error traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error processing chat query: {str(e)}")
+
+    # Document Summary Endpoints
+    @app.post("/notebooks/{notebook_id}/summary/detailed", response_model=NotebookQueryResponse)
+    async def generate_detailed_summary(notebook_id: str, request: DocumentSummaryRequest):
+        """Generate a detailed summary with document-level insights"""
+        validate_notebook_exists(notebook_id)
+        
+        try:
+            # Get document list
+            notebook_documents = [
+                doc for doc in lightrag_documents_db.values() 
+                if doc["notebook_id"] == notebook_id and doc["status"] == "completed"
+            ]
+            
+            if not notebook_documents:
+                return NotebookQueryResponse(
+                    answer="No completed documents found. Please upload and process documents first.",
+                    mode="summary",
+                    context_used=False,
+                    citations=None,
+                    source_documents=None,
+                    chat_context_used=False
+                )
+            
+            # Get LightRAG instance
+            rag = await get_lightrag_instance(notebook_id)
+            
+            # Create detailed summary prompt based on length preference
+            length_prompts = {
+                "short": "Write a concise summary (2-3 sentences) of the key points from all documents.",
+                "medium": "Write a comprehensive summary (1-2 paragraphs) covering the main themes and insights from all documents.",
+                "long": "Write a detailed analysis (3-4 paragraphs) covering key themes, insights, contradictions, and conclusions from all documents."
+            }
+            
+            summary_prompt = length_prompts.get(request.max_length, length_prompts["medium"])
+            
+            if request.include_details:
+                summary_prompt += f"\n\nInclude insights from these {len(notebook_documents)} documents: " + \
+                                ", ".join([doc["filename"] for doc in notebook_documents])
+            
+            # Execute summary query
+            query_param = QueryParam(mode="hybrid", response_type="Multiple Paragraphs", top_k=100)
+            result = await rag.aquery(summary_prompt, param=query_param)
+            
+            # Build source documents list
+            source_docs = []
+            if request.include_details:
+                for doc in notebook_documents:
+                    source_docs.append({
+                        "filename": doc["filename"],
+                        "upload_date": doc["uploaded_at"].isoformat() if isinstance(doc["uploaded_at"], datetime) else doc["uploaded_at"],
+                        "status": doc["status"]
+                    })
+            
+            return NotebookQueryResponse(
+                answer=str(result),
+                mode="hybrid",
+                context_used=True,
+                citations=[{"source": doc["filename"], "type": "document"} for doc in notebook_documents],
+                source_documents=source_docs,
+                chat_context_used=False
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating detailed summary for notebook {notebook_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
+
+    # Query Templates Endpoint
+    @app.get("/query-templates", response_model=List[QueryTemplate])
+    async def get_query_templates():
+        """Get pre-built query templates for common use cases"""
+        templates = [
+            QueryTemplate(
+                id="summarize_all",
+                name="Summarize All Documents",
+                description="Get a comprehensive overview of all uploaded documents",
+                question_template="Provide a comprehensive summary of all the documents, highlighting the main themes and key insights.",
+                category="Analysis",
+                use_case="When you want a high-level overview of your knowledge base"
+            ),
+            QueryTemplate(
+                id="find_contradictions",
+                name="Find Contradictions",
+                description="Identify conflicting information across documents",
+                question_template="Are there any contradictions or conflicting viewpoints between the different documents? Please explain any differences you find.",
+                category="Analysis",
+                use_case="When comparing different sources or viewpoints"
+            ),
+            QueryTemplate(
+                id="extract_key_facts",
+                name="Extract Key Facts",
+                description="Pull out the most important facts and data points",
+                question_template="What are the most important facts, statistics, and data points mentioned across all documents?",
+                category="Research",
+                use_case="When you need specific factual information"
+            ),
+            QueryTemplate(
+                id="timeline_analysis",
+                name="Timeline Analysis",
+                description="Understand chronological order and progression",
+                question_template="Can you create a timeline of events or developments mentioned in the documents?",
+                category="Research",
+                use_case="When tracking historical progression or project timelines"
+            ),
+            QueryTemplate(
+                id="compare_approaches",
+                name="Compare Approaches",
+                description="Compare different methods or strategies",
+                question_template="What are the different approaches or methodologies discussed in the documents? Compare their advantages and disadvantages.",
+                category="Comparison",
+                use_case="When evaluating different options or strategies"
+            ),
+            QueryTemplate(
+                id="action_items",
+                name="Extract Action Items",
+                description="Find actionable recommendations and next steps",
+                question_template="What are the key recommendations, action items, or next steps suggested in the documents?",
+                category="Planning",
+                use_case="When planning follow-up activities"
+            ),
+            QueryTemplate(
+                id="expert_opinions",
+                name="Expert Opinions",
+                description="Identify expert viewpoints and authoritative sources",
+                question_template="What do experts or authoritative sources say about this topic? Include any credentials or authority mentioned.",
+                category="Research",
+                use_case="When you need authoritative perspectives"
+            ),
+            QueryTemplate(
+                id="gaps_analysis",
+                name="Knowledge Gaps",
+                description="Identify missing information or areas that need more research",
+                question_template="What topics or questions are mentioned but not fully explained? What knowledge gaps exist that might need additional research?",
+                category="Analysis",
+                use_case="When planning additional research"
+            ),
+            QueryTemplate(
+                id="practical_applications",
+                name="Practical Applications",
+                description="Find real-world applications and use cases",
+                question_template="What are the practical applications or real-world use cases mentioned in the documents? Include any examples or case studies.",
+                category="Application",
+                use_case="When looking for implementation ideas"
+            ),
+            QueryTemplate(
+                id="risk_analysis",
+                name="Risk Analysis",
+                description="Identify potential risks, challenges, or limitations",
+                question_template="What risks, challenges, limitations, or potential problems are mentioned in the documents?",
+                category="Analysis",
+                use_case="When assessing potential issues or preparing for challenges"
+            )
+        ]
+        
+        return templates
+
+    @app.post("/notebooks/{notebook_id}/query/template/{template_id}", response_model=NotebookQueryResponse)
+    async def query_with_template(notebook_id: str, template_id: str, custom_params: Optional[Dict[str, str]] = None):
+        """Execute a query using a pre-built template"""
+        validate_notebook_exists(notebook_id)
+        
+        # Get templates
+        templates = await get_query_templates()
+        template = next((t for t in templates if t.id == template_id), None)
+        
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        # Build question from template
+        question = template.question_template
+        
+        # Replace any custom parameters if provided
+        if custom_params:
+            for key, value in custom_params.items():
+                question = question.replace(f"{{{key}}}", value)
+        
+        # Create query request
+        query_request = NotebookQueryRequest(
+            question=question,
+            mode="hybrid",
+            response_type="Multiple Paragraphs",
+            top_k=60,
+            llm_provider=None,  # Use notebook's default provider
+            use_chat_history=False  # Templates don't use chat history by default
+        )
+        
+        # Execute using the chat endpoint for consistency
+        return await chat_with_notebook(notebook_id, query_request)
 
 # Audio transcription endpoint
 @app.post("/transcribe")

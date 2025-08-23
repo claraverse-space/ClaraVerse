@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  MessageSquare, Send, Bot, User, Copy, Check, FileText, ExternalLink,
-  AlertTriangle, Upload
+  MessageSquare, Send, Bot, User, Copy, Check, Clock, History, FileText, ExternalLink,
+  AlertTriangle, Upload, FileBarChart, Trash2
 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
 
@@ -18,6 +18,13 @@ interface ChatMessage {
   }>;
 }
 
+interface QueryTemplate {
+  id: string;
+  name: string;
+  query: string;
+  description: string;
+}
+
 interface ProgressState {
   isActive: boolean;
   message: string;
@@ -26,31 +33,34 @@ interface ProgressState {
 }
 
 interface NotebookChatProps {
-  messages?: ChatMessage[];
-  onSendMessage?: (message: string) => void;
-  isLoading?: boolean;
+  messages: ChatMessage[];
+  onSendMessage: (message: string) => void;
+  isLoading: boolean;
   notebookId: string;
-  documentCount?: number;
-  completedDocumentCount?: number;
-  isBackendHealthy?: boolean;
-  onDocumentUpload?: (files: File[]) => void;
+  documentCount: number;
+  completedDocumentCount: number;
+  isBackendHealthy: boolean;
 }
 
 const NotebookChat: React.FC<NotebookChatProps> = ({
   messages,
-  onSendMessage = () => {},
-  isLoading = false,
+  onSendMessage,
+  isLoading,
   notebookId,
   documentCount = 0,
   completedDocumentCount = 0,
-  isBackendHealthy = true,
-  onDocumentUpload
+  isBackendHealthy = true
 }) => {
   const [inputMessage, setInputMessage] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(messages || []);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(messages);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [useChatHistory, setUseChatHistory] = useState(false);
+  const [showChatHistory, setShowChatHistory] = useState(false);
+  const [templates, setTemplates] = useState<QueryTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -136,14 +146,61 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
 
   // Load chat history and templates on mount
   useEffect(() => {
-    // Templates and history functionality removed
+    if (isBackendHealthy) {
+      loadChatHistory();
+      loadQueryTemplates();
+    }
   }, [isBackendHealthy, notebookId]);
 
+  // Load chat history
+  const loadChatHistory = async () => {
+    try {
+      const response = await fetch(`/api/notebooks/${notebookId}/chat-history`);
+      if (response.ok) {
+        const history = await response.json();
+        setChatHistory(history);
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  };
 
+  // Load query templates
+  const loadQueryTemplates = async () => {
+    try {
+      const response = await fetch('/api/query-templates');
+      if (response.ok) {
+        const templatesData = await response.json();
+        setTemplates(templatesData);
+      }
+    } catch (error) {
+      console.error('Failed to load query templates:', error);
+    }
+  };
+
+  // Clear chat history
+  const handleClearChatHistory = async () => {
+    try {
+      const response = await fetch(`/api/notebooks/${notebookId}/chat-history`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        setChatHistory([]);
+      }
+    } catch (error) {
+      console.error('Failed to clear chat history:', error);
+    }
+  };
+
+  // Handle template selection
+  const handleTemplateSelect = (template: QueryTemplate) => {
+    setInputMessage(template.query);
+    setShowTemplates(false);
+  };
 
   // Update chat messages when props change
   useEffect(() => {
-    setChatMessages(messages || []);
+    setChatMessages(messages);
   }, [messages]);
 
   const handleSendMessage = () => {
@@ -157,6 +214,11 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
       
       // Add user message immediately
       setChatMessages(prev => [...prev, userMessage]);
+      
+      // Save to chat history if enabled
+      if (useChatHistory) {
+        setChatHistory(prev => [...prev, userMessage]);
+      }
       
       onSendMessage(inputMessage.trim());
       setInputMessage('');
@@ -239,24 +301,121 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
   };
 
   const handleDocumentUpload = (files: File[]) => {
-    if (onDocumentUpload) {
-      onDocumentUpload(files);
-    } else {
-      // Handle document upload logic here
-      console.log('Uploading documents:', files.map(f => f.name));
-    }
+    // Handle document upload logic here
+    console.log('Uploading documents:', files.map(f => f.name));
     setShowUploadModal(false);
   };
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
+      {/* Background Pattern */}
+      <div 
+        className="absolute inset-0 opacity-[0.02] dark:opacity-[0.01] pointer-events-none"
+        style={{
+          backgroundImage: `radial-gradient(circle at 25% 25%, #4f46e5 0%, transparent 50%), 
+                           radial-gradient(circle at 75% 75%, #06b6d4 0%, transparent 50%)`,
+          backgroundSize: '80px 80px'
+        }}
+      />
+
+      {/* Enhanced Header with Controls */}
+      <div className="flex-shrink-0 glassmorphic bg-white/60 dark:bg-gray-900/40 backdrop-blur-xl border-b border-white/20 dark:border-gray-800/30 p-4 shadow-lg relative z-10">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">
+            Chat
+          </h3>
+          <div className="flex items-center gap-2">
+            {/* Chat History Toggle */}
+            {useChatHistory && (
+              <button
+                onClick={() => setShowChatHistory(!showChatHistory)}
+                className="p-2 glassmorphic bg-white/60 dark:bg-gray-800/60 hover:bg-white/80 dark:hover:bg-gray-800/80 rounded-xl transition-all duration-200 border border-white/30 dark:border-gray-700/30 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white shadow-lg"
+                title="Toggle Chat History"
+              >
+                <History size={16} />
+              </button>
+            )}
+            
+            {/* Templates Button */}
+            <button
+              onClick={() => setShowTemplates(!showTemplates)}
+              className="p-2 glassmorphic bg-white/60 dark:bg-gray-800/60 hover:bg-white/80 dark:hover:bg-gray-800/80 rounded-xl transition-all duration-200 border border-white/30 dark:border-gray-700/30 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white shadow-lg"
+              title="Query Templates"
+            >
+              <FileBarChart size={16} />
+            </button>
+
+            {/* Chat History Enable/Disable */}
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 glassmorphic bg-white/50 dark:bg-gray-800/50 px-3 py-2 rounded-xl border border-white/30 dark:border-gray-700/30 cursor-pointer hover:bg-white/70 dark:hover:bg-gray-800/70 transition-all">
+              <input
+                type="checkbox"
+                checked={useChatHistory}
+                onChange={(e) => setUseChatHistory(e.target.checked)}
+                className="w-4 h-4 rounded accent-blue-500"
+              />
+              <span className="font-medium">History</span>
+            </label>
+
+            {/* Clear Chat History */}
+            {useChatHistory && chatHistory.length > 0 && (
+              <button
+                onClick={handleClearChatHistory}
+                className="p-2 glassmorphic bg-red-50/80 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl transition-all duration-200 border border-red-200/50 dark:border-red-700/30 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 shadow-lg"
+                title="Clear Chat History"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Chat History Panel */}
+        {showChatHistory && useChatHistory && chatHistory.length > 0 && (
+          <div className="mt-4 glassmorphic bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-2xl border border-white/30 dark:border-gray-700/30 shadow-xl p-4 animate-in slide-in-from-top-2 fade-in-0">
+            <div className="max-h-32 overflow-y-auto space-y-2 custom-scrollbar">
+              {chatHistory.slice(-3).map((msg, index) => (
+                <div key={index} className="text-sm glassmorphic bg-white/50 dark:bg-gray-700/50 p-3 rounded-xl border border-white/20 dark:border-gray-600/20 hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all duration-200 group">
+                  <div className="flex items-start gap-3">
+                    <Clock size={14} className="mt-0.5 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 dark:text-white">{msg.role === 'user' ? 'You' : 'AI'}:</span>
+                      </div>
+                      <span className="text-gray-700 dark:text-gray-300 line-clamp-2">{msg.content.substring(0, 100)}...</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Templates Panel */}
+        {showTemplates && templates.length > 0 && (
+          <div className="mt-4 glassmorphic bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-2xl border border-white/30 dark:border-gray-700/30 shadow-xl p-4 animate-in slide-in-from-top-2 fade-in-0">
+            <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar">
+              {templates.slice(0, 6).map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleTemplateSelect(template)}
+                  className="p-4 text-left glassmorphic bg-white/50 dark:bg-gray-700/50 hover:bg-white/70 dark:hover:bg-gray-700/70 rounded-xl transition-all duration-300 border border-white/20 dark:border-gray-600/20 hover:border-gray-300/50 dark:hover:border-gray-500/50 hover:scale-[1.02] hover:shadow-lg group"
+                >
+                  <div className="font-semibold text-gray-900 dark:text-white text-sm mb-2 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{template.name}</div>
+                  <div className="text-gray-600 dark:text-gray-400 text-xs line-clamp-2 leading-relaxed">{template.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      
       {/* Messages Area - Clara Style */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0 custom-scrollbar relative z-10">
-        {(!chatMessages || chatMessages.length === 0) && (
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 min-h-0 custom-scrollbar relative z-10">
+        {chatMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center glassmorphic bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/30 dark:border-gray-700/30 shadow-2xl p-10 max-w-lg">
               <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl ring-4 ring-white/20">
-                <MessageSquare className="w-10 h-10 text-white drop-shadow-lg" />
+                <MessageSquare className="w-10 h-10 text-white" />
               </div>
               {documentCount === 0 ? (
                 <div>
@@ -267,7 +426,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
                     Upload documents to start chatting and ask questions about your content
                   </p>
                   <div className="inline-flex items-center gap-3 glassmorphic bg-blue-50/80 dark:bg-blue-900/30 px-6 py-3 rounded-2xl border border-blue-200/50 dark:border-blue-700/30">
-                    <Upload className="w-5 h-5 text-blue-700 dark:text-blue-400 drop-shadow-sm" />
+                    <Upload className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     <span className="text-blue-700 dark:text-blue-300 font-semibold">Get started by uploading files</span>
                   </div>
                 </div>
@@ -300,20 +459,20 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
           </div>
         )}
 
-        {(chatMessages || []).map((message) => (
+        {chatMessages.map((message) => (
           <div
             key={message.id}
-            className={`flex gap-2 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-4 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {message.type === 'assistant' && (
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-xl ring-2 ring-white/10 backdrop-blur-sm">
-                <Bot className="w-5 h-5 text-white" />
+              <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl ring-4 ring-white/10 backdrop-blur-sm">
+                <Bot className="w-6 h-6 text-white" />
               </div>
             )}
             
-            <div className={`max-w-2xl ${message.type === 'user' ? 'order-1 min-w-80' : ''}`}>
+            <div className={`max-w-2xl ${message.type === 'user' ? 'order-1' : ''}`}>
               <div
-                className={`glassmorphic backdrop-blur-xl rounded-2xl p-4 shadow-xl transition-all duration-300 hover:shadow-2xl border ${
+                className={`glassmorphic backdrop-blur-xl rounded-3xl p-6 shadow-2xl transition-all duration-300 hover:shadow-3xl border ${
                   message.type === 'user'
                     ? 'bg-gradient-to-br from-blue-500/90 to-purple-600/90 text-white ml-auto border-blue-400/30 shadow-blue-500/20'
                     : 'bg-white/70 dark:bg-gray-800/70 text-gray-900 dark:text-white border-white/30 dark:border-gray-700/30'
@@ -340,14 +499,14 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
                       <FileText className="w-4 h-4" />
                       Sources ({message.citations.length})
                     </h4>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {message.citations.slice(0, 5).map((citation, index) => (
-                        <div key={index} className="flex items-center gap-2 glassmorphic bg-white/50 dark:bg-gray-700/50 p-2.5 rounded-lg border border-white/20 dark:border-gray-600/20 text-sm hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all">
-                          <FileText className="w-3.5 h-3.5 flex-shrink-0 text-blue-500" />
+                        <div key={index} className="flex items-center gap-3 glassmorphic bg-white/50 dark:bg-gray-700/50 p-3 rounded-xl border border-white/20 dark:border-gray-600/20 text-sm hover:bg-white/70 dark:hover:bg-gray-700/70 transition-all">
+                          <FileText className="w-4 h-4 flex-shrink-0 text-blue-500" />
                           <span className="truncate font-medium text-gray-800 dark:text-gray-200" title={citation.file_path}>
                             {citation.title}
                           </span>
-                          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
+                          <ExternalLink className="w-4 h-4 flex-shrink-0 opacity-50" />
                         </div>
                       ))}
                       {message.citations.length > 5 && (
@@ -359,7 +518,7 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
                   </div>
                 )}
                 
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/20 dark:border-gray-700/30">
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/20 dark:border-gray-700/30">
                   <span className={`text-xs font-medium ${
                     message.type === 'user' 
                       ? 'text-white/70' 
@@ -371,13 +530,13 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
                   {message.type === 'assistant' && (
                     <button
                       onClick={() => copyToClipboard(message.content, message.id)}
-                      className="glassmorphic bg-white/50 dark:bg-gray-700/50 hover:bg-white/70 dark:hover:bg-gray-700/70 p-1.5 rounded-lg border border-white/20 dark:border-gray-600/20 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all shadow-md"
+                      className="glassmorphic bg-white/50 dark:bg-gray-700/50 hover:bg-white/70 dark:hover:bg-gray-700/70 p-2 rounded-lg border border-white/20 dark:border-gray-600/20 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all shadow-lg"
                       title="Copy message"
                     >
                       {copiedId === message.id ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        <Check className="w-4 h-4 text-emerald-500" />
                       ) : (
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-4 h-4" />
                       )}
                     </button>
                   )}
@@ -386,23 +545,23 @@ const NotebookChat: React.FC<NotebookChatProps> = ({
             </div>
 
             {message.type === 'user' && (
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-xl ring-2 ring-white/10 backdrop-blur-sm">
-                <User className="w-5 h-5 text-white" />
+              <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl flex items-center justify-center shadow-2xl ring-4 ring-white/10 backdrop-blur-sm">
+                <User className="w-6 h-6 text-white" />
               </div>
             )}
           </div>
         ))}
 
         {isLoading && (
-          <div className="flex gap-2 justify-start">
-            <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-xl ring-2 ring-white/10 backdrop-blur-sm">
-              <Bot className="w-5 h-5 text-white" />
+          <div className="flex gap-4 justify-start">
+            <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl ring-4 ring-white/10 backdrop-blur-sm">
+              <Bot className="w-6 h-6 text-white" />
             </div>
-            <div className="glassmorphic bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl rounded-2xl p-4 shadow-xl border border-white/30 dark:border-gray-700/30">
-              <div className="flex items-center space-x-3">
-                <div className="w-2.5 h-2.5 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full animate-bounce shadow-md"></div>
-                <div className="w-2.5 h-2.5 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full animate-bounce shadow-md" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2.5 h-2.5 bg-gradient-to-r from-pink-400 to-red-500 rounded-full animate-bounce shadow-md" style={{ animationDelay: '0.4s' }}></div>
+            <div className="glassmorphic bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/30 dark:border-gray-700/30">
+              <div className="flex items-center space-x-4">
+                <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full animate-bounce shadow-lg"></div>
+                <div className="w-3 h-3 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-3 h-3 bg-gradient-to-r from-pink-400 to-red-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.4s' }}></div>
                 <span className="text-gray-700 dark:text-gray-300 font-medium ml-2">AI is thinking...</span>
               </div>
             </div>

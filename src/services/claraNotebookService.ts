@@ -67,13 +67,74 @@ export interface NotebookQueryRequest {
 }
 
 /**
- * Query response from a notebook
+ * Query response from a notebook with enhanced features
  */
 export interface NotebookQueryResponse {
   answer: string;
   mode: string;
   context_used: boolean;
   citations?: NotebookCitation[]; // Add citations support
+  source_documents?: Array<{
+    filename: string;
+    upload_date: string;
+    status: string;
+  }>;
+  chat_context_used?: boolean;
+}
+
+/**
+ * Chat message for conversation history
+ */
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  citations?: NotebookCitation[];
+}
+
+/**
+ * Chat history response
+ */
+export interface ChatHistoryResponse {
+  notebook_id: string;
+  messages: ChatMessage[];
+  total_messages: number;
+}
+
+/**
+ * Query template
+ */
+export interface QueryTemplate {
+  id: string;
+  name: string;
+  description: string;
+  question_template: string;
+  category: string;
+  use_case: string;
+}
+
+/**
+ * Enhanced query request with chat history support
+ */
+export interface EnhancedNotebookQueryRequest extends NotebookQueryRequest {
+  use_chat_history?: boolean;
+}
+
+/**
+ * Document summary request
+ */
+export interface DocumentSummaryRequest {
+  include_details?: boolean;
+  max_length?: 'short' | 'medium' | 'long';
+}
+
+/**
+ * Response from document retry operation
+ */
+export interface DocumentRetryResponse {
+  message: string;
+  document_id: string;
+  status: string;
 }
 
 export interface GraphData {
@@ -398,6 +459,37 @@ export class ClaraNotebookService {
   }
 
   /**
+   * Retry processing a failed document
+   */
+  public async retryDocument(notebookId: string, documentId: string): Promise<DocumentRetryResponse> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/documents/${documentId}/retry`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        if (response.status === 404) {
+          throw new Error('Document not found');
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.detail || 'Document cannot be retried');
+        }
+        throw new Error(errorData.detail || `Failed to retry document: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Retry document error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Query a notebook
    */
   public   async queryNotebook(notebookId: string, query: NotebookQueryRequest): Promise<NotebookQueryResponse> {
@@ -462,6 +554,183 @@ export class ClaraNotebookService {
       return await response.json();
     } catch (error) {
       console.error('Generate summary error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat history for a notebook
+   */
+  public async getChatHistory(notebookId: string, limit: number = 50): Promise<ChatHistoryResponse> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/chat/history?limit=${limit}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get chat history: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get chat history error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear chat history for a notebook
+   */
+  public async clearChatHistory(notebookId: string): Promise<void> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/chat/history`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to clear chat history: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Clear chat history error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send a chat message (with history context)
+   */
+  public async sendChatMessage(notebookId: string, query: EnhancedNotebookQueryRequest): Promise<NotebookQueryResponse> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      // Cancel any previous request
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+      this.abortController = new AbortController();
+
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: query.question,
+          mode: query.mode || 'hybrid',
+          response_type: query.response_type || 'Multiple Paragraphs',
+          top_k: query.top_k || 60,
+          llm_provider: query.llm_provider || null,
+          use_chat_history: query.use_chat_history !== false, // Default to true
+        }),
+        signal: this.abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Failed to send chat message: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Chat message was cancelled');
+      }
+      console.error('Send chat message error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available query templates
+   */
+  public async getQueryTemplates(): Promise<QueryTemplate[]> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/query-templates`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get query templates: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get query templates error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a query template
+   */
+  public async executeTemplate(notebookId: string, templateId: string, customParams?: Record<string, string>): Promise<NotebookQueryResponse> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/query/template/${templateId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(customParams || {}),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Failed to execute template: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Execute template error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate detailed summary with options
+   */
+  public async generateDetailedSummary(notebookId: string, options: DocumentSummaryRequest): Promise<NotebookQueryResponse> {
+    if (!this.isHealthy) {
+      throw new Error('Notebook backend is not available');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/notebooks/${notebookId}/summary/detailed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          include_details: options.include_details !== false, // Default to true
+          max_length: options.max_length || 'medium',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Failed to generate detailed summary: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Generate detailed summary error:', error);
       throw error;
     }
   }

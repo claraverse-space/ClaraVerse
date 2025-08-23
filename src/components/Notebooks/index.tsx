@@ -272,8 +272,8 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
           />
         )}
 
-        {/* Content with relative z-index */}
-        <div className="relative z-10 h-full">
+        {/* Content with relative z-index amd its not h-full but minus the top bar */}
+        <div className="relative z-10 h-[calc(100%-3rem)]">
           <NotebookDetails 
             notebook={selectedNotebook}
             onClose={handleCloseNotebook}
@@ -289,7 +289,7 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
   }
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 relative overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-white to-sakura-50 dark:from-gray-900 dark:to-gray-800 relative overflow-hidden">
       {/* Wallpaper */}
       {wallpaperUrl && (
         <div 
