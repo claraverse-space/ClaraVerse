@@ -57,7 +57,28 @@ class DockerSetup extends EventEmitter {
           // Keep backward compatibility for existing data paths
           'clara_python_models:/app/models'
         ],
-        volumeNames: ['clara_python_models']
+        volumeNames: ['clara_python_models'],
+        // Base environment variables (always applied)
+        environment: [
+          'TOKENIZERS_PARALLELISM=false', // Prevent tokenizer warnings
+          'OMP_NUM_THREADS=1', // Optimize for containerized environment
+        ],
+        // GPU-specific environment variables (will be conditionally added in startContainer)
+        gpuEnvironment: [
+          'NVIDIA_VISIBLE_DEVICES=all',
+          'CUDA_VISIBLE_DEVICES=0',
+          // PyTorch/CUDA optimizations for AI inference
+          'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True',
+          'CUDA_LAUNCH_BLOCKING=0',
+          'TORCH_CUDNN_V8_API_ENABLED=1',
+          'CUDA_MODULE_LOADING=LAZY',
+          'CUDA_CACHE_DISABLE=0', // Enable CUDA caching for faster inference
+          // Whisper/Speech processing optimizations
+          'WHISPER_CUDA=1',
+          'FASTER_WHISPER_DEVICE=cuda'
+        ],
+        runtime: 'nvidia', // Enable GPU support if available
+        restartPolicy: 'unless-stopped'
       },
       n8n: {
         name: 'clara_n8n',
@@ -1972,8 +1993,16 @@ class DockerSetup extends EventEmitter {
           // Add GPU-specific environment variables if GPU is available
           ...(useGPURuntime ? [
             'NVIDIA_VISIBLE_DEVICES=all',
-            'NVIDIA_DRIVER_CAPABILITIES=compute,utility'
-          ] : [])
+            'NVIDIA_DRIVER_CAPABILITIES=compute,utility',
+            // Add container-specific GPU environment variables
+            ...(config.gpuEnvironment || [])
+          ] : [
+            // CPU fallback environment variables
+            ...(config.name === 'clara_python' ? [
+              'WHISPER_CUDA=0',
+              'FASTER_WHISPER_DEVICE=cpu'
+            ] : [])
+          ])
         ]
       };
 

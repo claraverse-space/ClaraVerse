@@ -1,0 +1,120 @@
+# Optimized multi-stage build for Clara Backend (PRESERVES ALL FEATURES)
+# This reduces image size through build optimization, not feature removal
+
+FROM python:3.11-slim as builder
+
+# Build stage - install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for faster package management
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+# Copy requirements and install Python packages
+COPY requirements-optimized.txt requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
+
+# Download spaCy model in build stage
+RUN python -m spacy download en_core_web_sm
+
+# Production stage - smaller runtime image
+FROM python:3.11-slim as production
+
+# Add labels for the image
+LABEL org.opencontainers.image.title="Clara Backend Optimized"
+LABEL org.opencontainers.image.description="Clara AI Assistant Backend Service (All Features, Optimized Build)"
+LABEL org.opencontainers.image.authors="Clara Team"
+LABEL org.opencontainers.image.source="https://github.com/clara17verse/clara"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.vendor="Clara"
+LABEL org.opencontainers.image.version="1.0.0-optimized"
+
+WORKDIR /app
+
+# Install minimal runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    # Audio processing dependencies
+    libsndfile1 \
+    # Keep espeak for TTS fallback
+    espeak espeak-data \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY . .
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Create optimized startup script with GPU detection
+RUN echo '#!/bin/bash\n\
+# GPU Detection and Configuration\n\
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then\n\
+    echo "🎮 GPU detected - enabling CUDA acceleration"\n\
+    export CUDA_AVAILABLE=1\n\
+    export WHISPER_CUDA=1\n\
+    export FASTER_WHISPER_DEVICE=cuda\n\
+    export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True\n\
+    export TORCH_CUDNN_V8_API_ENABLED=1\n\
+    export CUDA_MODULE_LOADING=LAZY\n\
+else\n\
+    echo "🖥️  CPU mode - using optimized CPU inference"\n\
+    export CUDA_AVAILABLE=0\n\
+    export WHISPER_CUDA=0\n\
+    export FASTER_WHISPER_DEVICE=cpu\n\
+    export OMP_NUM_THREADS=4\n\
+    export MKL_NUM_THREADS=4\n\
+fi\n\
+\n\
+# Verify spaCy model availability\n\
+if ! python -c "import spacy; spacy.load(\"en_core_web_sm\")" 2>/dev/null; then\n\
+    echo "📥 SpaCy model not found, downloading..."\n\
+    python -m spacy download en_core_web_sm || echo "SpaCy model download failed, continuing anyway..."\n\
+fi\n\
+\n\
+echo "🚀 Starting Clara Backend with $([ \"$CUDA_AVAILABLE\" = \"1\" ] && echo \"GPU\" || echo \"CPU\") acceleration"\n\
+exec "$@"' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Set environment variables (optimized for container)
+ENV HOST="0.0.0.0" \
+    PORT=5000 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TOKENIZERS_PARALLELISM=false \
+    # Memory optimizations
+    MALLOC_TRIM_THRESHOLD_=100000 \
+    MALLOC_MMAP_THRESHOLD_=100000 \
+    # Python optimizations
+    PYTHONHASHSEED=random \
+    PYTHONSTARTUP=""
+
+# Create a non-root user
+RUN useradd -m -r -u 1000 clara && \
+    chown -R clara:clara /app
+
+# Switch to non-root user
+USER clara
+
+# Expose port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+# Run the application with smart startup script
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "5000"]

@@ -1,3 +1,4 @@
+# Docker build optimization - exclude unnecessary files from build context
 __pycache__
 *.pyc
 *.pyo
@@ -28,4 +29,39 @@ temp/
 test_*
 *_test.py
 tests/
-docs/ 
+docs/
+
+# Additional optimizations - exclude build artifacts and dev files
+*.md
+*.txt.backup
+*.swp
+*.swo
+*~
+.dockerignore
+Dockerfile*
+docker-compose*
+build-docker.*
+requirements-dev.txt
+
+# Exclude large optional files that can be downloaded at runtime
+models/
+downloads/
+cache/
+.cache/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+.vs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# This optimization reduces build context from potentially hundreds of MB to just the essential files 

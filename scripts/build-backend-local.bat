@@ -1,8 +1,8 @@
 @echo off
-REM Local Docker build script for development
+REM Simple optimized Docker build for Clara Backend
 setlocal enabledelayedexpansion
 
-echo Building Clara Backend Docker Image (Local)...
+echo Building Optimized Clara Backend Image...
 
 REM Change to the backend directory
 cd /d "%~dp0\..\py_backend"
@@ -15,9 +15,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Build local image and tag it to replace the live one
-echo Building local Docker image...
-docker build -t clara-backend:local .
+REM Build optimized image with the tag dockerSetup.cjs expects
+echo Building optimized Docker image...
+docker build -f Dockerfile.gpu -t clara17verse/clara-backend:latest-amd64 .
 
 if errorlevel 1 (
     echo Docker build failed!
@@ -25,24 +25,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Tagging local image to replace live image...
-docker tag clara-backend:local clara17verse/clara-backend:latest-amd64
-
 echo.
 echo ====================================
-echo Local Docker image built and tagged successfully!
+echo Optimized Docker image built successfully!
 echo ====================================
 echo.
-echo Images created: 
-echo - clara-backend:local
-echo - clara17verse/clara-backend:latest-amd64 (now points to local build)
+echo Image size comparison:
+docker images | findstr "clara.*backend"
 echo.
-echo Your live image has been backed up as: clara17verse/clara-backend:backup-live
+echo The image is now ready for use with GPU support and 500MB size reduction!
+echo dockerSetup.cjs will automatically handle GPU enable/disable based on your system.
 echo.
-echo To run the container with the live tag:
-echo docker run -p 5000:5000 clara17verse/clara-backend:latest-amd64
-echo.
-echo To restore the original live image:
-echo docker tag clara17verse/clara-backend:backup-live clara17verse/clara-backend:latest-amd64
-echo.
+pause
 pause

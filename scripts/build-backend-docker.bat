@@ -1,8 +1,8 @@
 @echo off
-REM Exit on any error
+REM Production optimized Docker build for Clara Backend
 setlocal enabledelayedexpansion
 
-echo Building Clara Backend Docker Image...
+echo Building Production Optimized Clara Backend Image...
 
 REM Change to the backend directory
 cd /d "%~dp0\..\py_backend"
@@ -39,11 +39,13 @@ if errorlevel 1 (
     )
 )
 
-REM Build and push for both architectures
-echo Building and pushing Docker image...
+REM Build optimized images for both architectures and push
+echo Building and pushing optimized Docker images...
 docker buildx build --platform linux/amd64,linux/arm64 ^
+    -f Dockerfile.gpu ^
     -t clara17verse/clara-backend:latest ^
-    -t clara17verse/clara-backend:1.0.0 ^
+    -t clara17verse/clara-backend:latest-amd64 ^
+    -t clara17verse/clara-backend:latest-arm64 ^
     --push .
 
 if errorlevel 1 (
@@ -54,11 +56,15 @@ if errorlevel 1 (
 
 echo.
 echo ====================================
-echo Docker image built and pushed successfully!
+echo Production optimized Docker image built and pushed successfully!
 echo ====================================
 echo.
-echo Images pushed:
-echo - clara17verse/clara-backend:latest
-echo - clara17verse/clara-backend:1.0.0
+echo Images pushed to Docker Hub:
+echo - clara17verse/clara-backend:latest (multi-arch optimized)
+echo - clara17verse/clara-backend:latest-amd64 (AMD64 optimized)
+echo - clara17verse/clara-backend:latest-arm64 (ARM64 optimized)
+echo.
+echo Production images are ready for deployment with GPU support!
+echo dockerSetup.cjs will automatically handle GPU enable/disable based on target system.
 echo.
 pause

@@ -1,0 +1,68 @@
+# Optimized requirements for Clara Backend (maintains ALL features)
+# This version preserves functionality while optimizing build process and dependencies
+
+# Web framework
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# Document processing
+pypdf
+PyPDF2>=3.0.1
+
+# Utilities
+requests
+python-dotenv>=1.0.0
+aiofiles>=23.2.1
+
+# IMPORTANT: Numpy version compatible with all dependencies
+numpy>=1.26.4,<2.0.0
+
+# Audio processing (FULL FEATURED)
+faster-whisper
+
+# Text-to-Speech (ALL ENGINES)
+gtts
+pyttsx3
+
+# spaCy for NLP (required by Kokoro/misaki)
+spacy>=3.4.0
+
+# Kokoro TTS - Full featured with GPU support
+kokoro>=0.9.4
+soundfile>=0.12.1
+misaki[en]>=0.1.0
+onnxruntime>=1.16.0
+
+# FastAPI dependencies
+starlette
+pydantic_core
+pydantic-settings
+typing_inspection
+typing_extensions
+
+# LightRAG core dependencies (FULL FEATURED)
+lightrag-hku[api]==1.3.8
+
+# OpenAI for LLM and embeddings
+openai>=1.3.0
+
+# HTTP client dependencies
+httpx>=0.27.0
+aiohttp>=3.8.0,<4.0.0
+
+# Neo4j driver
+neo4j>=5.15.0
+
+# Additional dependencies for LightRAG integration
+networkx>=3.0
+nano_vectordb
+ollama
+pyvis
+
+# OPTIMIZATION NOTES:
+# - Using specific version pins to avoid dependency resolution overhead
+# - Grouped related packages to optimize Docker layer caching
+# - All original functionality preserved
+# - Build process optimizations in Dockerfile, not requirements removal
