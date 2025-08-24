@@ -599,11 +599,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       artifacts: {
         enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
         enableChartArtifacts: true,        // **ENABLED**: Charts and graphs only
-        enableTableArtifacts: false,       // **DISABLED**: No table artifacts
+        enableTableArtifacts: true,        // **ENABLED**: For markdown and data tables
         enableMermaidArtifacts: true,      // **ENABLED**: Diagrams and flowcharts
         enableHtmlArtifacts: true,         // **ENABLED**: For visual HTML content
-        enableMarkdownArtifacts: false,    // **DISABLED**: No markdown docs
-        enableJsonArtifacts: false,        // **DISABLED**: No JSON artifacts
+        enableMarkdownArtifacts: true,     // **ENABLED**: For markdown tables and docs
+        enableJsonArtifacts: true,         // **ENABLED**: For JSON chart data
         enableDiagramArtifacts: true,      // **ENABLED**: Visual diagrams
         autoDetectArtifacts: true,
         maxArtifactsPerMessage: 5          // **REDUCED**: Fewer artifacts for cleaner UI
@@ -1179,11 +1179,11 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                           artifacts: {
               enableCodeArtifacts: false,        // **DISABLED**: No code artifacts
               enableChartArtifacts: true,        // **ENABLED**: Charts and graphs only
-              enableTableArtifacts: false,       // **DISABLED**: No table artifacts
+              enableTableArtifacts: true,        // **ENABLED**: For markdown and data tables
               enableMermaidArtifacts: true,      // **ENABLED**: Diagrams and flowcharts
               enableHtmlArtifacts: true,         // **ENABLED**: For visual HTML content
-              enableMarkdownArtifacts: false,    // **DISABLED**: No markdown docs
-              enableJsonArtifacts: false,        // **DISABLED**: No JSON artifacts
+              enableMarkdownArtifacts: true,     // **ENABLED**: For markdown tables and docs
+              enableJsonArtifacts: true,         // **ENABLED**: For JSON chart data
               enableDiagramArtifacts: true,      // **ENABLED**: Visual diagrams
               autoDetectArtifacts: true,
               maxArtifactsPerMessage: 5          // **REDUCED**: Fewer artifacts for cleaner UI

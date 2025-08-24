@@ -727,6 +727,37 @@ const TableRenderer: React.FC<{ content: string; onFullScreen?: () => void }> = 
   const tableData = useMemo(() => {
     try {
       const parsed = JSON.parse(content);
+      
+      // Handle format: { "table": { "columns": [...], "rows": [...] } }
+      if (parsed.table && parsed.table.columns && parsed.table.rows) {
+        const { columns, rows } = parsed.table;
+        return rows.map((row: any) => {
+          const obj: any = {};
+          columns.forEach((col: string, index: number) => {
+            obj[col] = row[col] || row[index] || '';
+          });
+          return obj;
+        });
+      }
+      
+      // Handle format: { "columns": [...], "rows": [...] }
+      if (parsed.columns && parsed.rows) {
+        const { columns, rows } = parsed;
+        return rows.map((row: any) => {
+          const obj: any = {};
+          columns.forEach((col: string, index: number) => {
+            obj[col] = row[col] || row[index] || '';
+          });
+          return obj;
+        });
+      }
+      
+      // Handle array of objects format: [{"col1": "val1", "col2": "val2"}, ...]
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      
+      // Handle single object format: {"col1": "val1", "col2": "val2"}
       return Array.isArray(parsed) ? parsed : [parsed];
     } catch {
       // Try to parse as CSV
@@ -1642,7 +1673,94 @@ const InteractiveChartRenderer: React.FC<{ content: string; artifact: ClaraArtif
     try {
       const parsed = JSON.parse(content);
       
-      // Ensure proper Chart.js format
+      // FORMAT 1: Nested chart format { "type": "chart", "data": { "labels": [...], "series": [...] } }
+      if (parsed.type === 'chart' && parsed.data) {
+        const chartDataObj = parsed.data;
+        
+        if (chartDataObj.labels && chartDataObj.series) {
+          // Convert series format to Chart.js datasets format
+          const datasets = chartDataObj.series.map((series: any, index: number) => ({
+            label: series.name || series.label || `Series ${index + 1}`,
+            data: series.data || series.values || series.y || [],
+            backgroundColor: series.backgroundColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`,
+            borderColor: series.borderColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`,
+            borderWidth: series.borderWidth || 1,
+          }));
+          
+          return {
+            labels: chartDataObj.labels,
+            datasets: datasets
+          };
+        }
+      }
+      
+      // FORMAT 2: Direct chart data format { "labels": [...], "series": [...] }
+      if (parsed.labels && parsed.series) {
+        const datasets = parsed.series.map((series: any, index: number) => ({
+          label: series.name || series.label || `Series ${index + 1}`,
+          data: series.data || series.values || series.y || [],
+          backgroundColor: series.backgroundColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`,
+          borderColor: series.borderColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`,
+          borderWidth: series.borderWidth || 1,
+        }));
+        
+        return {
+          labels: parsed.labels,
+          datasets: datasets
+        };
+      }
+      
+      // FORMAT 3: Standard Chart.js format { "labels": [...], "datasets": [...] }
+      if (parsed.labels && parsed.datasets) {
+        return parsed;
+      }
+      
+      // FORMAT 4: Simple array of objects [{"name": "A", "value": 10}, ...]
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].name && parsed[0].value) {
+        return {
+          labels: parsed.map(item => item.name || item.label || item.x),
+          datasets: [{
+            label: 'Data',
+            data: parsed.map(item => item.value || item.y || item.data),
+            backgroundColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+            borderColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+            borderWidth: 1,
+          }]
+        };
+      }
+      
+      // FORMAT 5: Key-value object {"A": 10, "B": 20, ...}
+      if (typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.labels && !parsed.datasets && !parsed.series) {
+        const entries = Object.entries(parsed);
+        if (entries.length > 0 && typeof entries[0][1] === 'number') {
+          return {
+            labels: entries.map(([key]) => key),
+            datasets: [{
+              label: 'Data',
+              data: entries.map(([, value]) => value),
+              backgroundColor: entries.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+              borderColor: entries.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+              borderWidth: 1,
+            }]
+          };
+        }
+      }
+      
+      // FORMAT 6: Array of numbers [10, 20, 30, ...]
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'number') {
+        return {
+          labels: parsed.map((_, index) => `Item ${index + 1}`),
+          datasets: [{
+            label: 'Data',
+            data: parsed,
+            backgroundColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+            borderColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+            borderWidth: 1,
+          }]
+        };
+      }
+      
+      // FORMAT 7: Fallback - try to convert any remaining valid format
       if (!parsed.labels || !parsed.datasets) {
         // Convert simple data to Chart.js format
         if (Array.isArray(parsed)) {
@@ -1671,6 +1789,20 @@ const InteractiveChartRenderer: React.FC<{ content: string; artifact: ClaraArtif
             }]
           };
         }
+      }
+      
+      // Final safety check - ensure we always return valid Chart.js format
+      if (!parsed || !parsed.labels || !parsed.datasets || !Array.isArray(parsed.datasets)) {
+        return {
+          labels: ['No Data'],
+          datasets: [{
+            label: 'No Data Available',
+            data: [0],
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1,
+          }]
+        };
       }
       
       return parsed;
@@ -1724,15 +1856,34 @@ const InteractiveChartRenderer: React.FC<{ content: string; artifact: ClaraArtif
   ];
 
   const renderChart = () => {
-    switch (chartType) {
-      case 'line':
-        return <Line data={chartData} options={chartOptions} />;
-      case 'pie':
-        return <Pie data={chartData} options={chartOptions} />;
-      case 'doughnut':
-        return <Doughnut data={chartData} options={chartOptions} />;
-      default:
-        return <Bar data={chartData} options={chartOptions} />;
+    // Safety check - ensure we have valid chart data structure
+    if (!chartData || !chartData.labels || !chartData.datasets || !Array.isArray(chartData.datasets)) {
+      console.error('Invalid chart data structure:', chartData);
+      return (
+        <div className="h-64 flex items-center justify-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+          <p>Invalid chart data format</p>
+        </div>
+      );
+    }
+
+    try {
+      switch (chartType) {
+        case 'line':
+          return <Line data={chartData} options={chartOptions} />;
+        case 'pie':
+          return <Pie data={chartData} options={chartOptions} />;
+        case 'doughnut':
+          return <Doughnut data={chartData} options={chartOptions} />;
+        default:
+          return <Bar data={chartData} options={chartOptions} />;
+      }
+    } catch (error) {
+      console.error('Chart rendering error:', error);
+      return (
+        <div className="h-64 flex items-center justify-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+          <p>Error rendering chart</p>
+        </div>
+      );
     }
   };
 

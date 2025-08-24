@@ -553,12 +553,32 @@ export class ArtifactDetectionService {
       const code = match[2].trim();
       
       if (code.length > 10) { // Only create artifacts for substantial code
+        let artifactType: ClaraArtifactType = 'code';
+        let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
+        
+        // Special handling for JSON - check if it should be a table or chart
+        if (language === 'json') {
+          try {
+            const parsed = JSON.parse(code);
+            const detectedType = this.detectJsonType(parsed);
+            if (detectedType === 'table') {
+              artifactType = 'table';
+              title = 'Data Table';
+            } else if (detectedType === 'chart') {
+              artifactType = 'chart';
+              title = 'Interactive Chart';
+            }
+          } catch {
+            // Keep as code if JSON is invalid
+          }
+        }
+        
         artifacts.push({
           id: this.generateId(),
-          type: 'code',
-          title: `${language.charAt(0).toUpperCase() + language.slice(1)} Code`,
+          type: artifactType,
+          title: title,
           content: code,
-          language: language,
+          language: artifactType === 'code' ? language : undefined,
           createdAt: new Date(),
           isExecutable: this.isExecutableLanguage(language),
           metadata: {
@@ -1135,6 +1155,13 @@ export class ArtifactDetectionService {
     if (obj.labels && obj.datasets) return 'chart';
     if (obj.status && (obj.data || obj.error)) return 'json';
     if (obj.query || obj.table || obj.rows) return 'json';
+    
+    // Check for table format: { "table": { "columns": [...], "rows": [...] } }
+    if (obj.table && obj.table.columns && obj.table.rows) return 'table';
+    
+    // Check for direct table format: { "columns": [...], "rows": [...] }
+    if (obj.columns && obj.rows) return 'table';
+    
     if (Array.isArray(obj) && obj.length > 0 && typeof obj[0] === 'object') return 'table';
     
     return 'json';
@@ -1199,9 +1226,37 @@ export class ArtifactDetectionService {
       return true;
     }
     
-    // Check for Chart.js JSON
+    // Enhanced chart detection for multiple formats
     if ((language === 'json' || type === 'chart') && content.includes('"type":') && content.includes('"data":') && 
         (content.includes('"bar"') || content.includes('"line"') || content.includes('"pie"') || content.includes('"doughnut"'))) {
+      return true;
+    }
+    
+    // Check for chart data with labels and series format (your format)
+    if ((language === 'json' || type === 'chart') && content.includes('"labels":') && content.includes('"series":')) {
+      return true;
+    }
+    
+    // Check for nested chart format { "type": "chart", "data": { ... } }
+    if (language === 'json' && content.includes('"type"') && content.includes('"chart"') && content.includes('"labels"')) {
+      return true;
+    }
+    
+    // Check for standard Chart.js format with datasets
+    if ((language === 'json' || type === 'chart') && content.includes('"labels":') && content.includes('"datasets":')) {
+      return true;
+    }
+    
+    // Check for simple data arrays that could be charts
+    if (language === 'json' && content.includes('[') && 
+        (content.includes('"name":') && content.includes('"value":') || 
+         content.includes('"x":') && content.includes('"y":'))) {
+      return true;
+    }
+    
+    // Check for key-value objects that could be charts
+    if (language === 'json' && content.includes('{') && content.includes(':') && 
+        /"\w+":\s*\d+/.test(content)) {
       return true;
     }
     

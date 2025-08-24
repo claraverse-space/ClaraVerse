@@ -489,10 +489,139 @@ const InlineChartRenderer: React.FC<{ content: string; isDark?: boolean }> = ({ 
   useEffect(() => {
     try {
       const parsed = JSON.parse(content);
-      setChartData(parsed);
+      
+      // Convert different chart formats to Chart.js format
+      let convertedData = null;
+      
+      // FORMAT 1: Nested chart format { "type": "chart", "data": { "labels": [...], "series": [...] } }
+      if (parsed.type === 'chart' && parsed.data) {
+        const chartDataObj = parsed.data;
+        
+        if (chartDataObj.labels && chartDataObj.series) {
+          const datasets = chartDataObj.series.map((series: any, index: number) => ({
+            label: series.name || series.label || `Series ${index + 1}`,
+            data: series.data || series.values || series.y || [],
+            backgroundColor: series.backgroundColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`,
+            borderColor: series.borderColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`,
+            borderWidth: series.borderWidth || 1,
+          }));
+          
+          convertedData = {
+            type: 'bar', // Default chart type
+            data: {
+              labels: chartDataObj.labels,
+              datasets: datasets
+            }
+          };
+        }
+      }
+      
+      // FORMAT 2: Direct chart data format { "labels": [...], "series": [...] }
+      else if (parsed.labels && parsed.series) {
+        const datasets = parsed.series.map((series: any, index: number) => ({
+          label: series.name || series.label || `Series ${index + 1}`,
+          data: series.data || series.values || series.y || [],
+          backgroundColor: series.backgroundColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`,
+          borderColor: series.borderColor || `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`,
+          borderWidth: series.borderWidth || 1,
+        }));
+        
+        convertedData = {
+          type: 'bar',
+          data: {
+            labels: parsed.labels,
+            datasets: datasets
+          }
+        };
+      }
+      
+      // FORMAT 3: Standard Chart.js format { "type": "bar", "data": { "labels": [...], "datasets": [...] } }
+      else if (parsed.data && parsed.data.labels && parsed.data.datasets) {
+        convertedData = parsed;
+      }
+      
+      // FORMAT 4: Simple array of objects [{"name": "A", "value": 10}, ...]
+      else if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].name && parsed[0].value) {
+        convertedData = {
+          type: 'bar',
+          data: {
+            labels: parsed.map(item => item.name || item.label || item.x),
+            datasets: [{
+              label: 'Data',
+              data: parsed.map(item => item.value || item.y || item.data),
+              backgroundColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+              borderColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+              borderWidth: 1,
+            }]
+          }
+        };
+      }
+      
+      // FORMAT 5: Key-value object {"A": 10, "B": 20, ...}
+      else if (typeof parsed === 'object' && !Array.isArray(parsed) && !parsed.labels && !parsed.datasets && !parsed.series) {
+        const entries = Object.entries(parsed);
+        if (entries.length > 0 && typeof entries[0][1] === 'number') {
+          convertedData = {
+            type: 'bar',
+            data: {
+              labels: entries.map(([key]) => key),
+              datasets: [{
+                label: 'Data',
+                data: entries.map(([, value]) => value),
+                backgroundColor: entries.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+                borderColor: entries.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+                borderWidth: 1,
+              }]
+            }
+          };
+        }
+      }
+      
+      // FORMAT 6: Array of numbers [10, 20, 30, ...]
+      else if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'number') {
+        convertedData = {
+          type: 'bar',
+          data: {
+            labels: parsed.map((_, index) => `Item ${index + 1}`),
+            datasets: [{
+              label: 'Data',
+              data: parsed,
+              backgroundColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 0.2)`),
+              borderColor: parsed.map((_, index) => `rgba(${54 + index * 50}, ${162 + index * 30}, ${235 + index * 20}, 1)`),
+              borderWidth: 1,
+            }]
+          }
+        };
+      }
+      
+      // If no conversion worked, use the original data if it has the right structure
+      else if (parsed.data && parsed.data.labels && Array.isArray(parsed.data.datasets)) {
+        convertedData = parsed;
+      }
+      
+      // Final fallback - ensure we always have valid chart data
+      if (!convertedData || !convertedData.data || !convertedData.data.datasets || !Array.isArray(convertedData.data.datasets)) {
+        convertedData = {
+          type: 'bar',
+          data: {
+            labels: ['No Data'],
+            datasets: [{
+              label: 'No Data',
+              data: [0],
+              backgroundColor: 'rgba(75, 192, 192, 0.2)',
+              borderColor: 'rgba(75, 192, 192, 1)',
+              borderWidth: 1,
+            }]
+          }
+        };
+      }
+      
+      setChartData(convertedData);
       setError(null);
     } catch (err) {
+      console.error('Chart parsing error:', err);
       setError('Invalid chart JSON format');
+      setChartData(null);
     }
   }, [content]);
 
@@ -517,62 +646,76 @@ const InlineChartRenderer: React.FC<{ content: string; isDark?: boolean }> = ({ 
   }
 
   const renderChart = () => {
-    const chartType = chartData.type?.toLowerCase();
+    // Safety check - ensure we have valid chart data structure
+    if (!chartData || !chartData.data || !chartData.data.datasets || !Array.isArray(chartData.data.datasets)) {
+      console.error('Invalid chart data structure:', chartData);
+      return (
+        <div className="p-4 text-center text-red-500">
+          <p>Invalid chart data format</p>
+        </div>
+      );
+    }
+
+    const chartType = chartData.type?.toLowerCase() || 'bar';
     const commonProps = {
       data: chartData.data,
       options: {
-        ...chartData.options,
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          ...chartData.options?.plugins,
           legend: {
-            ...chartData.options?.plugins?.legend,
             labels: {
-              ...chartData.options?.plugins?.legend?.labels,
               color: isDark ? '#e5e7eb' : '#374151'
             }
+          },
+          title: {
+            display: !!chartData.options?.plugins?.title?.text,
+            text: chartData.options?.plugins?.title?.text || '',
+            color: isDark ? '#e5e7eb' : '#374151'
           }
         },
-        scales: chartData.options?.scales ? {
-          ...chartData.options.scales,
+        scales: chartType !== 'pie' && chartType !== 'doughnut' ? {
           x: {
-            ...chartData.options.scales.x,
             ticks: {
-              ...chartData.options.scales.x?.ticks,
               color: isDark ? '#e5e7eb' : '#374151'
             },
             grid: {
-              ...chartData.options.scales.x?.grid,
               color: isDark ? '#374151' : '#e5e7eb'
             }
           },
           y: {
-            ...chartData.options.scales.y,
+            beginAtZero: true,
             ticks: {
-              ...chartData.options.scales.y?.ticks,
               color: isDark ? '#e5e7eb' : '#374151'
             },
             grid: {
-              ...chartData.options.scales.y?.grid,
               color: isDark ? '#374151' : '#e5e7eb'
             }
           }
-        } : undefined
+        } : {}
       }
     };
 
-    switch (chartType) {
-      case 'line':
-        return <Line {...commonProps} />;
-      case 'bar':
-        return <Bar {...commonProps} />;
-      case 'pie':
-        return <Pie {...commonProps} />;
-      case 'doughnut':
-        return <Doughnut {...commonProps} />;
-      default:
-        return <Bar {...commonProps} />;
+    try {
+      switch (chartType) {
+        case 'line':
+          return <Line {...commonProps} />;
+        case 'bar':
+          return <Bar {...commonProps} />;
+        case 'pie':
+          return <Pie {...commonProps} />;
+        case 'doughnut':
+          return <Doughnut {...commonProps} />;
+        default:
+          return <Bar {...commonProps} />;
+      }
+    } catch (error) {
+      console.error('Chart rendering error:', error);
+      return (
+        <div className="p-4 text-center text-red-500">
+          <p>Error rendering chart</p>
+        </div>
+      );
     }
   };
 
