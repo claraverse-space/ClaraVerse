@@ -3455,7 +3455,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
   // Streaming vs Tools mode state
   const [isStreamingMode, setIsStreamingMode] = useState(
-    sessionConfig?.aiConfig?.features.enableStreaming ?? true
+    sessionConfig?.aiConfig?.features.enableStreaming ?? false
   );
 
   // Voice chat state - simplified for transcription only
@@ -3719,7 +3719,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   // Sync streaming mode state with session config changes
   useEffect(() => {
     if (sessionConfig?.aiConfig?.features) {
-      setIsStreamingMode(sessionConfig.aiConfig.features.enableStreaming ?? true);
+      setIsStreamingMode(sessionConfig.aiConfig.features.enableStreaming ?? false);
     }
   }, [sessionConfig?.aiConfig?.features.enableStreaming]);
 
@@ -3747,7 +3747,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     features: {
       enableTools: sessionConfig?.aiConfig?.features.enableTools ?? sessionConfig?.enableTools ?? true,
       enableRAG: sessionConfig?.aiConfig?.features.enableRAG ?? sessionConfig?.enableRAG ?? false,
-      enableStreaming: sessionConfig?.aiConfig?.features.enableStreaming ?? true,
+      enableStreaming: sessionConfig?.aiConfig?.features.enableStreaming ?? false,
       enableVision: sessionConfig?.aiConfig?.features.enableVision ?? true,
       autoModelSelection: sessionConfig?.aiConfig?.features.autoModelSelection ?? true,
       enableMCP: sessionConfig?.aiConfig?.features.enableMCP ?? true,
@@ -5891,7 +5891,7 @@ You can right-click on the image to save it or use it in your projects.`;
                           {isStreamingMode ? (
                             <>
                               <Waves className="w-3 h-3" />
-                              <span>Text and Image</span>
+                              <span>Ask</span>
                             </>
                           ) : (
                             <>

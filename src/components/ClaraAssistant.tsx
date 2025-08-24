@@ -586,12 +586,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         stop: []
       },
       features: {
-        enableTools: false,             // **CHANGED**: Default to false for streaming mode
+        enableTools: true,              // **CHANGED**: Default to true for agent mode
         enableRAG: false,
-        enableStreaming: true,          // **CHANGED**: Default to streaming mode
+        enableStreaming: false,         // **CHANGED**: Default to agent mode
         enableVision: true,
         autoModelSelection: false,      // **CHANGED**: Default to manual model selection
-        enableMCP: false,               // **CHANGED**: Default to false for streaming mode
+        enableMCP: true,                // **CHANGED**: Default to true for agent mode
         enableStructuredToolCalling: false, // **NEW**: Default to false
         enableNativeJSONSchema: false, // **NEW**: Default to false
         enableMemory: true,            // **NEW**: Added to fix type error
@@ -1166,12 +1166,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
                 stop: []
               },
               features: {
-                enableTools: false,           // **CHANGED**: Default to false for streaming mode
+                enableTools: true,            // **CHANGED**: Default to true for agent mode
                 enableRAG: false,
-                enableStreaming: true,        // **CHANGED**: Default to streaming mode
+                enableStreaming: false,       // **CHANGED**: Default to agent mode
                 enableVision: true,
                 autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-                enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+                enableMCP: true,              // **CHANGED**: Default to true for agent mode
                 enableStructuredToolCalling: false, // **NEW**: Default to false
                 enableNativeJSONSchema: false, // **NEW**: Default to false
                 enableMemory: true,           // **NEW**: Default to enabled for memory functionality
@@ -2662,12 +2662,12 @@ You can:
             stop: []
           },
           features: {
-            enableTools: false,           // **CHANGED**: Default to false for streaming mode
+            enableTools: true,            // **CHANGED**: Default to true for agent mode
             enableRAG: false,
-            enableStreaming: true,        // **CHANGED**: Default to streaming mode
+            enableStreaming: false,       // **CHANGED**: Default to agent mode
             enableVision: true,
             autoModelSelection: false,    // **CHANGED**: Default to manual model selection
-            enableMCP: false,              // **CHANGED**: Default to false for streaming mode
+            enableMCP: true,              // **CHANGED**: Default to true for agent mode
             enableStructuredToolCalling: false, // **NEW**: Default to false
             enableNativeJSONSchema: false, // **NEW**: Default to false
             enableMemory: true,           // **NEW**: Default to enabled for memory functionality
