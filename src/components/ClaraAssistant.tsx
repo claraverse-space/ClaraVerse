@@ -574,7 +574,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       provider: '',
       parameters: {
         temperature: 0.7,
-        maxTokens: 4000,
+        maxTokens: 8000,
         topP: 1.0,
         topK: 40,
         frequencyPenalty: 0.0,
@@ -1154,7 +1154,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
               },
               parameters: {
                 temperature: 0.7,
-                maxTokens: 4000,
+                maxTokens: 8000,
                 topP: 1.0,
                 topK: 40,
                 frequencyPenalty: 0.0,
@@ -2650,7 +2650,7 @@ You can:
           },
           parameters: {
             temperature: 0.7,
-            maxTokens: 4000,
+            maxTokens: 8000,
             topP: 1.0,
             topK: 40,
             frequencyPenalty: 0.0,

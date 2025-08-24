@@ -2452,7 +2452,7 @@ Skip for: quick answers, simple lists
                     onClick={() => {
                       const defaultParams = {
                         temperature: 0.7,
-                        maxTokens: 4000,
+                        maxTokens: 8000,
                         topP: 1.0,
                         topK: 40,
                         frequencyPenalty: 0.0,
@@ -3733,7 +3733,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     provider: sessionConfig?.aiConfig?.provider || (providers.find(p => p.isPrimary)?.id || ''),
     parameters: {
       temperature: sessionConfig?.aiConfig?.parameters.temperature || sessionConfig?.temperature || 0.7,
-      maxTokens: sessionConfig?.aiConfig?.parameters.maxTokens || sessionConfig?.maxTokens || 1000,
+      maxTokens: sessionConfig?.aiConfig?.parameters.maxTokens || sessionConfig?.maxTokens || 8000,
       topP: sessionConfig?.aiConfig?.parameters.topP || 1.0,
       topK: sessionConfig?.aiConfig?.parameters.topK || 40,
       frequencyPenalty: sessionConfig?.aiConfig?.parameters.frequencyPenalty || 0.0,
