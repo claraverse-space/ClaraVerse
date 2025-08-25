@@ -399,4 +399,4 @@ if (typeof window !== 'undefined') {
   
   console.log('🔧 Clara Emergency Functions Available:');
   console.log('- claraEmergencyRestoreMCPTools() - Restore blacklisted MCP tools');
-} 
+}

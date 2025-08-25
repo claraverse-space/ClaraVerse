@@ -383,7 +383,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   value={interval}
                   onChange={(e) => setInterval(e.target.value as '30seconds' | 'minute' | 'minutes' | 'hourly' | 'daily' | 'weekly')}
                   disabled={!enabled}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-purple-600/30 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-purple-900/20 text-gray-900 dark:text-purple-100 disabled:opacity-50"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-purple-600/30 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-purple-900/20 text-gray-900 dark:text-purple-100 disabled:opacity-50 [&>option]:bg-white [&>option]:dark:bg-purple-900 [&>option]:text-gray-900 [&>option]:dark:text-purple-100"
                 >
                   <option value="30seconds">30 Seconds</option>
                   <option value="minute">Minute</option>
