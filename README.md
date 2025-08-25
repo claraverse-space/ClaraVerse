@@ -255,7 +255,7 @@ npm run electron:dev:hot
 | **Open Source** | ✅ | ⚠️ |
 | **Offline Mode** | ✅ | ❌ |
 | **Custom Models** | ✅ | ⚠️ |
-| **Enterprise Ready** | ❌ | 💰 |
+| **Enterprise Ready** | ⌛ | 💰 |
 
 </div>
 
