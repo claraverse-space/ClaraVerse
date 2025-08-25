@@ -1,4 +1,5 @@
 import { NodeDefinition } from '../../types/agent/types';
+import { comfyUIImageGenNodeDefinition } from '../../components/AgentBuilder/NodeDefinitions/comfyUIImageGenNodeDefinition';
 
 // Comprehensive Node Definitions for AI Agent Builder
 export const simpleNodeDefinitions: NodeDefinition[] = [
@@ -1402,6 +1403,9 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
       documentation: 'Executes autonomous AI agents with tool access for complex multi-step tasks.'
     }
   },
+
+  // COMFYUI IMAGE GENERATION NODE
+  comfyUIImageGenNodeDefinition,
 
   // TEXT PROCESSING NODE
 ];

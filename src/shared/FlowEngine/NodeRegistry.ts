@@ -1017,6 +1017,92 @@ export class NodeRegistry {
         };
       }
     });
+
+    // ComfyUI Image Generation Node
+    this.nodeExecutors.set('comfyui-image-gen', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      const prompt = inputs.prompt || node.data.prompt || '';
+      
+      if (!prompt.trim()) {
+        throw new Error('Prompt is required for image generation');
+      }
+
+      try {
+        context.log('🎨 Starting ComfyUI image generation...');
+        
+        // Import the service dynamically to avoid circular dependencies
+        const { comfyUIImageGenService } = await import('../../services/comfyUIImageGenService');
+        
+        // Ensure ComfyUI is connected
+        const connectionResult = await comfyUIImageGenService.connectToComfyUI();
+        if (!connectionResult.success) {
+          throw new Error(`ComfyUI connection failed: ${connectionResult.error}`);
+        }
+
+        // Get available models and use the first one if none specified
+        const availableModels = await comfyUIImageGenService.getAvailableModels();
+        let selectedModel = node.data.selectedModel || '';
+        
+        if (!selectedModel && availableModels.length > 0) {
+          selectedModel = availableModels[0];
+          context.log(`📦 Auto-selected model: ${selectedModel}`);
+        }
+        
+        if (!selectedModel) {
+          throw new Error('No ComfyUI models available');
+        }
+
+        // Prepare generation configuration
+        const config = {
+          prompt,
+          model: selectedModel,
+          steps: node.data.steps || 20,
+          guidanceScale: node.data.guidanceScale || 7.5,
+          denoise: node.data.denoise || 1.0,
+          sampler: node.data.sampler || 'euler',
+          scheduler: node.data.scheduler || 'normal',
+          width: node.data.width || 512,
+          height: node.data.height || 512,
+          negativePrompt: node.data.negativePrompt || '',
+          seed: node.data.seed || -1
+        };
+
+        context.log(`🎨 Generation config: ${JSON.stringify(config, null, 2)}`);
+
+        // Progress callback
+        const onProgress = (progress: number, message: string) => {
+          context.log(`📈 ${message} (${progress}%)`);
+        };
+
+        // Generate the image
+        const result = await comfyUIImageGenService.generateImage(config, onProgress);
+        
+        context.log('✅ Image generation completed successfully');
+
+        return {
+          image: result.imageBase64,
+          metadata: {
+            prompt: result.prompt,
+            seed: result.seed,
+            duration: result.duration,
+            model: selectedModel,
+            config,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        context.error(`❌ ComfyUI image generation failed: ${errorMessage}`);
+        
+        return {
+          image: null,
+          metadata: {
+            error: errorMessage,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
+    });
   }
 
   registerCustomNode(customNode: any): void {

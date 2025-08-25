@@ -41,6 +41,7 @@ import CombineTextNode from '../Nodes/CombineTextNode';
 import APIRequestNode from '../Nodes/APIRequestNode';
 import StaticTextNode from '../Nodes/StaticTextNode';
 import AgentExecutorNode from '../Nodes/AgentExecutorNode';
+import { ComfyUIImageGenNode } from '../Nodes/ComfyUIImageGenNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -82,6 +83,7 @@ const baseNodeTypes: NodeTypes = {
   'text': TextNode,
   'math': MathNode,
   'agent-executor': AgentExecutorNode,
+  'comfyui-image-gen': ComfyUIImageGenNode,
 };
 
 // Debug: Log base node types immediately after definition

@@ -37,7 +37,32 @@ interface SDKExecutionLog {
   data?: any;
 }
 
-const formatMessage = (content: string) => {
+const formatMessage = (content: string, isBase64Image?: (value: any) => boolean, getImageSrc?: (value: string) => string) => {
+  // Check if the content is a base64 image
+  if (isBase64Image && getImageSrc && isBase64Image(content)) {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-2">
+          🖼️ Generated Image
+        </div>
+        <img
+          src={getImageSrc(content)}
+          alt="Generated output"
+          className="max-w-full h-auto rounded-md shadow-sm max-h-64 object-contain bg-white border border-gray-200 dark:border-purple-500/30"
+          onError={(e) => {
+            // Fallback to text display if image fails to load
+            e.currentTarget.style.display = 'none';
+            const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+            if (fallback) fallback.style.display = 'block';
+          }}
+        />
+        <div className="text-sm text-gray-800 dark:text-purple-200 font-mono max-h-32 overflow-y-auto hidden bg-gray-100 dark:bg-purple-800/40 p-2 rounded border">
+          {content.length > 100 ? `${content.substring(0, 100)}...` : content}
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <ReactMarkdown
       className="prose prose-sm max-w-none dark:prose-invert"
@@ -131,6 +156,32 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Helper function to detect if a string is base64 image data
+  const isBase64Image = (value: any): boolean => {
+    if (typeof value !== 'string') return false;
+    
+    // Check if it's a data URL
+    if (value.startsWith('data:image/')) return true;
+    
+    // Check if it's raw base64 that looks like image data
+    // Base64 images are typically long strings with base64 characters
+    if (value.length > 100 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+      // Additional check: base64 image strings are usually much longer
+      return value.length > 1000;
+    }
+    
+    return false;
+  };
+
+  // Helper function to get the proper image src from base64 data
+  const getImageSrc = (value: string): string => {
+    if (value.startsWith('data:image/')) {
+      return value;
+    }
+    // Assume PNG if no data URL prefix
+    return `data:image/png;base64,${value}`;
+  };
 
   const getInputTypeFromNodeType = (nodeType: string): 'text' | 'file' | 'number' => {
     if (nodeType.includes('image') || nodeType.includes('pdf') || nodeType.includes('file')) {
@@ -495,40 +546,58 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
         responseContent = '✅ **Execution Complete!**\n\nNo output results generated. Make sure your workflow has output nodes connected to the data flow.';
       } else {
         // Process SDK results
-        const outputResults: Array<{label: string, content: string}> = [];
+        const outputResults: Array<{label: string, content: string, isImage?: boolean, originalData?: any}> = [];
         
         for (const outputNode of outputNodes) {
           const nodeResult = executionResult[outputNode.id];
           
           if (nodeResult !== undefined && nodeResult !== null) {
             let processedContent = '';
+            let isImage = false;
+            let originalData = nodeResult;
             
             // Process the result based on its type
             if (typeof nodeResult === 'object') {
               // Try to unwrap common result formats
               if (nodeResult.output !== undefined) {
                 processedContent = String(nodeResult.output);
+                originalData = nodeResult.output;
               } else if (nodeResult.result !== undefined) {
                 processedContent = String(nodeResult.result);
+                originalData = nodeResult.result;
               } else if (nodeResult.text !== undefined) {
                 processedContent = String(nodeResult.text);
+                originalData = nodeResult.text;
               } else if (nodeResult.content !== undefined) {
                 processedContent = String(nodeResult.content);
+                originalData = nodeResult.content;
               } else if (nodeResult.value !== undefined) {
                 processedContent = String(nodeResult.value);
+                originalData = nodeResult.value;
               } else {
                 // Display as JSON if it's a complex object
                 processedContent = `\`\`\`json\n${JSON.stringify(nodeResult, null, 2)}\n\`\`\``;
+                originalData = nodeResult;
               }
             } else {
               // Simple value - use as string
               processedContent = String(nodeResult);
+              originalData = nodeResult;
+            }
+            
+            // Check if the original data is a base64 image
+            if (typeof originalData === 'string' && isBase64Image(originalData)) {
+              isImage = true;
+              // For images, we'll handle the display in formatMessage
+              processedContent = originalData;
             }
             
             if (processedContent.trim()) {
               outputResults.push({
                 label: outputNode.name || `Output ${outputNode.id}`,
-                content: processedContent
+                content: processedContent,
+                isImage,
+                originalData
               });
             }
           }
@@ -538,12 +607,24 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
         if (outputResults.length === 0) {
           responseContent = '✅ **Execution Complete!**\n\nFlow execution completed but no output results found.';
         } else if (outputResults.length === 1) {
-          // Single output - just show the content
-          responseContent = `✅ **Execution Complete!**\n\n${outputResults[0].content}`;
+          // Single output - check if it's an image or regular content
+          const result = outputResults[0];
+          if (result.isImage) {
+            // For images, just pass the content directly - formatMessage will handle it
+            responseContent = result.content;
+          } else {
+            responseContent = `✅ **Execution Complete!**\n\n${result.content}`;
+          }
         } else {
           // Multiple outputs - show with labels
           responseContent = '✅ **Execution Complete!**\n\n' + outputResults
-            .map(result => `**${result.label}:**\n${result.content}`)
+            .map(result => {
+              if (result.isImage) {
+                return `**${result.label}:**\n${result.content}`;
+              } else {
+                return `**${result.label}:**\n${result.content}`;
+              }
+            })
             .join('\n\n---\n\n');
         }
       }
@@ -911,7 +992,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                       {message.type === 'user' ? (
                         <p className="text-white">{message.content}</p>
                       ) : (
-                        formatMessage(message.content)
+                        formatMessage(message.content, isBase64Image, getImageSrc)
                       )}
                       
                       <div className={`mt-2 text-xs opacity-70 ${

@@ -766,6 +766,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
                           },
                           { 
+                            name: 'ComfyUI Image Generator', 
+                            type: 'comfyui-image-gen', 
+                            icon: '🎨', 
+                            description: 'Generate high-quality images using ComfyUI with customizable parameters', 
+                            color: 'bg-gradient-to-r from-purple-500 to-pink-500',
+                            features: ['Model selection', 'Custom parameters', 'Multiple resolutions', 'Progress tracking']
+                          },
+                          { 
                             name: 'Agent Executor', 
                             type: 'agent-executor', 
                             icon: '🤖', 

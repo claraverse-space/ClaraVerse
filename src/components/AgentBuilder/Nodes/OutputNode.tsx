@@ -83,6 +83,32 @@ const OutputNode = memo<NodeProps>((props) => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // Helper function to detect if a string is base64 image data
+  const isBase64Image = (value: any): boolean => {
+    if (typeof value !== 'string') return false;
+    
+    // Check if it's a data URL
+    if (value.startsWith('data:image/')) return true;
+    
+    // Check if it's raw base64 that looks like image data
+    // Base64 images are typically long strings with base64 characters
+    if (value.length > 100 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+      // Additional check: base64 image strings are usually much longer
+      return value.length > 1000;
+    }
+    
+    return false;
+  };
+
+  // Helper function to get the proper image src from base64 data
+  const getImageSrc = (value: string): string => {
+    if (value.startsWith('data:image/')) {
+      return value;
+    }
+    // Assume PNG if no data URL prefix
+    return `data:image/png;base64,${value}`;
+  };
+
   const getFormatIcon = (formatType: string) => {
     switch (formatType) {
       case 'json': return <Code className="w-3 h-3" />;
@@ -202,9 +228,31 @@ const OutputNode = memo<NodeProps>((props) => {
               Output Preview
             </label>
             <div className="p-3 bg-gray-100/80 dark:bg-gray-800/80 border border-gray-300/70 dark:border-gray-600/70 rounded-lg">
-              <div className="text-sm text-gray-800 dark:text-gray-200 font-mono max-h-32 overflow-y-auto">
-                {formattedValue}
-              </div>
+              {isBase64Image(inputValue) ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-2">
+                    🖼️ Image Detected
+                  </div>
+                  <img
+                    src={getImageSrc(inputValue)}
+                    alt="Generated output"
+                    className="max-w-full h-auto rounded-md shadow-sm max-h-48 object-contain bg-white"
+                    onError={(e) => {
+                      // Fallback to text display if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (fallback) fallback.style.display = 'block';
+                    }}
+                  />
+                  <div className="text-sm text-gray-800 dark:text-gray-200 font-mono max-h-32 overflow-y-auto hidden">
+                    {formattedValue.length > 100 ? `${formattedValue.substring(0, 100)}...` : formattedValue}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-800 dark:text-gray-200 font-mono max-h-32 overflow-y-auto">
+                  {formattedValue}
+                </div>
+              )}
             </div>
           </div>
         )}
