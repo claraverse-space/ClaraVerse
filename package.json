@@ -4,8 +4,8 @@
   "private": true,
   "description": "Clara – A privacy-first, client-side AI assistant WebUI for LLMs. No backend, no data leaks. Keep your conversations completely yours, If you like it, Don't Forget to Give a Star 🌟",
   "author": {
-    "name": "badboysm890",
-    "email": "praveensm890@gmail.com"
+    "name": "Claraverse Labs",
+    "email": "claraverse.space@gmail.com"
   },
   "type": "module",
   "main": "electron/main.cjs",

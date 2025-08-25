@@ -522,14 +522,14 @@ const AgentRunnerContent: React.FC<AgentRunnerProps> = ({ agentId, onClose, onPa
 
       let responseContent = '';
       
-      if (Object.keys(executionResult).length === 0) {
+      if (Object.keys(executionResult.outputs).length === 0) {
         responseContent = 'No results generated. Make sure your workflow has output nodes connected to the data flow.';
       } else {
         // Process SDK results
         const outputResults: Array<{label: string, content: string}> = [];
         
         for (const outputNode of outputNodes) {
-          const nodeResult = executionResult[outputNode.id];
+          const nodeResult = executionResult.outputs[outputNode.id];
           
           if (nodeResult !== undefined && nodeResult !== null) {
             let processedContent = '';

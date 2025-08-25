@@ -35,6 +35,7 @@ const { platformUpdateService } = require('./updateService.cjs');
 const { debugPaths, logDebugInfo } = require('./debug-paths.cjs');
 const IPCLogger = require('./ipcLogger.cjs');
 const WidgetService = require('./widgetService.cjs');
+const { SchedulerElectronService } = require('./schedulerElectronService.cjs');
 
 // NEW: Enhanced service management system (Backward compatible)
 const CentralServiceManager = require('./centralServiceManager.cjs');
@@ -273,6 +274,7 @@ let watchdogService;
 let updateService;
 let comfyUIModelService;
 let widgetService;
+let schedulerService;
 
 // NEW: Enhanced service management (Coexists with existing services)
 let serviceConfigManager;
@@ -5332,6 +5334,18 @@ async function initializeInBackground(selectedFeatures) {
       });
     }
     
+    // Initialize ClaraVerse Scheduler Service
+    sendStatusUpdate('initializing-scheduler', { message: 'Initializing task scheduler...' });
+    try {
+      if (!schedulerService) {
+        schedulerService = new SchedulerElectronService(mainWindow);
+        log.info('✅ ClaraVerse Scheduler initialized successfully');
+      }
+    } catch (error) {
+      log.error('❌ Failed to initialize scheduler service:', error);
+      // Continue without scheduler if it fails
+    }
+    
     sendStatusUpdate('ready', { message: 'All services initialized' });
     
   } catch (error) {
@@ -6009,6 +6023,16 @@ app.on('window-all-closed', async () => {
         watchdogService.stop();
       } catch (error) {
         log.error('Error stopping watchdog service:', error);
+      }
+    }
+
+    // Stop scheduler service
+    if (schedulerService) {
+      try {
+        log.info('Stopping scheduler service...');
+        await schedulerService.cleanup();
+      } catch (error) {
+        log.error('Error stopping scheduler service:', error);
       }
     }
 

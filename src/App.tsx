@@ -16,6 +16,7 @@ import AgentRunnerSDK from './components/AgentRunnerSDK';
 import Lumaui from './components/Lumaui';
 import LumaUILite from './components/LumaUILite';
 import Notebooks from './components/Notebooks';
+import Tasks from './components/Tasks';
 import { db } from './db';
 import { ProvidersProvider } from './contexts/ProvidersContext';
 import ClaraAssistant from './components/ClaraAssistant';
@@ -225,6 +226,8 @@ function App() {
           <main className="">
             {(() => {
               switch (activePage) {
+                case 'tasks':
+                  return <Tasks onPageChange={setActivePage} />;
                 case 'settings':
                   return <Settings />;
                 case 'debug':

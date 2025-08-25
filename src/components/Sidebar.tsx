@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, Bot, Settings, HelpCircle, ImageIcon, Network, BrainCircuit, Download, X, Zap, Code2, BookOpen } from 'lucide-react';
+import { Home, Bot, Settings, HelpCircle, ImageIcon, Network, BrainCircuit, Download, X, Zap, Code2, BookOpen, Calendar } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 // interface HuggingFaceModel {
@@ -401,6 +401,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   // });
 
   const bottomMenuItems: MenuItem[] = [
+    { icon: Calendar, label: 'Tasks', id: 'tasks' },
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: HelpCircle, label: 'Help', id: 'help' },
   ];

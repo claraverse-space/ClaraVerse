@@ -15,6 +15,11 @@ export interface FlowData {
   metadata?: any;
 }
 
+export interface FlowExecutionResult {
+  outputs: Record<string, any>;
+  logs: ExecutionLog[];
+}
+
 export interface ClaraFlowRunnerOptions extends FlowExecutorOptions {
   // Additional SDK-specific options can be added here
 }
@@ -30,7 +35,7 @@ export class ClaraFlowRunner {
   /**
    * Execute a flow from exported Clara Studio data
    */
-  async executeFlow(flowData: FlowData, inputs: Record<string, any> = {}): Promise<Record<string, any>> {
+  async executeFlow(flowData: FlowData, inputs: Record<string, any> = {}): Promise<FlowExecutionResult> {
     try {
       // Extract flow from Agent Studio format if needed
       const flow = flowData.flow || flowData;
@@ -46,12 +51,20 @@ export class ClaraFlowRunner {
       ];
 
       // Execute the flow using the shared engine
-      return await this.executor.executeFlow(
+      const outputs = await this.executor.executeFlow(
         flow.nodes,
         flow.connections || [],
         inputs,
         allCustomNodes
       );
+
+      // Get execution logs
+      const logs = this.executor.getLogs();
+
+      return {
+        outputs,
+        logs
+      };
     } catch (error) {
       throw new Error(`Flow execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -71,7 +84,7 @@ export class ClaraFlowRunner {
     flowData: FlowData, 
     inputSets: Record<string, any>[], 
     options: { concurrency?: number; onProgress?: (progress: any) => void } = {}
-  ): Promise<any[]> {
+  ): Promise<FlowExecutionResult[]> {
     const { concurrency = 3, onProgress } = options;
     const results = [];
     

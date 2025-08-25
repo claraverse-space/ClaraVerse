@@ -73,6 +73,62 @@ export interface FlowSettings {
   };
 }
 
+// Brownfield addition - Agent scheduling configuration
+export interface ScheduleConfig {
+  enabled: boolean;
+  interval: '30seconds' | 'minute' | 'minutes' | 'hourly' | 'daily' | 'weekly';
+  time?: string; // HH:MM format for daily/weekly
+  minuteInterval?: number; // For 'minutes' interval - every X minutes (1-59)
+  nextRun?: string; // ISO timestamp
+  lastRun?: string; // ISO timestamp
+  status?: 'idle' | 'running' | 'completed' | 'error';
+}
+
+// Scheduled Task Input Value (same structure as AgentRunnerSDK)
+export interface ScheduledInputValue {
+  nodeId: string;
+  nodeName: string;
+  value: string | null; // Files are converted to base64/text for storage
+  type: 'text' | 'file' | 'number';
+  fileMetadata?: {
+    name: string;
+    type: string;
+    size: number;
+  };
+}
+
+// Complete Scheduled Task Definition
+export interface ScheduledTask {
+  id: string;
+  agentFlowId: string;
+  agentName: string;
+  agentDescription?: string;
+  schedule: ScheduleConfig;
+  inputs: ScheduledInputValue[]; // Pre-configured inputs
+  metadata: {
+    createdAt: string;
+    createdBy: string;
+    totalRuns: number;
+    successRuns: number;
+    lastError?: string;
+  };
+}
+
+// Scheduled Task Execution Result
+export interface ScheduledTaskExecution {
+  id: string;
+  taskId: string;
+  agentFlowId: string;
+  startTime: string;
+  endTime?: string;
+  status: 'running' | 'completed' | 'error';
+  inputs: ScheduledInputValue[];
+  outputs?: Record<string, any>;
+  logs: ExecutionLog[];
+  error?: string;
+  duration?: number;
+}
+
 export interface AgentFlow {
   id: string;
   name: string;
@@ -83,6 +139,7 @@ export interface AgentFlow {
   variables: FlowVariable[];
   settings: FlowSettings;
   ui?: UIDefinition;
+  schedule?: ScheduleConfig; // Brownfield addition - optional scheduling
   createdAt: string;
   updatedAt: string;
   version: string;

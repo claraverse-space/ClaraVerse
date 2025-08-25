@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Play, Trash2, Search, Grid, List, Clock, Bot, Brain } from 'lucide-react';
+import { Plus, Edit, Play, Trash2, Search, Grid, List, Clock, Bot, Brain, Calendar } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import ScheduleModal from './ScheduleModal';
 import { AgentFlow } from '../types/agent/types';
 import { agentWorkflowStorage } from '../services/agentWorkflowStorage';
 import { db } from '../db';
@@ -20,6 +21,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const [schedulingAgent, setSchedulingAgent] = useState<AgentFlow | null>(null);
 
   useEffect(() => {
     loadAgents();
@@ -80,6 +82,33 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
       await loadAgents();
     } catch (error) {
       console.error('Failed to duplicate agent:', error);
+    }
+  };
+
+  const handleScheduleAgent = (agent: AgentFlow) => {
+    setSchedulingAgent(agent);
+  };
+
+  const handleCloseScheduling = () => {
+    setSchedulingAgent(null);
+  };
+
+  const handleUpdateSchedule = async (agentId: string, schedule: any) => {
+    try {
+      const agent = agents.find(a => a.id === agentId);
+      if (!agent) return;
+      
+      const updatedAgent = {
+        ...agent,
+        schedule,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await agentWorkflowStorage.saveWorkflow(updatedAgent);
+      await loadAgents();
+      setSchedulingAgent(null);
+    } catch (error) {
+      console.error('Failed to update agent schedule:', error);
     }
   };
 
@@ -343,6 +372,18 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                         </button>
                         
                         <button
+                          onClick={() => handleScheduleAgent(agent)}
+                          className="group relative w-12 h-12 bg-gradient-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                          title={agent.schedule?.enabled ? 'Scheduled - Click to edit' : 'Schedule Agent'}
+                        >
+                          <Calendar className="w-5 h-5 transition-transform group-hover:scale-110" />
+                          <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          {agent.schedule?.enabled && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                          )}
+                        </button>
+                        
+                        <button
                           onClick={() => handleDuplicateAgent(agent)}
                           className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                           title="Duplicate Agent"
@@ -422,6 +463,18 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                           </button>
                           
                           <button
+                            onClick={() => handleScheduleAgent(agent)}
+                            className="group relative w-12 h-12 bg-gradient-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                            title={agent.schedule?.enabled ? 'Scheduled - Click to edit' : 'Schedule Agent'}
+                          >
+                            <Calendar className="w-5 h-5 transition-transform group-hover:scale-110" />
+                            <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                            {agent.schedule?.enabled && (
+                              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                            )}
+                          </button>
+                          
+                          <button
                             onClick={() => handleDuplicateAgent(agent)}
                             className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                             title="Duplicate Agent"
@@ -450,6 +503,18 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
           </div>
         </div>
       </div>
+
+      {/* Schedule Modal */}
+      {schedulingAgent && (
+        <ScheduleModal
+          agentFlow={schedulingAgent}
+          onClose={handleCloseScheduling}
+          onSaved={() => {
+            handleCloseScheduling();
+            loadAgents(); // Refresh agents to show updated schedule status
+          }}
+        />
+      )}
     </div>
   );
 };
