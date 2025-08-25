@@ -43,6 +43,7 @@ interface AgentBuilderContextType {
   // Flow Management
   createNewFlow: (name: string, description?: string, icon?: string) => AgentFlow;
   loadFlow: (flow: AgentFlow) => void;
+  updateFlow: (updates: Partial<Pick<AgentFlow, 'name' | 'description' | 'icon'>>) => void;
   saveFlow: () => Promise<void>;
   exportFlow: (format: string) => Promise<any>;
   importFlow: (data: any) => Promise<AgentFlow>;
@@ -392,6 +393,19 @@ export const AgentBuilderProvider: React.FC<AgentBuilderProviderProps> = ({ chil
     // Clear draft state since we're loading a saved workflow
     clearDraftState();
   }, [clearDraftState]);
+
+  const updateFlow = useCallback((updates: Partial<Pick<AgentFlow, 'name' | 'description' | 'icon'>>) => {
+    if (!currentFlow) return;
+    
+    const updatedFlow = {
+      ...currentFlow,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    setCurrentFlow(updatedFlow);
+    setHasUnsavedChanges(true);
+  }, [currentFlow]);
 
   const saveFlow = useCallback(async () => {
     if (!currentFlow) return;
@@ -1185,6 +1199,7 @@ const result = await flow.executeWithCallback(
         validateFlow,
         createNewFlow,
         loadFlow,
+        updateFlow,
         saveFlow,
         exportFlow,
         importFlow,

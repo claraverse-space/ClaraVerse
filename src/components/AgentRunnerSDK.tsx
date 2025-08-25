@@ -837,7 +837,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
           <div className="p-4 border-b border-gray-200 dark:border-purple-500/20">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-purple-100 mb-2">Agent Inputs</h3>
             <p className="text-sm text-gray-600 dark:text-purple-300">
-              Configure the inputs for your agent execution
+              Provide the necessary inputs to run this agent if required
             </p>
           </div>
 
@@ -950,7 +950,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
           <div className="p-5">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-purple-100">Agent Results</h3>
             <p className="text-sm text-gray-600 dark:text-purple-300">
-              View the output from your agent execution using Clara Flow SDK
+              View the output from your agent execution below
             </p>
           </div>
 

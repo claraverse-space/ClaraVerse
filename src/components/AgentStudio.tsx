@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Play, Save, Download, Upload, Settings, Calculator, Type, ArrowRight, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout } from 'lucide-react';
+import { Plus, Play, Save, Download, Upload, Settings, Calculator, Type, ArrowRight, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout, Check, Edit } from 'lucide-react';
 import { AgentBuilderProvider, useAgentBuilder } from '../contexts/AgentBuilder/AgentBuilderContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -159,6 +159,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
     executeFlow,
     createNewFlow,
     loadFlow,
+    updateFlow,
     importFlow,
     executionLogs,
     isExecutionLogOpen,
@@ -177,6 +178,10 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
   const [customNodes, setCustomNodes] = useState<CustomNodeDefinition[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const [isEditingFlowName, setIsEditingFlowName] = useState(false);
+  const [isEditingFlowDescription, setIsEditingFlowDescription] = useState(false);
+  const [tempFlowName, setTempFlowName] = useState('');
+  const [tempFlowDescription, setTempFlowDescription] = useState('');
 
   // Load custom nodes on mount
   useEffect(() => {
@@ -301,6 +306,44 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
     setIsNodeCreatorOpen(true);
   };
 
+  const handleStartEditingFlowName = () => {
+    if (currentFlow) {
+      setTempFlowName(currentFlow.name);
+      setIsEditingFlowName(true);
+    }
+  };
+
+  const handleSaveFlowName = () => {
+    if (currentFlow && tempFlowName.trim()) {
+      updateFlow({ name: tempFlowName.trim() });
+      setIsEditingFlowName(false);
+    }
+  };
+
+  const handleCancelEditFlowName = () => {
+    setIsEditingFlowName(false);
+    setTempFlowName('');
+  };
+
+  const handleStartEditingFlowDescription = () => {
+    if (currentFlow) {
+      setTempFlowDescription(currentFlow.description || '');
+      setIsEditingFlowDescription(true);
+    }
+  };
+
+  const handleSaveFlowDescription = () => {
+    if (currentFlow) {
+      updateFlow({ description: tempFlowDescription.trim() || undefined });
+      setIsEditingFlowDescription(false);
+    }
+  };
+
+  const handleCancelEditFlowDescription = () => {
+    setIsEditingFlowDescription(false);
+    setTempFlowDescription('');
+  };
+
   const handleSaveCustomNode = (nodeDefinition: CustomNodeDefinition) => {
     try {
       customNodeManager.registerCustomNode(nodeDefinition);
@@ -388,7 +431,47 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                 {currentFlow && (
                   <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <span>•</span>
-                    <span>{currentFlow.name}</span>
+                    {isEditingFlowName ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={tempFlowName}
+                          onChange={(e) => setTempFlowName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSaveFlowName();
+                            } else if (e.key === 'Escape') {
+                              handleCancelEditFlowName();
+                            }
+                          }}
+                          className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleSaveFlowName}
+                          className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                          title="Save"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={handleCancelEditFlowName}
+                          className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleStartEditingFlowName}
+                        className="hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                        title="Click to edit name"
+                      >
+                        <span>{currentFlow.name}</span>
+                        <Edit className="w-3 h-3 opacity-50" />
+                      </button>
+                    )}
                     {hasUnsavedChanges && (
                       <span className="text-orange-500">• Unsaved changes</span>
                     )}
@@ -944,8 +1027,61 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
               {/* Canvas Header */}
               <div className="glassmorphic px-6 py-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Canvas • {currentFlow ? `${currentFlow.name}` : 'No flow selected'}
+                  <div className="flex flex-col gap-1">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Canvas • {currentFlow ? `${currentFlow.name}` : 'No flow selected'}
+                    </div>
+                    {currentFlow && (
+                      <div className="text-xs text-gray-500 dark:text-gray-500">
+                        {isEditingFlowDescription ? (
+                          <div className="flex items-center gap-2">
+                            <textarea
+                              value={tempFlowDescription}
+                              onChange={(e) => setTempFlowDescription(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSaveFlowDescription();
+                                } else if (e.key === 'Escape') {
+                                  handleCancelEditFlowDescription();
+                                }
+                              }}
+                              placeholder="Add a description..."
+                              className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 resize-none w-64"
+                              rows={2}
+                              autoFocus
+                            />
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={handleSaveFlowDescription}
+                                className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                                title="Save"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={handleCancelEditFlowDescription}
+                                className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                                title="Cancel"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={handleStartEditingFlowDescription}
+                            className="hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded transition-colors flex items-center gap-1 text-xs"
+                            title="Click to edit description"
+                          >
+                            <span>
+                              {currentFlow.description || 'No description - click to add one'}
+                            </span>
+                            <Edit className="w-3 h-3 opacity-50" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                     <span>Zoom: {Math.round(canvas.viewport.zoom * 100)}%</span>
