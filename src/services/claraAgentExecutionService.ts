@@ -132,6 +132,15 @@ export class ClaraAgentExecutionService {
       // Create AI configuration
       const aiConfig: ClaraAIConfig = this.createAIConfig(config);
       
+      // Log the configuration being used
+      console.log(`🤖 Agent Executor Configuration:`, {
+        provider: config.provider,
+        textModel: config.textModel,
+        aiConfigProvider: aiConfig.provider,
+        aiConfigTextModel: aiConfig.models.text,
+        enabledMCPServers: config.enabledMCPServers
+      });
+      
       // Prepare the full instructions with context
       let fullInstructions = instructions;
       if (context && context.trim()) {
@@ -315,7 +324,7 @@ export class ClaraAgentExecutionService {
    * Create AI configuration from agent execution config
    */
   private createAIConfig(config: AgentExecutionConfig): ClaraAIConfig {
-    return {
+    const aiConfig = {
       models: {
         text: config.textModel,
         vision: config.visionModel || config.textModel,
@@ -378,6 +387,15 @@ export class ClaraAgentExecutionService {
         enableErrorLearning: true
       }
     };
+    
+    console.log(`📋 Created AI Config:`, {
+      provider: aiConfig.provider,
+      textModel: aiConfig.models.text,
+      mcpEnabled: aiConfig.features.enableMCP,
+      mcpServers: aiConfig.mcp.enabledServers
+    });
+    
+    return aiConfig;
   }
 
   /**

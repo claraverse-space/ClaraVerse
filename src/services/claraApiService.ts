@@ -40,13 +40,14 @@ export class ClaraApiService {
     conversationHistory?: ClaraMessage[],
     onContentChunk?: (content: string) => void
   ): Promise<ClaraMessage> {
+    // Switch to the provider specified in config if different from current
+    await this.ensureCorrectProvider(config, onContentChunk);
+    
+    // Get the client AFTER ensuring correct provider
     const client = claraProviderService.getCurrentClient();
     if (!client) {
       throw new Error('No API client configured. Please select a provider.');
     }
-
-    // Switch to the provider specified in config if different from current
-    await this.ensureCorrectProvider(config, onContentChunk);
 
     try {
       // Process file attachments if any
@@ -218,6 +219,16 @@ export class ClaraApiService {
           // Update the client to use the requested provider
           claraProviderService.updateProvider(requestedProvider);
           console.log(`🚀 Switched to provider: ${requestedProvider.name} (${requestedProvider.baseUrl})`);
+          
+          // Verify the switch was successful
+          const verifyProvider = claraProviderService.getCurrentProvider();
+          const verifyClient = claraProviderService.getCurrentClient();
+          console.log(`🔍 Verification after switch:`, {
+            providerId: verifyProvider?.id,
+            providerName: verifyProvider?.name,
+            baseUrl: verifyProvider?.baseUrl,
+            clientExists: !!verifyClient
+          });
           } else {
           throw new Error(`Provider ${config.provider} not found or not configured`);
             }
