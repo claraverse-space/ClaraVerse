@@ -250,17 +250,17 @@ const LumaUILite: React.FC = () => {
         <div className="pt-12 px-8 flex-shrink-0">
           <div className="glassmorphic px-6 py-6 rounded-2xl">
             <div className="flex items-center justify-between">
-              <div>
+                <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-8 h-8 text-sakura-500 text-2xl">🚀</div>
+                  <i className="fas fa-rocket w-8 h-8 text-sakura-500 text-2xl"></i>
                   <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">LumaUI-lite</h1>
                 </div>
                 <p className="text-gray-600 dark:text-gray-400">Build simple single-page applications with ease</p>
-              </div>
+                </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 text-white rounded-lg flex items-center gap-2 font-medium transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 dark:bg-sakura-500 dark:hover:bg-sakura-600 text-white rounded-lg flex items-center gap-2 font-medium transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
                   <Plus className="w-5 h-5" />
                   Create Project
@@ -276,7 +276,7 @@ const LumaUILite: React.FC = () => {
                     placeholder="Search projects..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 dark:bg-gray-900/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 focus:border-sakura-500 w-80"
+                    className="pl-10 pr-4 py-2 glassmorphic-card border border-white/30 dark:border-gray-700/50 dark:bg-gray-900/50 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-sakura-500 focus:border-blue-500 dark:focus:border-sakura-500 w-80"
                   />
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -288,7 +288,7 @@ const LumaUILite: React.FC = () => {
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === 'grid' 
-                      ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-300' 
+                      ? 'bg-blue-100 dark:bg-sakura-900/30 text-blue-700 dark:text-sakura-300' 
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
@@ -298,7 +298,7 @@ const LumaUILite: React.FC = () => {
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === 'list' 
-                      ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-700 dark:text-sakura-300' 
+                      ? 'bg-blue-100 dark:bg-sakura-900/30 text-blue-700 dark:text-sakura-300' 
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
@@ -319,8 +319,8 @@ const LumaUILite: React.FC = () => {
             /* Empty State */
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-sakura-100 to-sakura-200 dark:from-sakura-900/30 dark:to-sakura-800/30 rounded-full flex items-center justify-center shadow-lg">
-                  <FolderOpen className="w-10 h-10 text-sakura-600 dark:text-sakura-400" />
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-sakura-900/30 dark:to-sakura-800/30 rounded-full flex items-center justify-center shadow-lg">
+                  <FolderOpen className="w-10 h-10 text-blue-600 dark:text-sakura-400" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">
                   No Projects Yet
@@ -330,7 +330,7 @@ const LumaUILite: React.FC = () => {
                 </p>
                 <button
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-sakura-500 to-sakura-600 text-white rounded-xl hover:from-sakura-600 hover:to-sakura-700 transition-all mx-auto text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-sakura-500 dark:to-sakura-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 dark:hover:from-sakura-600 dark:hover:to-sakura-700 transition-all mx-auto text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
                   <Plus className="w-4 h-4" />
                   Create Your First Project
@@ -352,7 +352,7 @@ const LumaUILite: React.FC = () => {
                 </p>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="px-4 py-2 bg-sakura-100 dark:bg-sakura-900/30 hover:bg-sakura-200 dark:hover:bg-sakura-900/50 text-sakura-700 dark:text-sakura-300 rounded-lg text-sm font-medium transition-colors"
+                  className="px-4 py-2 bg-blue-100 dark:bg-sakura-900/30 hover:bg-blue-200 dark:hover:bg-sakura-900/50 text-blue-700 dark:text-sakura-300 rounded-lg text-sm font-medium transition-colors"
                 >
                   Clear Search
                 </button>
@@ -367,13 +367,13 @@ const LumaUILite: React.FC = () => {
                     {filteredProjects.map((project) => (
                       <div
                         key={project.id}
-                        className="group glassmorphic rounded-xl hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+                        className="group glassmorphic rounded-xl hover:border-blue-300 dark:hover:border-sakura-500 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden"
                       >
                         {/* Header Section */}
                         <div className="p-4 border-b border-white/20 dark:border-gray-700/50">
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-lg">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 dark:from-sakura-500 dark:to-pink-500 rounded-lg flex items-center justify-center text-white text-lg">
                                 🚀
                               </div>
                               <div className="flex-1 min-w-0">
@@ -407,7 +407,7 @@ const LumaUILite: React.FC = () => {
                           <div className="flex items-center justify-center gap-4">
                             <button
                               onClick={() => handleOpenApp(project)}
-                              className="group relative w-12 h-12 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                              className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-sakura-500 dark:to-sakura-600 hover:from-blue-600 hover:to-blue-700 dark:hover:from-sakura-600 dark:hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                               title="Open Project"
                             >
                               <Play className="w-5 h-5 transition-transform group-hover:scale-110" />
@@ -444,12 +444,12 @@ const LumaUILite: React.FC = () => {
                     {filteredProjects.map((project) => (
                       <div
                         key={project.id}
-                        className="group glassmorphic rounded-xl hover:border-sakura-300 dark:hover:border-sakura-500 hover:shadow-lg transition-all duration-200"
+                        className="group glassmorphic rounded-xl hover:border-blue-300 dark:hover:border-sakura-500 hover:shadow-lg transition-all duration-200"
                       >
                         <div className="p-6">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4 flex-1 min-w-0">
-                              <div className="w-12 h-12 bg-gradient-to-br from-sakura-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-xl flex-shrink-0">
+                              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 dark:from-sakura-500 dark:to-pink-500 rounded-lg flex items-center justify-center text-white text-xl flex-shrink-0">
                                 🚀
                               </div>
                               <div className="flex-1 min-w-0">
@@ -485,7 +485,7 @@ const LumaUILite: React.FC = () => {
                             <div className="flex items-center gap-3 ml-4">
                               <button
                                 onClick={() => handleOpenApp(project)}
-                                className="group relative w-12 h-12 bg-gradient-to-r from-sakura-500 to-sakura-600 hover:from-sakura-600 hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
+                                className="group relative w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-sakura-500 dark:to-sakura-600 hover:from-blue-600 hover:to-blue-700 dark:hover:from-sakura-600 dark:hover:to-sakura-700 text-white rounded-xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95"
                                 title="Open Project"
                               >
                                 <Play className="w-5 h-5 transition-transform group-hover:scale-110" />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, Terminal, X, FileText, Image, Calculator, Upload } from 'lucide-react';
+import { Bot, Terminal, X, FileText, Image, Calculator, Upload, Info } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { agentWorkflowStorage } from '../services/agentWorkflowStorage';
 import { customNodeManager } from './AgentBuilder/NodeCreator/CustomNodeManager';
@@ -42,22 +42,22 @@ const formatMessage = (content: string) => {
     <ReactMarkdown
       className="prose prose-sm max-w-none dark:prose-invert"
       components={{
-        p: ({ children }) => <p className="text-gray-900 dark:text-gray-100 mb-2 last:mb-0">{children}</p>,
-        h1: ({ children }) => <h1 className="text-gray-900 dark:text-gray-100 text-lg font-bold mb-2">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-gray-900 dark:text-gray-100 text-base font-bold mb-2">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-gray-900 dark:text-gray-100 text-sm font-bold mb-1">{children}</h3>,
-        ul: ({ children }) => <ul className="text-gray-900 dark:text-gray-100 list-disc list-inside mb-2 space-y-1">{children}</ul>,
-        ol: ({ children }) => <ol className="text-gray-900 dark:text-gray-100 list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-        li: ({ children }) => <li className="text-gray-900 dark:text-gray-100">{children}</li>,
-        strong: ({ children }) => <strong className="text-gray-900 dark:text-gray-100 font-semibold">{children}</strong>,
-        em: ({ children }) => <em className="text-gray-900 dark:text-gray-100 italic">{children}</em>,
+        p: ({ children }) => <p className="text-gray-800 dark:text-purple-100 mb-2 last:mb-0">{children}</p>,
+        h1: ({ children }) => <h1 className="text-gray-900 dark:text-purple-100 text-lg font-bold mb-2">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-gray-900 dark:text-purple-100 text-base font-bold mb-2">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-gray-900 dark:text-purple-100 text-sm font-bold mb-1">{children}</h3>,
+        ul: ({ children }) => <ul className="text-gray-800 dark:text-purple-100 list-disc list-inside mb-2 space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="text-gray-800 dark:text-purple-100 list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+        li: ({ children }) => <li className="text-gray-800 dark:text-purple-100">{children}</li>,
+        strong: ({ children }) => <strong className="text-gray-900 dark:text-purple-100 font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="text-gray-800 dark:text-purple-100 italic">{children}</em>,
         code: ({ children }) => (
-          <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1 py-0.5 rounded text-xs font-mono">
+          <code className="bg-gray-100 dark:bg-purple-800/40 text-gray-800 dark:text-purple-200 px-2 py-1 rounded text-xs font-mono border border-gray-300 dark:border-purple-600/30">
             {children}
           </code>
         ),
         pre: ({ children }) => (
-          <pre className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 p-3 rounded-lg overflow-x-auto text-xs font-mono mb-2">
+          <pre className="bg-gray-100 dark:bg-purple-800/40 text-gray-800 dark:text-purple-200 p-3 rounded-lg overflow-x-auto text-xs font-mono mb-2 border border-gray-300 dark:border-purple-600/30">
             {children}
           </pre>
         ),
@@ -77,6 +77,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
   const [agentLoading, setAgentLoading] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<SDKExecutionLog[]>([]);
+  const [showTooltip, setShowTooltip] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -622,10 +623,10 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
 
   if (agentLoading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50 dark:from-[#1a1625] dark:to-[#2d1b3d]">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading agent...</p>
+          <div className="w-8 h-8 border-2 border-blue-500 dark:border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-700 dark:text-purple-200">Loading agent...</p>
         </div>
       </div>
     );
@@ -633,12 +634,12 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
 
   if (!agentFlow) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50 dark:from-[#1a1625] dark:to-[#2d1b3d]">
         <div className="text-center">
-          <p className="text-gray-600 dark:text-gray-400">Agent not found</p>
+          <p className="text-gray-700 dark:text-purple-200">Agent not found</p>
           <button
             onClick={onClose}
-            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="mt-4 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-purple-500 dark:to-pink-500 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 dark:hover:from-purple-600 dark:hover:to-pink-600 transition-all duration-200 shadow-lg"
           >
             Go Back
           </button>
@@ -648,43 +649,56 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      <div className="bg-white dark:bg-gray-800 border-b p-4">
+    <div className="h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 to-blue-50 dark:from-[#1a1625] dark:to-[#2d1b3d]">
+      <div className="bg-gradient-to-r from-white/80 to-blue-50/80 dark:from-[#2d1b3d]/80 dark:to-[#1a1625]/80 backdrop-blur-sm border-b border-gray-200 dark:border-purple-500/20 p-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-purple-500 dark:to-pink-500 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/25 dark:shadow-purple-500/25">
             <Bot className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-purple-100">
               {agentFlow.name}
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600 dark:text-purple-300">
               {agentFlow.description || 'AI Agent Ready to Execute'}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full">
-              ✨ Clara Flow SDK
-            </span>
+
+            <div className="relative">
+              <span 
+                className="text-xs px-3 py-1 bg-gradient-to-r from-emerald-100/80 to-green-100/80 dark:from-emerald-400/20 dark:to-green-400/20 text-emerald-700 dark:text-emerald-300 rounded-full border border-emerald-300 dark:border-emerald-400/30 cursor-help"
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+              >
+                <small>Powered by</small> ClaraFlow SDK
+              </span>
+              {showTooltip && (
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 dark:bg-purple-900/95 backdrop-blur-sm text-gray-800 dark:text-purple-100 text-xs rounded-lg border border-gray-300 dark:border-purple-500/30 whitespace-nowrap z-50 shadow-lg">
+                  Using Clara SDK, you can integrate this in your own apps and projects
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-white/95 dark:border-b-purple-900/95"></div>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowLogs(!showLogs)}
-              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-all duration-200 ${
                 showLogs
-                  ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ? 'bg-gradient-to-r from-blue-100 to-blue-200 dark:from-purple-500/30 dark:to-pink-500/30 text-blue-700 dark:text-purple-200 border border-blue-300 dark:border-purple-400/40'
+                  : 'bg-gray-100 dark:bg-purple-800/30 text-gray-700 dark:text-purple-300 hover:bg-gray-200 dark:hover:bg-purple-700/40 border border-gray-300 dark:border-purple-600/30'
               }`}
             >
               <Terminal className="w-4 h-4" />
               {showLogs ? 'Hide Logs' : 'Show Logs'}
               {executionLogs.length > 0 && (
                 <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                  showLogs ? 'bg-blue-400 text-blue-50' : 'bg-red-500 text-white'
+                  showLogs ? 'bg-blue-500 dark:bg-purple-400 text-white dark:text-purple-50' : 'bg-blue-500 dark:bg-pink-500 text-white'
                 }`}>
                   {executionLogs.length}
                 </span>
               )}
             </button>
-            <button onClick={onClose} className="p-2 text-gray-400">
+            <button onClick={onClose} className="p-2 text-gray-600 dark:text-purple-400 hover:text-gray-800 dark:hover:text-purple-200 transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -692,37 +706,37 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
 
         {/* Execution Logs Panel */}
         {showLogs && (
-          <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="mt-3 p-3 bg-gray-50/90 dark:bg-purple-900/20 backdrop-blur-sm rounded-lg border border-gray-200 dark:border-purple-500/30">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Clara Flow SDK Logs</h4>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{executionLogs.length} entries</span>
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-purple-100">Clara Flow SDK Logs</h4>
+              <span className="text-xs text-gray-600 dark:text-purple-300">{executionLogs.length} entries</span>
             </div>
             {executionLogs.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 italic">No logs yet. Run your agent to see execution details.</p>
+              <p className="text-sm text-gray-600 dark:text-purple-300 italic">No logs yet. Run your agent to see execution details.</p>
             ) : (
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {executionLogs.map((log) => (
                   <div key={log.id} className={`p-2 rounded text-xs font-mono ${
                     log.level === 'error' 
-                      ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+                      ? 'bg-red-500/20 text-red-300 border border-red-400/30'
                       : log.level === 'warning'
-                      ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800'
+                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-400/30'
                       : log.level === 'success'
-                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800'
-                      : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                      : 'bg-purple-500/20 text-purple-200 border border-purple-400/30'
                   }`}>
                     <div className="flex items-start gap-2">
-                      <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">
+                      <span className="text-purple-400 flex-shrink-0">
                         {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
                       <span className="flex-1">{log.message}</span>
                     </div>
                     {log.data && (
                       <details className="mt-1">
-                        <summary className="cursor-pointer text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100">
+                        <summary className="cursor-pointer text-purple-300 hover:text-purple-100">
                           Details
                         </summary>
-                        <pre className="mt-1 text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+                        <pre className="mt-1 text-xs bg-purple-800/30 p-2 rounded overflow-x-auto">
                           {JSON.stringify(log.data, null, 2)}
                         </pre>
                       </details>
@@ -738,10 +752,10 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Input Panel */}
-        <div className="w-1/3 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Agent Inputs</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+        <div className="w-[30%] bg-gradient-to-b from-gray-50/80 to-gray-100/80 dark:from-purple-900/20 dark:to-purple-800/30 border-r border-gray-200 dark:border-purple-500/20 flex flex-col">
+          <div className="p-4 border-b border-gray-200 dark:border-purple-500/20">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-purple-100 mb-2">Agent Inputs</h3>
+            <p className="text-sm text-gray-600 dark:text-purple-300">
               Configure the inputs for your agent execution
             </p>
           </div>
@@ -749,16 +763,16 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {inputValues.length === 0 ? (
               <div className="text-center py-8">
-                <Calculator className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500 dark:text-gray-400">No inputs required</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <Calculator className="w-12 h-12 text-gray-400 dark:text-purple-400 mx-auto mb-3" />
+                <p className="text-gray-700 dark:text-purple-200">No inputs required</p>
+                <p className="text-xs text-gray-500 dark:text-purple-300 mt-1">
                   This agent runs without input parameters
                 </p>
               </div>
             ) : (
               inputValues.map((input) => (
                 <div key={input.nodeId} className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="block text-sm font-medium text-gray-800 dark:text-purple-200">
                     {input.nodeName}
                   </label>
                   
@@ -772,14 +786,15 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                             handleInputChange(input.nodeId, file);
                           }
                         }}
-                        className="block w-full text-sm text-gray-500 dark:text-gray-400
+                        className="block w-full text-sm text-gray-700 dark:text-purple-300
                           file:mr-4 file:py-2 file:px-4
                           file:rounded-lg file:border-0
                           file:text-sm file:font-medium
-                          file:bg-indigo-50 file:text-indigo-700
-                          dark:file:bg-indigo-900/30 dark:file:text-indigo-300
-                          hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/50
-                          file:cursor-pointer"
+                          file:bg-gradient-to-r file:from-blue-500 file:to-blue-600 dark:file:from-purple-500 dark:file:to-pink-500
+                          file:text-white
+                          hover:file:from-blue-600 hover:file:to-blue-700 dark:hover:file:from-purple-600 dark:hover:file:to-pink-600
+                          file:cursor-pointer file:transition-all file:duration-200
+                          file:shadow-lg file:shadow-blue-500/25 dark:file:shadow-purple-500/25"
                         accept={
                           input.nodeName.toLowerCase().includes('image') ? 'image/*' :
                           input.nodeName.toLowerCase().includes('pdf') ? '.pdf' :
@@ -787,7 +802,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                         }
                       />
                       {input.value && input.value instanceof File && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-purple-300">
                           {input.value.type.startsWith('image/') ? (
                             <Image className="w-4 h-4" />
                           ) : input.value.type === 'application/pdf' ? (
@@ -806,10 +821,10 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                       value={input.value as string || ''}
                       onChange={(e) => handleInputChange(input.nodeId, e.target.value)}
                       placeholder={`Enter ${input.nodeName.toLowerCase()}...`}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                        focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 
-                        bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
-                        placeholder-gray-500 dark:placeholder-gray-400"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-purple-500/30 rounded-lg 
+                        focus:ring-2 focus:ring-blue-400 dark:focus:ring-purple-400 focus:border-blue-400 dark:focus:border-purple-400 
+                        bg-white dark:bg-purple-800/20 text-gray-800 dark:text-purple-100
+                        placeholder-gray-500 dark:placeholder-purple-400 transition-all duration-200"
                     />
                   )}
                 </div>
@@ -817,19 +832,19 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
             )}
           </div>
 
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+          <div className="p-4 border-t border-gray-200 dark:border-purple-500/20 space-y-3">
             <button
               onClick={handleRunAgent}
               disabled={!hasAllInputs || isLoading}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
                 hasAllInputs && !isLoading
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-purple-500 dark:to-pink-500 hover:from-blue-600 hover:to-blue-700 dark:hover:from-purple-600 dark:hover:to-pink-600 text-white shadow-lg shadow-blue-500/25 dark:shadow-purple-500/25'
+                  : 'bg-gray-200 dark:bg-purple-800/30 text-gray-500 dark:text-purple-400 cursor-not-allowed border border-gray-300 dark:border-purple-600/30'
               }`}
             >
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-600 rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-purple-300 border-t-purple-500 rounded-full animate-spin"></div>
                   Executing with Clara Flow SDK...
                 </div>
               ) : (
@@ -841,7 +856,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
               <button
                 onClick={clearInputs}
                 disabled={isLoading}
-                className="w-full py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                className="w-full py-2 px-4 rounded-lg border border-gray-300 dark:border-purple-500/30 text-gray-700 dark:text-purple-200 hover:bg-gray-100 dark:hover:bg-purple-700/30 transition-all duration-200 disabled:opacity-50"
               >
                 Clear All Inputs
               </button>
@@ -850,10 +865,10 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
         </div>
 
         {/* Results Panel */}
-        <div className="flex-1 bg-white dark:bg-gray-800 flex flex-col">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Agent Results</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex-1 bg-gradient-to-b from-gray-50/50 to-gray-100/50 dark:from-purple-900/10 dark:to-purple-800/20 flex flex-col">
+          <div className="p-5">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-purple-100">Agent Results</h3>
+            <p className="text-sm text-gray-600 dark:text-purple-300">
               View the output from your agent execution using Clara Flow SDK
             </p>
           </div>
@@ -862,11 +877,11 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
             {messages.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
-                  <Bot className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                  <h4 className="text-lg font-medium text-gray-500 dark:text-gray-400 mb-2">
+                  <Bot className="w-16 h-16 text-gray-400 dark:text-purple-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-700 dark:text-purple-200 mb-2">
                     Ready to Execute
                   </h4>
-                  <p className="text-gray-400 dark:text-gray-500">
+                  <p className="text-gray-600 dark:text-purple-300">
                     Configure your inputs and click "Run Agent" to see results here
                   </p>
                 </div>
@@ -881,7 +896,7 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                     }`}
                   >
                     {message.type === 'assistant' && (
-                      <div className="w-8 h-8 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-purple-500 dark:to-pink-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/25 dark:shadow-purple-500/25">
                         <Bot className="w-4 h-4 text-white" />
                       </div>
                     )}
@@ -889,8 +904,8 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                     <div
                       className={`max-w-[85%] p-4 rounded-lg ${
                         message.type === 'user'
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700'
+                          ? 'bg-gradient-to-r from-blue-500 to-blue-600 dark:from-purple-500 dark:to-pink-500 text-white shadow-lg shadow-blue-500/25 dark:shadow-purple-500/25'
+                          : 'bg-white/90 dark:bg-purple-800/30 border border-gray-200 dark:border-purple-500/30 shadow-sm'
                       }`}
                     >
                       {message.type === 'user' ? (
@@ -900,15 +915,15 @@ const AgentRunnerSDK: React.FC<AgentRunnerProps> = ({ agentId, onClose }) => {
                       )}
                       
                       <div className={`mt-2 text-xs opacity-70 ${
-                        message.type === 'user' ? 'text-indigo-100' : 'text-gray-500 dark:text-gray-400'
+                        message.type === 'user' ? 'text-white' : 'text-gray-500 dark:text-purple-300'
                       }`}>
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </div>
                     </div>
                     
                     {message.type === 'user' && (
-                      <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">U</span>
+                      <div className="w-8 h-8 bg-purple-600/50 rounded-full flex items-center justify-center flex-shrink-0 border border-purple-400/30">
+                        <span className="text-sm font-medium text-purple-200">U</span>
                       </div>
                     )}
                   </div>

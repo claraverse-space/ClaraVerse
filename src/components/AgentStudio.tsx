@@ -766,6 +766,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             features: ['Universal API support', 'Auto-fallback', 'JSON validation', 'Ollama compatible']
                           },
                           { 
+                            name: 'Agent Executor', 
+                            type: 'agent-executor', 
+                            icon: '🤖', 
+                            description: 'Autonomous AI agent with MCP tool access and multi-step execution', 
+                            color: 'bg-gradient-to-r from-emerald-500 to-teal-500',
+                            features: ['Autonomous mode', 'MCP tools', 'Multi-provider', 'Self-correction', 'Chain of thought']
+                          },
+                          { 
                             name: 'Whisper Transcription', 
                             type: 'whisper-transcription', 
                             icon: '🎙️', 

@@ -922,6 +922,101 @@ export class NodeRegistry {
         throw new Error('Whisper transcription failed: Unknown error');
       }
     });
+
+    // Agent Executor Node
+    this.nodeExecutors.set('agent-executor', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      const { 
+        provider = 'claras-pocket',
+        textModel = 'llama3.2:latest',
+        visionModel = '',
+        codeModel = '',
+        enabledMCPServers = [],
+        temperature = 0.7,
+        maxTokens = 4000,
+        maxRetries = 3,
+        enableSelfCorrection = true,
+        enableChainOfThought = true,
+        enableToolGuidance = true,
+        maxToolCalls = 10,
+        confidenceThreshold = 0.7
+      } = node.data;
+
+      const instructions = inputs.instructions || '';
+      const contextInput = inputs.context || '';
+      const attachments = inputs.attachments || [];
+
+      if (!instructions) {
+        throw new Error('Instructions are required for Agent Executor');
+      }
+
+      try {
+        // Import the Clara Agent Execution Service
+        const { ClaraAgentExecutionService } = await import('../../services/claraAgentExecutionService');
+        const agentService = new ClaraAgentExecutionService();
+
+        context.log(`🤖 Executing autonomous agent with provider: ${provider}`);
+        context.log(`📋 Instructions: ${instructions.substring(0, 100)}${instructions.length > 100 ? '...' : ''}`);
+        
+        if (enabledMCPServers.length > 0) {
+          context.log(`🔧 MCP Servers enabled: ${enabledMCPServers.join(', ')}`);
+        }
+
+        // Execute the agent
+        const result = await agentService.executeAgent(
+          instructions,
+          {
+            provider,
+            textModel,
+            visionModel,
+            codeModel,
+            enabledMCPServers,
+            temperature,
+            maxTokens,
+            maxRetries,
+            enableSelfCorrection,
+            enableChainOfThought,
+            enableToolGuidance,
+            maxToolCalls,
+            confidenceThreshold
+          },
+          contextInput,
+          attachments
+        );
+
+        context.log(`✅ Agent execution completed successfully`);
+        
+        return {
+          result: result.content,
+          toolResults: result.toolResults || [],
+          executionLog: result.executionLog || '',
+          success: result.success,
+          metadata: {
+            ...result.metadata,
+            mcpServers: enabledMCPServers,
+            executionTime: result.metadata.duration || 0,
+            retryCount: 0, // Not tracked in current implementation
+            processingTime: Date.now()
+          }
+        };
+
+      } catch (error) {
+        context.error(`❌ Agent execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        return {
+          result: '',
+          toolResults: [],
+          executionLog: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          success: false,
+          metadata: {
+            provider,
+            model: textModel,
+            mcpServers: enabledMCPServers,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            processingTime: Date.now()
+          }
+        };
+      }
+    });
   }
 
   registerCustomNode(customNode: any): void {

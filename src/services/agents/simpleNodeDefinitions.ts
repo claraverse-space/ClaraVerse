@@ -1211,6 +1211,198 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
     }
   },
 
+  // AGENT EXECUTOR NODE
+  {
+    id: 'agent-executor-node',
+    name: 'Agent Executor',
+    type: 'agent-executor',
+    category: 'ai',
+    description: 'Autonomous AI agent with MCP tool access and multi-step execution capabilities',
+    icon: 'bot',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'instructions',
+        name: 'Instructions',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Task instructions for the autonomous agent'
+      },
+      {
+        id: 'context',
+        name: 'Context',
+        type: 'input',
+        dataType: 'string',
+        required: false,
+        description: 'Additional context for the task'
+      },
+      {
+        id: 'attachments',
+        name: 'Attachments',
+        type: 'input',
+        dataType: 'array',
+        required: false,
+        description: 'File attachments for the task'
+      }
+    ],
+    outputs: [
+      {
+        id: 'result',
+        name: 'Result',
+        type: 'output',
+        dataType: 'string',
+        description: 'Agent execution result'
+      },
+      {
+        id: 'toolResults',
+        name: 'Tool Results',
+        type: 'output',
+        dataType: 'array',
+        description: 'Results from MCP tools used'
+      },
+      {
+        id: 'executionLog',
+        name: 'Execution Log',
+        type: 'output',
+        dataType: 'string',
+        description: 'Detailed execution log'
+      },
+      {
+        id: 'success',
+        name: 'Success',
+        type: 'output',
+        dataType: 'boolean',
+        description: 'Whether execution was successful'
+      },
+      {
+        id: 'metadata',
+        name: 'Metadata',
+        type: 'output',
+        dataType: 'object',
+        description: 'Execution metadata (timing, tools used, etc.)'
+      }
+    ],
+    properties: [
+      {
+        id: 'provider',
+        name: 'AI Provider',
+        type: 'select',
+        defaultValue: 'claras-pocket',
+        options: [
+          { label: "Clara's Pocket (Local)", value: 'claras-pocket' },
+          { label: 'OpenAI', value: 'openai' },
+          { label: 'Ollama', value: 'ollama' },
+          { label: 'OpenRouter', value: 'openrouter' }
+        ],
+        description: 'AI provider to use for agent execution'
+      },
+      {
+        id: 'textModel',
+        name: 'Text Model',
+        type: 'string',
+        defaultValue: 'llama3.2:latest',
+        description: 'Primary text model for the agent'
+      },
+      {
+        id: 'visionModel',
+        name: 'Vision Model',
+        type: 'string',
+        defaultValue: '',
+        description: 'Optional vision model for image processing'
+      },
+      {
+        id: 'codeModel',
+        name: 'Code Model',
+        type: 'string',
+        defaultValue: '',
+        description: 'Optional specialized code model'
+      },
+      {
+        id: 'enabledMCPServers',
+        name: 'MCP Servers',
+        type: 'multiselect',
+        defaultValue: [],
+        options: [
+          { label: 'Filesystem', value: 'filesystem' },
+          { label: 'Web Search', value: 'web-search' },
+          { label: 'Python Executor', value: 'python-executor' },
+          { label: 'Database', value: 'database' },
+          { label: 'Git Manager', value: 'git-manager' },
+          { label: 'Image Processor', value: 'image-processor' }
+        ],
+        description: 'MCP servers to enable for tool access'
+      },
+      {
+        id: 'temperature',
+        name: 'Temperature',
+        type: 'number',
+        defaultValue: 0.7,
+        validation: { min: 0, max: 2 },
+        description: 'AI model temperature (0.0 - 2.0)'
+      },
+      {
+        id: 'maxTokens',
+        name: 'Max Tokens',
+        type: 'number',
+        defaultValue: 4000,
+        validation: { min: 100, max: 8000 },
+        description: 'Maximum tokens for response'
+      },
+      {
+        id: 'maxRetries',
+        name: 'Max Retries',
+        type: 'number',
+        defaultValue: 3,
+        validation: { min: 0, max: 10 },
+        description: 'Maximum retry attempts on failure'
+      },
+      {
+        id: 'enableSelfCorrection',
+        name: 'Enable Self-Correction',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Allow agent to self-correct errors'
+      },
+      {
+        id: 'enableChainOfThought',
+        name: 'Enable Chain of Thought',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Use chain of thought reasoning'
+      },
+      {
+        id: 'enableToolGuidance',
+        name: 'Enable Tool Guidance',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Provide guidance for tool usage'
+      },
+      {
+        id: 'maxToolCalls',
+        name: 'Max Tool Calls',
+        type: 'number',
+        defaultValue: 10,
+        validation: { min: 1, max: 20 },
+        description: 'Maximum number of tool calls per execution'
+      },
+      {
+        id: 'confidenceThreshold',
+        name: 'Confidence Threshold',
+        type: 'number',
+        defaultValue: 0.7,
+        validation: { min: 0, max: 1 },
+        description: 'Minimum confidence for tool execution'
+      }
+    ],
+    executionHandler: 'agent-executor-node-handler',
+    metadata: {
+      tags: ['ai', 'agent', 'autonomous', 'mcp', 'tools'],
+      documentation: 'Executes autonomous AI agents with tool access for complex multi-step tasks.'
+    }
+  },
+
   // TEXT PROCESSING NODE
 ];
 

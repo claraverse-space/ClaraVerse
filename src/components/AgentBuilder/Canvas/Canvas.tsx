@@ -40,6 +40,7 @@ import WhisperTranscriptionNode from '../Nodes/WhisperTranscriptionNode';
 import CombineTextNode from '../Nodes/CombineTextNode';
 import APIRequestNode from '../Nodes/APIRequestNode';
 import StaticTextNode from '../Nodes/StaticTextNode';
+import AgentExecutorNode from '../Nodes/AgentExecutorNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -59,6 +60,7 @@ console.log('Node imports loaded:', {
   CombineTextNode: !!CombineTextNode,
   APIRequestNode: !!APIRequestNode,
   StaticTextNode: !!StaticTextNode,
+  AgentExecutorNode: !!AgentExecutorNode,
 });
 
 // Define base node types with proper imports - moved outside component to ensure immediate availability
@@ -79,6 +81,7 @@ const baseNodeTypes: NodeTypes = {
   'static-text': StaticTextNode,
   'text': TextNode,
   'math': MathNode,
+  'agent-executor': AgentExecutorNode,
 };
 
 // Debug: Log base node types immediately after definition

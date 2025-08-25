@@ -313,7 +313,9 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-8 h-8 text-sakura-500 text-2xl">📚</div>
+                  <div className="w-8 h-8 text-sakura-500 flex items-center justify-center">
+                    <i className="fas fa-book text-2xl"></i>
+                  </div>
                   <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Notebooks</h1>
                 </div>
                 <p className="text-gray-600 dark:text-gray-400">Create, manage, and organize your knowledge documents</p>

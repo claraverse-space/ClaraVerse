@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Play, Trash2, Search, Grid, List, Clock,  Bot } from 'lucide-react';
+import { Plus, Edit, Play, Trash2, Search, Grid, List, Clock, Bot, Brain } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { AgentFlow } from '../types/agent/types';
@@ -174,7 +174,9 @@ const AgentManager: React.FC<AgentManagerProps> = ({ onPageChange, onEditAgent, 
                 <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-8 h-8 text-sakura-500 text-2xl">🧠</div>
+                  <div className="w-8 h-8 text-sakura-500 text-2xl flex items-center justify-center">
+                    <Brain className="w-8 h-8" />
+                  </div>
                   <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">
                     AI Agents
                   </h1>

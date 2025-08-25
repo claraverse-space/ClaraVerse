@@ -749,7 +749,7 @@ const AgentRunnerContent: React.FC<AgentRunnerProps> = ({ agentId, onClose, onPa
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 text-green-700 dark:text-green-300 rounded-full font-medium border border-green-200/50 dark:border-green-700/50">
-                      ✨ Clara Flow SDK
+                     Clara Flow SDK
                     </span>
                   </div>
                 </div>
