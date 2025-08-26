@@ -872,6 +872,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             color: 'bg-gradient-to-r from-teal-500 to-cyan-500',
                             features: ['Binary input', 'Multi-format', 'High accuracy', 'Language detection']
                           },
+                          { 
+                            name: 'Text to Speech', 
+                            type: 'text-to-speech', 
+                            icon: '🔊', 
+                            description: 'Convert text to speech with multiple engine options', 
+                            color: 'bg-gradient-to-r from-orange-500 to-red-500',
+                            features: ['Multiple engines', 'Voice selection', 'Speed control', 'Quality options']
+                          },
                         ].map((node) => (
                           <div
                             key={node.name}

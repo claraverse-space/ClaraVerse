@@ -1103,6 +1103,99 @@ export class NodeRegistry {
         };
       }
     });
+
+    // Text to Speech Node
+    this.nodeExecutors.set('text-to-speech', async (node: FlowNode, inputs: Record<string, any>, context: ExecutionContext) => {
+      const text = inputs.text || '';
+      
+      if (!text.trim()) {
+        throw new Error('Text input is required for text-to-speech conversion');
+      }
+
+      try {
+        context.log('🔊 Starting text-to-speech conversion...');
+        
+        // Import the service dynamically to avoid circular dependencies
+        const { claraTTSService } = await import('../../services/claraTTSService');
+        
+        // Get configuration from node data
+        const engine = node.data.engine || 'kokoro';
+        const voice = node.data.voice || 'af_sarah';
+        const language = node.data.language || 'en';
+        const speed = node.data.speed || 1.0;
+        const volume = node.data.volume || 1.0;
+        const autoPlay = node.data.autoPlay !== undefined ? node.data.autoPlay : true;
+        const slow = speed < 1.0;
+
+        context.log(`🎤 TTS config: engine=${engine}, voice=${voice}, speed=${speed}, language=${language}, autoPlay=${autoPlay}`);
+
+        // Check service health
+        if (!claraTTSService.isBackendHealthy()) {
+          throw new Error('TTS service is not available');
+        }
+
+        // Generate speech using the synthesizeText method
+        const result = await claraTTSService.synthesizeText({
+          text,
+          engine: engine as 'gtts' | 'pyttsx3' | 'kokoro' | 'kokoro-onnx' | 'auto',
+          voice,
+          language,
+          speed,
+          slow
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'TTS generation failed');
+        }
+
+        context.log('✅ Text-to-speech conversion completed successfully');
+
+        // Auto-play the audio if enabled
+        if (autoPlay && result.audioUrl) {
+          try {
+            context.log('🔊 Auto-playing generated audio...');
+            await claraTTSService.playAudioWithControls(
+              result.audioUrl,
+              volume,
+              speed,
+              `${node.id}-workflow` // Use node ID for tracking
+            );
+            context.log('🎵 Audio playback started');
+          } catch (playError) {
+            context.log(`⚠️ Audio auto-play failed: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
+            // Don't throw error for playback failure, just log it
+          }
+        }
+
+        return {
+          audioUrl: result.audioUrl,
+          metadata: {
+            text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+            engine,
+            voice,
+            language,
+            speed,
+            volume,
+            autoPlay,
+            textLength: text.length,
+            audioPlayed: autoPlay,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        context.error(`❌ Text-to-speech conversion failed: ${errorMessage}`);
+        
+        return {
+          audioUrl: null,
+          metadata: {
+            error: errorMessage,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
+    });
   }
 
   registerCustomNode(customNode: any): void {

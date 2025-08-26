@@ -39,6 +39,7 @@ import FileUploadNode from '../Nodes/FileUploadNode';
 import WhisperTranscriptionNode from '../Nodes/WhisperTranscriptionNode';
 import CombineTextNode from '../Nodes/CombineTextNode';
 import APIRequestNode from '../Nodes/APIRequestNode';
+import TextToSpeechNode from '../Nodes/TextToSpeechNode';
 import StaticTextNode from '../Nodes/StaticTextNode';
 import AgentExecutorNode from '../Nodes/AgentExecutorNode';
 import { ComfyUIImageGenNode } from '../Nodes/ComfyUIImageGenNode';
@@ -84,6 +85,7 @@ const baseNodeTypes: NodeTypes = {
   'math': MathNode,
   'agent-executor': AgentExecutorNode,
   'comfyui-image-gen': ComfyUIImageGenNode,
+  'text-to-speech': TextToSpeechNode,
 };
 
 // Debug: Log base node types immediately after definition

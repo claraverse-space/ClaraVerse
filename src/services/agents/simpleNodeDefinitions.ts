@@ -1407,6 +1407,173 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
   // COMFYUI IMAGE GENERATION NODE
   comfyUIImageGenNodeDefinition,
 
+  // TEXT-TO-SPEECH NODE
+  {
+    id: 'text-to-speech-node',
+    name: 'Text to Speech',
+    type: 'text-to-speech',
+    category: 'media',
+    description: 'Convert text to speech and play audio using Clara\'s TTS service',
+    icon: 'volume-2',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'text',
+        name: 'Text',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Text to convert to speech'
+      }
+    ],
+    outputs: [
+      {
+        id: 'audioUrl',
+        name: 'Audio URL',
+        type: 'output',
+        dataType: 'string',
+        description: 'Generated audio file URL'
+      },
+      {
+        id: 'success',
+        name: 'Success',
+        type: 'output',
+        dataType: 'boolean',
+        description: 'Whether TTS generation was successful'
+      },
+      {
+        id: 'status',
+        name: 'Status',
+        type: 'output',
+        dataType: 'object',
+        description: 'TTS operation status and metadata'
+      }
+    ],
+    properties: [
+      {
+        id: 'engine',
+        name: 'TTS Engine',
+        type: 'select',
+        defaultValue: 'kokoro',
+        options: [
+          { label: 'Kokoro (High Quality)', value: 'kokoro' },
+          { label: 'Kokoro ONNX (Fast)', value: 'kokoro-onnx' },
+          { label: 'Google TTS', value: 'gtts' },
+          { label: 'Pyttsx3 (Local)', value: 'pyttsx3' },
+          { label: 'Auto Select', value: 'auto' }
+        ],
+        description: 'Text-to-speech engine to use'
+      },
+      {
+        id: 'voice',
+        name: 'Voice',
+        type: 'select',
+        defaultValue: 'af_sarah',
+        options: [
+          { label: 'Sarah (Female)', value: 'af_sarah' },
+          { label: 'Alex (Male)', value: 'am_alex' },
+          { label: 'Nicole (Female)', value: 'af_nicole' },
+          { label: 'Michael (Male)', value: 'am_michael' },
+          { label: 'Emma (Female)', value: 'bf_emma' },
+          { label: 'Brian (Male)', value: 'bm_brian' }
+        ],
+        description: 'Voice to use for speech synthesis'
+      },
+      {
+        id: 'language',
+        name: 'Language',
+        type: 'select',
+        defaultValue: 'en',
+        options: [
+          { label: 'English', value: 'en' },
+          { label: 'Spanish', value: 'es' },
+          { label: 'French', value: 'fr' },
+          { label: 'German', value: 'de' },
+          { label: 'Italian', value: 'it' },
+          { label: 'Portuguese', value: 'pt' },
+          { label: 'Japanese', value: 'ja' },
+          { label: 'Korean', value: 'ko' },
+          { label: 'Chinese', value: 'zh' }
+        ],
+        description: 'Language for text-to-speech'
+      },
+      {
+        id: 'speed',
+        name: 'Speed',
+        type: 'number',
+        defaultValue: 1.0,
+        description: 'Speech speed (0.5 - 2.0)',
+        validation: {
+          min: 0.5,
+          max: 2.0
+        }
+      },
+      {
+        id: 'volume',
+        name: 'Volume',
+        type: 'number',
+        defaultValue: 1.0,
+        description: 'Audio volume (0.0 - 1.0)',
+        validation: {
+          min: 0.0,
+          max: 1.0
+        }
+      },
+      {
+        id: 'autoPlay',
+        name: 'Auto Play',
+        type: 'boolean',
+        defaultValue: true,
+        description: 'Automatically play the generated audio'
+      },
+      {
+        id: 'slow',
+        name: 'Slow Speech',
+        type: 'boolean',
+        defaultValue: false,
+        description: 'Enable slow speech mode (for some engines)'
+      }
+    ],
+    executionHandler: 'text-to-speech-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Basic TTS',
+          description: 'Convert text to speech with default settings',
+          config: {
+            engine: 'kokoro',
+            voice: 'af_sarah',
+            language: 'en',
+            autoPlay: true
+          }
+        },
+        {
+          name: 'Custom Voice & Speed',
+          description: 'Use different voice and adjust speech speed',
+          config: {
+            engine: 'kokoro',
+            voice: 'am_alex',
+            speed: 1.2,
+            volume: 0.8,
+            autoPlay: true
+          }
+        },
+        {
+          name: 'Multilingual TTS',
+          description: 'Generate speech in different languages',
+          config: {
+            engine: 'gtts',
+            language: 'es',
+            speed: 1.0,
+            autoPlay: false
+          }
+        }
+      ],
+      tags: ['audio', 'tts', 'speech', 'voice', 'media', 'synthesis']
+    }
+  },
+
   // TEXT PROCESSING NODE
 ];
 
