@@ -188,7 +188,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
   const [isTTSHealthy, setIsTTSHealthy] = useState(false);
   
   // Auto TTS state
-  const [autoTTSEnabled, setAutoTTSEnabled] = useState(false);
+  const [autoTTSEnabled, setAutoTTSEnabled] = useState(true);
   const [isAutoTTSPlaying, setIsAutoTTSPlaying] = useState(false);
   
   // Audio refs

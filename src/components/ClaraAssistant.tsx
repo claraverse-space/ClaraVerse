@@ -4239,7 +4239,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
 
               {/* Advanced Options Panel - Above Chat Input */}
               {showAdvancedOptions && (
-            <div className="px-6 py-4 transition-all duration-300 ease-out transform animate-in slide-in-from-top-2 fade-in-0">
+            <div className="px-6 py-4 transition-all duration-300 ease-out transform animate-in slide-in-from-top-2 fade-in-0" data-advanced-options-panel="true">
               <div className="max-w-4xl mx-auto transition-all duration-300">
                 <AdvancedOptions
                   aiConfig={sessionConfig.aiConfig}
@@ -4318,6 +4318,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
                   onModelChange={handleModelChange}
                   show={showAdvancedOptions}
                   userInfo={userInfo || undefined}
+                  onAdvancedOptionsToggle={(show) => setShowAdvancedOptions(show ?? false)}
                 />
               </div>
             </div>

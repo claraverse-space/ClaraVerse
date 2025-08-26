@@ -132,32 +132,32 @@ async function buildServices() {
     process.chdir(path.join(__dirname, '..', 'clara-mcp'));
     
     // Windows
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-windows.exe', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-windows.exe', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'windows', GOARCH: 'amd64' }
     });
     
     // Linux
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-linux', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-linux', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'linux', GOARCH: 'amd64' }
     });
     
     // macOS AMD64
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-darwin-amd64', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-darwin-amd64', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'amd64' }
     });
     
     // macOS ARM64
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-darwin-arm64', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-darwin-arm64', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'arm64' }
     });
     
     // macOS AMD64 (alternative naming)
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-mac-amd64', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-mac-amd64', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'amd64' }
     });
     
     // macOS ARM64 (alternative naming)
-    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-mac-arm64', 'python-mcp-server.go'], {
+    await runCommand(goExecutable, ['build', '-ldflags="-s -w"', '-o', '../electron/services/python-mcp-server-mac-arm64', '.'], {
       env: { ...process.env, CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'arm64' }
     });
 

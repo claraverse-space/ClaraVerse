@@ -55,6 +55,12 @@ type WebContent struct {
 	Description string `json:"description"`
 	StatusCode  int    `json:"status_code"`
 	Error       string `json:"error,omitempty"`
+	// Enhanced fields for smart dynamic detection
+	IsDynamic        bool          `json:"is_dynamic"`
+	LoadingStrategy  string        `json:"loading_strategy"` // "static", "api_simulation", "fallback"
+	APIEndpoints     []string      `json:"api_endpoints,omitempty"`
+	JavaScriptErrors []string      `json:"js_errors,omitempty"`
+	LoadTime         time.Duration `json:"load_time"`
 }
 
 type SearXNGManager struct {
@@ -63,7 +69,22 @@ type SearXNGManager struct {
 }
 
 type WebContentFetcher struct {
-	client *http.Client
+	client            *http.Client
+	jsEngine          *JSEngine          // Self-contained JavaScript engine
+	smartMode         bool               // Enable smart dynamic content detection
+	playwrightManager *PlaywrightManager // Progressive Playwright integration
+}
+
+// Self-contained JavaScript engine for basic DOM simulation
+type JSEngine struct {
+	// Will implement lightweight JS execution for basic dynamic content
+	apiDetector  *regexp.Regexp
+	domSimulator *DOMSimulator
+}
+
+type DOMSimulator struct {
+	// Lightweight DOM-like structure for content simulation
+	virtualDOM map[string]interface{}
 }
 
 // Core types
@@ -444,13 +465,13 @@ func (s *PythonMCPServer) getTools() []Tool {
 		},
 		{
 			Name:        "fetch_content",
-			Description: "Fetch and extract content from web pages. Downloads HTML content from specified URLs and intelligently extracts the main text content, title, and meta description. Handles redirects, validates content types, and cleans extracted text. Perfect for reading articles, documentation, blog posts, or any web content for analysis or summarization. Respects web standards and includes proper browser headers.",
+			Description: "Fetch and extract content from web pages using Playwright browser automation as the default standard. Always uses real browser rendering with JavaScript execution for accurate dynamic content extraction. Automatically downloads and installs Playwright browsers (~50MB) on first use.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"url": map[string]interface{}{
 						"type":        "string",
-						"description": "URL to fetch content from (e.g., 'https://example.com/article', 'https://docs.python.org/3/'). Must be a valid HTTP/HTTPS URL pointing to HTML content.",
+						"description": "URL to fetch content from (e.g., 'https://example.com/article', 'https://docs.python.org/3/'). All sites including SPAs, React apps, and dynamic content are fully supported through browser automation.",
 					},
 				},
 				"required": []string{"url"},
@@ -725,7 +746,7 @@ func NewSearXNGManager() *SearXNGManager {
 	return &SearXNGManager{}
 }
 
-// NewWebContentFetcher creates a new web content fetcher
+// NewWebContentFetcher creates a new web content fetcher with smart dynamic detection
 func NewWebContentFetcher() *WebContentFetcher {
 	return &WebContentFetcher{
 		client: &http.Client{
@@ -737,6 +758,14 @@ func NewWebContentFetcher() *WebContentFetcher {
 				return nil
 			},
 		},
+		jsEngine: &JSEngine{
+			apiDetector: regexp.MustCompile(`(?i)(fetch\(|XMLHttpRequest|axios\.|$.ajax|$.get|$.post|api/|/api/|graphql)`),
+			domSimulator: &DOMSimulator{
+				virtualDOM: make(map[string]interface{}),
+			},
+		},
+		smartMode:         true,
+		playwrightManager: NewPlaywrightManager(),
 	}
 }
 
@@ -1028,11 +1057,13 @@ func (sm *SearXNGManager) SearchSearXNG(query string, numResults int) (*SearchRe
 	return &searchResp, nil
 }
 
-// FetchContent fetches and extracts content from a URL
+// FetchContent fetches and extracts content from a URL using Playwright as the default standard
 func (wf *WebContentFetcher) FetchContent(targetURL string) *WebContent {
 	result := &WebContent{
-		URL: targetURL,
+		URL:             targetURL,
+		LoadingStrategy: "playwright",
 	}
+	startTime := time.Now()
 
 	// Validate URL
 	parsedURL, err := url.Parse(targetURL)
@@ -1046,6 +1077,73 @@ func (wf *WebContentFetcher) FetchContent(targetURL string) *WebContent {
 		targetURL = "https://" + targetURL
 		result.URL = targetURL
 	}
+
+	// PLAYWRIGHT-FIRST APPROACH: Always ensure Playwright is available
+	log.Printf("Ensuring Playwright is available for %s", targetURL)
+
+	// If Playwright is not available, force synchronous download
+	if !wf.playwrightManager.IsAvailable() {
+		log.Printf("Playwright not available, forcing synchronous download...")
+
+		// Start download if not already downloading
+		if !wf.playwrightManager.IsDownloading() {
+			go wf.playwrightManager.EnsureAvailable()
+		}
+
+		// Wait for Playwright to become available (up to 120 seconds for reliable installation)
+		maxWait := 120 * time.Second
+		checkInterval := 1 * time.Second
+		waited := time.Duration(0)
+
+		log.Printf("Waiting for Playwright installation to complete...")
+		for waited < maxWait && !wf.playwrightManager.IsAvailable() {
+			if !wf.playwrightManager.IsDownloading() {
+				downloadErr := wf.playwrightManager.GetDownloadError()
+				if downloadErr != nil {
+					result.Error = fmt.Sprintf("Playwright installation failed: %v", downloadErr)
+					return result
+				}
+				// Download completed but not available - retry
+				go wf.playwrightManager.EnsureAvailable()
+			}
+			time.Sleep(checkInterval)
+			waited += checkInterval
+			if waited%10*time.Second == 0 { // Log every 10 seconds
+				log.Printf("Still waiting for Playwright... (%v/%v)", waited, maxWait)
+			}
+		}
+
+		if !wf.playwrightManager.IsAvailable() {
+			result.Error = "Playwright installation timed out. Please check your internet connection and try again."
+			return result
+		}
+
+		log.Printf("Playwright installation completed successfully!")
+	}
+
+	// Use Playwright to fetch content
+	playwrightResult, err := wf.playwrightManager.FetchContent(targetURL, nil)
+	if err != nil {
+		result.Error = fmt.Sprintf("Playwright content extraction failed: %v", err)
+		return result
+	}
+
+	if playwrightResult == nil {
+		result.Error = "Playwright returned no content"
+		return result
+	}
+
+	// Update timing and return successful result
+	playwrightResult.LoadTime = time.Since(startTime)
+	playwrightResult.LoadingStrategy = "playwright"
+	log.Printf("Successfully extracted content using Playwright for %s", targetURL)
+
+	return playwrightResult
+}
+
+// fetchStatic performs standard static HTML fetching
+func (wf *WebContentFetcher) fetchStatic(targetURL string) *WebContent {
+	result := &WebContent{URL: targetURL}
 
 	// Create request with proper headers
 	req, err := http.NewRequest("GET", targetURL, nil)
@@ -1097,6 +1195,197 @@ func (wf *WebContentFetcher) FetchContent(targetURL string) *WebContent {
 	result.Description = wf.extractDescription(html)
 	result.Content = wf.extractTextContent(html)
 
+	return result
+}
+
+// detectDynamicContent analyzes HTML for dynamic content indicators
+func (wf *WebContentFetcher) detectDynamicContent(html string) bool {
+	// Check for common SPA indicators
+	spaIndicators := []string{
+		"react", "vue", "angular", "svelte", "ember",
+		"ng-app", "data-react", "v-if", "v-for",
+		"useEffect", "useState", "componentDidMount",
+		"spa-", "_next/", "__nuxt", "@angular",
+	}
+
+	htmlLower := strings.ToLower(html)
+	for _, indicator := range spaIndicators {
+		if strings.Contains(htmlLower, indicator) {
+			return true
+		}
+	}
+
+	// Check for AJAX/API calls
+	if wf.jsEngine.apiDetector.MatchString(html) {
+		return true
+	}
+
+	// Check for empty containers that typically get populated
+	emptyContainers := regexp.MustCompile(`<div[^>]*(?:id|class)=['"](?:app|root|main|content|container)['"][^>]*>\s*</div>`)
+	if emptyContainers.MatchString(html) {
+		return true
+	}
+
+	// Check for loading indicators
+	loadingIndicators := regexp.MustCompile(`(?i)(loading|spinner|skeleton|placeholder)`)
+	if loadingIndicators.MatchString(html) {
+		return true
+	}
+
+	return false
+}
+
+// simulateDynamicContent attempts to extract content by finding and calling APIs
+func (wf *WebContentFetcher) simulateDynamicContent(baseURL, html string) *WebContent {
+	result := &WebContent{URL: baseURL, IsDynamic: true}
+
+	// Extract potential API endpoints
+	apiEndpoints := wf.extractAPIEndpoints(baseURL, html)
+	result.APIEndpoints = apiEndpoints
+
+	// Try to fetch content from discovered APIs
+	var additionalContent []string
+
+	for _, endpoint := range apiEndpoints {
+		if apiContent := wf.fetchAPIContent(endpoint); apiContent != "" {
+			additionalContent = append(additionalContent, apiContent)
+		}
+	}
+
+	// Combine static content with API content
+	staticContent := wf.extractTextContent(html)
+	if len(additionalContent) > 0 {
+		allContent := append([]string{staticContent}, additionalContent...)
+		result.Content = strings.Join(allContent, "\n\n--- API Content ---\n\n")
+	} else {
+		result.Content = staticContent
+	}
+
+	result.Title = wf.extractTitle(html)
+	result.Description = wf.extractDescription(html)
+
+	return result
+}
+
+// extractAPIEndpoints finds potential API endpoints in the HTML/JavaScript
+func (wf *WebContentFetcher) extractAPIEndpoints(baseURL string, html string) []string {
+	var endpoints []string
+
+	// Parse base URL
+	parsedBase, err := url.Parse(baseURL)
+	if err != nil {
+		return endpoints
+	}
+
+	// Common API patterns
+	apiPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`['"]([^'"]*/?api/[^'"]*?)['"]`),
+		regexp.MustCompile(`['"]([^'"]*?/v\d+/[^'"]*?)['"]`),
+		regexp.MustCompile(`['"]([^'"]*?\.json[^'"]*?)['"]`),
+		regexp.MustCompile(`fetch\(['"]([^'"]+?)['"]`),
+		regexp.MustCompile(`axios\.get\(['"]([^'"]+?)['"]`),
+	}
+
+	for _, pattern := range apiPatterns {
+		matches := pattern.FindAllStringSubmatch(html, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				endpoint := match[1]
+				// Convert relative URLs to absolute
+				if strings.HasPrefix(endpoint, "/") {
+					endpoint = parsedBase.Scheme + "://" + parsedBase.Host + endpoint
+				} else if !strings.HasPrefix(endpoint, "http") {
+					continue // Skip relative paths that aren't root-relative
+				}
+				endpoints = append(endpoints, endpoint)
+			}
+		}
+	}
+
+	// Remove duplicates
+	uniqueEndpoints := make(map[string]bool)
+	var result []string
+	for _, ep := range endpoints {
+		if !uniqueEndpoints[ep] && len(result) < 5 { // Limit to 5 endpoints
+			uniqueEndpoints[ep] = true
+			result = append(result, ep)
+		}
+	}
+
+	return result
+}
+
+// fetchAPIContent attempts to fetch content from an API endpoint
+func (wf *WebContentFetcher) fetchAPIContent(endpoint string) string {
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return ""
+	}
+
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Clara-MCP)")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return ""
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	// Try to extract meaningful text from JSON responses
+	content := string(body)
+	if strings.HasPrefix(strings.TrimSpace(content), "{") || strings.HasPrefix(strings.TrimSpace(content), "[") {
+		// Basic JSON content extraction
+		content = wf.extractTextFromJSON(content)
+	}
+
+	return content
+}
+
+// extractTextFromJSON extracts readable text from JSON responses
+func (wf *WebContentFetcher) extractTextFromJSON(jsonStr string) string {
+	var data interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		return ""
+	}
+
+	var textParts []string
+	wf.extractTextFromInterface(data, &textParts)
+
+	return strings.Join(textParts, " ")
+}
+
+// extractTextFromInterface recursively extracts text from JSON interface
+func (wf *WebContentFetcher) extractTextFromInterface(data interface{}, textParts *[]string) {
+	switch v := data.(type) {
+	case string:
+		if len(v) > 10 && len(v) < 1000 { // Reasonable text length
+			*textParts = append(*textParts, v)
+		}
+	case map[string]interface{}:
+		for _, value := range v {
+			wf.extractTextFromInterface(value, textParts)
+		}
+	case []interface{}:
+		for _, item := range v {
+			wf.extractTextFromInterface(item, textParts)
+		}
+	}
+}
+
+// enhancedStaticExtraction performs enhanced static content extraction
+func (wf *WebContentFetcher) enhancedStaticExtraction(result *WebContent) *WebContent {
+	// This could include more sophisticated text extraction,
+	// meta tag analysis, structured data extraction, etc.
 	return result
 }
 
@@ -1261,18 +1550,17 @@ func (s *PythonMCPServer) search(params map[string]interface{}) string {
 	return output.String()
 }
 
-// fetchContent fetches and extracts content from a web page
-// fetchContent fetches and extracts content from a web page using embedded functionality
+// fetchContent fetches and extracts content from a web page using Playwright as the default standard
 func (s *PythonMCPServer) fetchContent(params map[string]interface{}) string {
 	url, ok := params["url"].(string)
 	if !ok {
 		return "ERROR: Need 'url' parameter"
 	}
 
-	// Create web content fetcher
+	// Create web content fetcher (always uses Playwright as default)
 	fetcher := NewWebContentFetcher()
 
-	// Fetch content
+	// Fetch content using Playwright
 	result := fetcher.FetchContent(url)
 
 	if result.Error != "" {
@@ -1283,7 +1571,21 @@ func (s *PythonMCPServer) fetchContent(params map[string]interface{}) string {
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("🌐 WEB CONTENT EXTRACTED from: %s\n", result.URL))
 	output.WriteString(fmt.Sprintf("✅ Successfully fetched content (Status: %d)\n", result.StatusCode))
-	output.WriteString("📄 Smart content extraction with title, description, and main text\n\n")
+
+	// Show loading strategy used
+	strategyIcon := "📄"
+	if result.IsDynamic {
+		strategyIcon = "⚡"
+	}
+	output.WriteString(fmt.Sprintf("%s Strategy: %s (Load time: %v)\n", strategyIcon, result.LoadingStrategy, result.LoadTime))
+
+	if result.IsDynamic {
+		output.WriteString("🔍 Dynamic content detected - used intelligent API simulation\n")
+		if len(result.APIEndpoints) > 0 {
+			output.WriteString(fmt.Sprintf("🔗 Discovered %d API endpoints\n", len(result.APIEndpoints)))
+		}
+	}
+	output.WriteString("\n")
 
 	if result.Title != "" {
 		output.WriteString(fmt.Sprintf("📰 Title: %s\n\n", result.Title))
@@ -1296,6 +1598,99 @@ func (s *PythonMCPServer) fetchContent(params map[string]interface{}) string {
 	if result.Content != "" {
 		output.WriteString(fmt.Sprintf("📄 Content:\n%s\n", result.Content))
 	}
+
+	return output.String()
+}
+
+// playwrightStatus shows the current status of Playwright integration
+func (s *PythonMCPServer) playwrightStatus(params map[string]interface{}) string {
+	// Create web content fetcher to access Playwright manager
+	fetcher := NewWebContentFetcher()
+
+	var output strings.Builder
+	output.WriteString("🎭 PLAYWRIGHT STATUS\n")
+	output.WriteString("==================\n\n")
+
+	// Get Playwright capabilities
+	capabilities := fetcher.playwrightManager.GetCapabilities()
+
+	// Parse capabilities
+	isAvailable, _ := capabilities["is_available"].(bool)
+	isDownloading, _ := capabilities["is_downloading"].(bool)
+	hasLibrary, _ := capabilities["has_playwright_lib"].(bool)
+	downloadStatus, _ := capabilities["download_status"].(string)
+	estimatedSize, _ := capabilities["estimated_size"].(string)
+	downloadError, _ := capabilities["download_error"]
+
+	// Status overview
+	statusIcon := "❌"
+	if isAvailable {
+		statusIcon = "✅"
+	} else if isDownloading {
+		statusIcon = "⬇️"
+	}
+
+	output.WriteString(fmt.Sprintf("%s Overall Status: %s\n", statusIcon, downloadStatus))
+	output.WriteString(fmt.Sprintf("📚 Playwright Library: %s\n", map[bool]string{true: "Available", false: "Not Available"}[hasLibrary]))
+
+	if estimatedSize != "" {
+		output.WriteString(fmt.Sprintf("💾 Download Size: %s\n", estimatedSize))
+	}
+
+	output.WriteString("\n🔧 CAPABILITIES\n")
+	output.WriteString("===============\n")
+
+	jsExecution, _ := capabilities["javascript_execution"].(bool)
+	networkInterception, _ := capabilities["network_interception"].(bool)
+	screenshotCapture, _ := capabilities["screenshot_capture"].(bool)
+
+	output.WriteString(fmt.Sprintf("⚡ JavaScript Execution: %s\n", map[bool]string{true: "✅ Available", false: "❌ Not Available"}[jsExecution]))
+	output.WriteString(fmt.Sprintf("🌐 Network Interception: %s\n", map[bool]string{true: "✅ Available", false: "❌ Not Available"}[networkInterception]))
+	output.WriteString(fmt.Sprintf("📸 Screenshot Capture: %s\n", map[bool]string{true: "✅ Available", false: "❌ Not Available"}[screenshotCapture]))
+
+	output.WriteString("\n🎯 PLAYWRIGHT STANDARD\n")
+	output.WriteString("=========================\n")
+
+	if isAvailable {
+		output.WriteString("✅ Playwright is ready and active\n")
+		output.WriteString("✅ All web content uses full browser automation\n")
+		output.WriteString("✅ JavaScript execution and dynamic content fully supported\n")
+	} else if isDownloading {
+		output.WriteString("⬇️ Playwright is installing automatically...\n")
+		output.WriteString("⏳ Content requests will wait for installation to complete\n")
+		output.WriteString("� Once ready, all content will use browser automation\n")
+	} else {
+		output.WriteString("� Playwright installation required for content fetching\n")
+		output.WriteString("� Will auto-install on first content request (~50MB)\n")
+		output.WriteString("� No fallback modes - Playwright is the standard\n")
+		if !hasLibrary {
+			output.WriteString("📦 Playwright library needs to be installed\n")
+		}
+	}
+
+	// Error information
+	if downloadError != nil {
+		output.WriteString(fmt.Sprintf("\n⚠️ NOTICE\n========\n%v\n", downloadError))
+	}
+
+	// Installation information
+	installStatus := fetcher.playwrightManager.GetInstallationStatus()
+	version := fetcher.playwrightManager.Version()
+
+	output.WriteString("\n📋 TECHNICAL DETAILS\n")
+	output.WriteString("==================\n")
+
+	managerVersion, _ := version["manager_version"].(string)
+	implementation, _ := version["implementation"].(string)
+
+	output.WriteString(fmt.Sprintf("Manager Version: %s\n", managerVersion))
+	output.WriteString(fmt.Sprintf("Implementation: %s\n", implementation))
+
+	currentlyDownloading, _ := installStatus["currently_downloading"].(bool)
+	browsersInstalled, _ := installStatus["browsers_installed"].(bool)
+
+	output.WriteString(fmt.Sprintf("Browsers Installed: %s\n", map[bool]string{true: "Yes", false: "No"}[browsersInstalled]))
+	output.WriteString(fmt.Sprintf("Currently Downloading: %s\n", map[bool]string{true: "Yes", false: "No"}[currentlyDownloading]))
 
 	return output.String()
 }

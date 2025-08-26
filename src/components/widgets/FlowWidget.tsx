@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, RotateCcw, Settings, Trash2, Workflow, Upload, AlertCircle, CheckCircle, Loader2, RefreshCw, Terminal, XCircle } from 'lucide-react';
+import { Play, Workflow, Upload, AlertCircle, CheckCircle, Loader2, RefreshCw, Terminal, XCircle } from 'lucide-react';
 import { FlowExecutor } from '../../shared/FlowEngine/FlowExecutor';
 import { FlowNode, Connection, ExecutionLog } from '../../types/agent/types';
 import { customNodeManager } from '../AgentBuilder/NodeCreator/CustomNodeManager';
@@ -315,7 +315,7 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
   };
 
   // Check if flow can be executed
-  const canExecute = inputs.length > 0 && inputs.every(input => 
+  const canExecute = inputs.length === 0 || inputs.every(input => 
     !input.required || (input.value !== null && input.value !== '')
   );
 
@@ -508,25 +508,86 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
       {/* Content */}
       <div className="flex-1 p-4 overflow-y-auto">
         {inputs.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="p-4 bg-purple-100/50 dark:bg-purple-500/20 rounded-2xl w-fit mx-auto mb-3 backdrop-blur-sm">
-              <Workflow className="w-8 h-8 text-purple-500 mx-auto" />
-            </div>
-            <p className="text-gray-600 dark:text-gray-400 mb-2">
-              No inputs detected in this flow
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-500">
-              Make sure your flow has input nodes (input, image-input, pdf-input, etc.)
-            </p>
-            {/* Debug info */}
-            <details className="mt-4 text-left">
-              <summary className="cursor-pointer text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
-                Debug: Show flow data
-              </summary>
-              <pre className="mt-2 text-xs bg-gray-100/50 dark:bg-gray-900/30 backdrop-blur-sm p-2 rounded overflow-x-auto max-h-40 text-gray-700 dark:text-gray-300 border border-gray-200/30 dark:border-gray-700/30">
-                {JSON.stringify(flowData, null, 2)}
-              </pre>
-            </details>
+          <div className="flex-1 flex flex-col">
+            {!hasExecuted ? (
+              <div className="flex-1 flex items-center justify-center">
+                {/* When no inputs, just show the run button in the center */}
+                <div className="text-center">
+                  <div className="p-4 bg-purple-100/50 dark:bg-purple-500/20 rounded-2xl w-fit mx-auto mb-4 backdrop-blur-sm">
+                    <Workflow className="w-8 h-8 text-purple-500 mx-auto" />
+                  </div>
+                  <button
+                    onClick={executeFlow}
+                    disabled={isExecuting}
+                    className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                      !isExecuting
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
+                        : 'bg-gray-300/50 dark:bg-gray-600/50 text-gray-500 dark:text-gray-400 cursor-not-allowed backdrop-blur-sm'
+                    }`}
+                  >
+                    {isExecuting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Executing...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4" />
+                        Run Flow
+                      </>
+                    )}
+                  </button>
+                  {/* Debug info - hidden by default */}
+                  <details className="mt-4 text-left">
+                    <summary className="cursor-pointer text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+                      Debug: Show flow data
+                    </summary>
+                    <pre className="mt-2 text-xs bg-gray-100/50 dark:bg-gray-900/30 backdrop-blur-sm p-2 rounded overflow-x-auto max-h-40 text-gray-700 dark:text-gray-300 border border-gray-200/30 dark:border-gray-700/30">
+                      {JSON.stringify(flowData, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              </div>
+            ) : (
+              /* Show outputs when flow has been executed */
+              <div className="space-y-4">
+                {/* Outputs Section */}
+                {outputs.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <span>Flow Outputs</span>
+                      <span className="text-xs bg-green-100/50 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full backdrop-blur-sm">
+                        {outputs.length} outputs
+                      </span>
+                      <span className="text-xs bg-purple-100/50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full backdrop-blur-sm">
+                        Real Results
+                      </span>
+                    </h4>
+                    <div className="space-y-4">
+                      {outputs.map((output) => (
+                        <div key={output.id} className="bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm p-3 rounded-xl border border-gray-200/30 dark:border-gray-700/30">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            {output.label}
+                          </label>
+                          {renderOutputValue(output)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Reset button for flows with no inputs */}
+                <div className="flex justify-center mt-4">
+                  <button
+                    onClick={resetFlow}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl font-medium transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Run Again
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
@@ -633,7 +694,7 @@ const FlowWidget: React.FC<FlowWidgetProps> = ({ id, name, flowData, onRemove, c
         )}
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons - Only show for flows with inputs */}
       {inputs.length > 0 && (
         <div className="p-4 border-t border-gray-200/20 dark:border-gray-700/20 bg-gradient-to-t from-white/80 to-transparent dark:from-gray-800/80 backdrop-blur-sm">
           <div className="flex gap-2">

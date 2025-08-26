@@ -15,7 +15,7 @@
  * - Keyboard shortcuts
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { 
   Image as ImageIcon, 
   File, 
@@ -37,8 +37,6 @@ import {
   Server,
   CheckCircle,
   XCircle,
-  Waves,
-  Cog,
   MessageCircle,
   Palette,
   Code,
@@ -52,12 +50,14 @@ import {
   Shield,
   StopCircle,
   Search,
-  Grid3X3,
+
   Monitor,
   Cpu,
   RefreshCw,
   Scale,
-  Rocket
+  Rocket,
+  MessageSquare,
+  MoreHorizontal
 } from 'lucide-react';
 
 // Import types
@@ -645,52 +645,147 @@ const ModelSelector: React.FC<{
 };
 
 /**
- * Apps Component - Dropdown with Clara plugins and tools
+ * Enhanced Overflow Menu Component - Combines Apps, Settings & More
  */
-const AppsDropdown: React.FC<{
+const OverflowMenu: React.FC<{
   show: boolean;
   onClose: () => void;
   onScreenShare: () => void;
   isScreenSharing?: boolean;
-}> = ({ show, onClose, onScreenShare, isScreenSharing = false }) => {
+  // Voice-related props
+  showVoiceChat?: boolean;
+  pythonBackendStatus?: {
+    isHealthy: boolean;
+    serviceUrl: string | null;
+    error?: string;
+  };
+  isPythonStarting?: boolean;
+  onVoiceModeToggle?: () => void;
+  onStartPythonBackend?: () => void;
+  // Settings
+  showAdvancedOptionsPanel?: boolean;
+  onAdvancedOptionsToggle?: (show?: boolean) => void;
+  // Trigger button ref for click-outside detection
+  triggerRef?: React.RefObject<HTMLButtonElement>;
+}> = ({ 
+  show, 
+  onClose, 
+  onScreenShare, 
+  isScreenSharing = false,
+  showVoiceChat = false,
+  pythonBackendStatus = { isHealthy: false, serviceUrl: null },
+  isPythonStarting = false,
+  onVoiceModeToggle,
+  onStartPythonBackend,
+  showAdvancedOptionsPanel = false,
+  onAdvancedOptionsToggle,
+  triggerRef
+}) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onClose();
+      const target = event.target as Node;
+      
+      // Don't close if clicking on the dropdown itself
+      if (dropdownRef.current && dropdownRef.current.contains(target)) {
+        return;
       }
+      
+      // Don't close if clicking on the trigger button
+      if (triggerRef?.current && triggerRef.current.contains(target)) {
+        return;
+      }
+      
+      // Close if clicking anywhere else
+      onClose();
     };
 
     if (show) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [show, onClose]);
+  }, [show, onClose, triggerRef]);
 
   if (!show) return null;
-
-  const handleScreenShare = () => {
-    onScreenShare();
-    onClose();
-  };
 
   return (
     <div 
       ref={dropdownRef}
-      className="absolute bottom-full right-0 mb-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
+      className="absolute bottom-full right-0 mb-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
     >
       <div className="p-3">
         <div className="flex items-center gap-2 mb-3">
-          <Grid3X3 className="w-4 h-4 text-sakura-500" />
-          <h3 className="text-sm font-medium text-gray-900 dark:text-white">Clara Apps</h3>
+          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white ml-2">More Options</h3>
         </div>
         
         <div className="space-y-1">
-          {/* Screen Share App */}
+          {/* Voice Call Mode */}
           <button
-            onClick={handleScreenShare}
+            onClick={() => {
+              if (!pythonBackendStatus.isHealthy) {
+                onStartPythonBackend?.();
+                return;
+              }
+              onVoiceModeToggle?.();
+              onClose();
+            }}
+            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
+              showVoiceChat 
+                ? 'bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-900/50' 
+                : pythonBackendStatus.isHealthy
+                  ? 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'hover:bg-orange-100 dark:hover:bg-orange-900/30'
+            }`}
+          >
+            <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
+              showVoiceChat 
+                ? 'bg-purple-200 dark:bg-purple-800/50' 
+                : pythonBackendStatus.isHealthy
+                  ? 'bg-purple-100 dark:bg-purple-900/30'
+                  : 'bg-orange-100 dark:bg-orange-900/30'
+            }`}>
+              {isPythonStarting ? (
+                <div className="w-4 h-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
+              ) : (
+                <MessageSquare className={`w-4 h-4 ${
+                  showVoiceChat 
+                    ? 'text-purple-700 dark:text-purple-400' 
+                    : pythonBackendStatus.isHealthy
+                      ? 'text-purple-600 dark:text-purple-400'
+                      : 'text-orange-600 dark:text-orange-400'
+                }`} />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Voice Call {showVoiceChat && (
+                  <span className="text-xs text-purple-600 dark:text-purple-400">(Active)</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {!pythonBackendStatus.isHealthy 
+                  ? 'Start Python backend for voice chat'
+                  : showVoiceChat 
+                    ? 'Exit voice conversation mode (VAD)' 
+                    : 'Full voice-to-voice conversation (VAD)'}
+              </div>
+            </div>
+            {showVoiceChat && (
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            )}
+          </button>
+
+          {/* Screen Share */}
+          <button
+            onClick={() => {
+              onScreenShare();
+              onClose();
+            }}
             className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
               isScreenSharing 
                 ? 'bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50' 
@@ -722,11 +817,52 @@ const AppsDropdown: React.FC<{
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             )}
           </button>
-          
-          {/* Placeholder for future apps */}
+
+          {/* Divider */}
+          <div className="border-t border-gray-100 dark:border-gray-700 my-2"></div>
+
+          {/* Advanced Settings */}
+          <button
+            onClick={() => {
+              onAdvancedOptionsToggle?.(!showAdvancedOptionsPanel);
+              onClose();
+            }}
+            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
+              showAdvancedOptionsPanel
+                ? 'bg-sakura-100 dark:bg-sakura-900/30 hover:bg-sakura-200 dark:hover:bg-sakura-900/50' 
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
+              showAdvancedOptionsPanel
+                ? 'bg-sakura-200 dark:bg-sakura-800/50' 
+                : 'bg-gray-100 dark:bg-gray-700/30'
+            }`}>
+              <Settings className={`w-4 h-4 ${
+                showAdvancedOptionsPanel
+                  ? 'text-sakura-700 dark:text-sakura-400' 
+                  : 'text-gray-600 dark:text-gray-400'
+              }`} />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Advanced Settings {showAdvancedOptionsPanel && (
+                  <span className="text-xs text-sakura-600 dark:text-sakura-400">(Open)</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Models, parameters, features & more
+              </div>
+            </div>
+            {showAdvancedOptionsPanel && (
+              <div className="w-2 h-2 bg-sakura-500 rounded-full"></div>
+            )}
+          </button>
+
+          {/* Future placeholder */}
           <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
             <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
-              More apps coming soon...
+              More features coming soon...
             </div>
           </div>
         </div>
@@ -734,6 +870,8 @@ const AppsDropdown: React.FC<{
     </div>
   );
 };
+
+
 
 /**
  * Screen Source Picker Component - Shows available screens and windows for sharing
@@ -1378,7 +1516,8 @@ const AdvancedOptions: React.FC<{
   onModelChange?: (modelId: string, type: 'text' | 'vision' | 'code') => void;
   show: boolean;
   userInfo?: { name?: string; email?: string; timezone?: string };
-}> = ({ aiConfig, onConfigChange, providers, models, onProviderChange, onModelChange, show, userInfo }) => {
+  onAdvancedOptionsToggle?: (show?: boolean) => void;
+}> = ({ aiConfig, onConfigChange, providers, models, onProviderChange, onModelChange, show, userInfo, onAdvancedOptionsToggle }) => {
   const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
   const [isLoadingMcpServers, setIsLoadingMcpServers] = useState(false);
   
@@ -1970,16 +2109,30 @@ Skip for: quick answers, simple lists
   };
 
   return (
-    <div className="mt-4 glassmorphic rounded-xl bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg">
+    <div 
+      className="mt-4 glassmorphic rounded-xl bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg"
+      data-advanced-options-panel="true"
+    >
       {/* Header */}
       <div className="p-4 border-b border-gray-200/30 dark:border-gray-700/50">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-sakura-500" />
-          Advanced Configuration
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          Configure AI models, parameters, and features
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-sakura-500" />
+              Advanced Configuration
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Configure AI models, parameters, and features
+            </p>
+          </div>
+          <button
+            onClick={() => onAdvancedOptionsToggle?.(false)}
+            className="p-1.5 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+            title="Close Advanced Configuration"
+          >
+            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Content */}
@@ -3448,6 +3601,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [dragCounter, setDragCounter] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null); // For click-outside detection
+  const overflowMenuTriggerRef = useRef<HTMLButtonElement>(null); // For overflow menu trigger
 
   // Model preloading state
   const [hasPreloaded, setHasPreloaded] = useState(false);
@@ -3462,6 +3617,21 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+
+  // Overflow menu state
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+
+  // MCP selector state
+  const [showMcpSelector, setShowMcpSelector] = useState(false);
+  const [mcpSearchTerm, setMcpSearchTerm] = useState('');
+  const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
+
+  // Quick recording state for mic button
+  const [isQuickRecording, setIsQuickRecording] = useState(false);
+  const [quickRecordingProgress, setQuickRecordingProgress] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Python backend status for voice functionality
   const [pythonBackendStatus, setPythonBackendStatus] = useState<{
@@ -3482,9 +3652,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [providerOfflineMessage, setProviderOfflineMessage] = useState('');
   const [offlineProvider, setOfflineProvider] = useState<ClaraProvider | null>(null);
   const [showClaraCoreOffer, setShowClaraCoreOffer] = useState(false);
-
-  // Apps dropdown state
-  const [showAppsDropdown, setShowAppsDropdown] = useState(false);
 
   // Screen sharing state
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -3791,6 +3958,52 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   useEffect(() => {
     focusTextarea();
   }, [focusTextarea]);
+
+  // Click outside to close advanced options panel
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      // Only close if advanced options panel is open
+      if (showAdvancedOptionsPanel && onAdvancedOptionsToggle) {
+        // Don't close if clicking inside the input container
+        if (inputContainerRef.current && inputContainerRef.current.contains(target)) {
+          return;
+        }
+        
+        // Don't close if clicking inside the advanced options panel
+        // Check for the advanced options panel by looking for its container elements
+        const advancedOptionsPanel = document.querySelector('[data-advanced-options-panel="true"]');
+        if (advancedOptionsPanel && advancedOptionsPanel.contains(target)) {
+          return;
+        }
+        
+        // Also check for any element with advanced options related classes
+        const clickedElement = target as Element;
+        if (clickedElement.closest && (
+          clickedElement.closest('[data-advanced-options-panel="true"]') ||
+          clickedElement.closest('.advanced-options-panel')
+        )) {
+          return;
+        }
+        
+        // Close the advanced options panel if clicking anywhere else
+        onAdvancedOptionsToggle(false);
+      }
+    };
+
+    if (showAdvancedOptionsPanel) {
+      // Add a small delay to prevent immediate closing when opening
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showAdvancedOptionsPanel, onAdvancedOptionsToggle]);
 
   // Handle typing with model preloading
   const handleInputChange = useCallback((value: string) => {
@@ -4585,6 +4798,73 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     handleAIConfigChange(newConfig);
   }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
 
+  // MCP helper functions
+  const isServerEnabled = useCallback((serverName: string) => {
+    return currentAIConfig.mcp?.enabledServers?.includes(serverName) || false;
+  }, [currentAIConfig.mcp?.enabledServers]);
+
+  const handleMcpServerToggle = useCallback((serverName: string, enabled: boolean) => {
+    const currentServers = currentAIConfig.mcp?.enabledServers || [];
+    const updatedServers = enabled
+      ? [...currentServers, serverName]
+      : currentServers.filter(name => name !== serverName);
+    
+    handleAIConfigChange({
+      mcp: {
+        enableTools: currentAIConfig.mcp?.enableTools ?? true,
+        enableResources: currentAIConfig.mcp?.enableResources ?? true,
+        autoDiscoverTools: currentAIConfig.mcp?.autoDiscoverTools ?? true,
+        maxToolCalls: currentAIConfig.mcp?.maxToolCalls ?? 5,
+        ...currentAIConfig.mcp,
+        enabledServers: updatedServers
+      }
+    });
+  }, [currentAIConfig.mcp, handleAIConfigChange]);
+
+  // Filtered MCP servers for search
+  const filteredMcpServers = useMemo(() => {
+    if (!mcpSearchTerm) return mcpServers;
+    const searchLower = mcpSearchTerm.toLowerCase();
+    return mcpServers.filter(server => 
+      server.name.toLowerCase().includes(searchLower)
+    );
+  }, [mcpServers, mcpSearchTerm]);
+
+  // Load MCP servers from actual service
+  useEffect(() => {
+    const loadMcpServers = async () => {
+      if (!sessionConfig?.aiConfig?.features.enableMCP) return;
+      
+      try {
+        await claraMCPService.refreshServers();
+        const servers = claraMCPService.getRunningServers();
+        setMcpServers(servers);
+      } catch (error) {
+        console.error('Failed to load MCP servers:', error);
+        setMcpServers([]);
+      }
+    };
+
+    if (!isStreamingMode) {
+      loadMcpServers();
+    }
+  }, [isStreamingMode, sessionConfig?.aiConfig?.features.enableMCP]);
+
+  // Close MCP selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showMcpSelector && !target.closest('[data-mcp-selector]')) {
+        setShowMcpSelector(false);
+      }
+    };
+
+    if (showMcpSelector) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showMcpSelector]);
+
   // Get current selected model for display
   const getCurrentModel = () => {
     if (currentAIConfig.features.autoModelSelection) {
@@ -4650,6 +4930,81 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, [handleSend, handleModeToggle]);
 
+  // Handle clipboard paste for images and files
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    console.log('🔄 Paste event triggered');
+    
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) {
+      console.log('❌ No clipboard data available');
+      return;
+    }
+
+    console.log('📋 Clipboard data available');
+    
+    // Check if there are files in the clipboard
+    const items = Array.from(clipboardData.items);
+    console.log('📄 Clipboard items:', items.length);
+    console.log('📄 Item types:', items.map(item => ({ type: item.type, kind: item.kind })));
+    
+    // Look for any file items (images, PDFs, documents, etc.)
+    const fileItems = items.filter(item => item.kind === 'file');
+    console.log('� File items found:', fileItems.length);
+    
+    if (fileItems.length > 0) {
+      console.log('✅ Processing file items...');
+      e.preventDefault(); // Prevent default paste behavior for files
+      
+      const files: globalThis.File[] = [];
+      fileItems.forEach((item, index) => {
+        console.log(`� Processing file item ${index + 1}:`, item.type);
+        const file = item.getAsFile();
+        if (file) {
+          console.log('✅ Got file from clipboard:', file.name, file.size, 'bytes', file.type);
+          
+          // Create a more descriptive filename based on file type
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          let fileName = `pasted-file-${timestamp}`;
+          let extension = '';
+          
+          // Determine appropriate extension based on MIME type
+          if (item.type.startsWith('image/')) {
+            extension = item.type.split('/')[1] || 'png';
+            fileName = `pasted-image-${timestamp}.${extension}`;
+          } else if (item.type === 'application/pdf') {
+            fileName = `pasted-document-${timestamp}.pdf`;
+          } else if (item.type === 'text/plain') {
+            fileName = `pasted-text-${timestamp}.txt`;
+          } else {
+            // Try to extract extension from MIME type
+            const mimeExtension = item.type.split('/')[1];
+            if (mimeExtension) {
+              fileName = `pasted-file-${timestamp}.${mimeExtension}`;
+            }
+          }
+          
+          const newFile = new globalThis.File([file], fileName, {
+            type: file.type
+          });
+          files.push(newFile);
+          console.log('📝 Created new file:', newFile.name);
+        } else {
+          console.log('❌ Could not get file from item');
+        }
+      });
+      
+      if (files.length > 0) {
+        console.log(`🚀 Adding ${files.length} files to handler`);
+        handleFilesAdded(files);
+      } else {
+        console.log('❌ No files to add');
+      }
+    } else {
+      console.log('📝 No file items found, allowing default paste behavior');
+    }
+    // If no files, let the default paste behavior handle text
+  }, [handleFilesAdded]);
+
   // Quick action handlers
   const handleNewChat = useCallback(() => {
     setInput('');
@@ -4660,26 +5015,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     focusTextarea();
   }, [onNewChat, focusTextarea]);
 
-  const triggerImageUpload = useCallback(() => {
+  const triggerFileUpload = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.onchange = (e) => {
-      const target = e.target as HTMLInputElement;
-      if (target.files) {
-        handleFilesAdded(Array.from(target.files));
-        // Focus textarea after files are added
-        focusTextarea();
-      }
-    };
-    input.click();
-  }, [handleFilesAdded, focusTextarea]);
-
-  const triggerDocumentUpload = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java';
+    input.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java';
     input.multiple = true;
     input.onchange = (e) => {
       const target = e.target as HTMLInputElement;
@@ -4893,10 +5232,129 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, [checkPythonBackendStatus, addInfoNotification, addErrorNotification]);
 
-  // Apps dropdown toggle handler
-  const handleAppsToggle = useCallback(() => {
-    setShowAppsDropdown(!showAppsDropdown);
-  }, [showAppsDropdown]);
+  // Quick recording handlers for mic button
+  const handleQuickRecording = useCallback(async () => {
+    if (isQuickRecording) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setIsQuickRecording(false);
+      setQuickRecordingProgress(0);
+    } else {
+      // Start recording
+      if (!pythonBackendStatus.isHealthy) {
+        // Start Python backend if not available
+        handleStartPythonBackend();
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 16000
+          }
+        });
+
+        recordingChunksRef.current = [];
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordingChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          // Stop all tracks
+          stream.getTracks().forEach(track => track.stop());
+          
+          if (recordingChunksRef.current.length > 0) {
+            const audioBlob = new Blob(recordingChunksRef.current, { type: 'audio/webm;codecs=opus' });
+            setIsVoiceProcessing(true);
+            
+            try {
+              // Initialize voice service with current backend URL
+              const { ClaraVoiceService } = await import('../../services/claraVoiceService');
+              const voiceService = new ClaraVoiceService(pythonBackendStatus.serviceUrl || 'http://localhost:5001');
+              
+              // Use the voice service for transcription
+              const result = await voiceService.transcribeAudio(audioBlob);
+
+              if (result.success && result.transcription) {
+                // Add transcribed text to input field
+                setInput(prev => {
+                  const newText = prev ? `${prev} ${result.transcription}` : result.transcription;
+                  return newText;
+                });
+                focusTextarea();
+                addInfoNotification('Voice Recorded', `Transcribed: "${result.transcription}"`, 3000);
+              } else {
+                addErrorNotification('Recording Error', result.error || 'No speech detected in recording.', 3000);
+              }
+            } catch (error) {
+              console.error('Transcription error:', error);
+              addErrorNotification('Transcription Error', `Failed to transcribe audio: ${error instanceof Error ? error.message : 'Unknown error'}`, 5000);
+            } finally {
+              setIsVoiceProcessing(false);
+            }
+          }
+        };
+
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.start();
+        setIsQuickRecording(true);
+
+        // Start progress animation (10 second max)
+        let progress = 0;
+        recordingTimerRef.current = setInterval(() => {
+          progress += 1; // 1% per 100ms = 10 seconds total
+          setQuickRecordingProgress(progress);
+          
+          if (progress >= 100) {
+            // Auto-stop after 10 seconds
+            if (mediaRecorder.state === 'recording') {
+              mediaRecorder.stop();
+            }
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+            setIsQuickRecording(false);
+            setQuickRecordingProgress(0);
+          }
+        }, 100);
+
+        addInfoNotification('Recording Started', 'Speak now. Click mic again to stop or wait 10 seconds for auto-stop.', 3000);
+
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        addErrorNotification('Recording Error', `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`, 5000);
+        setIsQuickRecording(false);
+        setQuickRecordingProgress(0);
+      }
+    }
+  }, [isQuickRecording, pythonBackendStatus, handleStartPythonBackend, focusTextarea, setInput, addInfoNotification, addErrorNotification]);
+
+  // Cleanup recording resources on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
 
   // Screen share handler
   const handleScreenShare = useCallback(async () => {
@@ -4919,7 +5377,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
             3000
           );
         }
-        setShowAppsDropdown(false);
         return;
       }
 
@@ -4957,7 +5414,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           // Show screen source picker
           setAvailableSources(sources);
           setShowScreenPicker(true);
-          setShowAppsDropdown(false);
 
         } catch (electronError: any) {
           console.error('Electron screen share error:', electronError);
@@ -4999,7 +5455,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
 
           setScreenStream(stream);
           setIsScreenSharing(true);
-          setShowAppsDropdown(false);
 
           stream.getVideoTracks()[0].addEventListener('ended', () => {
             setIsScreenSharing(false);
@@ -5655,7 +6110,10 @@ You can right-click on the image to save it or use it in your projects.`;
               />
             ) : (
               /* Chat Input Mode */
-              <div className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300">
+              <div 
+                ref={inputContainerRef}
+                className="glassmorphic rounded-xl p-4 bg-white/60 dark:bg-gray-900/40 backdrop-blur-md shadow-lg transition-all duration-300"
+              >
                 
                 {/* Simple Progress Indicator - Show when loading */}
                 {isLoading && (
@@ -5669,7 +6127,7 @@ You can right-click on the image to save it or use it in your projects.`;
                           </div>
                         </div>
                       ) : (
-                        <Waves className="w-4 h-4 animate-pulse" />
+                        <div className="w-4 h-4 animate-pulse rounded-full bg-blue-400" />
                       )}
                       
                       <div className="flex-1">
@@ -5721,6 +6179,7 @@ You can right-click on the image to save it or use it in your projects.`;
                     value={input}
                     onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                     onFocus={() => {
                       // Trigger aggressive preload on focus for fastest TTFT - SILENT
                       console.log('⚡ Input focused - triggering silent immediate preload');
@@ -5756,152 +6215,32 @@ You can right-click on the image to save it or use it in your projects.`;
 
                 {/* Bottom Actions - Redesigned for better UX */}
                 <div className="flex justify-between items-center mt-4">
-                  {/* Left Side - File & Content Actions */}
-                  <div className="flex items-center">
-                    {/* File Upload Group */}
-                    <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1 mr-3">
-                      <Tooltip content="Upload images" position="top">
-                        <button 
-                          onClick={triggerImageUpload}
-                          className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
-                          disabled={isLoading}
-                        >
-                          <ImageIcon className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                      
-                      <Tooltip content="Upload documents & code" position="top">
-                        <button
-                          onClick={triggerDocumentUpload}
-                          className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
-                          disabled={isLoading}
-                        >
-                          <File className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                      
-                      <Tooltip content={imageGenEnabled ? "Generate image" : "Image generation unavailable - ComfyUI not running"} position="top">
-                        <button
-                          onClick={handleImageGenClick}
-                          className={`p-1.5 rounded-md transition-colors ${
-                            imageGenEnabled 
-                              ? 'hover:bg-white dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400' 
-                              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
-                          }`}
-                          disabled={isLoading || !imageGenEnabled}
-                        >
-                          <Palette className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    </div>
-
-                    {/* Voice Input */}
-                    <div className="relative">
-                      {pythonBackendStatus.isHealthy ? (
-                        <Tooltip content="Voice input" position="top">
-                          <button
-                            onClick={handleVoiceModeToggle}
-                            className={`p-2 rounded-lg transition-colors mr-3 ${
-                              isVoiceChatEnabled 
-                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
-                                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                            }`}
-                            disabled={isLoading}
-                          >
-                            <Mic className="w-4 h-4" />
-                          </button>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip content={
-                          pythonBackendStatus.error 
-                            ? `Voice unavailable: ${pythonBackendStatus.error}. Click to start Python backend.`
-                            : "Voice requires Python backend. Click to start."
-                        } position="top">
-                          <button
-                            onClick={handleStartPythonBackend}
-                            className="p-2 rounded-lg transition-colors mr-3 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-700"
-                            disabled={isLoading || isPythonStarting}
-                          >
-                            {isPythonStarting ? (
-                              <div className="w-4 h-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
-                            ) : (
-                              <Mic className="w-4 h-4" />
-                            )}
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-
-                    {/* Apps */}
-                    <div className="relative">
-                      <Tooltip content={isScreenSharing ? "Clara Apps (Screen Sharing Active)" : "Clara Apps"} position="top">
-                        <button
-                          onClick={handleAppsToggle}
-                          className={`p-2 rounded-lg transition-colors mr-3 ${
-                            showAppsDropdown || isScreenSharing
-                              ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-400' 
-                              : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}
-                          disabled={isLoading}
-                        >
-                          <Grid3X3 className="w-4 h-4" />
-                          {isScreenSharing && (
-                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                          )}
-                        </button>
-                      </Tooltip>
-                      
-                      <AppsDropdown
-                        show={showAppsDropdown}
-                        onClose={() => setShowAppsDropdown(false)}
-                        onScreenShare={handleScreenShare}
-                        isScreenSharing={isScreenSharing}
-                      />
-                    </div>
-
-                    {/* New Chat */}
-                    {/* <Tooltip content="New conversation" position="top">
-                      <button
-                        onClick={handleNewChat}
-                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
-                        disabled={isLoading}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </Tooltip> */}
-                  </div>
-
-                  {/* Center - Mode & Model Selection */}
+                  {/* Left Side - Mode & Model Selection */}
                   <div className="flex items-center gap-3">
-                    {/* Mode Toggle */}
+                    {/* Enhanced Mode Toggle with Clear Labels */}
                     <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1">
                       <Tooltip 
-                        content={isStreamingMode ? "Switch to Tools Mode - Ctrl+M" : "Switch to Streaming Mode - Ctrl+M"} 
+                        content={isStreamingMode ? "Chat Mode: Quick conversations with streaming responses" : "Agent Mode: AI tools, file analysis, and automation"} 
                         position="top"
                       >
                         <button
                           onClick={handleModeToggle}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 w-[100px] overflow-hidden ${
                             isStreamingMode 
-                              ? 'bg-blue-500 text-white shadow-sm' 
-                              : 'bg-green-500 text-white shadow-sm'
+                              ? 'bg-sakura-500 hover:bg-sakura-600 text-white shadow-sm' 
+                              : 'bg-purple-500 hover:bg-purple-600 text-white shadow-sm'
                           }`}
                           disabled={isLoading}
                         >
                           {isStreamingMode ? (
                             <>
-                              <Waves className="w-3 h-3" />
-                              <span>Ask</span>
+                              <MessageCircle className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">Chat</span>
                             </>
                           ) : (
                             <>
-                              <Cog className="w-3 h-3" />
-                              <span>Agents</span>
-                              {currentAIConfig.mcp?.enabledServers?.length && (
-                                <span className="bg-white/20 px-1 rounded text-xs">
-                                  {currentAIConfig.mcp.enabledServers.length}
-                                </span>
-                              )}
+                              <Bot className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">Agent</span>
                             </>
                           )}
                         </button>
@@ -5968,21 +6307,249 @@ You can right-click on the image to save it or use it in your projects.`;
                     </div>
                   </div>
 
-                  {/* Right Side - Settings & Send */}
+                  {/* Right Side - MCP, File Actions, Voice, Settings & Send */}
                   <div className="flex items-center gap-2">
-                    {/* Settings */}
-                    <Tooltip content="Advanced settings" position="top">
-                      <button
-                        onClick={() => onAdvancedOptionsToggle?.(!showAdvancedOptionsPanel)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          showAdvancedOptionsPanel 
-                            ? 'bg-sakura-100 dark:bg-sakura-900/30 text-sakura-600 dark:text-sakura-400' 
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                      >
-                        <Settings className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
+                    {/* MCP Server Selector */}
+                    <div className="relative" data-mcp-selector>
+                      <Tooltip content={
+                        isStreamingMode 
+                          ? "MCP available with Agent mode only" 
+                          : `MCP Servers (${currentAIConfig.mcp?.enabledServers?.length || 0} active)`
+                      } position="top">
+                        <button
+                          onClick={() => setShowMcpSelector(!showMcpSelector)}
+                          className={`relative p-2 rounded-lg transition-colors ${
+                            isStreamingMode
+                              ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                              : currentAIConfig.mcp?.enabledServers?.length 
+                                ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}
+                          disabled={isLoading || isStreamingMode}
+                        >
+                          {/* MCP Icon */}
+                          <svg 
+                            fill="currentColor" 
+                            fillRule="evenodd" 
+                            height="16" 
+                            style={{flexShrink: 0, lineHeight: 1}} 
+                            viewBox="0 0 24 24" 
+                            width="16" 
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-4 h-4"
+                          >
+                            <path d="M15.688 2.343a2.588 2.588 0 00-3.61 0l-9.626 9.44a.863.863 0 01-1.203 0 .823.823 0 010-1.18l9.626-9.44a4.313 4.313 0 016.016 0 4.116 4.116 0 011.204 3.54 4.3 4.3 0 013.609 1.18l.05.05a4.115 4.115 0 010 5.9l-8.706 8.537a.274.274 0 000 .393l1.788 1.754a.823.823 0 010 1.18.863.863 0 01-1.203 0l-1.788-1.753a1.92 1.92 0 010-2.754l8.706-8.538a2.47 2.47 0 000-3.54l-.05-.049a2.588 2.588 0 00-3.607-.003l-7.172 7.034-.002.002-.098.097a.863.863 0 01-1.204 0 .823.823 0 010-1.18l7.273-7.133a2.47 2.47 0 00-.003-3.537z"></path>
+                            <path d="M14.485 4.703a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a4.115 4.115 0 000 5.9 4.314 4.314 0 006.016 0l7.12-6.982a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a2.588 2.588 0 01-3.61 0 2.47 2.47 0 010-3.54l7.12-6.982z"></path>
+                          </svg>
+                          
+                          {/* Server count badge */}
+                          {!isStreamingMode && currentAIConfig.mcp?.enabledServers?.length && (
+                            <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                              {currentAIConfig.mcp.enabledServers.length > 9 ? '9+' : currentAIConfig.mcp.enabledServers.length}
+                            </span>
+                          )}
+                        </button>
+                      </Tooltip>
+                      
+                      {/* MCP Dropdown */}
+                      {showMcpSelector && !isStreamingMode && (
+                        <div className="absolute bottom-full right-0 mb-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-96 flex flex-col">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">MCP Servers</h3>
+                            {mcpServers.length > 6 && (
+                              <input
+                                type="text"
+                                placeholder="Search servers..."
+                                value={mcpSearchTerm}
+                                onChange={(e) => setMcpSearchTerm(e.target.value)}
+                                className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            )}
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto p-2 max-h-64">
+                            {filteredMcpServers.map((server) => (
+                              <div
+                                key={server.name}
+                                className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 flex-1">
+                                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                    server.status === 'running' ? 'bg-green-500' : 
+                                    server.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                      {server.name}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                      {server.config.type} • {server.status}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <button
+                                  onClick={() => handleMcpServerToggle(server.name, !isServerEnabled(server.name))}
+                                  className={`flex-shrink-0 w-10 h-5 rounded-full transition-colors ${
+                                    isServerEnabled(server.name)
+                                      ? 'bg-blue-500' 
+                                      : 'bg-gray-300 dark:bg-gray-600'
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                    isServerEnabled(server.name) ? 'translate-x-5' : 'translate-x-0.5'
+                                  }`} />
+                                </button>
+                              </div>
+                            ))}
+                            
+                            {filteredMcpServers.length === 0 && (
+                              <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
+                                {mcpSearchTerm ? 'No servers match your search' : 'No MCP servers available'}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+                            <button
+                              onClick={() => {
+                                setShowMcpSelector(false);
+                                onAdvancedOptionsToggle?.(true);
+                              }}
+                              className="w-full text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                            >
+                              Open Advanced MCP Settings
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* File Upload and Image Generation Group */}
+                    <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1 mr-2">
+                      <Tooltip content="Upload images, documents & files" position="top">
+                        <button 
+                          onClick={triggerFileUpload}
+                          className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      
+                      <Tooltip content={imageGenEnabled ? "Generate image" : "Image generation unavailable - ComfyUI not running"} position="top">
+                        <button
+                          onClick={handleImageGenClick}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            imageGenEnabled 
+                              ? 'hover:bg-white dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400' 
+                              : 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                          }`}
+                          disabled={isLoading || !imageGenEnabled}
+                        >
+                          <Palette className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    </div>
+
+                    {/* Quick Voice Recording */}
+                    <div className="relative">
+                      {pythonBackendStatus.isHealthy ? (
+                        <Tooltip content={
+                          isQuickRecording 
+                            ? "Stop recording (or wait for auto-stop)" 
+                            : isVoiceProcessing 
+                              ? "Processing recording..." 
+                              : "Quick voice recording - transcribe to text"
+                        } position="top">
+                          <button
+                            onClick={handleQuickRecording}
+                            className={`relative p-2 rounded-lg transition-colors ${
+                              isQuickRecording 
+                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' 
+                                : isVoiceProcessing
+                                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                            }`}
+                            disabled={isLoading || isVoiceProcessing}
+                          >
+                            {isVoiceProcessing ? (
+                              <div className="w-4 h-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                            ) : (
+                              <Mic className={`w-4 h-4 ${isQuickRecording ? 'animate-pulse' : ''}`} />
+                            )}
+                            {/* Recording progress indicator */}
+                            {isQuickRecording && quickRecordingProgress > 0 && (
+                              <div className="absolute inset-0 rounded-lg overflow-hidden">
+                                <div 
+                                  className="absolute bottom-0 left-0 h-1 bg-red-500 transition-all duration-100"
+                                  style={{ width: `${quickRecordingProgress}%` }}
+                                />
+                              </div>
+                            )}
+                          </button>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip content={
+                          pythonBackendStatus.error 
+                            ? `Voice unavailable: ${pythonBackendStatus.error}. Click to start Python backend.`
+                            : "Voice requires Python backend. Click to start."
+                        } position="top">
+                          <button
+                            onClick={handleStartPythonBackend}
+                            className="p-2 rounded-lg transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-700"
+                            disabled={isLoading || isPythonStarting}
+                          >
+                            {isPythonStarting ? (
+                              <div className="w-4 h-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
+                            ) : (
+                              <Mic className="w-4 h-4" />
+                            )}
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    {/* More Options - Overflow Menu */}
+                    <div className="relative">
+                      <Tooltip content="More options" position="top">
+                        <button
+                          ref={overflowMenuTriggerRef}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowOverflowMenu(!showOverflowMenu);
+                          }}
+                          className={`p-2 rounded-lg transition-colors ${
+                            showOverflowMenu
+                              ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300' 
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      
+                      <OverflowMenu
+                        show={showOverflowMenu}
+                        onClose={() => setShowOverflowMenu(false)}
+                        onScreenShare={handleScreenShare}
+                        onVoiceModeToggle={() => {
+                          setShowVoiceChat(!showVoiceChat);
+                          // Also enable voice chat when opening
+                          if (!showVoiceChat) {
+                            setIsVoiceChatEnabled(true);
+                          }
+                        }}
+                        onAdvancedOptionsToggle={() => onAdvancedOptionsToggle?.(!showAdvancedOptionsPanel)}
+                        isScreenSharing={isScreenSharing}
+                        showVoiceChat={showVoiceChat}
+                        showAdvancedOptionsPanel={showAdvancedOptionsPanel}
+                        triggerRef={overflowMenuTriggerRef}
+                        pythonBackendStatus={pythonBackendStatus}
+                        isPythonStarting={isPythonStarting}
+                        onStartPythonBackend={handleStartPythonBackend}
+                      />
+                    </div>
 
                     {/* Send/Stop Button */}
                     {isLoading ? (
