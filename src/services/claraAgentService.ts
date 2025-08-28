@@ -15,6 +15,10 @@ import { claraMemoryService } from './claraMemoryService';
 import { structuredToolCallService } from './structuredToolCallService';
 import { claraToolService } from './claraToolService';
 import { claraImageExtractionService } from './claraImageExtractionService';
+import { 
+  validateTokenCount,
+  type TokenValidationResult 
+} from './tokenEstimationService';
 
 /**
  * Simple autonomous agent configuration
@@ -381,6 +385,24 @@ export class ClaraAgentService {
         finalResponse += memoryContext;
       }
 
+      // Validate token count for agent responses
+      let tokenValidation: TokenValidationResult | undefined;
+      if (finalResponse) {
+        tokenValidation = validateTokenCount(
+          totalTokens,
+          finalResponse,
+          config.provider
+        );
+        
+        console.log('🔢 Agent token validation result:', {
+          final: tokenValidation.finalTokens,
+          method: tokenValidation.method,
+          confidence: tokenValidation.confidence,
+          reported: totalTokens,
+          estimated: tokenValidation.estimatedTokens
+        });
+      }
+
       // Create final Clara message
       const claraMessage: ClaraMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -389,13 +411,23 @@ export class ClaraAgentService {
         timestamp: new Date(),
         metadata: {
           model: `${config.provider}:${modelId}`,
-          tokens: totalTokens,
+          tokens: tokenValidation?.finalTokens || totalTokens,
           temperature: config.parameters.temperature,
           toolsUsed: allToolResults.map(tc => tc.toolName),
           agentSteps: currentIterationCount,
           autonomousMode: true,
           structuredToolCalling: true,
-          memorySessionId: sessionId
+          memorySessionId: sessionId,
+          // Token validation metadata for UI display
+          tokenValidation: tokenValidation ? {
+            finalTokens: tokenValidation.finalTokens,
+            isEstimated: tokenValidation.isEstimated,
+            confidence: tokenValidation.confidence,
+            method: tokenValidation.method,
+            reportedTokens: tokenValidation.reportedTokens,
+            estimatedTokens: tokenValidation.estimatedTokens,
+            streamingChunks: 0 // Agent mode doesn't use streaming chunks
+          } : undefined
         }
       };
 
@@ -672,6 +704,24 @@ export class ClaraAgentService {
         finalResponse += memoryContext;
       }
 
+      // Validate token count for agent responses
+      let tokenValidation: TokenValidationResult | undefined;
+      if (finalResponse) {
+        tokenValidation = validateTokenCount(
+          totalTokens,
+          finalResponse,
+          config.provider
+        );
+        
+        console.log('🔢 Agent token validation result:', {
+          final: tokenValidation.finalTokens,
+          method: tokenValidation.method,
+          confidence: tokenValidation.confidence,
+          reported: totalTokens,
+          estimated: tokenValidation.estimatedTokens
+        });
+      }
+
       // Create final Clara message
       const claraMessage: ClaraMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -680,12 +730,22 @@ export class ClaraAgentService {
         timestamp: new Date(),
         metadata: {
           model: `${config.provider}:${modelId}`,
-          tokens: totalTokens,
+          tokens: tokenValidation?.finalTokens || totalTokens,
           temperature: config.parameters.temperature,
           toolsUsed: allToolResults.map(tc => tc.toolName),
           agentSteps: Math.min(autonomousConfig.maxIterations, allToolResults.length / 2 + 1),
           autonomousMode: true,
-          memorySessionId: sessionId
+          memorySessionId: sessionId,
+          // Token validation metadata for UI display
+          tokenValidation: tokenValidation ? {
+            finalTokens: tokenValidation.finalTokens,
+            isEstimated: tokenValidation.isEstimated,
+            confidence: tokenValidation.confidence,
+            method: tokenValidation.method,
+            reportedTokens: tokenValidation.reportedTokens,
+            estimatedTokens: tokenValidation.estimatedTokens,
+            streamingChunks: 0 // Agent mode doesn't use streaming chunks
+          } : undefined
         }
       };
 

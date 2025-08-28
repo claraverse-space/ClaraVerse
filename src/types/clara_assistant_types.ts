@@ -136,6 +136,17 @@ export interface ClaraMessageMetadata {
   /** Error information if message generation failed */
   error?: string;
   
+  /** Token validation information for improved accuracy */
+  tokenValidation?: {
+    finalTokens: number;
+    isEstimated: boolean;
+    confidence: 'high' | 'medium' | 'low';
+    method: string;
+    reportedTokens?: number;
+    estimatedTokens?: number;
+    streamingChunks?: number;
+  };
+  
   /** Categorized error type for better error handling */
   errorType?: string;
   

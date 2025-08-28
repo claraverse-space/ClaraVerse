@@ -14,9 +14,12 @@ import {
 } from '../types/clara_assistant_types';
 import type { Tool } from '../db';
 import { claraToolService } from './claraToolService';
-import { TokenLimitRecoveryService } from './tokenLimitRecoveryService';
-import { addErrorNotification } from './notificationService';
 import { claraImageExtractionService } from './claraImageExtractionService';
+import { 
+  StreamingTokenAccumulator, 
+  postProcessTokenCount,
+  type TokenValidationResult 
+} from './tokenEstimationService';
 
 export class ClaraChatService {
   /**
@@ -70,6 +73,11 @@ export class ClaraChatService {
     let finalUsage: any = {};
     let finalTimings: any = {};
     let streamWasAborted = false;
+    
+    // Token tracking for improved accuracy
+    const tokenAccumulator = new StreamingTokenAccumulator();
+    let reportedTokens: number | undefined;
+    let tokenValidation: TokenValidationResult | undefined;
 
     // Build conversation messages
     const messages = this.buildConversationMessages(
@@ -95,7 +103,8 @@ export class ClaraChatService {
           // Use non-streaming mode
           response = await client.sendChat(modelId, messages, options, tools);
           responseContent = response.message?.content || '';
-          totalTokens = response.usage?.total_tokens || 0;
+          reportedTokens = response.usage?.total_tokens;
+          totalTokens = reportedTokens || 0;
           finalUsage = response.usage || {};
           finalTimings = response.timings || {};
           
@@ -153,8 +162,10 @@ export class ClaraChatService {
               }
 
               if (chunk.usage?.total_tokens) {
+                tokenAccumulator.addChunk(chunk.usage.total_tokens);
                 totalTokens = chunk.usage.total_tokens;
                 finalUsage = chunk.usage;
+                reportedTokens = chunk.usage.total_tokens;
               }
               if (chunk.timings) {
                 finalTimings = chunk.timings;
@@ -201,7 +212,8 @@ export class ClaraChatService {
               }
               response = await client.sendChat(modelId, messages, options, tools);
               responseContent = response.message?.content || '';
-              totalTokens = response.usage?.total_tokens || 0;
+              reportedTokens = response.usage?.total_tokens;
+              totalTokens = reportedTokens || 0;
               finalUsage = response.usage || {};
               finalTimings = response.timings || {};
               
@@ -217,7 +229,8 @@ export class ClaraChatService {
         // Non-streaming mode
         response = await client.sendChat(modelId, messages, options, tools);
         responseContent = response.message?.content || '';
-        totalTokens = response.usage?.total_tokens || 0;
+        reportedTokens = response.usage?.total_tokens;
+        totalTokens = reportedTokens || 0;
         finalUsage = response.usage || {};
         finalTimings = response.timings || {};
         
@@ -327,6 +340,26 @@ export class ClaraChatService {
       (this as any).lastError = error;
     }
 
+    // Post-process token count for accuracy
+    if (responseContent) {
+      const streamingTotal = tokenAccumulator.getCurrentTotal();
+      tokenValidation = postProcessTokenCount(
+        streamingTotal,
+        reportedTokens,
+        responseContent,
+        config.provider
+      );
+      
+      console.log('🔢 Token validation result:', {
+        final: tokenValidation.finalTokens,
+        method: tokenValidation.method,
+        confidence: tokenValidation.confidence,
+        streaming: streamingTotal,
+        reported: reportedTokens,
+        estimated: tokenValidation.estimatedTokens
+      });
+    }
+
     // Create final Clara message
     const claraMessage: ClaraMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -335,7 +368,7 @@ export class ClaraChatService {
       timestamp: new Date(),
       metadata: {
         model: `${config.provider}:${modelId}`,
-        tokens: totalTokens,
+        tokens: tokenValidation?.finalTokens || totalTokens,
         usage: finalUsage,
         timings: finalTimings,
         temperature: config.parameters.temperature,
@@ -343,6 +376,16 @@ export class ClaraChatService {
         autonomousMode: false,
         // Include abort information if stream was aborted
         aborted: streamWasAborted,
+        // Token validation metadata for UI display
+        tokenValidation: tokenValidation ? {
+          finalTokens: tokenValidation.finalTokens,
+          isEstimated: tokenValidation.isEstimated,
+          confidence: tokenValidation.confidence,
+          method: tokenValidation.method,
+          reportedTokens: tokenValidation.reportedTokens,
+          estimatedTokens: tokenValidation.estimatedTokens,
+          streamingChunks: tokenAccumulator.getChunkCount()
+        } : undefined,
         // Include error information if available
         ...(((this as any).lastError) && {
           error: (this as any).lastError instanceof Error ? (this as any).lastError.message : 'Unknown error',

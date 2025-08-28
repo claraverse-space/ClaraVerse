@@ -668,7 +668,7 @@ const ScrollToBottomButton: React.FC<{
   return (
     <button
       onClick={onClick}
-      style={{ position: 'fixed', top: '6rem', right: '20rem', zIndex: 50 }}
+      style={{ position: 'fixed', top: '6rem', right: '22rem', zIndex: 50 }}
       className="bg-white dark:bg-gray-800 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 group"
     >
       <ArrowDown className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:text-sakura-600 dark:group-hover:text-sakura-400" />

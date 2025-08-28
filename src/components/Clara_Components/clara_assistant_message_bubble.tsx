@@ -15,7 +15,7 @@
  * - Theme support
  */
 
-import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   User, 
   Bot, 
@@ -30,7 +30,7 @@ import {
   Clock,
   AlertCircle,
   MessageSquare,
-  Download,
+
   X,
   Eye,
   FileCode,
@@ -45,12 +45,11 @@ import {
 import { 
   ClaraMessage, 
   ClaraMessageBubbleProps,
-  ClaraFileAttachment,
-  ClaraArtifact
+  ClaraFileAttachment
 } from '../../types/clara_assistant_types';
 
 import MessageContentRenderer from './MessageContentRenderer';
-import { ElectronAPI } from '../../types/electron';
+
 import { copyToClipboard } from '../../utils/clipboard';
 import { useSmoothScroll } from '../../hooks/useSmoothScroll';
 
@@ -400,7 +399,7 @@ const MessageMetadata: React.FC<{
           </span>
         )}
         
-        {/* Enhanced token display with detailed usage - only show if we have meaningful data */}
+        {/* Enhanced token display with validation info - only show if we have meaningful data */}
         {hasTokenData && (
           <button
             onClick={() => setShowDetailedStats(!showDetailedStats)}
@@ -408,7 +407,19 @@ const MessageMetadata: React.FC<{
             title={hasDetailedStats ? "Click for detailed statistics" : undefined}
           >
             <MessageSquare className="w-3 h-3" />
-            {message.metadata.usage?.total_tokens || message.metadata.tokens} tokens
+            {(() => {
+              const tokenValidation = message.metadata.tokenValidation;
+              const tokenCount = message.metadata.usage?.total_tokens || message.metadata.tokens;
+              const displayCount = tokenValidation?.finalTokens || tokenCount;
+              
+              const estimatedLabel = tokenValidation?.isEstimated ? '~' : '';
+              
+              return (
+                <span className="text-gray-600 dark:text-gray-400">
+                  {estimatedLabel}{displayCount} tokens
+                </span>
+              );
+            })()}
             {hasDetailedStats && (
               <span className={`ml-1 transform transition-transform ${showDetailedStats ? 'rotate-180' : ''}`}>
                 ↓
@@ -450,29 +461,32 @@ const MessageMetadata: React.FC<{
       {showDetailedStats && hasDetailedStats && (
         <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="grid grid-cols-2 gap-4 text-xs">
-            {/* Token Usage */}
-            {message.metadata.usage && (
+            {/* Token Usage with Validation Info */}
+            {(message.metadata.usage || message.metadata.tokenValidation) && (
               <div>
                 <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Token Usage</h4>
                 <div className="space-y-1">
-                  {message.metadata.usage.prompt_tokens !== undefined && (
+                  {message.metadata.usage?.prompt_tokens !== undefined && (
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Prompt:</span>
                       <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.usage.prompt_tokens.toLocaleString()}</span>
                     </div>
                   )}
-                  {message.metadata.usage.completion_tokens !== undefined && (
+                  {message.metadata.usage?.completion_tokens !== undefined && (
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Completion:</span>
                       <span className="font-mono text-gray-900 dark:text-gray-100">{message.metadata.usage.completion_tokens.toLocaleString()}</span>
                     </div>
                   )}
-                  {message.metadata.usage.total_tokens !== undefined && (
+                  {(message.metadata.usage?.total_tokens !== undefined || message.metadata.tokenValidation) && (
                     <div className="flex justify-between border-t border-gray-300 dark:border-gray-600 pt-1">
                       <span className="text-gray-700 dark:text-gray-300 font-medium">Total:</span>
-                      <span className="font-mono font-medium text-gray-900 dark:text-gray-100">{message.metadata.usage.total_tokens.toLocaleString()}</span>
+                      <span className="font-mono font-medium text-gray-900 dark:text-gray-100">
+                        {message.metadata.tokenValidation?.finalTokens?.toLocaleString() || message.metadata.usage?.total_tokens?.toLocaleString() || message.metadata.tokens?.toLocaleString()}
+                      </span>
                     </div>
                   )}
+
                 </div>
               </div>
             )}
@@ -608,7 +622,7 @@ const MessageActions: React.FC<{
   onShowExecutionDetails
 }) => {
   const [copied, setCopied] = useState(false);
-  const [showActions, setShowActions] = useState(false);
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [editContent, setEditContent] = useState('');
   const { copyToClipboard } = useCopyWithToast();
