@@ -16,13 +16,12 @@ export const MEMORY_CONFIG = {
   // Extraction settings
   extraction: {
     minConfidence: 0.2, // Minimum confidence to save memory (lowered from 0.3)
-    maxRequestSize: 2000, // Max characters in user message to process
-    minTokenSpeed: 10, // Min tokens/sec for timeout adjustment (not filtering)
+    minWordCount: 5, // Minimum words required for memory extraction
+    maxWordCount: 500, // Maximum words to avoid processing overly long requests
     enableRateLimiting: true,
     rateLimitInterval: 30000, // 30 seconds between extractions
     contextWindow: 3, // Number of previous messages to include
-    timeoutMs: 30000, // 30 second base timeout for AI extraction
-    extendedTimeoutMs: 60000 // 60 second extended timeout for low/zero token speed
+    timeoutMs: 60000 // Fixed 60 second timeout for all AI extractions
   },
 
   // Feature flags

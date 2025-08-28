@@ -152,11 +152,10 @@ interface MemoryExtractionResponse {
 
 // ==================== CONSTANTS ====================
 
-const TOKEN_SPEED_THRESHOLD = 10; // tokens per second (used for timeout adjustment, not filtering)
-const MAX_REQUEST_SIZE = 2000; // characters - avoid processing large requests
+const MIN_WORD_COUNT = 5; // Minimum words required for memory extraction
+const MAX_WORD_COUNT = 500; // Maximum words to avoid processing overly long requests
 const MIN_CONFIDENCE_THRESHOLD = 0.3;
-const EXTRACTION_TIMEOUT = 30000; // 30 seconds base timeout for memory extraction
-const EXTRACTION_TIMEOUT_EXTENDED = 60000; // 60 seconds extended timeout for low/zero token speed
+const EXTRACTION_TIMEOUT = 60000; // Fixed 60 seconds timeout for all memory extraction
 const RATE_LIMIT_INTERVAL = 2000; // 2 seconds between extractions (reduced from 60 seconds)
 
 // ==================== MEMORY EXTRACTION PROMPT ====================
@@ -381,12 +380,18 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
   };
 
   /**
+   * Count words in a text string
+   */
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
+  /**
    * Check if we should process this interaction for memory extraction
    */
   const shouldProcessMemory = (
     userMessage: string,
-    assistantMessage: ClaraMessage,
-    tokenSpeed: number
+    assistantMessage: ClaraMessage
   ): boolean => {
     // Check if feature is enabled
     if (!isEnabled) {
@@ -394,15 +399,15 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       return false;
     }
 
-    // REMOVED: Token speed threshold check - now we process regardless of speed
-    // but will adjust timeout based on speed in the extraction function
-    if (tokenSpeed < TOKEN_SPEED_THRESHOLD) {
-      console.log(`🧠 DEBUG: Token speed ${tokenSpeed.toFixed(1)} tk/s below threshold ${TOKEN_SPEED_THRESHOLD}, but proceeding with increased timeout`);
+    // Check word count - skip if too short or too long
+    const wordCount = countWords(userMessage);
+    if (wordCount < MIN_WORD_COUNT) {
+      console.log(`🧠 DEBUG: Message too short (${wordCount} words, min: ${MIN_WORD_COUNT}), skipping memory extraction`);
+      return false;
     }
-
-    // Check request size to avoid processing large requests (might contain others' data)
-    if (userMessage.length > MAX_REQUEST_SIZE) {
-      console.log(`🧠 DEBUG: Request too large (${userMessage.length} chars), skipping memory extraction`);
+    
+    if (wordCount > MAX_WORD_COUNT) {
+      console.log(`🧠 DEBUG: Message too long (${wordCount} words, max: ${MAX_WORD_COUNT}), skipping memory extraction`);
       return false;
     }
 
@@ -1065,17 +1070,12 @@ Extract and categorize any personal information according to the provided schema
         }
       };
 
-      // Calculate dynamic timeout based on token speed
-      // If token speed is low/zero, use extended timeout to allow more time for processing
-      const dynamicTimeout = tokenSpeed < TOKEN_SPEED_THRESHOLD 
-        ? EXTRACTION_TIMEOUT_EXTENDED // Use extended timeout for low/zero token speed
-        : EXTRACTION_TIMEOUT;
+      // Use fixed 60-second timeout for all memory extractions
+      console.log(`🧠 DEBUG: Using fixed timeout: ${EXTRACTION_TIMEOUT/1000}s`);
       
-      console.log(`🧠 DEBUG: Using dynamic timeout: ${dynamicTimeout/1000}s (token speed: ${tokenSpeed} tk/s)`);
-      
-      // Send extraction request with dynamic timeout using structured output
+      // Send extraction request with fixed timeout using structured output
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Memory extraction timeout after ${dynamicTimeout/1000} seconds - this may indicate the model is taking too long to process the request or the server is overloaded`)), dynamicTimeout)
+        setTimeout(() => reject(new Error(`Memory extraction timeout after ${EXTRACTION_TIMEOUT/1000} seconds - this may indicate the model is taking too long to process the request or the server is overloaded`)), EXTRACTION_TIMEOUT)
       );
 
       // UNIVERSAL APPROACH: Always use Clara API service for memory extraction
@@ -1085,7 +1085,7 @@ Extract and categorize any personal information according to the provided schema
       console.log('  - Model:', currentAIConfig?.models?.text || 'default');
       console.log('  - enableStructuredToolCalling:', extractionConfig.features.enableStructuredToolCalling);
       console.log('  - enableNativeJSONSchema:', extractionConfig.features.enableNativeJSONSchema);
-      console.log('  - Dynamic timeout:', dynamicTimeout/1000, 'seconds');
+      console.log('  - Fixed timeout:', EXTRACTION_TIMEOUT/1000, 'seconds');
       
       // Use Clara API service which works with any provider
       // The structured output configuration should be respected by the underlying provider
@@ -1435,15 +1435,15 @@ Extract and categorize any personal information according to the provided schema
       const tokenSpeed = assistantMessage.metadata?.timings?.predicted_per_second || 0;
 
       // 🔍 DEBUG: Log processing decision details BEFORE marking as processing
+      const wordCount = countWords(userMessage);
       console.log('🧠 DEBUG: Processing decision check:');
-      console.log('  - Token speed:', tokenSpeed, 'tokens/sec (threshold:', TOKEN_SPEED_THRESHOLD, ')');
-      console.log('  - Message length:', userMessage.length, 'chars (max:', MAX_REQUEST_SIZE, ')');
+      console.log('  - Word count:', wordCount, `(min: ${MIN_WORD_COUNT}, max: ${MAX_WORD_COUNT})`);
       console.log('  - Feature enabled:', isEnabled);
       console.log('  - Already processing:', processingRef.current.has(messageId));
       console.log('  - Time since last:', Date.now() - lastProcessedRef.current, `ms (min: ${RATE_LIMIT_INTERVAL})`);
 
       // Check if we should process this interaction BEFORE marking as processing
-      if (!shouldProcessMemory(userMessage, assistantMessage, tokenSpeed)) {
+      if (!shouldProcessMemory(userMessage, assistantMessage)) {
         console.log('🧠 DEBUG: Skipping memory extraction - failed shouldProcessMemory check');
         return;
       }
@@ -1502,7 +1502,7 @@ Extract and categorize any personal information according to the provided schema
 
       // 🔍 DEBUG: Log extraction input and result
       console.log('🧠 DEBUG: Memory extraction input:');
-      console.log('  - User message length:', userMessage.length);
+      console.log('  - User message word count:', wordCount);
       console.log('  - User message preview:', userMessage.substring(0, 200) + (userMessage.length > 200 ? '...' : ''));
       console.log('  - Context messages count:', contextMessages.length);
       console.log('  - Has existing profile:', !!existingProfile);
@@ -1776,11 +1776,245 @@ Extract and categorize any personal information according to the provided schema
   // ==================== COMPONENT INTERFACE ====================
 
   // Expose functions for external use
+  /**
+   * Update a specific memory field
+   */
+  const updateMemoryField = async (cardId: string, newValue: string): Promise<void> => {
+    try {
+      const profile = await getCurrentUserProfile();
+      
+      if (!profile) {
+        console.error('🧠 No profile found to update');
+        return;
+      }
+
+      // Parse card ID to determine section and field
+      const [section, field] = cardId.split('-');
+      
+      console.log(`🧠 Updating memory field: ${cardId} (${section}.${field}) = "${newValue}"`);
+      
+      // Update the specific field based on section
+      const updatedProfile = { ...profile };
+      
+      if (section === 'core' && updatedProfile.coreIdentity) {
+        (updatedProfile.coreIdentity as any)[field] = newValue;
+      } else if (section === 'personalCharacteristics' && updatedProfile.personalCharacteristics) {
+        (updatedProfile.personalCharacteristics as any)[field] = newValue;
+      } else if (section === 'preferences' && updatedProfile.preferences) {
+        (updatedProfile.preferences as any)[field] = newValue;
+      } else if (section === 'context' && updatedProfile.context) {
+        (updatedProfile.context as any)[field] = newValue;
+      } else if (section === 'emotional' && updatedProfile.emotional) {
+        (updatedProfile.emotional as any)[field] = newValue;
+      } else if (section === 'interactions' && updatedProfile.interactions) {
+        (updatedProfile.interactions as any)[field] = newValue;
+      } else if (section === 'practical' && updatedProfile.practical) {
+        (updatedProfile.practical as any)[field] = newValue;
+      }
+      
+      // Update metadata
+      updatedProfile.updatedAt = new Date().toISOString();
+      updatedProfile.version = (updatedProfile.version || 0) + 1;
+      
+      // Save updated profile
+      await saveMemoryProfile(updatedProfile);
+      
+      console.log(`🧠 Successfully updated memory field: ${cardId}`);
+    } catch (error) {
+      console.error('🧠 Failed to update memory field:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Delete a specific memory field
+   */
+  const deleteMemoryField = async (cardId: string): Promise<void> => {
+    try {
+      const profile = await getCurrentUserProfile();
+      
+      if (!profile) {
+        console.error('🧠 No profile found to delete from');
+        return;
+      }
+
+      // Parse card ID to determine section and field
+      const [section, field] = cardId.split('-');
+      
+      console.log(`🧠 Deleting memory field: ${cardId} (${section}.${field})`);
+      
+      // Delete the specific field based on section
+      const updatedProfile = { ...profile };
+      
+      if (section === 'core' && updatedProfile.coreIdentity) {
+        delete (updatedProfile.coreIdentity as any)[field];
+      } else if (section === 'personalCharacteristics' && updatedProfile.personalCharacteristics) {
+        delete (updatedProfile.personalCharacteristics as any)[field];
+      } else if (section === 'preferences' && updatedProfile.preferences) {
+        delete (updatedProfile.preferences as any)[field];
+      } else if (section === 'context' && updatedProfile.context) {
+        delete (updatedProfile.context as any)[field];
+      } else if (section === 'emotional' && updatedProfile.emotional) {
+        delete (updatedProfile.emotional as any)[field];
+      } else if (section === 'interactions' && updatedProfile.interactions) {
+        delete (updatedProfile.interactions as any)[field];
+      } else if (section === 'practical' && updatedProfile.practical) {
+        delete (updatedProfile.practical as any)[field];
+      }
+      
+      // Update metadata
+      updatedProfile.updatedAt = new Date().toISOString();
+      updatedProfile.version = (updatedProfile.version || 0) + 1;
+      
+      // Save updated profile
+      await saveMemoryProfile(updatedProfile);
+      
+      console.log(`🧠 Successfully deleted memory field: ${cardId}`);
+    } catch (error) {
+      console.error('🧠 Failed to delete memory field:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Generate a summary using the same AI configuration as memory extraction
+   * This ensures we use whatever provider/model is currently configured
+   */
+  const generateSummary = async (prompt: string, systemPrompt: string): Promise<string> => {
+    console.log('🧠 Generating summary using memory extraction method...');
+    
+    try {
+      // Import services - same as memory extraction
+      const { claraApiService } = await import('../services/claraApiService');
+      const { claraProviderService } = await import('../services/claraProviderService');
+      
+      // Get current provider and session config - exactly like memory extraction does
+      const currentProvider = claraProviderService.getCurrentProvider();
+      
+      if (!currentProvider) {
+        throw new Error('No provider currently configured. Please configure a provider first.');
+      }
+      
+      console.log('🧠 DEBUG: Using current provider for summary generation:');
+      console.log('  - Provider:', currentProvider.name);
+      console.log('  - Provider ID:', currentProvider.id);
+      
+      // Get the ACTUAL current model from the provider config storage
+      let currentTextModel = 'gpt-4o-mini'; // Fallback
+      
+      try {
+        // Get the provider configs - this is where the real current model is stored
+        const providerConfigs = localStorage.getItem('clara_provider_configs');
+        if (providerConfigs) {
+          const allConfigs = JSON.parse(providerConfigs);
+          const currentProviderConfig = allConfigs[currentProvider.id];
+          
+          if (currentProviderConfig?.models?.text) {
+            currentTextModel = currentProviderConfig.models.text;
+            console.log('🧠 DEBUG: Found ACTUAL current text model for provider:', currentTextModel);
+          } else {
+            console.log('🧠 DEBUG: No text model found in provider config, using fallback');
+          }
+        } else {
+          console.log('🧠 DEBUG: No provider configs found, using fallback');
+        }
+      } catch (error) {
+        console.log('🧠 DEBUG: Error reading provider config:', error);
+        
+        // Use appropriate models for different providers as fallback
+        if (currentProvider.type === 'openai') {
+          currentTextModel = 'gpt-4o-mini';
+        } else if (currentProvider.type === 'openrouter') {
+          currentTextModel = 'meta-llama/llama-3.1-8b-instruct:free';
+        } else if (currentProvider.type === 'ollama') {
+          currentTextModel = 'Qwen3-0.6B-Q8_0.gguf';
+        }
+      }
+      
+      console.log('🧠 DEBUG: Using text model:', currentTextModel);
+      
+      // Use the EXACT same fallback approach as extractMemoryData
+      // This mimics the `aiConfig || { fallback }` pattern from memory extraction
+      const summaryConfig = {
+        provider: currentProvider.id, // Use current provider ID
+        models: {
+          text: currentTextModel, // Use actual current model
+          vision: currentTextModel
+        },
+        parameters: {
+          temperature: 0.7, // Slightly higher for creative summaries
+          maxTokens: 4000,
+          topP: 1.0,
+          topK: 40,
+          frequencyPenalty: 0.0,
+          presencePenalty: 0.0,
+          repetitionPenalty: 1.0,
+          minP: 0.0,
+          typicalP: 1.0,
+          seed: null,
+          stop: []
+        },
+        features: {
+          enableTools: false,
+          enableRAG: false,
+          enableStreaming: false,
+          enableVision: false,
+          autoModelSelection: false,
+          enableMCP: false,
+          enableStructuredToolCalling: false,
+          enableNativeJSONSchema: false,
+          enableMemory: false
+        },
+        autonomousAgent: {
+          enabled: false,
+          maxRetries: 1,
+          retryDelay: 1000,
+          enableSelfCorrection: false,
+          enableToolGuidance: false,
+          enableProgressTracking: false,
+          maxToolCalls: 1,
+          confidenceThreshold: 0.7,
+          enableChainOfThought: false,
+          enableErrorLearning: false
+        }
+      };
+
+      console.log('🧠 DEBUG: Summary AI config:');
+      console.log('  - Provider:', summaryConfig.provider);
+      console.log('  - Model:', summaryConfig.models.text);
+
+      const response = await claraApiService.sendChatMessage(
+        prompt,
+        summaryConfig,
+        [],
+        systemPrompt,
+        []
+      );
+
+      // Extract content from the response
+      const summaryText = typeof response === 'object' && response.content 
+        ? response.content 
+        : typeof response === 'string' 
+          ? response 
+          : JSON.stringify(response);
+
+      console.log('🧠 Summary generated successfully');
+      return summaryText;
+      
+    } catch (error) {
+      console.error('🧠 ERROR: Failed to generate summary:', error);
+      throw error;
+    }
+  };
+
   (ClaraSweetMemory as any).extractMemoryFromConversation = extractMemoryFromConversation;
   (ClaraSweetMemory as any).getCurrentUserProfile = getCurrentUserProfile;
   (ClaraSweetMemory as any).clearUserMemory = clearUserMemory;
   (ClaraSweetMemory as any).getMemoryStats = getMemoryStats;
   (ClaraSweetMemory as any).processMemory = processMemory;
+  (ClaraSweetMemory as any).updateMemoryField = updateMemoryField;
+  (ClaraSweetMemory as any).deleteMemoryField = deleteMemoryField;
+  (ClaraSweetMemory as any).generateSummary = generateSummary;
 
   // This component doesn't render anything - it's a pure service component
   return null;
@@ -1809,5 +2043,14 @@ export const ClaraSweetMemoryAPI = {
     assistantMessage: ClaraMessage,
     conversationHistory: ClaraMessage[] = [],
     aiConfig?: ClaraAIConfig
-  ) => (ClaraSweetMemory as any).processMemory?.(userMessage, assistantMessage, conversationHistory, aiConfig)
+  ) => (ClaraSweetMemory as any).processMemory?.(userMessage, assistantMessage, conversationHistory, aiConfig),
+
+  // Update specific memory field
+  updateMemoryField: (cardId: string, newValue: string) => (ClaraSweetMemory as any).updateMemoryField?.(cardId, newValue),
+
+  // Delete specific memory field
+  deleteMemoryField: (cardId: string) => (ClaraSweetMemory as any).deleteMemoryField?.(cardId),
+
+  // Generate summary using same method as memory extraction
+  generateSummary: (prompt: string, systemPrompt: string) => (ClaraSweetMemory as any).generateSummary?.(prompt, systemPrompt)
 };

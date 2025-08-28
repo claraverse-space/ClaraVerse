@@ -457,6 +457,24 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // Session management state
   const [sessions, setSessions] = useState<ClaraChatSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  
+  // Memory settings state
+  const [memoryEnabled, setMemoryEnabled] = useState(() => {
+    const saved = localStorage.getItem('clara-memory-enabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  
+  // Listen for memory settings changes from other components (like the dashboard)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'clara-memory-enabled' && e.newValue !== null) {
+        setMemoryEnabled(JSON.parse(e.newValue));
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
   const [hasMoreSessions, setHasMoreSessions] = useState(true);
   const [sessionPage, setSessionPage] = useState(0);
   const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false);
@@ -4488,7 +4506,9 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
       
       {/* Clara Sweet Memory Component */}
       {/* Legacy ClaraSweetMemory component - kept for backward compatibility */}
-      <ClaraSweetMemory />
+      <ClaraSweetMemory 
+        isEnabled={memoryEnabled}
+      />
 
       {/* Clara Memory Learning Toast */}
       <ClaraMemoryToast
