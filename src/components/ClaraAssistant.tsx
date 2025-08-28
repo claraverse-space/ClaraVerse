@@ -500,6 +500,12 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
   // Clara Brain tab state
   const [activeTab, setActiveTab] = useState<'chat' | 'brain'>('chat');
 
+  // Track Clara sidebar expanded state for proper topbar time alignment
+  const [claraSidebarExpanded, setClaraSidebarExpanded] = useState(() => {
+    const saved = localStorage.getItem('clara-sidebar-expanded');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
   // Parse status updates from streaming chunks for autonomous agent
   const parseAndUpdateAgentStatus = useCallback((chunk: string) => {
     try {
@@ -4193,6 +4199,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
             onClaraBrainTabChange={setActiveTab}
             claraBrainMemoryLevel={memoryToastState.knowledgeLevel}
             claraBrainIsLoading={isLoading}
+            claraSidebarExpanded={claraSidebarExpanded}
           />
           
           {/* Content area below topbar */}
@@ -4369,6 +4376,7 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
               onNewChat={handleNewChat}
               onSessionAction={handleSessionAction}
               onLoadMore={loadMoreSessions}
+              onExpandedChange={setClaraSidebarExpanded}
             />
           </div>
         </div>

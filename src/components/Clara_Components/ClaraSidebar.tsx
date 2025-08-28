@@ -12,6 +12,7 @@ interface ClaraSidebarProps {
   onNewChat?: () => void;
   onSessionAction?: (sessionId: string, action: 'star' | 'archive' | 'delete') => void;
   onLoadMore?: () => void;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
@@ -23,7 +24,8 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   onSelectSession = () => {},
   onNewChat = () => {},
   onSessionAction = () => {},
-  onLoadMore = () => {}
+  onLoadMore = () => {},
+  onExpandedChange = () => {}
 }) => {
   // Load initial expanded state from localStorage, default to true (expanded)
   const [isExpanded, setIsExpanded] = useState(() => {
@@ -40,10 +42,11 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
   const [filter, setFilter] = useState<'all' | 'starred' | 'archived'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Save expanded state to localStorage whenever it changes
+  // Save expanded state to localStorage whenever it changes and notify parent
   useEffect(() => {
     localStorage.setItem('clara-sidebar-expanded', JSON.stringify(isExpanded));
-  }, [isExpanded]);
+    onExpandedChange(isExpanded);
+  }, [isExpanded, onExpandedChange]);
 
   // Save manually collapsed state to localStorage
   useEffect(() => {

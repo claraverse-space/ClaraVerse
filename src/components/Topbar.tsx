@@ -17,6 +17,8 @@ interface TopbarProps {
   onClaraBrainTabChange?: (tab: 'chat' | 'brain') => void;
   claraBrainMemoryLevel?: number;
   claraBrainIsLoading?: boolean;
+  // Clara sidebar state (for proper time alignment)
+  claraSidebarExpanded?: boolean;
 }
 
 const Topbar = ({ 
@@ -28,7 +30,8 @@ const Topbar = ({
   claraBrainActiveTab = 'chat',
   onClaraBrainTabChange,
   claraBrainMemoryLevel = 0,
-  claraBrainIsLoading = false
+  claraBrainIsLoading = false,
+  claraSidebarExpanded = false
 }: TopbarProps) => {
   const { theme, setTheme } = useTheme();
   const [now, setNow] = useState(new Date());
@@ -148,7 +151,13 @@ const Topbar = ({
       </div>
       
       {/* Center section - Project Title and Clock */}
-      <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center min-w-[120px]">
+      <div 
+        className={`absolute top-1/2 transform -translate-y-1/2 flex flex-col items-center min-w-[120px] transition-all duration-300 ${
+          showClaraBrainSwitch && claraSidebarExpanded
+            ? 'left-[calc(50%-10rem)] -translate-x-1/2' // Shift left when Clara sidebar is expanded (320px = 20rem, so shift by half = 10rem)
+            : 'left-1/2 -translate-x-1/2' // Default center position
+        }`}
+      >
         {showProjectTitle && projectTitle && (
           <h1 className="text-lg font-semibold text-gray-800 dark:text-white mb-0.5">
             {projectTitle}
