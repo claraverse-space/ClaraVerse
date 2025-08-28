@@ -129,17 +129,34 @@ class LlamaSwapService {
         log.info(`✅ Using official llama-swap binary: ${officialLlamaSwapPath}`);
         
         // Still need llama-server from platform-specific location
-        const platformPaths = this.platformManager.isCurrentPlatformSupported() 
-          ? this.platformManager.getBinaryPaths()
-          : this.getLegacyBinaryPaths();
+        // For Linux, use GPU detection to get the right platform directory
+        if (this.platformInfo.isLinux) {
+          const gpuPlatformDir = this.detectLinuxGPUPlatform();
+          const gpuPlatformPath = path.join(this.baseDir, gpuPlatformDir);
+          this.platformBinDir = gpuPlatformPath; // Update platform directory
           
-        return {
-          llamaSwap: officialLlamaSwapPath,
-          llamaServer: platformPaths.llamaServer
-        };
+          return {
+            llamaSwap: officialLlamaSwapPath,
+            llamaServer: path.join(gpuPlatformPath, 'llama-server')
+          };
+        } else {
+          const platformPaths = this.platformManager.isCurrentPlatformSupported() 
+            ? this.platformManager.getBinaryPaths()
+            : this.getLegacyBinaryPaths();
+            
+          return {
+            llamaSwap: officialLlamaSwapPath,
+            llamaServer: platformPaths.llamaServer
+          };
+        }
       }
       
-      // FALLBACK: Try to get platform-specific paths
+      // FALLBACK: For Linux, always use GPU detection instead of basic platform manager
+      if (this.platformInfo.isLinux) {
+        return this.getLegacyBinaryPaths(); // This will call detectLinuxGPUPlatform()
+      }
+      
+      // For other platforms, try platform manager first
       if (this.platformManager.isCurrentPlatformSupported()) {
         return this.platformManager.getBinaryPaths();
       }
@@ -233,6 +250,10 @@ class LlamaSwapService {
     }
     
     const platformPath = path.join(this.baseDir, platformDir);
+    
+    // Update the platform binary directory to the detected GPU-optimized directory
+    this.platformBinDir = platformPath;
+    log.info(`✅ Updated platform binary directory to: ${this.platformBinDir}`);
     
     // For llama-swap, try multiple possible names in order of preference
     const llamaSwapCandidates = platform === 'win32' 
