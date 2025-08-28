@@ -5,7 +5,51 @@ All notable changes to Clara will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 0.1.4
+## [0.1.4] - 2025-08-28
+
+### 🚀 Major Features Added
+
+#### 🔹 Agents
+- **MCP Autonomy**: Agents can now use MCP to operate fully autonomously — automate almost any PC task (except Paint, Excel, Word for now)
+- **Speech Capabilities**: Agents can talk once tasks are done for more natural interactions
+- **Scheduled Automation**: Automate with time. Example: Agents that log in/out of apps daily — works ~90% of the time on first try, retries if needed
+
+#### 🔹 RAG (Retrieval-Augmented Generation)
+- **Improved Performance**: Enhanced RAG engine with better retrieval accuracy
+- **Redesigned UI**: Clean, intuitive interface for better user experience
+- **Task Histories**: Easier tracking of previous operations and results
+- **Document Retry**: Graceful error handling for failed document processing
+
+#### 🔹 Chat
+- **Redesigned Chat Input**: Simpler interface with no need for advanced MCP settings
+- **Voice UX Improvements**: Smoother voice interactions and better speech recognition
+- **Clara Memories Enhancements**: More efficient and user-friendly memory management
+
+#### 🔹 Tasks
+- **Automate & Monitor**: Run tasks in the background, schedule them, monitor progress, and collect results
+- **Background Execution**: Set-and-forget task automation
+- **Progress Tracking**: Real-time monitoring of task execution
+- **Results Collection**: Automated gathering and organization of task outputs
+
+### ✨ What You Can Try Today
+- Set up an agent to auto-login to apps every morning
+- Use voice-enabled chat to summarize your daily reports
+- Schedule a workflow to clean up folders or back up files nightly
+- Build a RAG-powered assistant to search across your company docs
+- Automate email checks or notifications without relying on cloud services
+
+### 🛠️ Technical Improvements
+- Enhanced automation reliability and retry mechanisms
+- Improved voice processing and speech synthesis
+- Better memory management for Clara Memories
+- Optimized task scheduling and background processing
+
+### 🎯 Release Focus
+This release is about making automation practical, reliable, and personal — right from your desktop. No cloud dependencies, full privacy control, and enterprise-grade task automation capabilities.
+
+---
+
+## [Unreleased] - 0.1.5
 
 ### 🚧 In Development
 - Multi-user support with authentication
