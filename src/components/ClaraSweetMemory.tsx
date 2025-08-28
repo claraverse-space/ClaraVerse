@@ -12,7 +12,7 @@
 import { useEffect, useRef } from 'react';
 import { indexedDBService } from '../services/indexedDB';
 import { claraApiService } from '../services/claraApiService';
-import { claraProviderService } from '../services/claraProviderService';
+
 import type { ClaraMessage, ClaraAIConfig } from '../types/clara_assistant_types';
 import { claraMemoryToastService } from '../services/claraMemoryToastService';
 
@@ -152,10 +152,11 @@ interface MemoryExtractionResponse {
 
 // ==================== CONSTANTS ====================
 
-const TOKEN_SPEED_THRESHOLD = 10; // tokens per second
+const TOKEN_SPEED_THRESHOLD = 10; // tokens per second (used for timeout adjustment, not filtering)
 const MAX_REQUEST_SIZE = 2000; // characters - avoid processing large requests
 const MIN_CONFIDENCE_THRESHOLD = 0.3;
-const EXTRACTION_TIMEOUT = 30000; // 30 seconds max for memory extraction (increased from 10s)
+const EXTRACTION_TIMEOUT = 30000; // 30 seconds base timeout for memory extraction
+const EXTRACTION_TIMEOUT_EXTENDED = 60000; // 60 seconds extended timeout for low/zero token speed
 const RATE_LIMIT_INTERVAL = 2000; // 2 seconds between extractions (reduced from 60 seconds)
 
 // ==================== MEMORY EXTRACTION PROMPT ====================
@@ -193,7 +194,9 @@ Respond with a structured JSON object following the MemoryExtractionResponse int
 // ==================== MAIN COMPONENT ====================`;
 
 // ==================== MEMORY EXTRACTION SCHEMA ====================
+// Note: This schema is kept for reference but not actively used since we switched to universal Clara API approach
 
+// @ts-ignore - Schema kept for reference but not actively used
 const MEMORY_EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -391,10 +394,10 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       return false;
     }
 
-    // Check token speed threshold
+    // REMOVED: Token speed threshold check - now we process regardless of speed
+    // but will adjust timeout based on speed in the extraction function
     if (tokenSpeed < TOKEN_SPEED_THRESHOLD) {
-      console.log(`🧠 DEBUG: Token speed ${tokenSpeed.toFixed(1)} tk/s below threshold ${TOKEN_SPEED_THRESHOLD}`);
-      return false;
+      console.log(`🧠 DEBUG: Token speed ${tokenSpeed.toFixed(1)} tk/s below threshold ${TOKEN_SPEED_THRESHOLD}, but proceeding with increased timeout`);
     }
 
     // Check request size to avoid processing large requests (might contain others' data)
@@ -952,6 +955,7 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
     conversationContext: string[],
     currentUserInfo?: Partial<UserMemoryProfile>,
     aiConfig?: ClaraAIConfig,
+    tokenSpeed: number = 0,
     retryAttempt = 0
   ): Promise<MemoryExtractionResponse | null> => {
     const maxRetries = 2; // Maximum number of retry attempts
@@ -969,12 +973,52 @@ CURRENT USER INFO: ${currentUserInfo ? JSON.stringify(currentUserInfo, null, 2) 
 
 Extract and categorize any personal information according to the provided schema. Focus on information that would be helpful for future conversations.`;
 
-      // Get current AI configuration dynamically
-      const currentAIConfig = aiConfig;
-      if (!currentAIConfig) {
-        console.warn('⚠️ No AI configuration available for memory extraction');
-        return null;
-      }
+      // Get current AI configuration dynamically or use fallback
+      const currentAIConfig = aiConfig || {
+        provider: 'ollama', // Fallback provider
+        models: {
+          text: 'Qwen3-0.6B-Q8_0.gguf', // Fallback model
+          vision: 'Qwen3-0.6B-Q8_0.gguf'
+        },
+        parameters: {
+          temperature: 0.1,
+          maxTokens: 4000,
+          topP: 1.0,
+          topK: 40,
+          frequencyPenalty: 0.0,
+          presencePenalty: 0.0,
+          repetitionPenalty: 1.0,
+          minP: 0.0,
+          typicalP: 1.0,
+          seed: null,
+          stop: []
+        },
+        features: {
+          enableTools: false,
+          enableRAG: false,
+          enableStreaming: false,
+          enableVision: false,
+          autoModelSelection: false,
+          enableMCP: false,
+          enableStructuredToolCalling: true,
+          enableNativeJSONSchema: true,
+          enableMemory: false
+        },
+        autonomousAgent: {
+          enabled: false,
+          maxRetries: 1,
+          retryDelay: 1000,
+          enableSelfCorrection: false,
+          enableToolGuidance: false,
+          enableProgressTracking: false,
+          maxToolCalls: 1,
+          confidenceThreshold: 0.7,
+          enableChainOfThought: false,
+          enableErrorLearning: false
+        }
+      };
+      
+      console.log('🧠 DEBUG: AI Config status:', aiConfig ? 'provided' : 'using fallback');
 
       // Create structured output config based on current provider/model
       const extractionConfig: ClaraAIConfig = {
@@ -1021,75 +1065,37 @@ Extract and categorize any personal information according to the provided schema
         }
       };
 
-      // Send extraction request with timeout using structured output
+      // Calculate dynamic timeout based on token speed
+      // If token speed is low/zero, use extended timeout to allow more time for processing
+      const dynamicTimeout = tokenSpeed < TOKEN_SPEED_THRESHOLD 
+        ? EXTRACTION_TIMEOUT_EXTENDED // Use extended timeout for low/zero token speed
+        : EXTRACTION_TIMEOUT;
+      
+      console.log(`🧠 DEBUG: Using dynamic timeout: ${dynamicTimeout/1000}s (token speed: ${tokenSpeed} tk/s)`);
+      
+      // Send extraction request with dynamic timeout using structured output
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Memory extraction timeout after ${EXTRACTION_TIMEOUT/1000} seconds - this may indicate the model is taking too long to process the request or the server is overloaded`)), EXTRACTION_TIMEOUT)
+        setTimeout(() => reject(new Error(`Memory extraction timeout after ${dynamicTimeout/1000} seconds - this may indicate the model is taking too long to process the request or the server is overloaded`)), dynamicTimeout)
       );
 
-      // Get the appropriate client for structured output
-      const provider = claraProviderService.getCurrentProvider();
-      const client = claraProviderService.getCurrentClient();
-      
-      if (!client || !provider) {
-        throw new Error('No provider/client available for memory extraction');
-      }
-
-      // Prepare messages for structured output
-      const messages = [
-        { role: 'system' as const, content: MEMORY_EXTRACTION_SYSTEM_PROMPT },
-        { role: 'user' as const, content: extractionPrompt }
-      ];
-
-      // Use structured output - FORCE native structured calling for ALL providers
-      let extractionPromise: Promise<any>;
-      
-      console.log('🧠 DEBUG: FORCING native structured output for memory extraction:');
-      console.log('  - Provider type:', provider.type);
-      console.log('  - Model:', currentAIConfig.models.text);
+      // UNIVERSAL APPROACH: Always use Clara API service for memory extraction
+      // This removes dependency on specific providers and works with any configured provider
+      console.log('🧠 DEBUG: Using universal Clara API service for memory extraction');
+      console.log('  - AI Config provided:', !!currentAIConfig);
+      console.log('  - Model:', currentAIConfig?.models?.text || 'default');
       console.log('  - enableStructuredToolCalling:', extractionConfig.features.enableStructuredToolCalling);
       console.log('  - enableNativeJSONSchema:', extractionConfig.features.enableNativeJSONSchema);
+      console.log('  - Dynamic timeout:', dynamicTimeout/1000, 'seconds');
       
-      if (provider.type === 'ollama' && 'sendStructuredChat' in client) {
-        // Use Ollama's structured output
-        console.log('🧠 Using Ollama sendStructuredChat method');
-        extractionPromise = (client as any).sendStructuredChat(
-          currentAIConfig.models.text,
-          messages,
-          MEMORY_EXTRACTION_SCHEMA,
-          { temperature: 0.1, max_tokens: 1000 }
-        );
-      } else if ((provider.type === 'openai' || provider.type === 'openrouter') && 'sendChatWithStructuredOutput' in client) {
-        // Use OpenAI/OpenRouter structured output
-        console.log('🧠 Using OpenAI/OpenRouter sendChatWithStructuredOutput method');
-        extractionPromise = (client as any).sendChatWithStructuredOutput(
-          currentAIConfig.models.text,
-          messages,
-          {
-            temperature: 0.1,
-            max_tokens: 1000,
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "memory_extraction",
-                schema: MEMORY_EXTRACTION_SCHEMA
-              }
-            }
-          }
-        );
-      } else {
-        // If no structured output available, use Clara API with forced structured config
-        console.log('🧠 Using Clara API with FORCED structured output configuration');
-        console.log('🧠 WARNING: Provider may not support true structured output - forcing via config');
-        
-        // Use Clara API service which should respect the structured output config
-        extractionPromise = claraApiService.sendChatMessage(
-          extractionPrompt,
-          extractionConfig, // This has structured output enabled
-          [], // No attachments
-          MEMORY_EXTRACTION_SYSTEM_PROMPT,
-          [] // No conversation history for extraction
-        );
-      }
+      // Use Clara API service which works with any provider
+      // The structured output configuration should be respected by the underlying provider
+      const extractionPromise = claraApiService.sendChatMessage(
+        extractionPrompt,
+        extractionConfig, // This has structured output enabled
+        [], // No attachments
+        MEMORY_EXTRACTION_SYSTEM_PROMPT,
+        [] // No conversation history for extraction
+      );
 
       console.log('🧠 DEBUG: About to make API call with selected method');
       const result = await Promise.race([extractionPromise, timeoutPromise]);
@@ -1152,7 +1158,7 @@ Extract and categorize any personal information according to the provided schema
         console.log(`🧠 Retrying memory extraction in ${delay}ms (attempt ${retryAttempt + 1}/${maxRetries + 1})...`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
-        return extractMemoryData(userMessage, conversationContext, currentUserInfo, aiConfig, retryAttempt + 1);
+        return extractMemoryData(userMessage, conversationContext, currentUserInfo, aiConfig, tokenSpeed, retryAttempt + 1);
       }
       
       return null;
@@ -1485,12 +1491,13 @@ Extract and categorize any personal information according to the provided schema
         }
       }
 
-      // Extract memory data
+      // Extract memory data with token speed for dynamic timeout
       const extractionResult = await extractMemoryData(
         userMessage,
         contextMessages,
         existingProfile || undefined,
-        aiConfig
+        aiConfig,
+        tokenSpeed
       );
 
       // 🔍 DEBUG: Log extraction input and result
