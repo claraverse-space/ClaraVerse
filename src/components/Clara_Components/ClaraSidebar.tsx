@@ -153,7 +153,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
       {isExpanded ? (
         <>
           {/* Header with Toggle Button */}
-          <div className="flex items-center py-4 px-4 justify-between">
+          <div className="flex items-center py-4 px-6 justify-between">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Chat Histories</h2>
             <button
               onClick={toggleSidebar}
@@ -165,7 +165,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
 
           {/* Search */}
-          <div className="px-4 pb-2">
+          <div className="px-6 pb-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -179,7 +179,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
 
           {/* Filter Tabs */}
-          <div className="px-4 pb-2">
+          <div className="px-6 pb-2">
             <div className="flex space-x-1 bg-gray-100/50 dark:bg-gray-800/50 rounded-lg p-1">
               {(['all', 'starred', 'archived'] as const).map((filterOption) => (
                 <button
@@ -198,7 +198,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
 
           {/* New Chat Button */}
-          <div className="px-2 pb-4">
+          <div className="px-4 pb-4">
             <button 
               onClick={onNewChat}
               className="w-full flex items-center rounded-lg transition-colors bg-sakura-500 hover:bg-sakura-600 text-white px-4 py-2 justify-start gap-2"
@@ -211,26 +211,26 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           {/* Chat History List */}
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="px-2 space-y-1">
+              <div className="px-4 space-y-1">
                 {/* Show skeleton loaders while loading */}
                 {Array.from({ length: 6 }).map((_, index) => (
                   <SessionSkeleton key={index} />
                 ))}
               </div>
             ) : filteredSessions.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+              <div className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                 {searchQuery ? 'No chats found' : 
                  filter === 'starred' ? 'No starred chats' :
                  filter === 'archived' ? 'No archived chats' : 
                  'No chats yet'}
               </div>
             ) : (
-              <div className="px-2 space-y-1">
+              <div className="px-4 space-y-1">
                 {filteredSessions.map(session => (
                   <div 
                     key={session.id}
                     onClick={() => onSelectSession(session.id)}
-                    className={`flex items-start gap-3 py-3 rounded-lg transition-colors group relative cursor-pointer px-3 ${
+                    className={`flex items-start gap-3 py-3 rounded-lg transition-colors group relative cursor-pointer px-4 ${
                       currentSessionId === session.id
                         ? 'bg-sakura-50 dark:bg-sakura-100/10 border border-sakura-200 dark:border-sakura-500/30'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-sakura-50 dark:hover:bg-sakura-100/10'
@@ -295,7 +295,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
                 
                 {/* Load More Button */}
                 {hasMoreSessions && (
-                  <div className="px-3 py-2">
+                  <div className="px-4 py-2">
                     <button
                       onClick={onLoadMore}
                       disabled={isLoadingMore}
@@ -326,7 +326,7 @@ const ClaraSidebar: React.FC<ClaraSidebarProps> = ({
           </div>
 
           {/* Bottom Stats */}
-          <div className="mt-auto p-4 border-t border-gray-200/30 dark:border-gray-700/50">
+          <div className="mt-auto p-6 border-t border-gray-200/30 dark:border-gray-700/50">
             <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
               {filteredSessions.length} of {sessions.length} chats
             </div>

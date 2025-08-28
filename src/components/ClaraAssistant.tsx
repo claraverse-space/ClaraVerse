@@ -1402,7 +1402,8 @@ ${rawUnfilteredResponse}
 ${memoryContext ? `**Memory Context:**
 ${memoryContext}` : ''}
 
-Never lie about anything or fake report say as it is what happened. and when you fail keep it cool and professional.
+Whatever above is from the tools result from what you asked for and now its time to format the content in details and make it more readable and understandable for the user, do not summarize the content, just make it more readable and understandable for the user in details.
+for the Query ${originalUserQuestion}
 
 
 Now tell me what is the result "`;

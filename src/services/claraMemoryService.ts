@@ -154,15 +154,15 @@ class ClaraMemoryService {
         
         if (typeof result.result === 'string') {
           // Truncate long strings
-          formattedResult = result.result.length > 200 
-            ? result.result.substring(0, 200) + '...'
+          formattedResult = result.result.length > 5000 
+            ? result.result.substring(0, 5000) + '...'
             : result.result;
         } else if (typeof result.result === 'object') {
           try {
             formattedResult = JSON.stringify(result.result, null, 2);
             // Truncate long JSON
-            if (formattedResult.length > 300) {
-              formattedResult = formattedResult.substring(0, 300) + '...';
+            if (formattedResult.length > 5000) {
+              formattedResult = formattedResult.substring(0, 5000) + '...';
             }
           } catch (e) {
             formattedResult = '[Object - could not stringify]';
