@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Play, Save, Download, Upload, Settings, Calculator, Type, ArrowRight, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout, Check, Edit } from 'lucide-react';
+import { Plus, Play, Save, Download, Upload, Settings, X, Terminal, Clock, CheckCircle, AlertCircle, Info, Folder, Zap, Layout, Check, Edit } from 'lucide-react';
 import { AgentBuilderProvider, useAgentBuilder } from '../contexts/AgentBuilder/AgentBuilderContext';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
