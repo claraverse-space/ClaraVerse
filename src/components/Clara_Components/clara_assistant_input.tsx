@@ -25,7 +25,6 @@ import {
   Mic, 
   Settings, 
   Send, 
-  Plus,
   X,
   Bot,
   ChevronDown,
@@ -54,8 +53,6 @@ import {
   Monitor,
   Cpu,
   RefreshCw,
-  Scale,
-  Rocket,
   MessageSquare,
   MoreHorizontal
 } from 'lucide-react';
@@ -64,14 +61,12 @@ import {
 import { 
   ClaraInputProps,
   ClaraFileAttachment,
-  ClaraSessionConfig,
   ClaraFileType,
   ClaraProvider,
   ClaraModel,
   ClaraAIConfig,
   ClaraMCPServer,
-  ClaraMessage,
-  ClaraChatSession
+  ClaraMessage
 } from '../../types/clara_assistant_types';
 
 // Import PDF.js for PDF processing
