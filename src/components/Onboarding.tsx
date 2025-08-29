@@ -1799,16 +1799,60 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
 
                                 {/* Loading state for launch */}
                                 {loading && (
-                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Loader className="w-4 h-4 animate-spin text-blue-500"/>
-                                            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                                Launching Clara... (I will take a min to download Llama.cpp Binaries)
+                                    <div className="p-4 bg-gradient-to-r from-blue-50 to-sakura-50 dark:from-blue-900/20 dark:to-sakura-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <div className="relative">
+                                                <Loader className="w-5 h-5 animate-spin text-blue-500"/>
+                                                <div className="absolute inset-0 rounded-full border-2 border-blue-200 dark:border-blue-800 animate-pulse"></div>
+                                            </div>
+                                            <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                                Launching Clara...
                                             </span>
                                         </div>
-                                        <p className="text-xs text-blue-600 dark:text-blue-400">
-                                            Saving your preferences. Clara will initialize your selected services after startup.
+                                        
+                                        {/* Progress steps */}
+                                        <div className="space-y-2 mb-3">
+                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                                Saving your preferences
+                                            </div>
+                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
+                                                Downloading Llama.cpp binaries (this may take a minute)
+                                            </div>
+                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
+                                                Initializing AI services
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Animated progress bar */}
+                                        <div className="w-full bg-blue-100 dark:bg-blue-800 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
+                                            <div 
+                                                className="h-3 rounded-full bg-gradient-to-r from-blue-500 via-sakura-400 to-blue-500 relative"
+                                                style={{
+                                                    width: '75%',
+                                                    backgroundSize: '200% 100%',
+                                                    animation: 'progressShimmer 2s ease-in-out infinite'
+                                                }}
+                                            >
+                                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                                            Please wait while Clara sets up your AI workspace...
                                         </p>
+                                        
+                                        {/* Add keyframe animation styles */}
+                                        <style dangerouslySetInnerHTML={{
+                                            __html: `
+                                                @keyframes progressShimmer {
+                                                    0% { background-position: -200% center; }
+                                                    100% { background-position: 200% center; }
+                                                }
+                                            `
+                                        }} />
                                     </div>
                                 )}
 
@@ -1878,9 +1922,15 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                             >
                                 {step === 8 ? (
                                     loading ? (
-                                        <span className="flex items-center justify-center gap-2">
-                                            <Loader className="w-4 h-4 animate-spin"/>
-                                            Launching Clara... (I will take a min to download Llama.cpp Binaries)
+                                        <span className="flex items-center justify-center gap-3">
+                                            <div className="relative">
+                                                <Loader className="w-4 h-4 animate-spin"/>
+                                                <div className="absolute inset-0 rounded-full border border-white/30 animate-pulse"></div>
+                                            </div>
+                                            <span className="flex flex-col items-start">
+                                                <span className="font-medium">Launching Clara...</span>
+                                                <span className="text-xs opacity-90">Setting up AI services</span>
+                                            </span>
                                         </span>
                                     ) : 'Launch Clara'
                                 ) : 'Continue'}
