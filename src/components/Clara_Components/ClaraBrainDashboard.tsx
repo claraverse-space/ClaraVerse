@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
   Brain, Sparkles, User, MessageSquare, Settings, Heart,
-  Clock, Edit2, Trash2, Save, X, ToggleLeft, ToggleRight, Grid3X3, FileText
+  Clock, Edit2, Trash2, Save, X, Grid3X3, FileText
 } from 'lucide-react';
 import { ClaraSweetMemoryAPI } from '../ClaraSweetMemory';
 import type { UserMemoryProfile } from '../ClaraSweetMemory';
@@ -890,13 +890,6 @@ Keep it concise but comprehensive, and make it feel personal and meaningful. Use
                     }`}
                   />
                 </button>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {memoryEnabled ? (
-                    <ToggleRight className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <ToggleLeft className="w-4 h-4 text-gray-400" />
-                  )}
-                </div>
               </div>
             </div>
           </div>
