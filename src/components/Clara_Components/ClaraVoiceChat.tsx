@@ -4,6 +4,9 @@ import { Mic, MicOff, Volume2, VolumeX, ArrowLeft, Waves, Radio, Zap, Sparkles, 
 // Import TTS service for health monitoring
 import { claraTTSService } from '../../services/claraTTSService';
 
+// Import centralized thinking tags configuration
+import { cleanThinkingTags } from '../../utils/thinkingTagsConfig';
+
 // VAD (Voice Activity Detection) using @ricky0123/vad-web
 interface VADOptions {
   onSpeechStart: () => void;
@@ -971,8 +974,7 @@ const ClaraVoiceChat: React.FC<ClaraVoiceChatProps> = ({
         setIsSpeaking(true);
 
         // Clean the content for TTS
-        const cleanContent = autoTTSTrigger.text
-          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        const cleanContent = cleanThinkingTags(autoTTSTrigger.text)
           .replace(/<[^>]*>/g, '')
           .replace(/```[\s\S]*?```/g, '[code block]')
           .replace(/`([^`]+)`/g, '$1')

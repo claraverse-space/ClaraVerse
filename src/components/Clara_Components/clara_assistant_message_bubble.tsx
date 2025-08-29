@@ -63,8 +63,12 @@ import ExecutionDetailsModal from './ExecutionDetailsModal';
 import ExtractedImagesRenderer from './ExtractedImagesRenderer';
 import TTSControlPanel from './TTSControlPanel';
 
+// Import centralized thinking configuration
+import { parseThinkingContent as parseThinkingContentUtil } from '../../utils/thinkingTagsConfig';
+
 /**
  * Thinking content parser and utilities
+ * Now using centralized configuration from thinkingTagsConfig.ts
  */
 interface ThinkingContent {
   thinking: string;
@@ -73,52 +77,14 @@ interface ThinkingContent {
 }
 
 /**
- * Parse thinking content from message text
+ * Parse thinking content from message text using centralized configuration
  */
 const parseThinkingContent = (content: string): ThinkingContent => {
-  const thinkingRegex = /<think>([\s\S]*?)<\/think>/;
-  const partialThinkingRegex = /<think>([\s\S]*?)$/; // For streaming content that hasn't closed yet
-  
-  const match = content.match(thinkingRegex);
-  
-  if (match) {
-    // Complete thinking block found
-    const thinking = match[1].trim();
-    const response = content.replace(thinkingRegex, '').trim();
-    
-    // Estimate thinking time based on content length (rough approximation)
-    const wordsInThinking = thinking.split(/\s+/).filter(word => word.length > 0).length;
-    const estimatedSeconds = Math.max(1, Math.floor(wordsInThinking / 50)); // ~50 words per second thinking
-    
-    return {
-      thinking,
-      response,
-      thinkingTimeSeconds: estimatedSeconds
-    };
-  }
-  
-  // Check for partial thinking (streaming scenario)
-  const partialMatch = content.match(partialThinkingRegex);
-  if (partialMatch) {
-    // Still streaming thinking content
-    const thinking = partialMatch[1].trim();
-    const wordsInThinking = thinking.split(/\s+/).filter(word => word.length > 0).length;
-    const estimatedSeconds = Math.max(1, Math.floor(wordsInThinking / 50));
-    
-    // Get any content before the <think> tag
-    const beforeThink = content.substring(0, content.indexOf('<think>')).trim();
-    
-    return {
-      thinking,
-      response: beforeThink, // Include any content that came before the thinking
-      thinkingTimeSeconds: estimatedSeconds
-    };
-  }
-  
+  const parsed = parseThinkingContentUtil(content);
   return {
-    thinking: '',
-    response: content,
-    thinkingTimeSeconds: 0
+    thinking: parsed.thinking,
+    response: parsed.response,
+    thinkingTimeSeconds: parsed.thinkingTimeSeconds
   };
 };
 

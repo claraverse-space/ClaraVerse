@@ -1,6 +1,7 @@
 import type { Tool } from '../db';
 import { TokenLimitRecoveryService } from '../services/tokenLimitRecoveryService';
 import { ToolSuccessRegistry } from '../services/toolSuccessRegistry';
+import { THINKING_TAGS } from './thinkingTagsConfig';
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -544,7 +545,7 @@ export class APIClient {
     tools?: Tool[],
     attempt: number = 1
   ): AsyncGenerator<APIResponse> {
-    // Track reasoning state for proper <think> block handling
+    // Track reasoning state for proper thinking block handling (supports all configured thinking tags)
     let isInReasoningMode = false;
     let hasStartedReasoning = false;
     // Track accumulated content for abort preservation
@@ -791,8 +792,9 @@ export class APIClient {
                 reasoningContent = this.filterControlTokens(reasoningContent);
                 
                 if (!hasStartedReasoning) {
-                  // Start of reasoning - open <think> block
-                  content = '<think>' + reasoningContent;
+                  // Start of reasoning - use the first configured thinking tag
+                  const firstTag = THINKING_TAGS[0]; // Use first tag as default
+                  content = firstTag.openTag + reasoningContent;
                   hasStartedReasoning = true;
                   isInReasoningMode = true;
                 } else if (isInReasoningMode) {
@@ -801,7 +803,8 @@ export class APIClient {
                 }
               } else if (content && hasStartedReasoning && isInReasoningMode) {
                 // We have regular content after reasoning - close thinking and start response
-                content = '</think>\n\n' + content;
+                const firstTag = THINKING_TAGS[0]; // Use same tag as opening
+                content = firstTag.closeTag + '\n\n' + content;
                 isInReasoningMode = false;
               }
               
