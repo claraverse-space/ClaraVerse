@@ -6,6 +6,7 @@ export interface StartupSettings {
   autoStart: boolean;
   checkUpdates: boolean;
   restoreLastSession: boolean;
+  autoStartMCP: boolean;
   isDevelopment?: boolean;
 }
 
@@ -17,6 +18,7 @@ export class StartupService {
     autoStart: false,
     checkUpdates: true,
     restoreLastSession: true,
+    autoStartMCP: true, // Default to true for auto-start MCP
     isDevelopment: false
   };
 

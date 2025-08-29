@@ -635,7 +635,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
       mcp: {
         enableTools: true,
         enableResources: true,
-        enabledServers: [],
+        enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
         autoDiscoverTools: true,
         maxToolCalls: 5
       },
@@ -1215,7 +1215,7 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
               mcp: {
                 enableTools: true,
                 enableResources: true,
-                enabledServers: [],
+                enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
                 autoDiscoverTools: true,
                 maxToolCalls: 5
               },
@@ -2621,7 +2621,7 @@ You can:
           mcp: savedConfig.mcp || {
             enableTools: true,
             enableResources: true,
-            enabledServers: [],
+            enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
             autoDiscoverTools: true,
             maxToolCalls: 5
           },
@@ -2700,7 +2700,7 @@ You can:
           mcp: {
             enableTools: true,
             enableResources: true,
-            enabledServers: [],
+            enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
             autoDiscoverTools: true,
             maxToolCalls: 5
           },

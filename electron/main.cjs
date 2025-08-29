@@ -2488,7 +2488,21 @@ function registerMCPHandlers() {
   ipcMain.handle('mcp-add-server', async (event, serverConfig) => {
     try {
       const service = ensureMCPService();
-      return await service.addServer(serverConfig);
+      const result = await service.addServer(serverConfig);
+      
+      // Automatically start the newly added server
+      if (result === true && serverConfig.name) {
+        try {
+          log.info(`Auto-starting newly added MCP server: ${serverConfig.name}`);
+          await service.startServer(serverConfig.name);
+          log.info(`Successfully auto-started MCP server: ${serverConfig.name}`);
+        } catch (startError) {
+          log.warn(`Failed to auto-start newly added MCP server ${serverConfig.name}:`, startError);
+          // Don't throw here - server was added successfully, just auto-start failed
+        }
+      }
+      
+      return result;
     } catch (error) {
       log.error('Error adding MCP server:', error);
       throw error;
@@ -2627,7 +2641,31 @@ function registerMCPHandlers() {
   ipcMain.handle('mcp-import-claude-config', async (event, configPath) => {
     try {
       const service = ensureMCPService();
-      return await service.importFromClaudeConfig(configPath);
+      const result = await service.importFromClaudeConfig(configPath);
+      
+      // Automatically start all imported servers
+      if (result && result.imported > 0) {
+        log.info(`Auto-starting ${result.imported} imported MCP servers`);
+        
+        // Get the list of all servers to find the newly imported ones
+        const allServers = await service.getServers();
+        const recentlyImported = Object.keys(allServers).filter(name => {
+          const server = allServers[name];
+          return server.description && server.description.includes('Imported from Claude Desktop');
+        });
+        
+        for (const serverName of recentlyImported) {
+          try {
+            await service.startServer(serverName);
+            log.info(`Successfully auto-started imported MCP server: ${serverName}`);
+          } catch (startError) {
+            log.warn(`Failed to auto-start imported MCP server ${serverName}:`, startError);
+            // Continue with other servers even if one fails
+          }
+        }
+      }
+      
+      return result;
     } catch (error) {
       log.error('Error importing Claude config:', error);
       throw error;
@@ -4454,15 +4492,36 @@ function registerHandlers() {
     // Auto-restore MCP servers when React app is ready (if not already restored)
     if (mcpService && !global.mcpServersRestored) {
       try {
-        log.info('React app ready - attempting to restore previously running MCP servers...');
-        const restoreResults = await mcpService.startPreviouslyRunningServers();
-        const successCount = restoreResults.filter(r => r.success).length;
-        const totalCount = restoreResults.length;
+        log.info('React app ready - checking MCP auto-start setting...');
         
-        if (totalCount > 0) {
-          log.info(`MCP restoration on app ready: ${successCount}/${totalCount} servers restored`);
+        // Check startup settings for MCP auto-start
+        let shouldAutoStartMCP = true; // Default to true for backward compatibility
+        
+        try {
+          const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+          if (fs.existsSync(settingsPath)) {
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            const startupSettings = settings.startup || {};
+            shouldAutoStartMCP = startupSettings.autoStartMCP !== false; // Default to true if not set
+          }
+        } catch (settingsError) {
+          log.warn('Error reading startup settings for MCP auto-start:', settingsError);
+          // Default to true on error to maintain existing behavior
+        }
+
+        if (shouldAutoStartMCP) {
+          log.info('React app ready - attempting to restore previously running MCP servers...');
+          const restoreResults = await mcpService.startPreviouslyRunningServers();
+          const successCount = restoreResults.filter(r => r.success).length;
+          const totalCount = restoreResults.length;
+          
+          if (totalCount > 0) {
+            log.info(`MCP restoration on app ready: ${successCount}/${totalCount} servers restored`);
+          } else {
+            log.info('MCP restoration on app ready: No servers to restore');
+          }
         } else {
-          log.info('MCP restoration on app ready: No servers to restore');
+          log.info('MCP auto-start disabled in settings - skipping server restoration');
         }
         global.mcpServersRestored = true;
       } catch (error) {
@@ -5617,22 +5676,44 @@ async function initializeLightweightServicesInBackground() {
     try {
       sendStatus('MCP', 'MCP service initialized', 'success');
       
-      // Auto-start previously running servers
-      sendStatus('MCP', 'Restoring MCP servers...', 'info');
+      // Check startup settings for MCP auto-start
+      sendStatus('MCP', 'Checking startup settings...', 'info');
+      let shouldAutoStartMCP = true; // Default to true for backward compatibility
+      
       try {
-        const restoreResults = await mcpService.startPreviouslyRunningServers();
-        const successCount = restoreResults.filter(r => r.success).length;
-        const totalCount = restoreResults.length;
-        
-        if (totalCount > 0) {
-          sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
-        } else {
-          sendStatus('MCP', 'No MCP servers to restore', 'info');
+        const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+        if (fs.existsSync(settingsPath)) {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+          const startupSettings = settings.startup || {};
+          shouldAutoStartMCP = startupSettings.autoStartMCP !== false; // Default to true if not set
         }
-        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
-      } catch (restoreError) {
-        log.error('Error restoring MCP servers:', restoreError);
-        sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
+      } catch (settingsError) {
+        log.warn('Error reading startup settings for MCP auto-start:', settingsError);
+        // Default to true on error to maintain existing behavior
+      }
+
+      if (shouldAutoStartMCP) {
+        // Auto-start previously running servers
+        sendStatus('MCP', 'Restoring MCP servers...', 'info');
+        try {
+          const restoreResults = await mcpService.startPreviouslyRunningServers();
+          const successCount = restoreResults.filter(r => r.success).length;
+          const totalCount = restoreResults.length;
+          
+          if (totalCount > 0) {
+            sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+          } else {
+            sendStatus('MCP', 'No MCP servers to restore', 'info');
+          }
+          global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
+        } catch (restoreError) {
+          log.error('Error restoring MCP servers:', restoreError);
+          sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
+        }
+      } else {
+        sendStatus('MCP', 'MCP auto-start disabled in settings', 'info');
+        log.info('MCP auto-start is disabled in startup settings');
+        global.mcpServersRestored = true; // Mark as "restored" to prevent later attempts
       }
     } catch (mcpError) {
       log.error('Error initializing MCP service:', mcpError);
@@ -5729,19 +5810,40 @@ async function initializeServicesInBackground() {
       }
       sendStatus('MCP', 'MCP service initialized', 'success');
       
-      // Auto-start previously running servers
-      sendStatus('MCP', 'Restoring MCP servers...', 'info');
+      // Auto-start previously running servers based on startup settings
       try {
-        const restoreResults = await mcpService.startPreviouslyRunningServers();
-        const successCount = restoreResults.filter(r => r.success).length;
-        const totalCount = restoreResults.length;
-        
-        if (totalCount > 0) {
-          sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
-        } else {
-          sendStatus('MCP', 'No MCP servers to restore', 'info');
+        const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+        let startupSettings = {};
+        try {
+          if (fs.existsSync(settingsPath)) {
+            const settingsContent = fs.readFileSync(settingsPath, 'utf8');
+            const allSettings = JSON.parse(settingsContent);
+            startupSettings = allSettings.startup || {};
+          }
+        } catch (settingsError) {
+          log.warn('Error reading startup settings, using defaults:', settingsError);
         }
-        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
+        
+        // Default to true for backward compatibility
+        const autoStartMCP = startupSettings.autoStartMCP !== false;
+        
+        if (autoStartMCP) {
+          sendStatus('MCP', 'Restoring MCP servers...', 'info');
+          const restoreResults = await mcpService.startPreviouslyRunningServers();
+          const successCount = restoreResults.filter(r => r.success).length;
+          const totalCount = restoreResults.length;
+          
+          if (totalCount > 0) {
+            sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+          } else {
+            sendStatus('MCP', 'No MCP servers to restore', 'info');
+          }
+          global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
+        } else {
+          sendStatus('MCP', 'MCP auto-start disabled in settings', 'info');
+          log.info('MCP server auto-start is disabled in startup settings');
+          global.mcpServersRestored = true; // Mark as if restored to prevent later restoration attempts
+        }
       } catch (restoreError) {
         log.error('Error restoring MCP servers:', restoreError);
         sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
@@ -7453,22 +7555,44 @@ async function initializeServicesInBackground() {
         });
       }
       
-      // Auto-start previously running servers
-      sendStatus('MCP', 'Restoring MCP servers...', 'info');
+      // Check startup settings for MCP auto-start
+      sendStatus('MCP', 'Checking startup settings...', 'info');
+      let shouldAutoStartMCP = true; // Default to true for backward compatibility
+      
       try {
-        const restoreResults = await mcpService.startPreviouslyRunningServers();
-        const successCount = restoreResults.filter(r => r.success).length;
-        const totalCount = restoreResults.length;
-        
-        if (totalCount > 0) {
-          sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
-        } else {
-          sendStatus('MCP', 'No MCP servers to restore', 'info');
+        const settingsPath = path.join(app.getPath('userData'), 'clara-settings.json');
+        if (fs.existsSync(settingsPath)) {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+          const startupSettings = settings.startup || {};
+          shouldAutoStartMCP = startupSettings.autoStartMCP !== false; // Default to true if not set
         }
-        global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
-      } catch (restoreError) {
-        log.error('Error restoring MCP servers:', restoreError);
-        sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
+      } catch (settingsError) {
+        log.warn('Error reading startup settings for MCP auto-start:', settingsError);
+        // Default to true on error to maintain existing behavior
+      }
+
+      if (shouldAutoStartMCP) {
+        // Auto-start previously running servers
+        sendStatus('MCP', 'Restoring MCP servers...', 'info');
+        try {
+          const restoreResults = await mcpService.startPreviouslyRunningServers();
+          const successCount = restoreResults.filter(r => r.success).length;
+          const totalCount = restoreResults.length;
+          
+          if (totalCount > 0) {
+            sendStatus('MCP', `Restored ${successCount}/${totalCount} MCP servers`, successCount === totalCount ? 'success' : 'warning');
+          } else {
+            sendStatus('MCP', 'No MCP servers to restore', 'info');
+          }
+          global.mcpServersRestored = true; // Mark as restored to prevent duplicate restoration
+        } catch (restoreError) {
+          log.error('Error restoring MCP servers:', restoreError);
+          sendStatus('MCP', 'Failed to restore some MCP servers', 'warning');
+        }
+      } else {
+        sendStatus('MCP', 'MCP auto-start disabled in settings', 'info');
+        log.info('MCP auto-start is disabled in startup settings');
+        global.mcpServersRestored = true; // Mark as "restored" to prevent later attempts
       }
     } catch (mcpError) {
       log.error('Error initializing MCP service:', mcpError);

@@ -2046,7 +2046,7 @@ Skip for: quick answers, simple lists
     const currentMcp = aiConfig.mcp || {
       enableTools: true,
       enableResources: true,
-      enabledServers: [],
+      enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
       autoDiscoverTools: true,
       maxToolCalls: 5
     };
@@ -3890,6 +3890,47 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, [sessionConfig?.aiConfig?.features.enableStreaming]);
 
+  // Auto-enable python-mcp when in agent mode with no other MCP servers
+  useEffect(() => {
+    // Only run when we have a valid session config and tools are enabled (agent mode)
+    if (!sessionConfig?.aiConfig?.features || !onConfigChange) return;
+    
+    const isAgentMode = sessionConfig.aiConfig.features.enableTools && 
+                       sessionConfig.aiConfig.features.enableMCP && 
+                       !sessionConfig.aiConfig.features.enableStreaming;
+    
+    if (isAgentMode) {
+      const currentServers = sessionConfig.aiConfig.mcp?.enabledServers || [];
+      const hasPythonMCP = currentServers.includes('python-mcp');
+      const hasOtherServers = currentServers.length > 0;
+      
+      // If we're in agent mode and have no MCP servers enabled, automatically enable python-mcp
+      if (!hasPythonMCP && !hasOtherServers) {
+        console.log('🐍 Auto-enabling python-mcp server for agent mode (no other servers detected)');
+        
+        const updatedConfig = {
+          ...sessionConfig.aiConfig,
+          mcp: {
+            enableTools: sessionConfig.aiConfig.mcp?.enableTools ?? true,
+            enableResources: sessionConfig.aiConfig.mcp?.enableResources ?? true,
+            autoDiscoverTools: sessionConfig.aiConfig.mcp?.autoDiscoverTools ?? true,
+            maxToolCalls: sessionConfig.aiConfig.mcp?.maxToolCalls ?? 5,
+            ...sessionConfig.aiConfig.mcp,
+            enabledServers: ['python-mcp']
+          }
+        };
+        
+        onConfigChange({ aiConfig: updatedConfig });
+      }
+    }
+  }, [
+    sessionConfig?.aiConfig?.features.enableTools,
+    sessionConfig?.aiConfig?.features.enableMCP, 
+    sessionConfig?.aiConfig?.features.enableStreaming,
+    sessionConfig?.aiConfig?.mcp?.enabledServers,
+    onConfigChange
+  ]);
+
   // Default AI config if not provided
   const defaultAIConfig: ClaraAIConfig = {
     models: {
@@ -4668,7 +4709,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     const defaultMcp = {
       enableTools: true,
       enableResources: true,
-      enabledServers: [],
+      enabledServers: ['python-mcp'],  // **CHANGED**: Default to python-mcp for agent mode
       autoDiscoverTools: true,
       maxToolCalls: 5
     };

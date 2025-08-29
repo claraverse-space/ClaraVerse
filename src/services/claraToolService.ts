@@ -88,21 +88,6 @@ export class ClaraToolService {
                 const beforeCount = tools.length;
                 tools = [...tools, ...mcpToolsFormatted];
                 console.log(`📈 Added ${mcpToolsFormatted.length} MCP tools to existing ${beforeCount} tools (total: ${tools.length})`);
-                
-                if (onContentChunk && mcpToolsFormatted.length > 0) {
-                  const toolsByServer = mcpToolsFormatted.reduce((acc, tool) => {
-                    const serverName = tool.name.split('_')[1];
-                    acc[serverName] = (acc[serverName] || 0) + 1;
-                    return acc;
-                  }, {} as Record<string, number>);
-                  
-                  let toolsMessage = `🛠️ **Loaded ${mcpToolsFormatted.length} MCP tools:**\n`;
-                  for (const [server, count] of Object.entries(toolsByServer)) {
-                    toolsMessage += `   • ${server}: ${count} tools\n`;
-                  }
-                  toolsMessage += '\n';
-                  onContentChunk(toolsMessage);
-                }
               }
             }
           } else {
