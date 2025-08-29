@@ -26,6 +26,10 @@ export class ClaraToolService {
       if (config.features.enableMCP && config.mcp?.enableTools) {
         console.log('🔧 MCP is enabled, attempting to add MCP tools...');
         try {
+          // Always refresh MCP servers when getting tools to ensure latest state
+          console.log('🔄 Refreshing MCP servers to get latest tools...');
+          await claraMCPService.refreshServers();
+          
           if (claraMCPService.isReady()) {
             console.log('✅ MCP service is ready');
             

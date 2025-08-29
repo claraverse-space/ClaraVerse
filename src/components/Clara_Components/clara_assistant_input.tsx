@@ -4891,6 +4891,29 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
   }, [isStreamingMode, sessionConfig?.aiConfig?.features.enableMCP]);
 
+  // Handle MCP selector toggle with automatic refresh
+  const handleMcpSelectorToggle = useCallback(async () => {
+    if (isStreamingMode) return; // Don't allow in streaming mode
+    
+    const willOpen = !showMcpSelector;
+    
+    if (willOpen) {
+      // Refresh MCP servers when opening the selector
+      console.log('🔄 Refreshing MCP servers on selector open...');
+      try {
+        await claraMCPService.refreshServers();
+        const servers = claraMCPService.getRunningServers();
+        setMcpServers(servers);
+        console.log(`✅ MCP servers refreshed: ${servers.length} servers found`);
+      } catch (error) {
+        console.error('❌ Failed to refresh MCP servers:', error);
+        // Still show the selector even if refresh fails
+      }
+    }
+    
+    setShowMcpSelector(willOpen);
+  }, [showMcpSelector, isStreamingMode]);
+
   // Close MCP selector when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -6358,7 +6381,7 @@ You can right-click on the image to save it or use it in your projects.`;
                           : `MCP Servers (${currentAIConfig.mcp?.enabledServers?.length || 0} active)`
                       } position="top">
                         <button
-                          onClick={() => setShowMcpSelector(!showMcpSelector)}
+                          onClick={handleMcpSelectorToggle}
                           className={`relative p-2 rounded-lg transition-colors ${
                             isStreamingMode
                               ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
