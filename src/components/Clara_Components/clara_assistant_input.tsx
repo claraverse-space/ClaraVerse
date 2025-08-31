@@ -440,6 +440,99 @@ const ProviderSelector: React.FC<{
 };
 
 /**
+ * Compact Provider Selector for input bar
+ */
+const CompactProviderSelector: React.FC<{
+  providers: ClaraProvider[];
+  selectedProvider: string;
+  onProviderChange: (providerId: string) => void;
+  isLoading?: boolean;
+}> = ({ providers, selectedProvider, onProviderChange, isLoading }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedProviderObj = providers.find(p => p.id === selectedProvider);
+
+  const getProviderIcon = (type: string) => {
+    switch (type) {
+      case 'ollama': return Server;
+      case 'openai': return Bot;
+      case 'openrouter': return Zap;
+      default: return Server;
+    }
+  };
+
+  const getStatusColor = (provider: ClaraProvider) => {
+    if (!provider.isEnabled) return 'text-gray-400';
+    if (provider.isPrimary) return 'text-green-500';
+    return 'text-blue-500';
+  };
+
+  return (
+    <div className="relative">
+      <Tooltip 
+        content={(() => {
+          const currentProvider = providers.find(p => p.id === selectedProvider);
+          return currentProvider ? `Provider: ${currentProvider.name}` : 'Select provider';
+        })()} 
+        position="top"
+      >
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          disabled={isLoading}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors w-full max-w-[120px] min-w-[100px]"
+        >
+          {selectedProviderObj && (
+            <>
+              {React.createElement(getProviderIcon(selectedProviderObj.type), {
+                className: `w-4 h-4 flex-shrink-0 ${getStatusColor(selectedProviderObj)}`
+              })}
+              <span className="text-gray-700 dark:text-gray-300 truncate text-left flex-1 min-w-0" title={selectedProviderObj.name}>
+                {selectedProviderObj.name}
+              </span>
+            </>
+          )}
+          <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </Tooltip>
+
+      {isOpen && (
+        <div className="absolute bottom-full mb-1 left-0 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+          {providers.map((provider) => {
+            const IconComponent = getProviderIcon(provider.type);
+            return (
+              <button
+                key={provider.id}
+                onClick={() => {
+                  onProviderChange(provider.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                  provider.id === selectedProvider ? 'bg-sakura-50 dark:bg-sakura-900/20' : ''
+                }`}
+                disabled={!provider.isEnabled}
+                title={`${provider.name} - ${provider.baseUrl}`}
+              >
+                <IconComponent className={`w-4 h-4 flex-shrink-0 ${getStatusColor(provider)}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {provider.name}
+                  </div>
+                </div>
+                {provider.isPrimary && (
+                  <CheckCircle className="w-3 h-3 text-green-500" />
+                )}
+                {!provider.isEnabled && (
+                  <XCircle className="w-3 h-3 text-red-500" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * Model selector component
  */
 const ModelSelector: React.FC<{
@@ -553,7 +646,7 @@ const ModelSelector: React.FC<{
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading || models.length === 0}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors w-full max-w-[220px] min-w-[180px]"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-colors w-full max-w-[160px] min-w-[140px]"
       >
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {selectedModelObj ? (
@@ -3620,6 +3713,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [showMcpSelector, setShowMcpSelector] = useState(false);
   const [mcpSearchTerm, setMcpSearchTerm] = useState('');
   const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
+  const [togglingServers, setTogglingServers] = useState<Set<string>>(new Set());
 
   // Quick recording state for mic button
   const [isQuickRecording, setIsQuickRecording] = useState(false);
@@ -4835,26 +4929,115 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
 
   // MCP helper functions
-  const isServerEnabled = useCallback((serverName: string) => {
-    return currentAIConfig.mcp?.enabledServers?.includes(serverName) || false;
-  }, [currentAIConfig.mcp?.enabledServers]);
-
-  const handleMcpServerToggle = useCallback((serverName: string, enabled: boolean) => {
-    const currentServers = currentAIConfig.mcp?.enabledServers || [];
-    const updatedServers = enabled
-      ? [...currentServers, serverName]
-      : currentServers.filter(name => name !== serverName);
+  const handleMcpServerToggle = useCallback(async (serverName: string, shouldBeActive: boolean) => {
+    console.log(`🎛️ Toggling MCP server: ${serverName} to ${shouldBeActive ? 'active' : 'inactive'}`);
     
-    handleAIConfigChange({
-      mcp: {
-        enableTools: currentAIConfig.mcp?.enableTools ?? true,
-        enableResources: currentAIConfig.mcp?.enableResources ?? true,
-        autoDiscoverTools: currentAIConfig.mcp?.autoDiscoverTools ?? true,
-        maxToolCalls: currentAIConfig.mcp?.maxToolCalls ?? 5,
-        ...currentAIConfig.mcp,
-        enabledServers: updatedServers
+    // Add server to loading set
+    setTogglingServers(prev => new Set([...prev, serverName]));
+    
+    try {
+      const currentServers = currentAIConfig.mcp?.enabledServers || [];
+      const isCurrentlyEnabled = currentServers.includes(serverName);
+      
+      // Find the server to check if it's running
+      const server = mcpServers.find(s => s.name === serverName);
+      const isCurrentlyRunning = server?.isRunning ?? false;
+      
+      let serverOperationSuccess = true;
+      
+      if (shouldBeActive) {
+        // Want to make it active: ensure it's running AND enabled
+        if (!isCurrentlyRunning) {
+          console.log(`� Starting MCP server: ${serverName}`);
+          serverOperationSuccess = await claraMCPService.startServer(serverName);
+          
+          if (!serverOperationSuccess) {
+            console.error(`❌ Failed to start MCP server: ${serverName}`);
+            setTogglingServers(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(serverName);
+              return newSet;
+            });
+            return;
+          }
+        }
+        
+        // Add to enabled list if not already there
+        if (!isCurrentlyEnabled) {
+          const updatedServers = [...currentServers, serverName];
+          handleAIConfigChange({
+            mcp: {
+              enableTools: currentAIConfig.mcp?.enableTools ?? true,
+              enableResources: currentAIConfig.mcp?.enableResources ?? true,
+              autoDiscoverTools: currentAIConfig.mcp?.autoDiscoverTools ?? true,
+              maxToolCalls: currentAIConfig.mcp?.maxToolCalls ?? 5,
+              ...currentAIConfig.mcp,
+              enabledServers: updatedServers
+            }
+          });
+        }
+      } else {
+        // Want to make it inactive: remove from enabled (and optionally stop)
+        if (isCurrentlyEnabled) {
+          const updatedServers = currentServers.filter(name => name !== serverName);
+          handleAIConfigChange({
+            mcp: {
+              enableTools: currentAIConfig.mcp?.enableTools ?? true,
+              enableResources: currentAIConfig.mcp?.enableResources ?? true,
+              autoDiscoverTools: currentAIConfig.mcp?.autoDiscoverTools ?? true,
+              maxToolCalls: currentAIConfig.mcp?.maxToolCalls ?? 5,
+              ...currentAIConfig.mcp,
+              enabledServers: updatedServers
+            }
+          });
+        }
+        
+        // Optionally stop the server (we could keep it running for quick re-enable)
+        // For now, let's stop it to be clear about the inactive state
+        if (isCurrentlyRunning) {
+          console.log(`🛑 Stopping MCP server: ${serverName}`);
+          serverOperationSuccess = await claraMCPService.stopServer(serverName);
+          
+          if (!serverOperationSuccess) {
+            console.error(`❌ Failed to stop MCP server: ${serverName}`);
+            // Don't return here, config change was successful
+          }
+        }
       }
-    });
+      
+      // Refresh the server list to show updated status
+      console.log('🔄 Refreshing server list after toggle...');
+      await claraMCPService.refreshServers();
+      const servers = claraMCPService.getAllServers();
+      setMcpServers(servers);
+      
+      // **NEW**: Refresh Clara's background services to update agent mode tool detection
+      console.log('🔄 Refreshing Clara services to update agent mode...');
+      try {
+        // Use the global refresh function to update Clara's background service
+        if ((window as any).refreshClaraServices) {
+          await (window as any).refreshClaraServices(true); // Force refresh to bypass cooldown
+          console.log('✅ Clara services refreshed successfully - agent mode should now detect MCP changes');
+        } else {
+          console.warn('⚠️ Global refreshClaraServices function not available');
+        }
+      } catch (refreshError) {
+        console.warn('⚠️ Failed to refresh Clara services:', refreshError);
+        // Don't fail the operation if refresh fails
+      }
+      
+      console.log(`✅ Successfully ${shouldBeActive ? 'activated' : 'deactivated'} MCP server: ${serverName}`);
+    } catch (error) {
+      console.error(`❌ Error toggling MCP server ${serverName}:`, error);
+      // Optionally show error notification
+    } finally {
+      // Remove server from loading set
+      setTogglingServers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(serverName);
+        return newSet;
+      });
+    }
   }, [currentAIConfig.mcp, handleAIConfigChange]);
 
   // Filtered MCP servers for search
@@ -4873,8 +5056,15 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       
       try {
         await claraMCPService.refreshServers();
-        const servers = claraMCPService.getRunningServers();
+        // Show ALL servers (including disabled/stopped ones)
+        const servers = claraMCPService.getAllServers();
         setMcpServers(servers);
+        console.log(`📋 Loaded ${servers.length} MCP servers for selector:`, servers.map(s => ({ 
+          name: s.name, 
+          isRunning: s.isRunning, 
+          status: s.status,
+          enabled: s.config?.enabled 
+        })));
       } catch (error) {
         console.error('Failed to load MCP servers:', error);
         setMcpServers([]);
@@ -4897,9 +5087,10 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       console.log('🔄 Refreshing MCP servers on selector open...');
       try {
         await claraMCPService.refreshServers();
-        const servers = claraMCPService.getRunningServers();
+        // Get ALL servers (including disabled/stopped ones)
+        const servers = claraMCPService.getAllServers();
         setMcpServers(servers);
-        console.log(`✅ MCP servers refreshed: ${servers.length} servers found`);
+        console.log(`✅ MCP servers refreshed: ${servers.length} servers found (including disabled/stopped)`);
       } catch (error) {
         console.error('❌ Failed to refresh MCP servers:', error);
         // Still show the selector even if refresh fails
@@ -6273,9 +6464,9 @@ You can right-click on the image to save it or use it in your projects.`;
                 </div>
 
                 {/* Bottom Actions - Redesigned for better UX */}
-                <div className="flex justify-between items-center mt-4">
+                <div className="flex flex-wrap justify-between items-center mt-4 gap-2">
                   {/* Left Side - Mode & Model Selection */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     {/* Enhanced Mode Toggle with Clear Labels */}
                     <div className="flex items-center bg-gray-100/50 dark:bg-gray-800/30 rounded-lg p-1">
                       <Tooltip 
@@ -6364,25 +6555,48 @@ You can right-click on the image to save it or use it in your projects.`;
                         />
                       )}
                     </div>
+
+                    {/* Compact Provider Selector */}
+                    {providers.length > 1 && (
+                      <CompactProviderSelector
+                        providers={providers}
+                        selectedProvider={currentAIConfig.provider}
+                        onProviderChange={(providerId) => {
+                          handleAIConfigChange({ provider: providerId });
+                          onProviderChange?.(providerId);
+                        }}
+                        isLoading={isLoading}
+                      />
+                    )}
                   </div>
 
                   {/* Right Side - MCP, File Actions, Voice, Settings & Send */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {/* MCP Server Selector */}
                     <div className="relative" data-mcp-selector>
                       <Tooltip content={
                         isStreamingMode 
                           ? "MCP available with Agent mode only" 
-                          : `MCP Servers (${currentAIConfig.mcp?.enabledServers?.length || 0} active)`
+                          : (() => {
+                              const activeCount = mcpServers.filter(server => 
+                                server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
+                              ).length;
+                              return `MCP Servers (${activeCount} active)`;
+                            })()
                       } position="top">
                         <button
                           onClick={handleMcpSelectorToggle}
                           className={`relative p-2 rounded-lg transition-colors ${
                             isStreamingMode
                               ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
-                              : currentAIConfig.mcp?.enabledServers?.length 
-                                ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400'
-                                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                              : (() => {
+                                  const activeCount = mcpServers.filter(server => 
+                                    server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
+                                  ).length;
+                                  return activeCount > 0
+                                    ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400'
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400';
+                                })()
                           }`}
                           disabled={isLoading || isStreamingMode}
                         >
@@ -6402,9 +6616,19 @@ You can right-click on the image to save it or use it in your projects.`;
                           </svg>
                           
                           {/* Server count badge */}
-                          {!isStreamingMode && currentAIConfig.mcp?.enabledServers?.length && (
+                          {!isStreamingMode && (() => {
+                            const activeCount = mcpServers.filter(server => 
+                              server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
+                            ).length;
+                            return activeCount > 0;
+                          })() && (
                             <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                              {currentAIConfig.mcp.enabledServers.length > 9 ? '9+' : currentAIConfig.mcp.enabledServers.length}
+                              {(() => {
+                                const activeCount = mcpServers.filter(server => 
+                                  server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
+                                ).length;
+                                return activeCount > 9 ? '9+' : activeCount;
+                              })()}
                             </span>
                           )}
                         </button>
@@ -6434,30 +6658,60 @@ You can right-click on the image to save it or use it in your projects.`;
                               >
                                 <div className="flex items-center gap-2 flex-1">
                                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                    server.status === 'running' ? 'bg-green-500' : 
+                                    togglingServers.has(server.name) ? 'bg-blue-400 animate-pulse' :
+                                    server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false) ? 'bg-green-500' : 
+                                    server.isRunning && !(currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false) ? 'bg-yellow-500' :
                                     server.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
                                   }`} />
                                   <div className="flex-1 min-w-0">
                                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                                       {server.name}
+                                      {togglingServers.has(server.name) && (
+                                        <Loader2 className="inline w-3 h-3 ml-1 animate-spin text-blue-500" />
+                                      )}
                                     </div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                      {server.config.type} • {server.status}
+                                      {server.config?.type || 'unknown'} • {
+                                        togglingServers.has(server.name) ? 'updating...' :
+                                        server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false) ? 'active' :
+                                        server.isRunning && !(currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false) ? 'running (not enabled)' :
+                                        !server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false) ? 'enabled (not running)' :
+                                        'stopped'
+                                      }
                                     </div>
                                   </div>
                                 </div>
                                 
                                 <button
-                                  onClick={() => handleMcpServerToggle(server.name, !isServerEnabled(server.name))}
-                                  className={`flex-shrink-0 w-10 h-5 rounded-full transition-colors ${
-                                    isServerEnabled(server.name)
-                                      ? 'bg-blue-500' 
+                                  onClick={() => {
+                                    // Check if server is both running AND enabled in config
+                                    const isEnabled = currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false;
+                                    const isActive = server.isRunning && isEnabled;
+                                    handleMcpServerToggle(server.name, !isActive);
+                                  }}
+                                  disabled={togglingServers.has(server.name)}
+                                  className={`flex-shrink-0 w-10 h-5 rounded-full transition-colors relative ${
+                                    togglingServers.has(server.name) ? 'bg-blue-400' :
+                                    (server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false))
+                                      ? 'bg-green-500' 
                                       : 'bg-gray-300 dark:bg-gray-600'
-                                  }`}
+                                  } hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60`}
+                                  title={
+                                    togglingServers.has(server.name) ? 
+                                      'Updating server...' :
+                                    (server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)) ? 
+                                      'Click to disable server' : 'Click to enable server'
+                                  }
                                 >
-                                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                                    isServerEnabled(server.name) ? 'translate-x-5' : 'translate-x-0.5'
-                                  }`} />
+                                  {togglingServers.has(server.name) ? (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <Loader2 className="w-3 h-3 animate-spin text-white" />
+                                    </div>
+                                  ) : (
+                                    <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                      (server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)) ? 'translate-x-5' : 'translate-x-0.5'
+                                    }`} />
+                                  )}
                                 </button>
                               </div>
                             ))}

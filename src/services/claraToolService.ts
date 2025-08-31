@@ -45,23 +45,23 @@ export class ClaraToolService {
               const serverSummary = claraMCPService.getServerAvailabilitySummary(enabledServers);
               console.log('🔍 Server availability summary:', serverSummary);
               
-              if (onContentChunk && serverSummary.unavailable.length > 0) {
-                let feedbackMessage = '\n🔧 **MCP Server Status:**\n';
+              // if (onContentChunk && serverSummary.unavailable.length > 0) {
+              //   let feedbackMessage = '\n🔧 **MCP Server Status:**\n';
                 
-                if (serverSummary.available.length > 0) {
-                  feedbackMessage += `✅ Available: ${serverSummary.available.join(', ')} (${serverSummary.totalTools} tools)\n`;
-                }
+              //   if (serverSummary.available.length > 0) {
+              //     feedbackMessage += `✅ Available: ${serverSummary.available.join(', ')} (${serverSummary.totalTools} tools)\n`;
+              //   }
                 
-                if (serverSummary.unavailable.length > 0) {
-                  feedbackMessage += '❌ Unavailable servers:\n';
-                  for (const unavailable of serverSummary.unavailable) {
-                    feedbackMessage += `   • ${unavailable.server}: ${unavailable.reason}\n`;
-                  }
-                }
+              //   if (serverSummary.unavailable.length > 0) {
+              //     feedbackMessage += '❌ Unavailable servers:\n';
+              //     for (const unavailable of serverSummary.unavailable) {
+              //       feedbackMessage += `   • ${unavailable.server}: ${unavailable.reason}\n`;
+              //     }
+              //   }
                 
-                feedbackMessage += '\n';
-                onContentChunk(feedbackMessage);
-              }
+              //   feedbackMessage += '\n';
+              //   onContentChunk(feedbackMessage);
+              // }
               
               const mcpTools = claraMCPService.getToolsFromEnabledServers(enabledServers);
               console.log(`🛠️ Found ${mcpTools.length} MCP tools from enabled servers:`, mcpTools.map(t => `${t.server}:${t.name}`));

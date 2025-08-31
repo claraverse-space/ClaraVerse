@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Upload, Plus, Check, X, Edit3, RotateCcw, Square, Play, AlertCircle, CheckCircle, FileText, Trash2 } from 'lucide-react';
+import { Server, Upload, Plus, Check, X, Edit3, RotateCcw, Square, Play, AlertCircle, CheckCircle, FileText, Trash2, Search, Filter, Star, Tag } from 'lucide-react';
 
 // MCP Types
 interface MCPServerConfig {
@@ -47,11 +47,15 @@ interface MCPServerTemplate {
   name: string;
   displayName: string;
   description: string;
-  command: string;
+  command?: string;
   args?: string[];
   type: 'stdio' | 'remote';
   category: string;
   env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  icon?: string;
+  popularity?: 'high' | 'medium' | 'low';
 }
 
 const MCPSettings: React.FC = () => {
@@ -98,10 +102,16 @@ const MCPSettings: React.FC = () => {
   // MCP sub-tab state
   const [activeSubTab, setActiveSubTab] = useState<'servers' | 'templates' | 'diagnosis'>('servers');
   
-        // JSON import state
-      const [showJsonImportModal, setShowJsonImportModal] = useState(false);
-      const [jsonImportText, setJsonImportText] = useState('');
-      const [isImportingJson, setIsImportingJson] = useState(false);
+  // Templates UI state
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedPopularity, setSelectedPopularity] = useState<string>('All');
+  const [templateViewMode, setTemplateViewMode] = useState<'grid' | 'list'>('grid');
+  
+  // JSON import state
+  const [showJsonImportModal, setShowJsonImportModal] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState('');
+  const [isImportingJson, setIsImportingJson] = useState(false);
       
       // Add timeout configuration for better debugging
       const MCP_TIMEOUT = 15000; // 15 seconds
@@ -509,11 +519,11 @@ const MCPSettings: React.FC = () => {
     setNewMcpServerForm({
       name: template.name,
       type: template.type,
-      command: template.command,
+      command: template.command || '',
       args: template.args || [],
       env: template.env || {},
-      url: '',
-      headers: {},
+      url: template.url || '',
+      headers: template.headers || {},
       description: template.description,
       enabled: true
     });
@@ -1051,49 +1061,329 @@ const MCPSettings: React.FC = () => {
       {/* MCP Templates Section */}
       {activeSubTab === 'templates' && (
         <div className="glassmorphic rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <FileText className="w-6 h-6 text-sakura-500" />
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Server Templates
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Quick setup for popular MCP servers
-              </p>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <FileText className="w-6 h-6 text-sakura-500" />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Server Templates
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Quick setup for popular MCP servers ({mcpTemplates.length} available)
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setEditingMcpServer(null);
+                  setNewMcpServerForm({
+                    name: '',
+                    type: 'stdio',
+                    command: '',
+                    args: [],
+                    env: {},
+                    url: '',
+                    headers: {},
+                    description: '',
+                    enabled: true
+                  });
+                  setShowAddMcpModal(true);
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Custom Server
+              </button>
+              <button
+                onClick={() => setTemplateViewMode(templateViewMode === 'grid' ? 'list' : 'grid')}
+                className="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                title={`Switch to ${templateViewMode === 'grid' ? 'list' : 'grid'} view`}
+              >
+                {templateViewMode === 'grid' ? '☰' : '⊞'}
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mcpTemplates.map((template) => (
-              <div
-                key={template.name}
-                className="p-4 bg-white/30 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-colors"
+          {/* Search and Filters */}
+          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+            {/* Search Bar */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search templates..."
+                value={templateSearchQuery}
+                onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-sakura-300 dark:focus:border-sakura-600 dark:text-gray-100"
+              />
+            </div>
+            
+            {/* Category Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-3 py-2 bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-sakura-300 dark:focus:border-sakura-600 dark:text-gray-100"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h4 className="font-medium text-gray-900 dark:text-white">
-                      {template.displayName}
-                    </h4>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
-                      {template.category}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => addMcpServerFromTemplate(template)}
-                    className="px-3 py-1 bg-sakura-500 text-white text-sm rounded hover:bg-sakura-600 transition-colors"
-                  >
-                    Use Template
-                  </button>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {template.description}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-2">
-                  {template.command} {template.args?.join(' ') || ''}
-                </p>
-              </div>
-            ))}
+                <option value="All">All Categories</option>
+                {Array.from(new Set(mcpTemplates.map(t => t.category))).sort().map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Popularity Filter */}
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-gray-500" />
+              <select
+                value={selectedPopularity}
+                onChange={(e) => setSelectedPopularity(e.target.value)}
+                className="px-3 py-2 bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-sakura-300 dark:focus:border-sakura-600 dark:text-gray-100"
+              >
+                <option value="All">All Popularity</option>
+                <option value="high">High Popularity</option>
+                <option value="medium">Medium Popularity</option>
+                <option value="low">Low Popularity</option>
+              </select>
+            </div>
           </div>
+
+          {/* Templates Display */}
+          {(() => {
+            // Filter templates based on search and filters
+            let filteredTemplates = mcpTemplates.filter(template => {
+              const matchesSearch = template.displayName.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                                  template.description.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                                  template.category.toLowerCase().includes(templateSearchQuery.toLowerCase());
+              const matchesCategory = selectedCategory === 'All' || template.category === selectedCategory;
+              const matchesPopularity = selectedPopularity === 'All' || template.popularity === selectedPopularity;
+              return matchesSearch && matchesCategory && matchesPopularity;
+            });
+
+            // Sort templates by popularity (high first) and then by category
+            filteredTemplates.sort((a, b) => {
+              const popularityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
+              const aPopularity = popularityOrder[a.popularity || 'low'];
+              const bPopularity = popularityOrder[b.popularity || 'low'];
+              
+              if (aPopularity !== bPopularity) {
+                return bPopularity - aPopularity; // High to low
+              }
+              
+              // If same popularity, sort by category then by name
+              if (a.category !== b.category) {
+                return a.category.localeCompare(b.category);
+              }
+              
+              return a.displayName.localeCompare(b.displayName);
+            });
+
+            // Get category counts for stats
+            const categoryCounts = filteredTemplates.reduce((acc, template) => {
+              acc[template.category] = (acc[template.category] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>);
+
+            return (
+              <>
+                {/* Results Stats */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Showing {filteredTemplates.length} of {mcpTemplates.length} templates
+                    {(templateSearchQuery || selectedCategory !== 'All' || selectedPopularity !== 'All') && (
+                      <button
+                        onClick={() => {
+                          setTemplateSearchQuery('');
+                          setSelectedCategory('All');
+                          setSelectedPopularity('All');
+                        }}
+                        className="ml-2 text-sakura-500 hover:text-sakura-700 text-xs underline"
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Category Tags */}
+                  {selectedCategory === 'All' && Object.keys(categoryCounts).length > 1 && (
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(categoryCounts).slice(0, 5).map(([category, count]) => (
+                        <button
+                          key={category}
+                          onClick={() => setSelectedCategory(category)}
+                          className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-sakura-100 dark:hover:bg-sakura-900 hover:text-sakura-700 dark:hover:text-sakura-300 transition-colors"
+                        >
+                          {category} ({count})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Templates Grid/List */}
+                {filteredTemplates.length > 0 ? (
+                  <div className={templateViewMode === 'grid' 
+                    ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" 
+                    : "space-y-3"
+                  }>
+                    {filteredTemplates.map((template) => (
+                      <div
+                        key={template.name}
+                        className={`p-4 bg-white/30 dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-white/50 dark:hover:bg-gray-800/50 transition-all hover:shadow-md ${
+                          templateViewMode === 'list' ? 'flex items-center gap-4' : ''
+                        }`}
+                      >
+                        {templateViewMode === 'grid' ? (
+                          // Grid Layout
+                          <div className="flex flex-col h-full">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-sakura-100 to-sakura-200 dark:from-sakura-800 dark:to-sakura-900 rounded-lg flex items-center justify-center">
+                                {template.icon ? (
+                                  <i className={`${template.icon} text-lg text-sakura-600 dark:text-sakura-300`}></i>
+                                ) : (
+                                  <span className="text-lg">🔧</span>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-900 dark:text-white">
+                                  {template.displayName}
+                                </h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                                    {template.category}
+                                  </span>
+                                  {template.popularity && (
+                                    <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                                      template.popularity === 'high' 
+                                        ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300'
+                                        : template.popularity === 'medium'
+                                        ? 'bg-yellow-100 dark:bg-yellow-800 text-yellow-700 dark:text-yellow-300'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                    }`}>
+                                      <Star className="w-3 h-3" />
+                                      {template.popularity}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 flex-1">
+                              {template.description}
+                            </p>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono bg-gray-50 dark:bg-gray-900 p-2 rounded mb-3">
+                              {template.type === 'stdio' 
+                                ? `${template.command || ''} ${template.args?.join(' ') || ''}`
+                                : template.url || 'Remote server'
+                              }
+                            </div>
+                            {template.env && Object.keys(template.env).length > 0 && (
+                              <div className="mb-3 flex items-center gap-1">
+                                <Tag className="w-3 h-3 text-orange-500" />
+                                <span className="text-xs text-orange-600 dark:text-orange-400">
+                                  Requires environment variables
+                                </span>
+                              </div>
+                            )}
+                            <button
+                              onClick={() => addMcpServerFromTemplate(template)}
+                              className="w-full px-4 py-2 bg-sakura-500 text-white text-sm font-medium rounded-lg hover:bg-sakura-600 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2 mt-auto"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Use Template
+                            </button>
+                          </div>
+                        ) : (
+                          // List Layout
+                          <>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-sakura-100 to-sakura-200 dark:from-sakura-800 dark:to-sakura-900 rounded-lg flex items-center justify-center shrink-0">
+                                {template.icon ? (
+                                  <i className={`${template.icon} text-lg text-sakura-600 dark:text-sakura-300`}></i>
+                                ) : (
+                                  <span className="text-lg">🔧</span>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-gray-900 dark:text-white">
+                                    {template.displayName}
+                                  </h4>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                                    {template.category}
+                                  </span>
+                                  {template.popularity && (
+                                    <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                                      template.popularity === 'high' 
+                                        ? 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300'
+                                        : template.popularity === 'medium'
+                                        ? 'bg-yellow-100 dark:bg-yellow-800 text-yellow-700 dark:text-yellow-300'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                    }`}>
+                                      <Star className="w-3 h-3" />
+                                      {template.popularity}
+                                    </span>
+                                  )}
+                                  {template.env && Object.keys(template.env).length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <Tag className="w-3 h-3 text-orange-500" />
+                                      <span className="text-xs text-orange-600 dark:text-orange-400">
+                                        Env vars
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                  {template.description}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                  {template.type === 'stdio' 
+                                    ? `${template.command || ''} ${template.args?.join(' ') || ''}`
+                                    : template.url || 'Remote server'
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => addMcpServerFromTemplate(template)}
+                              className="px-6 py-2.5 bg-sakura-500 text-white text-sm font-medium rounded-lg hover:bg-sakura-600 hover:shadow-md transition-all duration-200 flex items-center gap-2 whitespace-nowrap"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Use Template
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  // No Results
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Search className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+                    </div>
+                    <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                      No templates found
+                    </h4>
+                    <p className="text-gray-500 dark:text-gray-400 mb-4">
+                      Try adjusting your search terms or filters
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setTemplateSearchQuery('');
+                        setSelectedCategory('All');
+                        setSelectedPopularity('All');
+                      }}
+                      className="px-4 py-2 bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-colors"
+                    >
+                      Clear All Filters
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

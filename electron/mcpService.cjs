@@ -608,15 +608,7 @@ class MCPService {
   // Get available MCP server templates
   getServerTemplates() {
     return [
-      {
-        name: 'remote-server',
-        displayName: 'Remote MCP Server',
-        description: 'Connect to a remote MCP server via HTTP',
-        type: 'remote',
-        url: 'http://localhost:3000/mcp',
-        headers: {},
-        category: 'Remote'
-      },
+      // System & File Management
       {
         name: 'filesystem',
         displayName: 'File System',
@@ -624,8 +616,23 @@ class MCPService {
         command: 'npx',
         args: ['@modelcontextprotocol/server-filesystem', '/path/to/directory'],
         type: 'stdio',
-        category: 'System'
+        category: 'System',
+        icon: 'fas fa-folder',
+        popularity: 'high'
       },
+      {
+        name: 'hyper-shell',
+        displayName: 'Shell Access',
+        description: 'Secure shell and OS-level command execution',
+        command: 'npx',
+        args: ['hyper-mcp-shell'],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-terminal',
+        popularity: 'medium'
+      },
+
+      // Development & Git
       {
         name: 'git',
         displayName: 'Git Repository',
@@ -633,49 +640,9 @@ class MCPService {
         command: 'npx',
         args: ['@modelcontextprotocol/server-git', '/path/to/repo'],
         type: 'stdio',
-        category: 'Development'
-      },
-      {
-        name: 'sqlite',
-        displayName: 'SQLite Database',
-        description: 'Query and manipulate SQLite databases',
-        command: 'npx',
-        args: ['@modelcontextprotocol/server-sqlite', '/path/to/database.db'],
-        type: 'stdio',
-        category: 'Database'
-      },
-      {
-        name: 'postgres',
-        displayName: 'PostgreSQL Database',
-        description: 'Connect to PostgreSQL databases',
-        command: 'npx',
-        args: ['@modelcontextprotocol/server-postgres'],
-        type: 'stdio',
-        category: 'Database',
-        env: {
-          POSTGRES_CONNECTION_STRING: 'postgresql://user:password@localhost:5432/dbname'
-        }
-      },
-      {
-        name: 'puppeteer',
-        displayName: 'Web Scraping',
-        description: 'Web scraping and browser automation',
-        command: 'npx',
-        args: ['@modelcontextprotocol/server-puppeteer'],
-        type: 'stdio',
-        category: 'Web'
-      },
-      {
-        name: 'brave-search',
-        displayName: 'Brave Search',
-        description: 'Search the web using Brave Search API',
-        command: 'npx',
-        args: ['@modelcontextprotocol/server-brave-search'],
-        type: 'stdio',
-        category: 'Search',
-        env: {
-          BRAVE_API_KEY: 'your-brave-api-key'
-        }
+        category: 'Development',
+        icon: 'fab fa-git-alt',
+        popularity: 'high'
       },
       {
         name: 'github',
@@ -685,48 +652,118 @@ class MCPService {
         args: ['@modelcontextprotocol/server-github'],
         type: 'stdio',
         category: 'Development',
+        icon: 'fab fa-github',
+        popularity: 'high',
         env: {
           GITHUB_PERSONAL_ACCESS_TOKEN: 'your-github-token'
         }
       },
       {
-        name: 'figma',
-        displayName: 'Figma',
-        description: 'Read, comment and analyse Figma designs',
+        name: 'gitlab',
+        displayName: 'GitLab',
+        description: 'GitLab project and pipeline management',
         command: 'npx',
-        args: ['figma-mcp'],
+        args: ['@modelcontextprotocol/server-gitlab'],
         type: 'stdio',
-        category: 'Design',
+        category: 'Development',
+        icon: 'fab fa-gitlab',
+        popularity: 'medium',
         env: {
-          FIGMA_API_KEY: 'your-figma-api-key'
+          GITLAB_PERSONAL_ACCESS_TOKEN: 'your-gitlab-token',
+          GITLAB_URL: 'https://gitlab.com'
+        }
+      },
+
+      // Databases
+      {
+        name: 'sqlite',
+        displayName: 'SQLite Database',
+        description: 'Query and manipulate SQLite databases',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-sqlite', '/path/to/database.db'],
+        type: 'stdio',
+        category: 'Database',
+        icon: 'fas fa-database',
+        popularity: 'high'
+      },
+      {
+        name: 'postgres',
+        displayName: 'PostgreSQL Database',
+        description: 'Connect to PostgreSQL databases',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-postgres'],
+        type: 'stdio',
+        category: 'Database',
+        icon: 'fas fa-server',
+        popularity: 'high',
+        env: {
+          POSTGRES_CONNECTION_STRING: 'postgresql://user:password@localhost:5432/dbname'
         }
       },
       {
-        name: 'everything',
-        displayName: 'Everything (Demo)',
-        description: 'Showcase server exercising all MCP features',
+        name: 'mysql',
+        displayName: 'MySQL Database',
+        description: 'Connect to MySQL/MariaDB databases',
         command: 'npx',
-        args: ['@modelcontextprotocol/server-everything'],
+        args: ['@modelcontextprotocol/server-mysql'],
         type: 'stdio',
-        category: 'Demo'
+        category: 'Database',
+        icon: 'fas fa-hdd',
+        popularity: 'medium',
+        env: {
+          MYSQL_CONNECTION_STRING: 'mysql://user:password@localhost:3306/dbname'
+        }
+      },
+
+      // Web & APIs
+      {
+        name: 'puppeteer',
+        displayName: 'Web Scraping',
+        description: 'Web scraping and browser automation',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-puppeteer'],
+        type: 'stdio',
+        category: 'Web',
+        icon: 'fas fa-spider',
+        popularity: 'high'
       },
       {
-        name: 'memory',
-        displayName: 'Persistent Memory',
-        description: 'Knowledge-graph based long-term memory store',
+        name: 'playwright',
+        displayName: 'Playwright Automation',
+        description: 'Cross-browser automation and testing',
         command: 'npx',
-        args: ['@modelcontextprotocol/server-memory'],
+        args: ['playwright-mcp-server'],
         type: 'stdio',
-        category: 'AI'
+        category: 'Web',
+        icon: 'fas fa-theater-masks',
+        popularity: 'medium'
       },
       {
-        name: 'sequential-thinking',
-        displayName: 'Sequential Thinking',
-        description: 'Structured multi-step reasoning tools',
+        name: 'fetch',
+        displayName: 'HTTP Requests',
+        description: 'Make HTTP requests and API calls',
         command: 'npx',
-        args: ['@modelcontextprotocol/server-sequential-thinking'],
+        args: ['@modelcontextprotocol/server-fetch'],
         type: 'stdio',
-        category: 'AI'
+        category: 'Web',
+        icon: 'fas fa-globe',
+        popularity: 'high'
+      },
+
+      // Search Engines
+      {
+        name: 'brave-search',
+        displayName: 'Brave Search',
+        description: 'Search the web using Brave Search API',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-brave-search'],
+        type: 'stdio',
+        category: 'Search',
+        icon: 'fas fa-shield-alt',
+        popularity: 'high',
+        env: {
+          BRAVE_API_KEY: 'your-brave-api-key'
+        }
       },
       {
         name: 'searxng',
@@ -736,28 +773,53 @@ class MCPService {
         args: ['mcp-searxng'],
         type: 'stdio',
         category: 'Search',
+        icon: 'fas fa-search',
+        popularity: 'medium',
         env: {
           SEARXNG_URL: 'http://localhost:8080'
         }
       },
       {
-        name: 'hyper-shell',
-        displayName: 'Shell Access',
-        description: 'Secure shell and OS-level command execution',
+        name: 'google-search',
+        displayName: 'Google Search',
+        description: 'Search Google with custom search engine',
         command: 'npx',
-        args: ['hyper-mcp-shell'],
+        args: ['@modelcontextprotocol/server-google-search'],
         type: 'stdio',
-        category: 'System'
+        category: 'Search',
+        icon: 'fab fa-google',
+        popularity: 'high',
+        env: {
+          GOOGLE_API_KEY: 'your-google-api-key',
+          GOOGLE_SEARCH_ENGINE_ID: 'your-search-engine-id'
+        }
+      },
+
+      // AI & Reasoning
+      {
+        name: 'memory',
+        displayName: 'Persistent Memory',
+        description: 'Knowledge-graph based long-term memory store',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-memory'],
+        type: 'stdio',
+        category: 'AI',
+        icon: 'fas fa-brain',
+        popularity: 'high'
       },
       {
-        name: 'sqlite',
-        displayName: 'SQLite Database',
-        description: 'Query and manipulate SQLite databases',
+        name: 'sequential-thinking',
+        displayName: 'Sequential Thinking',
+        description: 'Structured multi-step reasoning tools',
         command: 'npx',
-        args: ['@modelcontextprotocol/server-sqlite', '/path/to/database.db'],
+        args: ['@modelcontextprotocol/server-sequential-thinking'],
         type: 'stdio',
-        category: 'Database'
-      },  
+        category: 'AI',
+        icon: 'fas fa-sitemap',
+        popularity: 'medium'
+      },
+
+      // Communication & Collaboration
       {
         name: 'slack',
         displayName: 'Slack',
@@ -766,9 +828,350 @@ class MCPService {
         args: ['@modelcontextprotocol/server-slack'],
         type: 'stdio',
         category: 'Communication',
+        icon: 'fab fa-slack',
+        popularity: 'high',
         env: {
           SLACK_BOT_TOKEN: 'your-slack-bot-token'
         }
+      },
+      {
+        name: 'discord',
+        displayName: 'Discord',
+        description: 'Discord server and message management',
+        command: 'npx',
+        args: ['discord-mcp-server'],
+        type: 'stdio',
+        category: 'Communication',
+        icon: 'fab fa-discord',
+        popularity: 'medium',
+        env: {
+          DISCORD_BOT_TOKEN: 'your-discord-bot-token'
+        }
+      },
+      {
+        name: 'notion',
+        displayName: 'Notion',
+        description: 'Notion workspace and page management',
+        command: 'npx',
+        args: ['@modelcontextprotocol/server-notion'],
+        type: 'stdio',
+        category: 'Communication',
+        icon: 'fas fa-sticky-note',
+        popularity: 'high',
+        env: {
+          NOTION_API_KEY: 'your-notion-api-key'
+        }
+      },
+    
+      // Remote & Custom
+      {
+        name: 'remote-server',
+        displayName: 'Remote MCP Server',
+        description: 'Connect to a remote MCP server via HTTP',
+        type: 'remote',
+        url: 'http://localhost:3000/mcp',
+        headers: {},
+        category: 'Remote',
+        icon: 'fas fa-network-wired',
+        popularity: 'low'
+      },
+
+      // Additional Popular Servers (No API Keys Required)
+      {
+        name: 'calculator',
+        displayName: 'Calculator',
+        description: 'Precise numerical calculations and math operations',
+        command: 'npx',
+        args: ['mcp-server-calculator'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-calculator',
+        popularity: 'high'
+      },
+      {
+        name: 'redis',
+        displayName: 'Redis Cache',
+        description: 'In-memory caching and key-value operations',
+        command: 'npx',
+        args: ['mcp-server-redis'],
+        type: 'stdio',
+        category: 'Database',
+        icon: 'fas fa-memory',
+        popularity: 'high',
+        env: {
+          REDIS_URL: 'redis://localhost:6379'
+        }
+      },
+      {
+        name: 'docker',
+        displayName: 'Docker Manager',
+        description: 'Manage containers, images, volumes, and networks',
+        command: 'npx',
+        args: ['mcp-server-docker'],
+        type: 'stdio',
+        category: 'Development',
+        icon: 'fab fa-docker',
+        popularity: 'high'
+      },
+      {
+        name: 'kubernetes',
+        displayName: 'Kubernetes',
+        description: 'Connect to Kubernetes cluster and manage resources',
+        command: 'npx',
+        args: ['mcp-server-kubernetes'],
+        type: 'stdio',
+        category: 'Development',
+        icon: 'fas fa-dharmachakra',
+        popularity: 'high',
+        env: {
+          KUBECONFIG: '~/.kube/config'
+        }
+      },
+      {
+        name: 'pandoc',
+        displayName: 'Document Converter',
+        description: 'Convert between various document formats using Pandoc',
+        command: 'npx',
+        args: ['mcp-pandoc'],
+        type: 'stdio',
+        category: 'Productivity',
+        icon: 'fas fa-file-export',
+        popularity: 'high'
+      },
+      {
+        name: 'everything-search',
+        displayName: 'Everything Search',
+        description: 'Fast file searching capabilities across Windows/macOS/Linux',
+        command: 'npx',
+        args: ['mcp-everything-search'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-search-plus',
+        popularity: 'high'
+      },
+      {
+        name: 'obsidian',
+        displayName: 'Obsidian Notes',
+        description: 'Read and search through your Obsidian vault notes',
+        command: 'npx',
+        args: ['mcp-obsidian'],
+        type: 'stdio',
+        category: 'Productivity',
+        icon: 'fas fa-sticky-note',
+        popularity: 'high',
+        env: {
+          OBSIDIAN_VAULT_PATH: '/path/to/obsidian/vault'
+        }
+      },
+      {
+        name: 'open-meteo',
+        displayName: 'Weather Data',
+        description: 'Weather forecasts and climate data (free API)',
+        command: 'npx',
+        args: ['mcp-weather'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-cloud-sun',
+        popularity: 'high'
+      },
+      {
+        name: 'wikipedia',
+        displayName: 'Wikipedia',
+        description: 'Access and search Wikipedia articles',
+        command: 'npx',
+        args: ['wikipedia-mcp'],
+        type: 'stdio',
+        category: 'Knowledge',
+        icon: 'fab fa-wikipedia-w',
+        popularity: 'high'
+      },
+      {
+        name: 'shell-commands',
+        displayName: 'Shell Commands',
+        description: 'Run shell commands and scripts securely',
+        command: 'npx',
+        args: ['mcp-server-commands'],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-terminal',
+        popularity: 'high'
+      },
+      {
+        name: 'ssh',
+        displayName: 'SSH Remote Access',
+        description: 'Execute SSH commands remotely and transfer files',
+        command: 'npx',
+        args: ['ssh-mcp-server'],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-server',
+        popularity: 'medium',
+        env: {
+          SSH_HOST: 'hostname',
+          SSH_USER: 'username',
+          SSH_PRIVATE_KEY_PATH: '/path/to/private/key'
+        }
+      },
+      {
+        name: 'json-tools',
+        displayName: 'JSON Tools',
+        description: 'JSON handling and processing with JSONPath queries',
+        command: 'npx',
+        args: ['json-mcp-server'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-code',
+        popularity: 'medium'
+      },
+      {
+        name: 'pdf-tools',
+        displayName: 'PDF Tools',
+        description: 'Read, search, and manipulate PDF files',
+        command: 'npx',
+        args: ['mcp-pdf-reader'],
+        type: 'stdio',
+        category: 'Productivity',
+        icon: 'fas fa-file-pdf',
+        popularity: 'medium'
+      },
+      {
+        name: 'csv-editor',
+        displayName: 'CSV Editor',
+        description: 'Comprehensive CSV processing and data manipulation',
+        command: 'npx',
+        args: ['csv-editor'],
+        type: 'stdio',
+        category: 'Productivity',
+        icon: 'fas fa-table',
+        popularity: 'medium'
+      },
+      {
+        name: 'time-utils',
+        displayName: 'Date/Time Utils',
+        description: 'Date and time operations and calculations',
+        command: 'npx',
+        args: ['mcp-datetime'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-clock',
+        popularity: 'medium'
+      },
+      {
+        name: 'markdown-docs',
+        displayName: 'Markdown Docs',
+        description: 'Access and manage local documentation files',
+        command: 'npx',
+        args: ['docs-mcp'],
+        type: 'stdio',
+        category: 'Productivity',
+        icon: 'fab fa-markdown',
+        popularity: 'medium',
+        env: {
+          DOCS_PATH: '/path/to/docs'
+        }
+      },
+      {
+        name: 'code-analysis',
+        displayName: 'Code Analysis',
+        description: 'Code context provider and analysis tools',
+        command: 'npx',
+        args: ['code-context-provider-mcp'],
+        type: 'stdio',
+        category: 'Development',
+        icon: 'fas fa-code-branch',
+        popularity: 'medium'
+      },
+      {
+        name: 'fast-filesystem',
+        displayName: 'Fast Filesystem',
+        description: 'Advanced filesystem operations with large file handling',
+        command: 'npx',
+        args: ['fast-filesystem-mcp'],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-folder-open',
+        popularity: 'medium'
+      },
+      {
+        name: 'basic-memory',
+        displayName: 'Basic Memory',
+        description: 'Local-first knowledge management with semantic search',
+        command: 'npx',
+        args: ['basic-memory'],
+        type: 'stdio',
+        category: 'AI',
+        icon: 'fas fa-brain',
+        popularity: 'medium'
+      },
+      {
+        name: 'random-number',
+        displayName: 'Random Generator',
+        description: 'Random number and data generation utilities',
+        command: 'npx',
+        args: ['random-number-mcp'],
+        type: 'stdio',
+        category: 'Utilities',
+        icon: 'fas fa-dice',
+        popularity: 'low'
+      },
+      {
+        name: 'browsermcp',
+        displayName: 'Browser MCP',
+        description: 'Control browser actions and automation - needs https://browsermcp.io/install extension',
+        command: 'npx',
+        args: ['@browsermcp/mcp@latest'],
+        type: 'stdio',
+        category: 'Browser',
+        icon: 'fas fa-chrome',
+        popularity: 'high'
+      },
+      {
+        name: 'terminator-mcp-agent',
+        displayName: 'Terminator MCP Agent',
+        description: 'Control your PC directly from LLM',
+        command: 'npx',
+        args: ['-y', 'terminator-mcp-agent@latest'],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-terminal',
+        popularity: 'high'
+      },
+      {
+        name: 'blender',
+        displayName: 'Blender MCP',
+        description: 'Control and manage Blender instances - needs uvx and bit of a setup (https://github.com/ahujasid/blender-mcp)',
+        command: 'uvx',
+        args: ['blender-mcp'],
+        type: 'stdio',
+        category: '3D',
+        icon: 'fas fa-cube',
+        popularity: 'medium'
+      },
+      {
+         name: 'desktop-commander',
+         displayName: 'Desktop Commander',
+         description: 'All-in-one development tool for managing your desktop environment',
+         command: 'npx',
+         args: ['-y', '@wonderwhy-er/desktop-commander@latest'],
+         type: 'stdio',
+         category: 'Productivity',
+         icon: 'fas fa-desktop',
+         popularity: 'high'
+       },
+       {
+        name: 'mcp-docker-portal',
+        displayName: 'MCP Docker Portal',
+        description: 'Manage MCP instances in Docker Desktop',
+        command: 'docker',
+        args: [
+          'mcp',
+          'gateway',
+          'run'
+        ],
+        type: 'stdio',
+        category: 'System',
+        icon: 'fas fa-docker',
+        popularity: 'high'
       }
     ];
   }
@@ -950,7 +1353,7 @@ class MCPService {
 
         // Set up timeout
         timeoutId = setTimeout(() => {
-          log.error(`[${serverName}] MCP tool execution timeout after 30 seconds`);
+          log.error(`[${serverName}] MCP tool execution timeout after 60 seconds`);
           log.error(`[${serverName}] Final responseData:`, responseData);
           serverInfo.process.stdout.off('data', onData);
           resolve({
@@ -958,7 +1361,7 @@ class MCPService {
             success: false,
             error: 'MCP tool execution timeout'
           });
-        }, 30000); // 30 second timeout
+        }, 60000); // 60 second timeout
 
         // Listen for response
         serverInfo.process.stdout.on('data', onData);

@@ -88,6 +88,80 @@ export class ClaraMCPService {
   }
 
   /**
+   * Get all available MCP servers (including disabled ones)
+   */
+  public getAllServers(): ClaraMCPServer[] {
+    return Array.from(this.servers.values());
+  }
+
+  /**
+   * Start an MCP server
+   */
+  public async startServer(serverName: string): Promise<boolean> {
+    try {
+      console.log(`🚀 Starting MCP server: ${serverName}`);
+      if (!window.mcpService) {
+        console.warn('⚠️ MCP service not available in window object');
+        return false;
+      }
+
+      await window.mcpService.startServer(serverName);
+      
+      // Refresh the server state
+      await this.refreshServers();
+      await this.discoverToolsAndResources();
+      
+      console.log(`✅ MCP server started successfully: ${serverName}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to start MCP server ${serverName}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Stop an MCP server
+   */
+  public async stopServer(serverName: string): Promise<boolean> {
+    try {
+      console.log(`🛑 Stopping MCP server: ${serverName}`);
+      if (!window.mcpService) {
+        console.warn('⚠️ MCP service not available in window object');
+        return false;
+      }
+
+      await window.mcpService.stopServer(serverName);
+      
+      // Refresh the server state
+      await this.refreshServers();
+      await this.discoverToolsAndResources();
+      
+      console.log(`✅ MCP server stopped successfully: ${serverName}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to stop MCP server ${serverName}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Toggle an MCP server on/off
+   */
+  public async toggleServer(serverName: string): Promise<boolean> {
+    const server = this.servers.get(serverName);
+    if (!server) {
+      console.error(`❌ Server not found: ${serverName}`);
+      return false;
+    }
+
+    if (server.isRunning) {
+      return await this.stopServer(serverName);
+    } else {
+      return await this.startServer(serverName);
+    }
+  }
+
+  /**
    * Discover available tools and resources from running MCP servers
    */
   public async discoverToolsAndResources(): Promise<void> {
