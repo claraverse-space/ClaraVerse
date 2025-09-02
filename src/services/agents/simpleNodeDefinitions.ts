@@ -1574,7 +1574,86 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
     }
   },
 
-  // TEXT PROCESSING NODE
+  // NOTEBOOK WRITER NODE
+  {
+    id: 'notebook-writer-node',
+    name: 'Notebook Writer',
+    type: 'notebook-writer',
+    category: 'data',
+    description: 'Write text content to existing Clara notebooks for document storage',
+    icon: 'book-open',
+    version: '1.0.0',
+    author: 'Clara',
+    inputs: [
+      {
+        id: 'text',
+        name: 'Text Content',
+        type: 'input',
+        dataType: 'string',
+        required: true,
+        description: 'Text content to write to the notebook'
+      }
+    ],
+    outputs: [
+      {
+        id: 'documentId',
+        name: 'Document ID',
+        type: 'output',
+        dataType: 'string',
+        description: 'ID of the created document'
+      },
+      {
+        id: 'success',
+        name: 'Success',
+        type: 'output',
+        dataType: 'boolean',
+        description: 'Whether the document was successfully created'
+      }
+    ],
+    properties: [
+      {
+        id: 'selectedNotebook',
+        name: 'Target Notebook',
+        type: 'select',
+        defaultValue: '',
+        options: [], // Will be populated dynamically from available notebooks
+        description: 'Select the notebook to write to'
+      },
+      {
+        id: 'documentTitle',
+        name: 'Document Title',
+        type: 'string',
+        defaultValue: '',
+        description: 'Title for the document (auto-generated if empty)'
+      },
+      {
+        id: 'contentType',
+        name: 'Content Type',
+        type: 'select',
+        defaultValue: 'text',
+        options: [
+          { label: 'Plain Text', value: 'text' },
+          { label: 'Markdown', value: 'markdown' }
+        ],
+        description: 'Format of the content being written'
+      }
+    ],
+    executionHandler: 'notebook-writer-node-handler',
+    metadata: {
+      examples: [
+        {
+          name: 'Write to Notebook',
+          description: 'Write text content to a selected notebook',
+          config: {
+            selectedNotebook: 'my-notebook-id',
+            documentTitle: 'Generated Document',
+            contentType: 'text'
+          }
+        }
+      ],
+      tags: ['notebook', 'document', 'text', 'write', 'storage']
+    }
+  }
 ];
 
 // Helper functions

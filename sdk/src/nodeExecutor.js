@@ -24,6 +24,7 @@ export class NodeExecutor {
       'file-upload': this.executeFileUploadNode.bind(this),
       'whisper-transcription': this.executeWhisperTranscriptionNode.bind(this),
       'agent-executor': this.executeAgentExecutorNode.bind(this),
+      'notebook-writer': this.executeNotebookWriterNode.bind(this),
     };
   }
 
@@ -1628,4 +1629,97 @@ export class NodeExecutor {
       };
     }
   }
-} 
+
+  /**
+   * Execute Notebook Writer Node
+   * Writes text content to Clara notebooks for document management
+   */
+  async executeNotebookWriterNode(inputs, data) {
+    try {
+      this.logger.info('Starting Notebook Writer node execution');
+      this.logger.debug('Notebook Writer inputs:', inputs);
+      this.logger.debug('Notebook Writer data:', data);
+      
+      // Extract inputs - handle both direct value and named inputs
+      const text = inputs.text || inputs.content || inputs.value || inputs.output || '';
+      
+      this.logger.debug('Extracted text:', { 
+        text: text, 
+        textLength: text.length, 
+        textTrimmed: text.trim(),
+        textTrimmedLength: text.trim().length,
+        inputsKeys: Object.keys(inputs),
+        inputsText: inputs.text,
+        inputsContent: inputs.content,
+        inputsValue: inputs.value,
+        inputsOutput: inputs.output,
+        allInputs: inputs
+      });
+      
+      // Validate required inputs
+      if (!text.trim()) {
+        this.logger.error('Text validation failed:', {
+          originalText: text,
+          trimmedText: text.trim(),
+          textType: typeof text,
+          inputsReceived: inputs
+        });
+        throw new Error('Text content is required for notebook writing');
+      }
+      
+      // Extract configuration
+      const {
+        selectedNotebook = '',
+        documentTitle = '',
+        contentType = 'text'
+      } = data;
+      
+      if (!selectedNotebook) {
+        throw new Error('Target notebook must be selected');
+      }
+      
+      // Generate title if not provided
+      let finalTitle = documentTitle.trim();
+      if (!finalTitle) {
+        const firstLine = text.split('\n')[0].trim();
+        finalTitle = firstLine.length > 50 
+          ? firstLine.substring(0, 47) + '...'
+          : firstLine || 'Untitled Document';
+      }
+      
+      this.logger.info('Notebook Writer configuration:', {
+        selectedNotebook,
+        finalTitle,
+        contentType,
+        textLength: text.length
+      });
+      
+      // Note: Actual notebook upload happens in the React component (NotebookWriterNode.tsx)
+      // This SDK execution is for validation and workflow context
+      const documentId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      this.logger.info('Notebook write operation completed (SDK context):', {
+        documentId,
+        title: finalTitle,
+        notebookId: selectedNotebook,
+        note: 'Actual upload happens in React component'
+      });
+      
+      // Return outputs matching the node definition
+      return {
+        documentId: documentId,
+        success: true
+      };
+      
+    } catch (error) {
+      this.logger.error('Notebook Writer node failed:', error);
+      
+      return {
+        documentId: null,
+        success: false
+      };
+    }
+  }
+}
+
+module.exports = NodeExecutor; 

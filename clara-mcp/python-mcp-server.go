@@ -477,6 +477,34 @@ func (s *PythonMCPServer) getTools() []Tool {
 				"required": []string{"url"},
 			},
 		},
+		{
+			Name:        "read_document",
+			Description: "Read and extract text content from various document formats including PDF, DOCX, XLSX, CSV, PPT, PPTX, TXT, RTF, and more. Supports both local file paths and remote URLs. Automatically detects document type and uses appropriate extraction methods to provide structured, readable text content. Perfect for document analysis, content extraction, and text processing from office files.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "File path to the document or URL to a remote document. Supports local paths (e.g., 'C:\\Documents\\file.pdf', '/home/user/document.docx') and remote URLs (e.g., 'https://example.com/document.pdf'). Automatically detects format from file extension.",
+					},
+					"extract_metadata": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Whether to extract document metadata (author, creation date, etc.) along with content. Default: false",
+						"default":     false,
+					},
+					"page_range": map[string]interface{}{
+						"type":        "string",
+						"description": "For PDFs and presentations: specify page range to extract (e.g., '1-5', '2,4,6', 'all'). Default: 'all'",
+						"default":     "all",
+					},
+					"sheet_name": map[string]interface{}{
+						"type":        "string",
+						"description": "For Excel files: specify sheet name to extract. If not provided, extracts all sheets.",
+					},
+				},
+				"required": []string{"path"},
+			},
+		},
 	}
 }
 
@@ -1602,6 +1630,546 @@ func (s *PythonMCPServer) fetchContent(params map[string]interface{}) string {
 	return output.String()
 }
 
+// readDocument reads and extracts content from various document formats
+func (s *PythonMCPServer) readDocument(params map[string]interface{}) string {
+	path, ok := params["path"].(string)
+	if !ok {
+		return "ERROR: Need 'path' parameter"
+	}
+
+	// Check optional parameters
+	extractMetadata := false
+	if meta, ok := params["extract_metadata"].(bool); ok {
+		extractMetadata = meta
+	}
+
+	pageRange := "all"
+	if pr, ok := params["page_range"].(string); ok {
+		pageRange = pr
+	}
+
+	sheetName := ""
+	if sn, ok := params["sheet_name"].(string); ok {
+		sheetName = sn
+	}
+
+	// Prepare Python script for document reading
+	scriptTemplate := `
+import sys
+import os
+import json
+import traceback
+from pathlib import Path
+import urllib.request
+import tempfile
+
+# Document processing libraries will be imported as needed
+def safe_import(module_name, pip_name=None):
+    try:
+        return __import__(module_name)
+    except ImportError:
+        if pip_name:
+            import subprocess
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', pip_name])
+            return __import__(module_name)
+        return None
+
+def read_document(file_path, extract_metadata=False, page_range="all", sheet_name=None):
+    result = {
+        "content": "",
+        "metadata": {},
+        "format": "",
+        "pages": 0,
+        "error": None
+    }
+    
+    try:
+        # Handle URLs by downloading to temp file
+        temp_file = None
+        if file_path.startswith(('http://', 'https://')):
+            print(f"Downloading document from URL: {file_path}")
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
+            urllib.request.urlretrieve(file_path, temp_file.name)
+            file_path = temp_file.name
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            result["error"] = f"File not found: {file_path}"
+            return result
+        
+        # Detect file format
+        file_ext = Path(file_path).suffix.lower()
+        result["format"] = file_ext
+        
+        print(f"Processing {file_ext} document: {os.path.basename(file_path)}")
+        
+        # Process based on file type
+        if file_ext == '.pdf':
+            result = read_pdf(file_path, extract_metadata, page_range, result)
+        elif file_ext in ['.docx', '.doc']:
+            result = read_word(file_path, extract_metadata, result)
+        elif file_ext in ['.xlsx', '.xls']:
+            result = read_excel(file_path, extract_metadata, sheet_name, result)
+        elif file_ext == '.csv':
+            result = read_csv(file_path, result)
+        elif file_ext in ['.pptx', '.ppt']:
+            result = read_powerpoint(file_path, extract_metadata, page_range, result)
+        elif file_ext == '.txt':
+            result = read_text(file_path, result)
+        elif file_ext == '.rtf':
+            result = read_rtf(file_path, result)
+        elif file_ext in ['.odt', '.ods', '.odp']:
+            result = read_libreoffice(file_path, extract_metadata, result)
+        elif file_ext == '.json':
+            result = read_json(file_path, result)
+        elif file_ext in ['.xml', '.html', '.htm']:
+            result = read_markup(file_path, result)
+        else:
+            result["error"] = f"Unsupported file format: {file_ext}. Supported formats: PDF, DOCX, DOC, XLSX, XLS, CSV, PPTX, PPT, TXT, RTF, ODT, ODS, ODP, JSON, XML, HTML"
+        
+        # Cleanup temp file
+        if temp_file:
+            os.unlink(temp_file.name)
+            
+    except Exception as e:
+        result["error"] = f"Error processing document: {str(e)}\n{traceback.format_exc()}"
+    
+    return result
+
+def read_pdf(file_path, extract_metadata, page_range, result):
+    try:
+        # Try PyPDF2 first, fallback to pdfplumber
+        PyPDF2 = safe_import('PyPDF2', 'PyPDF2')
+        if not PyPDF2:
+            pdfplumber = safe_import('pdfplumber', 'pdfplumber')
+            if pdfplumber:
+                return read_pdf_pdfplumber(file_path, extract_metadata, page_range, result)
+            else:
+                result["error"] = "Could not import PDF processing libraries"
+                return result
+        
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            result["pages"] = len(pdf_reader.pages)
+            
+            if extract_metadata and pdf_reader.metadata:
+                result["metadata"] = {
+                    "title": pdf_reader.metadata.get('/Title', ''),
+                    "author": pdf_reader.metadata.get('/Author', ''),
+                    "subject": pdf_reader.metadata.get('/Subject', ''),
+                    "creator": pdf_reader.metadata.get('/Creator', ''),
+                    "creation_date": str(pdf_reader.metadata.get('/CreationDate', '')),
+                    "modification_date": str(pdf_reader.metadata.get('/ModDate', ''))
+                }
+            
+            # Parse page range
+            pages_to_extract = parse_page_range(page_range, result["pages"])
+            
+            content_parts = []
+            for page_num in pages_to_extract:
+                if 0 <= page_num < len(pdf_reader.pages):
+                    page = pdf_reader.pages[page_num]
+                    text = page.extract_text()
+                    if text.strip():
+                        content_parts.append(f"--- Page {page_num + 1} ---\n{text}")
+            
+            result["content"] = "\n\n".join(content_parts)
+            
+    except Exception as e:
+        result["error"] = f"PDF processing error: {str(e)}"
+    
+    return result
+
+def read_pdf_pdfplumber(file_path, extract_metadata, page_range, result):
+    try:
+        pdfplumber = safe_import('pdfplumber', 'pdfplumber')
+        
+        with pdfplumber.open(file_path) as pdf:
+            result["pages"] = len(pdf.pages)
+            
+            if extract_metadata and pdf.metadata:
+                result["metadata"] = dict(pdf.metadata)
+            
+            pages_to_extract = parse_page_range(page_range, result["pages"])
+            
+            content_parts = []
+            for page_num in pages_to_extract:
+                if 0 <= page_num < len(pdf.pages):
+                    page = pdf.pages[page_num]
+                    text = page.extract_text()
+                    if text and text.strip():
+                        content_parts.append(f"--- Page {page_num + 1} ---\n{text}")
+            
+            result["content"] = "\n\n".join(content_parts)
+            
+    except Exception as e:
+        result["error"] = f"PDF processing error: {str(e)}"
+    
+    return result
+
+def read_word(file_path, extract_metadata, result):
+    try:
+        python_docx = safe_import('docx', 'python-docx')
+        if not python_docx:
+            result["error"] = "Could not import python-docx library"
+            return result
+        
+        doc = python_docx.Document(file_path)
+        
+        if extract_metadata:
+            props = doc.core_properties
+            result["metadata"] = {
+                "title": props.title or '',
+                "author": props.author or '',
+                "subject": props.subject or '',
+                "created": str(props.created) if props.created else '',
+                "modified": str(props.modified) if props.modified else '',
+                "keywords": props.keywords or ''
+            }
+        
+        content_parts = []
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if text:
+                content_parts.append(text)
+        
+        result["content"] = "\n\n".join(content_parts)
+        result["pages"] = len(doc.paragraphs)
+        
+    except Exception as e:
+        result["error"] = f"Word document processing error: {str(e)}"
+    
+    return result
+
+def read_excel(file_path, extract_metadata, sheet_name, result):
+    try:
+        pandas = safe_import('pandas', 'pandas openpyxl xlrd')
+        if not pandas:
+            result["error"] = "Could not import pandas library"
+            return result
+        
+        # Read Excel file
+        if sheet_name:
+            df = pandas.read_excel(file_path, sheet_name=sheet_name)
+            content_parts = [f"Sheet: {sheet_name}\n{df.to_string(index=False)}"]
+        else:
+            excel_file = pandas.ExcelFile(file_path)
+            content_parts = []
+            for sheet in excel_file.sheet_names:
+                df = pandas.read_excel(file_path, sheet_name=sheet)
+                content_parts.append(f"Sheet: {sheet}\n{df.to_string(index=False)}")
+        
+        result["content"] = "\n\n" + "="*50 + "\n\n".join(content_parts)
+        result["pages"] = len(content_parts)
+        
+        if extract_metadata:
+            result["metadata"] = {
+                "sheets": excel_file.sheet_names if not sheet_name else [sheet_name],
+                "total_sheets": len(excel_file.sheet_names)
+            }
+        
+    except Exception as e:
+        result["error"] = f"Excel processing error: {str(e)}"
+    
+    return result
+
+def read_csv(file_path, result):
+    try:
+        pandas = safe_import('pandas', 'pandas')
+        if not pandas:
+            # Fallback to built-in csv
+            import csv
+            content_parts = []
+            with open(file_path, 'r', encoding='utf-8', newline='') as file:
+                csv_reader = csv.reader(file)
+                for i, row in enumerate(csv_reader):
+                    content_parts.append(" | ".join(row))
+            result["content"] = "\n".join(content_parts)
+        else:
+            df = pandas.read_csv(file_path)
+            result["content"] = df.to_string(index=False)
+        
+        result["pages"] = 1
+        
+    except Exception as e:
+        result["error"] = f"CSV processing error: {str(e)}"
+    
+    return result
+
+def read_powerpoint(file_path, extract_metadata, page_range, result):
+    try:
+        python_pptx = safe_import('pptx', 'python-pptx')
+        if not python_pptx:
+            result["error"] = "Could not import python-pptx library"
+            return result
+        
+        from pptx import Presentation
+        
+        prs = Presentation(file_path)
+        result["pages"] = len(prs.slides)
+        
+        if extract_metadata:
+            props = prs.core_properties
+            result["metadata"] = {
+                "title": props.title or '',
+                "author": props.author or '',
+                "subject": props.subject or '',
+                "created": str(props.created) if props.created else '',
+                "modified": str(props.modified) if props.modified else ''
+            }
+        
+        pages_to_extract = parse_page_range(page_range, result["pages"])
+        
+        content_parts = []
+        for slide_num in pages_to_extract:
+            if 0 <= slide_num < len(prs.slides):
+                slide = prs.slides[slide_num]
+                slide_text = []
+                
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        slide_text.append(shape.text)
+                
+                if slide_text:
+                    content_parts.append(f"--- Slide {slide_num + 1} ---\n" + "\n".join(slide_text))
+        
+        result["content"] = "\n\n".join(content_parts)
+        
+    except Exception as e:
+        result["error"] = f"PowerPoint processing error: {str(e)}"
+    
+    return result
+
+def read_text(file_path, result):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            result["content"] = file.read()
+        result["pages"] = 1
+    except UnicodeDecodeError:
+        try:
+            with open(file_path, 'r', encoding='latin-1') as file:
+                result["content"] = file.read()
+            result["pages"] = 1
+        except Exception as e:
+            result["error"] = f"Text file processing error: {str(e)}"
+    except Exception as e:
+        result["error"] = f"Text file processing error: {str(e)}"
+    
+    return result
+
+def read_rtf(file_path, result):
+    try:
+        striprtf = safe_import('striprtf', 'striprtf')
+        if not striprtf:
+            result["error"] = "Could not import striprtf library"
+            return result
+        
+        from striprtf.striprtf import rtf_to_text
+        
+        with open(file_path, 'r', encoding='utf-8') as file:
+            rtf_content = file.read()
+        
+        result["content"] = rtf_to_text(rtf_content)
+        result["pages"] = 1
+        
+    except Exception as e:
+        result["error"] = f"RTF processing error: {str(e)}"
+    
+    return result
+
+def read_libreoffice(file_path, extract_metadata, result):
+    try:
+        # Try to use python-uno for LibreOffice files
+        result["error"] = "LibreOffice document support requires additional setup. Please convert to DOCX/PDF format."
+        return result
+    except Exception as e:
+        result["error"] = f"LibreOffice processing error: {str(e)}"
+    
+    return result
+
+def read_json(file_path, result):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        # Pretty print JSON content
+        result["content"] = json.dumps(data, indent=2, ensure_ascii=False)
+        result["pages"] = 1
+        
+    except Exception as e:
+        result["error"] = f"JSON processing error: {str(e)}"
+    
+    return result
+
+def read_markup(file_path, result):
+    try:
+        BeautifulSoup = safe_import('bs4', 'beautifulsoup4').BeautifulSoup
+        
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        
+        if file_path.lower().endswith(('.html', '.htm')):
+            soup = BeautifulSoup(content, 'html.parser')
+            # Extract text content
+            result["content"] = soup.get_text(separator='\n', strip=True)
+        else:
+            # For XML, just return pretty-printed content
+            soup = BeautifulSoup(content, 'xml')
+            result["content"] = soup.prettify()
+        
+        result["pages"] = 1
+        
+    except Exception as e:
+        # Fallback to raw text
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                result["content"] = file.read()
+            result["pages"] = 1
+        except Exception as e2:
+            result["error"] = f"Markup processing error: {str(e2)}"
+    
+    return result
+
+def parse_page_range(page_range, total_pages):
+    if page_range == "all" or not page_range:
+        return list(range(total_pages))
+    
+    pages = []
+    for part in page_range.split(','):
+        part = part.strip()
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            pages.extend(range(start - 1, min(end, total_pages)))
+        else:
+            page_num = int(part) - 1
+            if 0 <= page_num < total_pages:
+                pages.append(page_num)
+    
+    return sorted(set(pages))
+
+# Main execution
+try:
+    result = read_document("%s", %s, "%s", %s)
+    print("RESULT_START")
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print("RESULT_END")
+except Exception as e:
+    error_result = {"error": f"Script execution error: {str(e)}", "content": "", "metadata": {}, "format": "", "pages": 0}
+    print("RESULT_START")
+    print(json.dumps(error_result, indent=2, ensure_ascii=False))
+    print("RESULT_END")
+`
+
+	// Format the script with parameters
+	metadataStr := "False"
+	if extractMetadata {
+		metadataStr = "True"
+	}
+
+	sheetNameParam := "None"
+	if sheetName != "" {
+		sheetNameParam = fmt.Sprintf(`"%s"`, sheetName)
+	}
+
+	// Escape the path for Python string literal (handle Windows backslashes)
+	escapedPath := strings.ReplaceAll(path, `\`, `\\`)
+
+	script := fmt.Sprintf(scriptTemplate, escapedPath, metadataStr, pageRange, sheetNameParam)
+
+	// Execute the Python script
+	cmd := exec.Command(s.pythonPath, "-c", script)
+	cmd.Dir = s.workspaceDir
+	cmd.Env = os.Environ()
+	if runtime.GOOS == "windows" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("VIRTUAL_ENV=%s", s.venvPath))
+	}
+
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	if err != nil {
+		// Try to extract any error information from the output
+		if strings.Contains(outputStr, "RESULT_START") {
+			// Script ran but had an error in document processing
+			start := strings.Index(outputStr, "RESULT_START") + len("RESULT_START")
+			end := strings.Index(outputStr, "RESULT_END")
+			if end > start {
+				jsonStr := strings.TrimSpace(outputStr[start:end])
+				var result map[string]interface{}
+				if json.Unmarshal([]byte(jsonStr), &result) == nil {
+					if errorMsg, ok := result["error"].(string); ok && errorMsg != "" {
+						return fmt.Sprintf("ERROR: %s", errorMsg)
+					}
+				}
+			}
+		}
+		return fmt.Sprintf("ERROR: Script execution failed: %v\nOutput: %s", err, outputStr)
+	}
+
+	// Parse the result from the script output
+	start := strings.Index(outputStr, "RESULT_START")
+	end := strings.Index(outputStr, "RESULT_END")
+
+	if start == -1 || end == -1 {
+		return fmt.Sprintf("ERROR: Could not parse script output\nOutput: %s", outputStr)
+	}
+
+	start += len("RESULT_START")
+	jsonStr := strings.TrimSpace(outputStr[start:end])
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return fmt.Sprintf("ERROR: Could not parse JSON result: %v\nJSON: %s", err, jsonStr)
+	}
+
+	// Check for errors in the result
+	if errorMsg, ok := result["error"].(string); ok && errorMsg != "" {
+		return fmt.Sprintf("ERROR: %s", errorMsg)
+	}
+
+	// Format the successful result
+	var output_builder strings.Builder
+
+	format, _ := result["format"].(string)
+	pages := int(result["pages"].(float64))
+	content, _ := result["content"].(string)
+	metadata, _ := result["metadata"].(map[string]interface{})
+
+	output_builder.WriteString("📄 DOCUMENT READER RESULTS\n")
+	output_builder.WriteString("==========================\n\n")
+	output_builder.WriteString(fmt.Sprintf("📂 File: %s\n", filepath.Base(path)))
+	output_builder.WriteString(fmt.Sprintf("📋 Format: %s\n", strings.ToUpper(strings.TrimPrefix(format, "."))))
+	output_builder.WriteString(fmt.Sprintf("📊 Pages/Sections: %d\n", pages))
+	output_builder.WriteString(fmt.Sprintf("📝 Content Length: %d characters\n", len(content)))
+
+	if extractMetadata && len(metadata) > 0 {
+		output_builder.WriteString("\n📋 METADATA\n")
+		output_builder.WriteString("===========\n")
+		for key, value := range metadata {
+			if valueStr, ok := value.(string); ok && valueStr != "" {
+				output_builder.WriteString(fmt.Sprintf("%s: %s\n", strings.Title(key), valueStr))
+			}
+		}
+	}
+
+	output_builder.WriteString("\n📄 CONTENT\n")
+	output_builder.WriteString("==========\n")
+
+	if len(content) > 0 {
+		// Limit content display if too long
+		if len(content) > 10000 {
+			output_builder.WriteString(content[:10000])
+			output_builder.WriteString(fmt.Sprintf("\n\n... [Content truncated - showing first 10,000 characters of %d total]", len(content)))
+		} else {
+			output_builder.WriteString(content)
+		}
+	} else {
+		output_builder.WriteString("No readable content found in the document.")
+	}
+
+	return output_builder.String()
+}
+
 // playwrightStatus shows the current status of Playwright integration
 func (s *PythonMCPServer) playwrightStatus(params map[string]interface{}) string {
 	// Create web content fetcher to access Playwright manager
@@ -1620,7 +2188,6 @@ func (s *PythonMCPServer) playwrightStatus(params map[string]interface{}) string
 	hasLibrary, _ := capabilities["has_playwright_lib"].(bool)
 	downloadStatus, _ := capabilities["download_status"].(string)
 	estimatedSize, _ := capabilities["estimated_size"].(string)
-	downloadError, _ := capabilities["download_error"]
 
 	// Status overview
 	statusIcon := "❌"
@@ -1669,8 +2236,8 @@ func (s *PythonMCPServer) playwrightStatus(params map[string]interface{}) string
 	}
 
 	// Error information
-	if downloadError != nil {
-		output.WriteString(fmt.Sprintf("\n⚠️ NOTICE\n========\n%v\n", downloadError))
+	if downloadErrorRaw := capabilities["download_error"]; downloadErrorRaw != nil {
+		output.WriteString(fmt.Sprintf("\n⚠️ NOTICE\n========\n%v\n", downloadErrorRaw))
 	}
 
 	// Installation information
@@ -1751,6 +2318,8 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 			result = s.search(params.Arguments)
 		case "fetch_content":
 			result = s.fetchContent(params.Arguments)
+		case "read_document":
+			result = s.readDocument(params.Arguments)
 		default:
 			resp.Error = &MCPError{Code: -32603, Message: "Unknown tool"}
 			return resp

@@ -744,6 +744,14 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                             color: 'bg-gradient-to-r from-green-500 to-teal-500',
                             features: ['All HTTP methods', 'Auth support', 'Auto retries', 'Response parsing']
                           },
+                          { 
+                            name: 'Notebook Writer', 
+                            type: 'notebook-writer', 
+                            icon: '📓', 
+                            description: 'Write text content to Clara notebooks for document management', 
+                            color: 'bg-gradient-to-r from-amber-500 to-orange-500',
+                            features: ['Auto titles', 'Multiple formats', 'Append mode', 'Document storage']
+                          },
                         ].map((node) => (
                           <div
                             key={node.name}

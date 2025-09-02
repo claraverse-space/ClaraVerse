@@ -43,6 +43,7 @@ import TextToSpeechNode from '../Nodes/TextToSpeechNode';
 import StaticTextNode from '../Nodes/StaticTextNode';
 import AgentExecutorNode from '../Nodes/AgentExecutorNode';
 import { ComfyUIImageGenNode } from '../Nodes/ComfyUIImageGenNode';
+import NotebookWriterNode from '../Nodes/NotebookWriterNode';
 
 // Debug: Log successful imports
 console.log('Node imports loaded:', {
@@ -86,6 +87,7 @@ const baseNodeTypes: NodeTypes = {
   'agent-executor': AgentExecutorNode,
   'comfyui-image-gen': ComfyUIImageGenNode,
   'text-to-speech': TextToSpeechNode,
+  'notebook-writer': NotebookWriterNode,
 };
 
 // Debug: Log base node types immediately after definition
