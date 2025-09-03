@@ -2147,7 +2147,8 @@ Skip for: quick answers, simple lists
     });
   };
 
-  const handleMcpServerToggle = (serverName: string, enabled: boolean) => {
+  // Simple config-only MCP server toggle for advanced settings
+  const handleAdvancedMcpServerToggle = (serverName: string, enabled: boolean) => {
     const currentServers = aiConfig.mcp?.enabledServers || [];
     const updatedServers = enabled
       ? [...currentServers, serverName]
@@ -2946,7 +2947,7 @@ Skip for: quick answers, simple lists
                                 <input
                                   type="checkbox"
                                   checked={isEnabled}
-                                  onChange={(e) => handleMcpServerToggle(server.name, e.target.checked)}
+                                  onChange={(e) => handleAdvancedMcpServerToggle(server.name, e.target.checked)}
                                   disabled={!server.isRunning}
                                   className="rounded"
                                 />
@@ -4929,6 +4930,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
 
   // MCP helper functions
+  // Full lifecycle MCP server toggle - starts/stops servers and updates config
   const handleMcpServerToggle = useCallback(async (serverName: string, shouldBeActive: boolean) => {
     console.log(`🎛️ Toggling MCP server: ${serverName} to ${shouldBeActive ? 'active' : 'inactive'}`);
     

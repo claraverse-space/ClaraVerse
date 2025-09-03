@@ -36,6 +36,8 @@ import {
 import { useProviders } from '../../contexts/ProvidersContext';
 import { claraApiService } from '../../services/claraApiService';
 import { ClaraModel } from '../../types/clara_assistant_types';
+import { useClaraCoreAutostart } from '../../hooks/useClaraCoreAutostart';
+import ClaraCoreStatusBanner from './ClaraCoreStatusBanner';
 
 interface ChatMessage {
   id: string;
@@ -82,6 +84,10 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isBackendHealthy, setIsBackendHealthy] = useState(true);
+  
+  // Clara Core auto-start functionality
+  const claraCoreStatus = useClaraCoreAutostart(notebook);
+  const [showClaraCoreStatus, setShowClaraCoreStatus] = useState(true);
   
   // Get providers from context
   const { providers } = useProviders();
@@ -1105,6 +1111,19 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Clara Core Status Banner */}
+      <ClaraCoreStatusBanner
+        isRunning={claraCoreStatus.isRunning}
+        isStarting={claraCoreStatus.isStarting}
+        error={claraCoreStatus.error}
+        serviceName={claraCoreStatus.serviceName}
+        phase={claraCoreStatus.phase}
+        requiresClaraCore={claraCoreStatus.requiresClaraCore}
+        onRetry={claraCoreStatus.startClaraCore}
+        isVisible={showClaraCoreStatus}
+        onToggleVisibility={() => setShowClaraCoreStatus(!showClaraCoreStatus)}
+      />
     </div>
   );
 };

@@ -18,6 +18,8 @@ import PythonStartupModal from '../PythonStartupModal';
 import { claraNotebookService, NotebookResponse, ProviderConfig } from '../../services/claraNotebookService';
 import { ProvidersProvider } from '../../contexts/ProvidersContext';
 import { db } from '../../db';
+import { useClaraCoreAutostart } from '../../hooks/useClaraCoreAutostart';
+import ClaraCoreStatusBanner from './ClaraCoreStatusBanner';
 
 interface NotebooksProps {
   onPageChange: (page: string) => void;
@@ -40,6 +42,10 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
   const [showStartupModal, setShowStartupModal] = useState(false);
   const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  
+  // Clara Core auto-start for notebooks list (if any notebook requires it)
+  const claraCoreStatus = useClaraCoreAutostart(selectedNotebook);
+  const [showClaraCoreStatus, setShowClaraCoreStatus] = useState(true);
 
   // Load wallpaper from database
   useEffect(() => {
@@ -730,6 +736,19 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
               loadNotebooks();
             }, 1000);
           }}
+        />
+
+        {/* Clara Core Status Banner */}
+        <ClaraCoreStatusBanner
+          isRunning={claraCoreStatus.isRunning}
+          isStarting={claraCoreStatus.isStarting}
+          error={claraCoreStatus.error}
+          serviceName={claraCoreStatus.serviceName}
+          phase={claraCoreStatus.phase}
+          requiresClaraCore={claraCoreStatus.requiresClaraCore}
+          onRetry={claraCoreStatus.startClaraCore}
+          isVisible={showClaraCoreStatus}
+          onToggleVisibility={() => setShowClaraCoreStatus(!showClaraCoreStatus)}
         />
       </div>
     </div>

@@ -5,6 +5,17 @@ import { claraApiService } from '../../services/claraApiService';
 import { ClaraModel } from '../../types/clara_assistant_types';
 import { ProviderConfig } from '../../services/claraNotebookService';
 
+// Utility to check if a provider configuration uses Clara Core
+const usesClaraCore = (providerId: string, providers: any[]): boolean => {
+  const provider = providers.find(p => p.id === providerId);
+  if (!provider) return false;
+  
+  return provider.type === 'claras-pocket' || 
+         provider.name?.toLowerCase().includes('clara') ||
+         provider.name?.toLowerCase().includes('pocket') ||
+         provider.baseUrl?.includes('localhost');
+};
+
 interface CreateNotebookModalProps {
   onClose: () => void;
   onCreate: (name: string, description: string, llmProvider: ProviderConfig, embeddingProvider: ProviderConfig) => Promise<void>;
@@ -414,6 +425,30 @@ const CreateNotebookModal: React.FC<CreateNotebookModalProps> = ({ onClose, onCr
               <div className="flex items-center gap-1 text-sm text-red-600">
                 <AlertCircle className="w-3 h-3" />
                 {errors.providers}
+              </div>
+            )}
+
+            {/* Clara Core Indicator */}
+            {(usesClaraCore(selectedLLMProvider, providers) || usesClaraCore(selectedEmbeddingProvider, providers)) && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center mt-0.5">
+                    <Bot className="w-3 h-3 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                      Clara Core Required
+                    </h4>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                      This notebook uses Clara Core for local AI processing. Clara Core will be automatically started when you open this notebook.
+                    </p>
+                    <div className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                      <span>• Local processing (no data sent to cloud)</span>
+                      <span>• Automatic startup</span>
+                      <span>• GPU acceleration available</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
