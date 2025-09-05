@@ -136,7 +136,24 @@ func NewPythonMCPServer() *PythonMCPServer {
 	workspace := filepath.Join(cwd, "mcp_workspace")
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		log.Printf("Warning: Failed to create workspace: %v", err)
-		workspace = cwd
+		// Fallback to a safe directory - avoid root directory
+		if cwd == "/" || cwd == "" {
+			// Use user's home directory as fallback
+			if homeDir, err := os.UserHomeDir(); err == nil {
+				workspace = filepath.Join(homeDir, "clara_mcp_workspace")
+			} else {
+				// Last resort: use /tmp
+				workspace = filepath.Join("/tmp", "clara_mcp_workspace")
+			}
+		} else {
+			workspace = cwd
+		}
+		// Try to create the fallback workspace
+		if err := os.MkdirAll(workspace, 0755); err != nil {
+			log.Printf("ERROR: Failed to create fallback workspace: %v", err)
+			// This is a critical error - we can't proceed
+			panic(fmt.Sprintf("Cannot create workspace directory: %v", err))
+		}
 	}
 
 	server := &PythonMCPServer{
@@ -161,6 +178,14 @@ func NewPythonMCPServer() *PythonMCPServer {
 	log.Printf("Virtual env: %s", server.venvPath)
 	log.Printf("Active Python: %s", server.pythonPath)
 	log.Printf("Workspace: %s", server.workspaceDir)
+	
+	// Verify workspace is writable
+	if err := os.MkdirAll(filepath.Join(server.workspaceDir, "test"), 0755); err != nil {
+		log.Printf("WARNING: Workspace directory is not writable: %v", err)
+	} else {
+		os.RemoveAll(filepath.Join(server.workspaceDir, "test"))
+		log.Printf("Workspace directory is writable")
+	}
 
 	// Create README file
 	server.createReadme()
@@ -696,6 +721,13 @@ func (s *PythonMCPServer) save(params map[string]interface{}) string {
 
 	// Force save to workspace
 	fullPath := filepath.Join(s.workspaceDir, filepath.Base(name))
+	
+	// Security check: ensure the file is within workspace directory
+	workspaceAbs, _ := filepath.Abs(s.workspaceDir)
+	fullPathAbs, _ := filepath.Abs(fullPath)
+	if !strings.HasPrefix(fullPathAbs, workspaceAbs) {
+		return "ERROR: Invalid file path - outside workspace directory"
+	}
 
 	if err := ioutil.WriteFile(fullPath, []byte(text), 0644); err != nil {
 		return fmt.Sprintf("ERROR: %v", err)
@@ -1717,7 +1749,8 @@ def read_document(file_path, extract_metadata=False, page_range="all", sheet_nam
         temp_file = None
         if file_path.startswith(('http://', 'https://')):
             print(f"Downloading document from URL: {file_path}")
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
+            # Create temp file in current working directory (workspace)
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix, dir=os.getcwd())
             urllib.request.urlretrieve(file_path, temp_file.name)
             file_path = temp_file.name
         
@@ -2112,6 +2145,11 @@ except Exception as e:
 	if runtime.GOOS == "windows" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("VIRTUAL_ENV=%s", s.venvPath))
 	}
+	
+	// Ensure working directory is set correctly
+	if cmd.Dir == "" || cmd.Dir == "/" {
+		cmd.Dir = s.workspaceDir
+	}
 
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
@@ -2231,8 +2269,15 @@ func (s *PythonMCPServer) createPDF(params map[string]interface{}) string {
 		filename = filename + ".pdf"
 	}
 
-	// Create full path in workspace
+	// Create full path in workspace - ensure it's within workspace
 	fullPath := filepath.Join(s.workspaceDir, filepath.Base(filename))
+	
+	// Security check: ensure the file is within workspace directory
+	workspaceAbs, _ := filepath.Abs(s.workspaceDir)
+	fullPathAbs, _ := filepath.Abs(fullPath)
+	if !strings.HasPrefix(fullPathAbs, workspaceAbs) {
+		return "ERROR: Invalid file path - outside workspace directory"
+	}
 
 	// Create PDF
 	pdf := gofpdf.New("P", "mm", "A4", "")

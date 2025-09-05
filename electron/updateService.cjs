@@ -560,7 +560,7 @@ class EnhancedPlatformUpdateService {
     }
 
     this.isChecking = true;
-    this.notify('check-started', { timestamp: new Date() });
+    this.notify('check-started', { timestamp: new Date().toISOString() });
 
     try {
       const preferences = getUpdatePreferences();
@@ -843,7 +843,7 @@ class EnhancedPlatformUpdateService {
     try {
       this.notify('download-started', { 
         fileName,
-        timestamp: new Date() 
+        timestamp: new Date().toISOString() 
       });
 
       const { app, BrowserWindow } = require('electron');
@@ -921,7 +921,7 @@ class EnhancedPlatformUpdateService {
         filePath,
         fileName,
         fileSize: this.formatFileSize(fileStats.size),
-        timestamp: new Date()
+        timestamp: new Date().toISOString()
       });
       
       return filePath;
@@ -931,7 +931,7 @@ class EnhancedPlatformUpdateService {
       this.notify('download-error', { 
         error: error.message,
         fileName,
-        timestamp: new Date()
+        timestamp: new Date().toISOString()
       });
       throw error;
     }
@@ -1140,7 +1140,7 @@ class EnhancedPlatformUpdateService {
    */
   startOTAUpdateWithProgress() {
     try {
-      this.notify('download-started', { timestamp: new Date() });
+      this.notify('download-started', { timestamp: new Date().toISOString() });
       autoUpdater.downloadUpdate();
     } catch (error) {
       logger.error('Failed to start OTA update:', error);
@@ -1209,7 +1209,7 @@ function setupEnhancedAutoUpdater(mainWindow) {
     // Update downloaded with enhanced dialog
     autoUpdater.on('update-downloaded', () => {
       try {
-        enhancedPlatformUpdateService.notify('download-completed', { timestamp: new Date() });
+        enhancedPlatformUpdateService.notify('download-completed', { timestamp: new Date().toISOString() });
         
         dialog.showMessageBox({
           type: 'info',
@@ -1257,7 +1257,7 @@ function setupEnhancedAutoUpdater(mainWindow) {
       try {
         enhancedPlatformUpdateService.notify('no-update-available', { 
           currentVersion: enhancedPlatformUpdateService.currentVersion,
-          timestamp: new Date()
+          timestamp: new Date().toISOString()
         });
       } catch (error) {
         logger.error('Error in update-not-available handler:', error);
@@ -1280,23 +1280,57 @@ async function checkForUpdatesEnhanced() {
     } catch (dialogError) {
       logger.error('Failed to show error dialog:', dialogError);
     }
-    return null;
+    return {
+      success: false,
+      error: error,
+      hasUpdate: false
+    };
   }
 
   try {
     if (enhancedPlatformUpdateService.isOTASupported()) {
       // Mac: Use electron-updater first, fallback to GitHub
       try {
-        return await autoUpdater.checkForUpdates();
+        // Note: autoUpdater.checkForUpdates() doesn't return a value directly
+        // It triggers events instead, so we'll return a simple success response
+        await autoUpdater.checkForUpdates();
+        return {
+          success: true,
+          hasUpdate: false, // Will be determined by events
+          method: 'electron-updater',
+          message: 'Update check initiated - results will be shown via system dialogs'
+        };
       } catch (error) {
         logger.warn('OTA update check failed, falling back to GitHub:', error);
         const updateInfo = await enhancedPlatformUpdateService.checkGitHubReleases();
-        return await enhancedPlatformUpdateService.showEnhancedUpdateDialog(updateInfo);
+        // Return serializable update info instead of dialog result
+        return {
+          success: true,
+          hasUpdate: updateInfo.hasUpdate,
+          latestVersion: updateInfo.latestVersion,
+          currentVersion: updateInfo.currentVersion,
+          releaseUrl: updateInfo.releaseUrl,
+          downloadUrl: updateInfo.downloadUrl,
+          releaseNotes: updateInfo.releaseNotes,
+          method: 'github-fallback',
+          message: 'Update check completed via GitHub'
+        };
       }
     } else {
       // Windows/Linux: Use enhanced GitHub releases
       const updateInfo = await enhancedPlatformUpdateService.checkGitHubReleases();
-      return await enhancedPlatformUpdateService.showEnhancedUpdateDialog(updateInfo);
+      // Return serializable update info instead of dialog result
+      return {
+        success: true,
+        hasUpdate: updateInfo.hasUpdate,
+        latestVersion: updateInfo.latestVersion,
+        currentVersion: updateInfo.currentVersion,
+        releaseUrl: updateInfo.releaseUrl,
+        downloadUrl: updateInfo.downloadUrl,
+        releaseNotes: updateInfo.releaseNotes,
+        method: 'github',
+        message: 'Update check completed via GitHub'
+      };
     }
   } catch (error) {
     logger.error('Error checking for updates:', error);
@@ -1325,7 +1359,11 @@ async function checkForUpdatesEnhanced() {
       logger.error('Failed to show error dialog:', dialogError);
     }
     
-    return null;
+    return {
+      success: false,
+      error: userMessage,
+      hasUpdate: false
+    };
   }
 }
 
