@@ -5347,6 +5347,27 @@ async function initializeInBackground(selectedFeatures) {
       isDockerAvailable = await dockerSetup.isDockerRunning();
     }
     
+    // Always ensure core binaries are available (regardless of consent status)
+    // This is essential for Clara Core to function properly
+    sendStatusUpdate('downloading-binaries', { message: 'Ensuring core binaries are available...' });
+    try {
+      // Initialize LlamaSwap service just for binary validation/download
+      if (!llamaSwapService) {
+        llamaSwapService = new LlamaSwapService(ipcLogger);
+      }
+      
+      // Validate binaries (this will auto-download if missing)
+      await llamaSwapService.validateBinaries();
+      sendStatusUpdate('binaries-ready', { message: 'Core binaries ready' });
+      console.log('✅ Core binaries validated and ready');
+    } catch (binaryError) {
+      log.error('❌ Failed to ensure core binaries:', binaryError);
+      sendStatusUpdate('binaries-error', { 
+        message: 'Failed to download core binaries - some features may not work',
+        error: binaryError.message 
+      });
+    }
+    
     // Only initialize services if user has completed onboarding and given consent
     const hasUserConsent = !global.needsFeatureSelection;
     

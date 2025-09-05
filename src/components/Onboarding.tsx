@@ -100,6 +100,13 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
     const [isSettingCustomPath, setIsSettingCustomPath] = useState(false);
     const [folderPickerMessage, setFolderPickerMessage] = useState<string | null>(null);
 
+    // Real-time progress tracking for initialization
+    const [initializationStatus, setInitializationStatus] = useState<string>('');
+    const [initializationProgress, setInitializationProgress] = useState<number>(0);
+    const [initializationDetails, setInitializationDetails] = useState<string[]>([]);
+    const [binaryDownloadProgress, setBinaryDownloadProgress] = useState<number>(0);
+    const [binaryDownloadStatus, setBinaryDownloadStatus] = useState<string>('');
+
     // Use claraStatus to avoid lint warning
     console.log('Clara status:', claraStatus);
 
@@ -162,8 +169,80 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
             }
         };
 
+        // Listen for app initialization status updates
+        const handleAppStatusUpdate = (event: any) => {
+            const { status, message, progress } = event.detail || {};
+            
+            console.log('🔄 App status update:', { status, message, progress });
+            
+            // Handle different initialization phases
+            switch (status) {
+                case 'downloading-binaries':
+                    setInitializationStatus('Downloading required binaries...');
+                    setBinaryDownloadStatus('Starting download...');
+                    setInitializationProgress(10);
+                    setInitializationDetails(prev => [...prev, 'Starting binary download']);
+                    break;
+                    
+                case 'binaries-ready':
+                    setInitializationStatus('Binaries ready');
+                    setBinaryDownloadStatus('Download complete');
+                    setBinaryDownloadProgress(100);
+                    setInitializationProgress(40);
+                    setInitializationDetails(prev => [...prev, 'Binary download completed']);
+                    break;
+                    
+                case 'binaries-error':
+                    setInitializationStatus('Binary download failed');
+                    setBinaryDownloadStatus(`Error: ${message}`);
+                    setInitializationDetails(prev => [...prev, `Binary download failed: ${message}`]);
+                    break;
+                    
+                case 'validating':
+                    setInitializationStatus('Validating system...');
+                    setInitializationProgress(20);
+                    setInitializationDetails(prev => [...prev, 'Validating system resources']);
+                    break;
+                    
+                case 'initializing':
+                    setInitializationStatus('Initializing services...');
+                    setInitializationProgress(60);
+                    setInitializationDetails(prev => [...prev, 'Setting up service configuration']);
+                    break;
+                    
+                case 'checking-docker':
+                    setInitializationStatus('Checking Docker...');
+                    setInitializationProgress(30);
+                    setInitializationDetails(prev => [...prev, 'Checking Docker availability']);
+                    break;
+                    
+                case 'ready':
+                    setInitializationStatus('Ready!');
+                    setInitializationProgress(100);
+                    setInitializationDetails(prev => [...prev, 'Initialization complete']);
+                    break;
+                    
+                default:
+                    if (message) {
+                        setInitializationStatus(message);
+                        setInitializationDetails(prev => [...prev, message]);
+                    }
+                    break;
+            }
+        };
+
         // Listen for background service status events
         window.addEventListener('background-service-status', handleServiceStatusUpdate);
+        
+        // Listen for app initialization status events
+        if ((window as any).electronAPI?.onServiceStatusUpdate) {
+            (window as any).electronAPI.onServiceStatusUpdate(handleAppStatusUpdate);
+        }
+        
+        // Also listen for IPC events directly if available
+        if ((window as any).electronAPI?.on) {
+            (window as any).electronAPI.on('service-status-update', handleAppStatusUpdate);
+        }
         
         return () => {
             window.removeEventListener('background-service-status', handleServiceStatusUpdate);
@@ -1806,43 +1885,83 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                                 <div className="absolute inset-0 rounded-full border-2 border-blue-200 dark:border-blue-800 animate-pulse"></div>
                                             </div>
                                             <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                                Launching Clara...
+                                                {initializationStatus || 'Launching Clara...'}
                                             </span>
                                         </div>
                                         
-                                        {/* Progress steps */}
+                                        {/* Real-time progress steps */}
                                         <div className="space-y-2 mb-3">
-                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                                Saving your preferences
+                                            <div className="flex items-center justify-between text-xs">
+                                                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                                                    <div className={`w-2 h-2 rounded-full ${initializationProgress >= 10 ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`}></div>
+                                                    Saving your preferences
+                                                </div>
+                                                {initializationProgress >= 10 && <span className="text-green-500 text-xs">✓</span>}
                                             </div>
-                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
-                                                Downloading Llama.cpp binaries (this may take a minute)
+                                            
+                                            <div className="flex items-center justify-between text-xs">
+                                                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                                                    <div className={`w-2 h-2 rounded-full ${initializationProgress >= 40 ? 'bg-green-500' : initializationProgress >= 10 ? 'bg-blue-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                                                    <span>
+                                                        {binaryDownloadStatus || 'Downloading Llama.cpp binaries'}
+                                                        {binaryDownloadProgress > 0 && binaryDownloadProgress < 100 && (
+                                                            <span className="ml-1">({binaryDownloadProgress}%)</span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                {initializationProgress >= 40 && <span className="text-green-500 text-xs">✓</span>}
                                             </div>
-                                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
-                                                Initializing AI services
+                                            
+                                            <div className="flex items-center justify-between text-xs">
+                                                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                                                    <div className={`w-2 h-2 rounded-full ${initializationProgress >= 100 ? 'bg-green-500' : initializationProgress >= 60 ? 'bg-blue-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                                                    Initializing AI services
+                                                </div>
+                                                {initializationProgress >= 100 && <span className="text-green-500 text-xs">✓</span>}
                                             </div>
                                         </div>
                                         
-                                        {/* Animated progress bar */}
+                                        {/* Progress bar with real percentage */}
                                         <div className="w-full bg-blue-100 dark:bg-blue-800 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
                                             <div 
-                                                className="h-3 rounded-full bg-gradient-to-r from-blue-500 via-sakura-400 to-blue-500 relative"
+                                                className="h-3 rounded-full bg-gradient-to-r from-blue-500 via-sakura-400 to-blue-500 relative transition-all duration-500"
                                                 style={{
-                                                    width: '75%',
+                                                    width: `${Math.max(15, initializationProgress)}%`, // Minimum 15% for visual feedback
                                                     backgroundSize: '200% 100%',
-                                                    animation: 'progressShimmer 2s ease-in-out infinite'
+                                                    animation: initializationProgress < 100 ? 'progressShimmer 2s ease-in-out infinite' : 'none'
                                                 }}
                                             >
                                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
                                             </div>
                                         </div>
                                         
-                                        <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                                            Please wait while Clara sets up your AI workspace...
-                                        </p>
+                                        {/* Progress percentage */}
+                                        <div className="flex justify-between items-center text-xs mb-2">
+                                            <span className="text-blue-600 dark:text-blue-400">
+                                                Progress: {initializationProgress}%
+                                            </span>
+                                            {initializationProgress < 100 && (
+                                                <span className="text-blue-500 dark:text-blue-400">
+                                                    This may take 1-2 minutes...
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Detailed status log (expandable) */}
+                                        {initializationDetails.length > 0 && (
+                                            <details className="mt-2">
+                                                <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:text-blue-700">
+                                                    Show detailed progress ({initializationDetails.length} steps)
+                                                </summary>
+                                                <div className="mt-2 max-h-32 overflow-y-auto bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+                                                    {initializationDetails.slice(-5).map((detail, index) => (
+                                                        <div key={index} className="text-xs text-blue-600 dark:text-blue-300 mb-1">
+                                                            • {detail}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </details>
+                                        )}
                                         
                                         {/* Add keyframe animation styles */}
                                         <style dangerouslySetInnerHTML={{

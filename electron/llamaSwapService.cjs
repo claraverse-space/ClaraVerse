@@ -2820,7 +2820,7 @@ models:
       const useFlashAttention = customConfig?.flashAttention !== undefined ? 
         customConfig.flashAttention : perfConfig.flashAttention;
       if (useFlashAttention) {
-        cmdLine += ` --flash-attn`;
+        cmdLine += ` --flash-attn auto`;  // Updated to use 'auto' value for newer llama.cpp
       }
       
       // 8. Continuous batching for better multi-turn performance - use saved setting
@@ -4806,6 +4806,7 @@ ${cmdLine}`;
     // Flash attention if supported
     if (perfConfig.flashAttention) {
       args.push('--flash-attn');
+      args.push('auto');  // Updated to use 'auto' value for newer llama.cpp
     }
     
     // Context shift for long conversations - DISABLED (not supported by llama-server yet)
@@ -7890,7 +7891,7 @@ ${cmdLine}`;
     const patterns = {
       threads: /--threads\s+(\d+)/,
       contextSize: /--ctx-size\s+(\d+)/,
-      flashAttention: /--flash-attn/,
+      flashAttention: /--flash-attn\s+(auto|on|off)/,  // Updated pattern for newer llama.cpp
       memoryLock: /--mlock/,
       batchSize: /--batch-size\s+(\d+)/,
       ubatchSize: /--ubatch-size\s+(\d+)/,
