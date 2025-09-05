@@ -1898,7 +1898,7 @@ func (o *Optimizer) GenerateCommand(modelName string, params *OptimizedParams) s
 
 	// Conditional flags
 	if params.FlashAttn {
-		cmd.WriteString(" --flash-attn")
+		cmd.WriteString(" --flash-attn on") // Fixed: Use explicit 'on' value for newer llama.cpp
 	}
 	if params.ContBatching {
 		cmd.WriteString(" --cont-batching")
