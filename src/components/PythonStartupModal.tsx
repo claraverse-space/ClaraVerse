@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Loader2, ExternalLink, Download, RefreshCw } from 'lucide-react';
 
 interface PythonStartupModalProps {
   isOpen: boolean;
@@ -20,6 +20,13 @@ interface StartupProgress {
   stage?: 'pulling' | 'starting' | 'network' | 'health';
 }
 
+interface UpdateStatus {
+  available: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+  error?: string;
+}
+
 const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
   isOpen,
   onClose,
@@ -31,6 +38,113 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [dockerAvailable, setDockerAvailable] = useState<boolean>(false);
   const [startupProgress, setStartupProgress] = useState<StartupProgress | null>(null);
+  
+  // Update checking state
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<StartupProgress | null>(null);
+
+  const checkForUpdates = async () => {
+    if (!dockerAvailable || serviceStatus?.mode !== 'docker') {
+      console.log('Skipping update check: Docker not available or not in docker mode');
+      return;
+    }
+    
+    try {
+      setIsCheckingUpdates(true);
+      console.log('Checking for container updates...');
+      const result = await (window as any).electronAPI.invoke('docker-check-updates');
+      
+      // Find Python container update status - try multiple ways
+      let pythonUpdate = null;
+      
+      // Method 1: Look for containerName 'python'
+      pythonUpdate = result.updates?.find((update: any) => update.containerName === 'python');
+      
+      // Method 2: Look for imageName containing 'clara-backend'
+      if (!pythonUpdate) {
+        pythonUpdate = result.updates?.find((update: any) => 
+          update.imageName?.includes('clara-backend')
+        );
+      }
+      
+      // Method 3: Look for imageName containing 'python'
+      if (!pythonUpdate) {
+        pythonUpdate = result.updates?.find((update: any) => 
+          update.imageName?.includes('python') || 
+          update.imageName?.includes('clara_python')
+        );
+      }
+      
+      // Method 4: If there's only one update, use it
+      if (!pythonUpdate && result.updates && result.updates.length === 1) {
+        pythonUpdate = result.updates[0];
+      }
+      
+      console.log('Python update status:', pythonUpdate?.hasUpdate ? 'Update available' : 'Up to date');
+      
+      if (pythonUpdate) {
+        const updateStatus = {
+          available: pythonUpdate.hasUpdate === true,
+          currentVersion: pythonUpdate.currentVersion,
+          latestVersion: pythonUpdate.latestVersion,
+          error: pythonUpdate.error
+        };
+        setUpdateStatus(updateStatus);
+      } else {
+        console.log('No Python backend update information found');
+        setUpdateStatus({
+          available: false,
+          error: 'No Python backend update information found'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to check for updates:', err);
+      setUpdateStatus({
+        available: false,
+        error: err instanceof Error ? err.message : 'Failed to check for updates'
+      });
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
+  const updateContainers = async () => {
+    if (!updateStatus?.available) return;
+    
+    try {
+      setIsUpdating(true);
+      setUpdateProgress(null);
+      setError(''); // Clear any previous errors
+      console.log('Starting container update...');
+      
+      const result = await (window as any).electronAPI.invoke('docker-update-containers', ['python']);
+      console.log('Update result:', result);
+      
+      const pythonResult = result.find((r: any) => r.container === 'python');
+      if (pythonResult?.success) {
+        setUpdateStatus({ available: false }); // Hide update section
+        setStatus('Python backend container updated successfully');
+        console.log('Container updated successfully, checking status...');
+        
+        // Check status again after update to see if container is now running
+        setTimeout(async () => {
+          await checkStatus();
+        }, 2000);
+      } else {
+        setError(pythonResult?.error || 'Failed to update Python backend container');
+        console.error('Container update failed:', pythonResult?.error);
+      }
+    } catch (err) {
+      const errorMsg = `Failed to update containers: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      setError(errorMsg);
+      console.error('Container update error:', err);
+    } finally {
+      setIsUpdating(false);
+      setUpdateProgress(null);
+    }
+  };
 
   const checkStatus = async () => {
     try {
@@ -46,10 +160,12 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
       // Check if Docker is available
       const dockerStatus = await (window as any).electronAPI.invoke('check-docker-status');
       setDockerAvailable(dockerStatus.isRunning);
+      console.log('Docker status:', dockerStatus);
 
       // Check Python backend status
       const pythonStatus = await (window as any).electronAPI.invoke('check-python-status');
       setServiceStatus(pythonStatus);
+      console.log('Python status:', pythonStatus);
 
       if (pythonStatus.isHealthy) {
         setStatus('Python backend is running and healthy');
@@ -60,6 +176,13 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
       } else {
         if (pythonStatus.mode === 'docker') {
           setStatus('Python backend container is not running');
+          // Automatically check for updates when container is not running and Docker is available
+          if (dockerStatus.isRunning) {
+            console.log('Starting update check...');
+            setTimeout(() => {
+              checkForUpdates();
+            }, 500); // Small delay to let the UI update
+          }
         } else {
           setStatus('Python backend is not responding');
         }
@@ -113,12 +236,25 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
         setStartupProgress(progress);
       };
 
+      // Listen for update progress updates
+      const handleUpdateProgress = (_event: any, progress: { status: string; type?: string }) => {
+        // Convert Docker update progress to our format
+        setUpdateProgress({
+          message: progress.status,
+          progress: 50, // Default progress since Docker updates don't provide exact percentage
+          type: progress.type || 'info',
+          stage: 'pulling'
+        });
+      };
+
       if ((window as any).electronAPI?.on) {
         (window as any).electronAPI.on('python:startup-progress', handleStartupProgress);
+        (window as any).electronAPI.on('docker-update-progress', handleUpdateProgress);
         
         return () => {
           if ((window as any).electronAPI?.removeListener) {
             (window as any).electronAPI.removeListener('python:startup-progress', handleStartupProgress);
+            (window as any).electronAPI.removeListener('docker-update-progress', handleUpdateProgress);
           }
         };
       }
@@ -268,6 +404,97 @@ const PythonStartupModal: React.FC<PythonStartupModalProps> = ({
                   <p>• You can safely minimize this window while downloading</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Update Status - Only show when updates are available */}
+          {updateStatus?.available && (
+            <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <div className="flex items-start space-x-3">
+                <Download className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    Container Update Available
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    {updateStatus.currentVersion && updateStatus.latestVersion && (
+                      <>Current: {updateStatus.currentVersion} → Latest: {updateStatus.latestVersion}</>
+                    )}
+                    {!updateStatus.currentVersion && !updateStatus.latestVersion && (
+                      'A newer version of the Python backend container is available'
+                    )}
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={updateContainers}
+                      disabled={isUpdating || isLoading}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white rounded text-xs font-medium flex items-center gap-1"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3 h-3" />
+                          Update Now
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={checkForUpdates}
+                      disabled={isCheckingUpdates || isLoading}
+                      className="px-3 py-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white rounded text-xs font-medium flex items-center gap-1"
+                    >
+                      {isCheckingUpdates ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3 h-3" />
+                          Check Again
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Update Progress */}
+          {updateProgress && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+              <div className="flex items-center space-x-3 mb-2">
+                <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                <div className="flex-1">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    {updateProgress.message}
+                  </p>
+                  {updateProgress.stage === 'pulling' && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      Downloading updated Docker image - this may take several minutes
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="w-full bg-amber-200 dark:bg-amber-800 rounded-full h-2">
+                <div
+                  className="bg-amber-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${updateProgress.progress}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  {updateProgress.stage === 'pulling' ? 'Downloading' : 'Updating'}
+                </span>
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  {updateProgress.progress}%
+                </span>
+              </div>
             </div>
           )}
 

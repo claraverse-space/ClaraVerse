@@ -761,6 +761,11 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
           onRetry={claraCoreStatus.startClaraCore}
           isVisible={showClaraCoreStatus}
           onToggleVisibility={() => setShowClaraCoreStatus(!showClaraCoreStatus)}
+          updateAvailable={claraCoreStatus.updateAvailable}
+          updateChecking={claraCoreStatus.updateChecking}
+          updateError={claraCoreStatus.updateError}
+          onCheckForUpdates={claraCoreStatus.checkForUpdates}
+          onUpdateContainers={claraCoreStatus.updateContainers}
         />
       </div>
     </div>

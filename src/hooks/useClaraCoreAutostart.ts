@@ -1,5 +1,6 @@
 /**
  * Hook for automatically starting Clara Core when notebooks require it
+ * Enhanced with container update checking capabilities
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -11,6 +12,9 @@ interface ClaraCoreStatus {
   error: string | null;
   serviceName: string | null;
   phase: string | null;
+  updateAvailable?: boolean;
+  updateChecking?: boolean;
+  updateError?: string | null;
 }
 
 export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
@@ -19,7 +23,10 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
     isStarting: false,
     error: null,
     serviceName: null,
-    phase: null
+    phase: null,
+    updateAvailable: false,
+    updateChecking: false,
+    updateError: null
   });
 
   // Check if notebook requires Clara Core
@@ -39,6 +46,131 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
                                   notebook.embedding_provider?.baseUrl?.includes('localhost');
     
     return Boolean(llmUsesClaraCore || embeddingUsesClaraCore);
+  }, []);
+
+  // Check for container updates
+  const checkForUpdates = useCallback(async (): Promise<boolean> => {
+    try {
+      const docker = (window as any).docker;
+      if (!docker) {
+        console.warn('📦 useClaraCoreAutostart: Docker service not available for update check');
+        return false;
+      }
+
+      console.log('📦 useClaraCoreAutostart: Checking for container updates...');
+      
+      setStatus(prev => ({
+        ...prev,
+        updateChecking: true,
+        updateError: null
+      }));
+
+      // Check for Clara Core container updates specifically
+      const updateResult = await docker.checkForUpdates((statusMessage: string) => {
+        console.log('📦 Update check status:', statusMessage);
+        setStatus(prev => ({
+          ...prev,
+          phase: prev.isStarting ? prev.phase : `Checking updates: ${statusMessage}`
+        }));
+      });
+
+      const claraCoreUpdate = updateResult.updates?.find((update: any) => 
+        update.imageName?.includes('clara-core') || 
+        update.containerName === 'clara-core'
+      );
+
+      const hasUpdate = Boolean(claraCoreUpdate?.hasUpdate);
+      
+      setStatus(prev => ({
+        ...prev,
+        updateAvailable: hasUpdate,
+        updateChecking: false,
+        updateError: null,
+        phase: prev.isStarting ? prev.phase : (hasUpdate ? 'Update available' : 'Up to date')
+      }));
+
+      if (hasUpdate) {
+        console.log('📦 useClaraCoreAutostart: Container update available for Clara Core');
+      } else {
+        console.log('📦 useClaraCoreAutostart: Clara Core container is up to date');
+      }
+
+      return hasUpdate;
+    } catch (error) {
+      console.error('📦 useClaraCoreAutostart: Failed to check for updates:', error);
+      
+      setStatus(prev => ({
+        ...prev,
+        updateChecking: false,
+        updateError: error instanceof Error ? error.message : 'Update check failed',
+        phase: prev.isStarting ? prev.phase : 'Update check failed'
+      }));
+      
+      return false;
+    }
+  }, []);
+
+  // Update containers
+  const updateContainers = useCallback(async (): Promise<boolean> => {
+    try {
+      const docker = (window as any).docker;
+      if (!docker) {
+        throw new Error('Docker service not available');
+      }
+
+      console.log('📦 useClaraCoreAutostart: Updating Clara Core container...');
+      
+      setStatus(prev => ({
+        ...prev,
+        isStarting: true,
+        phase: 'Updating container',
+        updateAvailable: false
+      }));
+
+      // Update Clara Core container specifically
+      const updateResult = await docker.updateContainers(['clara-core'], (statusMessage: string) => {
+        console.log('📦 Update status:', statusMessage);
+        setStatus(prev => ({
+          ...prev,
+          phase: `Updating: ${statusMessage}`
+        }));
+      });
+
+      const claraResult = updateResult.find((result: any) => result.container === 'clara-core');
+      
+      if (claraResult?.success) {
+        console.log('📦 useClaraCoreAutostart: Clara Core container updated successfully');
+        
+        // Wait for the updated container to start
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Check if the service is running after update
+        const isRunning = await checkClaraCoreStatus();
+        
+        setStatus(prev => ({
+          ...prev,
+          isRunning,
+          isStarting: false,
+          phase: isRunning ? 'Updated and running' : 'Updated, starting service',
+          updateError: null
+        }));
+
+        return isRunning;
+      } else {
+        throw new Error(claraResult?.error || 'Container update failed');
+      }
+    } catch (error) {
+      console.error('📦 useClaraCoreAutostart: Failed to update container:', error);
+      
+      setStatus(prev => ({
+        ...prev,
+        isStarting: false,
+        updateError: error instanceof Error ? error.message : 'Update failed',
+        phase: 'Update failed'
+      }));
+      
+      return false;
+    }
   }, []);
 
   // Check Clara Core status
@@ -123,7 +255,10 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
           isStarting: false,
           error: null,
           serviceName: null,
-          phase: null
+          phase: null,
+          updateAvailable: false,
+          updateChecking: false,
+          updateError: null
         });
         return;
       }
@@ -133,13 +268,16 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
         return;
       }
 
-      console.log('📝 useClaraCoreAutostart: Notebook requires Clara Core, checking status...', notebook.name);
+      console.log('📝 useClaraCoreAutostart: Notebook requires Clara Core, checking status and updates...', notebook.name);
+      
+      // First check for updates
+      const hasUpdates = await checkForUpdates();
       
       // Check if Clara Core is already running
       const isRunning = await checkClaraCoreStatus();
       
-      if (isRunning) {
-        console.log('📝 useClaraCoreAutostart: Clara Core is already running');
+      if (isRunning && !hasUpdates) {
+        console.log('📝 useClaraCoreAutostart: Clara Core is running and up to date');
         setStatus(prev => ({
           ...prev,
           isRunning: true,
@@ -151,13 +289,26 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
         return;
       }
 
-      // Start Clara Core automatically
-      console.log('📝 useClaraCoreAutostart: Clara Core not running, starting automatically...');
-      await startClaraCore();
+      if (hasUpdates) {
+        console.log('📝 useClaraCoreAutostart: Container updates available, user should be prompted');
+        setStatus(prev => ({
+          ...prev,
+          isRunning,
+          serviceName: "Clara's Core",
+          phase: isRunning ? 'Running (update available)' : 'Update available'
+        }));
+        return;
+      }
+
+      // Start Clara Core if not running and no updates
+      if (!isRunning) {
+        console.log('📝 useClaraCoreAutostart: Clara Core not running, starting automatically...');
+        await startClaraCore();
+      }
     };
 
     handleNotebookChange();
-  }, [notebook, requiresClaraCore, checkClaraCoreStatus, startClaraCore]);
+  }, [notebook, requiresClaraCore, checkClaraCoreStatus, checkForUpdates, startClaraCore]);
 
   // Periodic health check when Clara Core should be running
   useEffect(() => {
@@ -189,6 +340,8 @@ export const useClaraCoreAutostart = (notebook: NotebookResponse | null) => {
     ...status,
     requiresClaraCore: notebook ? requiresClaraCore(notebook) : false,
     startClaraCore,
-    checkStatus: checkClaraCoreStatus
+    checkStatus: checkClaraCoreStatus,
+    checkForUpdates,
+    updateContainers
   };
 };

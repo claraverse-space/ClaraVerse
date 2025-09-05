@@ -1105,8 +1105,13 @@ class DockerSetup extends EventEmitter {
       
       // Get local image info
       let localImage = null;
+      let localDigest = null;
       try {
         localImage = await this.docker.getImage(imageName).inspect();
+        localDigest = localImage.RepoDigests && localImage.RepoDigests[0] 
+          ? localImage.RepoDigests[0].split('@')[1] 
+          : null;
+        console.log(`Local image digest for ${imageName}:`, localDigest);
       } catch (error) {
         if (error.statusCode === 404) {
           statusCallback(`${imageName} not found locally, will download...`);
@@ -1115,10 +1120,17 @@ class DockerSetup extends EventEmitter {
         throw error;
       }
 
-      // Pull latest image info without downloading
+      // Enhanced update check: try to pull with no-cache option and compare digests
       return new Promise((resolve, reject) => {
-        // Try with platform specification first
-        this.docker.pull(imageName, { platform: this.systemArch }, (err, stream) => {
+        // Force a fresh check by pulling without cache
+        const pullOptions = { 
+          platform: this.systemArch,
+          // Note: Docker API doesn't support --no-cache for pulls, but we'll check more thoroughly
+        };
+        
+        console.log(`Starting update check for ${imageName} with platform ${this.systemArch}`);
+        
+        this.docker.pull(imageName, pullOptions, (err, stream) => {
           if (err) {
             console.error('Error checking for updates with platform specification:', err);
             
@@ -1132,12 +1144,12 @@ class DockerSetup extends EventEmitter {
                 return;
               }
               
-              this.handleUpdateCheckStream(fallbackStream, imageName, statusCallback, resolve);
+              this.handleUpdateCheckStreamEnhanced(fallbackStream, imageName, statusCallback, resolve, localDigest);
             });
             return;
           }
 
-          this.handleUpdateCheckStream(stream, imageName, statusCallback, resolve);
+          this.handleUpdateCheckStreamEnhanced(stream, imageName, statusCallback, resolve, localDigest);
         });
       });
     } catch (error) {
@@ -1149,6 +1161,119 @@ class DockerSetup extends EventEmitter {
         imageName: imageName || 'undefined'
       };
     }
+  }
+
+  /**
+   * Enhanced handle for the update check stream with better detection
+   */
+  handleUpdateCheckStreamEnhanced(stream, imageName, statusCallback, resolve, localDigest) {
+    let hasUpdate = false;
+    let updateReason = '';
+    let downloadingDetected = false;
+    let layersDownloaded = 0;
+    let totalLayers = 0;
+    let newDigest = null;
+
+    stream.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(Boolean);
+      lines.forEach(line => {
+        try {
+          const parsed = JSON.parse(line);
+          
+          // Log all status messages for debugging
+          if (parsed.status) {
+            console.log(`Docker pull status for ${imageName}:`, parsed.status);
+          }
+          
+          // Check for various update indicators
+          if (parsed.status) {
+            if (parsed.status.includes('Image is up to date')) {
+              // Even if Docker says "up to date", we'll do additional checks
+              updateReason = updateReason || 'Image appears up to date';
+            } else if (parsed.status.includes('Downloading') || 
+                     parsed.status.includes('Extracting') ||
+                     parsed.status.includes('Pulling fs layer') ||
+                     parsed.status.includes('Waiting') ||
+                     parsed.status.includes('Verifying Checksum') ||
+                     parsed.status.includes('Download complete')) {
+              hasUpdate = true;
+              downloadingDetected = true;
+              updateReason = 'New layers detected - update available';
+              layersDownloaded++;
+            } else if (parsed.status.includes('Pull complete')) {
+              if (downloadingDetected) {
+                hasUpdate = true;
+                updateReason = 'Update layers downloaded';
+              }
+            } else if (parsed.status.includes('Already exists')) {
+              // Layer already exists - this is normal
+              totalLayers++;
+            } else if (parsed.status.includes('Status: Downloaded newer image')) {
+              hasUpdate = true;
+              updateReason = 'Downloaded newer image';
+            } else if (parsed.status.includes('digest: sha256:')) {
+              // Extract the new digest for comparison
+              const digestMatch = parsed.status.match(/digest: (sha256:[a-f0-9]+)/);
+              if (digestMatch) {
+                newDigest = digestMatch[1];
+                console.log(`Remote digest for ${imageName}:`, newDigest);
+                
+                // Compare digests if we have both
+                if (localDigest && newDigest && localDigest !== newDigest) {
+                  hasUpdate = true;
+                  updateReason = 'Image digest changed - update available';
+                  console.log(`Digest mismatch: local=${localDigest}, remote=${newDigest}`);
+                }
+              }
+            }
+          }
+
+          // Check progress info for layer downloads
+          if (parsed.progressDetail && (parsed.progressDetail.current || parsed.progressDetail.total)) {
+            // This indicates actual download progress, meaning there's an update
+            hasUpdate = true;
+            downloadingDetected = true;
+            updateReason = 'Download progress detected - update in progress';
+          }
+        } catch (e) {
+          // Ignore parse errors but log them for debugging
+          console.log('Parse error in Docker stream:', e.message);
+        }
+      });
+    });
+
+    stream.on('end', () => {
+      // Final decision logic
+      if (!hasUpdate && layersDownloaded === 0 && totalLayers === 0) {
+        // If no layers were processed at all, assume we need to check more thoroughly
+        console.log(`No layer information detected for ${imageName}, might need update`);
+        hasUpdate = true;
+        updateReason = 'Unable to verify current status - recommend update check';
+      }
+
+      console.log(`Update check complete for ${imageName}: hasUpdate=${hasUpdate}, reason=${updateReason}`);
+      statusCallback(`Update check complete for ${imageName}: ${updateReason}`);
+      
+      resolve({ 
+        hasUpdate, 
+        reason: updateReason || 'No updates detected',
+        imageName,
+        layersDownloaded,
+        totalLayers,
+        localDigest,
+        remoteDigest: newDigest
+      });
+    });
+
+    stream.on('error', (error) => {
+      console.error('Stream error during update check:', error);
+      resolve({ 
+        hasUpdate: false, 
+        reason: 'Error checking for updates', 
+        error: error.message,
+        imageName
+      });
+    });
   }
 
   /**
@@ -2680,8 +2805,9 @@ class DockerSetup extends EventEmitter {
           continue;
         }
         
+        // Use enhanced update checking
         updateChecks.push(
-          this.checkForImageUpdates(config.image, statusCallback)
+          this.checkForImageUpdatesForced(config.image, statusCallback)
             .then(result => ({ ...result, containerName: name }))
         );
       }
@@ -2698,6 +2824,112 @@ class DockerSetup extends EventEmitter {
       console.error('Error checking for updates:', error);
       throw error;
     }
+  }
+
+  /**
+   * Forced update check that's more aggressive in detecting updates
+   */
+  async checkForImageUpdatesForced(imageName, statusCallback) {
+    try {
+      statusCallback(`Force checking updates for ${imageName}...`);
+      
+      // First, try the regular update check
+      const regularCheck = await this.checkForImageUpdates(imageName, statusCallback);
+      
+      // If the regular check says no update, but we want to be more thorough,
+      // let's try a different approach
+      if (!regularCheck.hasUpdate) {
+        console.log(`Regular check found no updates for ${imageName}, trying forced check...`);
+        
+        // Try to get remote manifest information
+        try {
+          const manifestResult = await this.checkImageManifestForced(imageName);
+          if (manifestResult.hasUpdate) {
+            return {
+              ...regularCheck,
+              hasUpdate: true,
+              reason: 'Forced check detected newer manifest',
+              forcedCheck: true
+            };
+          }
+        } catch (error) {
+          console.log('Forced manifest check failed:', error.message);
+        }
+      }
+      
+      return regularCheck;
+    } catch (error) {
+      console.error('Error in forced update check:', error);
+      return {
+        hasUpdate: false,
+        reason: 'Error in forced update check',
+        error: error.message,
+        imageName
+      };
+    }
+  }
+
+  /**
+   * Check image manifest for updates more aggressively
+   */
+  async checkImageManifestForced(imageName) {
+    return new Promise((resolve) => {
+      // Force pull with explicit latest tag to check for updates
+      const latestImageName = imageName.includes(':') ? imageName : `${imageName}:latest`;
+      
+      console.log(`Forced manifest check for ${latestImageName}`);
+      
+      // Try pulling to see if there are any new layers
+      this.docker.pull(latestImageName, { 
+        platform: this.systemArch,
+        // Try to bypass cache by using different options
+      }, (err, stream) => {
+        if (err) {
+          console.log('Forced pull failed:', err.message);
+          resolve({ hasUpdate: false, reason: 'Forced pull failed' });
+          return;
+        }
+
+        let downloadActivity = false;
+        let layerActivity = false;
+
+        stream.on('data', (data) => {
+          const lines = data.toString().split('\n').filter(Boolean);
+          lines.forEach(line => {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.status) {
+                // Look for any kind of activity that suggests there might be updates
+                if (parsed.status.includes('Pulling') || 
+                    parsed.status.includes('Downloading') ||
+                    parsed.status.includes('Extracting') ||
+                    parsed.progressDetail) {
+                  downloadActivity = true;
+                }
+                if (parsed.status.includes('Already exists') ||
+                    parsed.status.includes('Pull complete')) {
+                  layerActivity = true;
+                }
+              }
+            } catch (e) {
+              // Ignore
+            }
+          });
+        });
+
+        stream.on('end', () => {
+          const hasUpdate = downloadActivity || (!layerActivity && !downloadActivity);
+          resolve({
+            hasUpdate,
+            reason: hasUpdate ? 'Forced check suggests update available' : 'Forced check confirms up to date'
+          });
+        });
+
+        stream.on('error', () => {
+          resolve({ hasUpdate: false, reason: 'Forced check stream error' });
+        });
+      });
+    });
   }
 
   /**
