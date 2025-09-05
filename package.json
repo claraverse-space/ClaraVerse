@@ -39,7 +39,7 @@
     "electron:build-win": "npm run build && electron-builder --win",
     "electron:build-win-admin": "node scripts/build-win-admin.cjs",
     "cleanup:win": "node scripts/cleanup-win.cjs",
-    "electron:clean-build-win": "npm run cleanup:win && npm run electron:build-win",
+    "electron:clean-build-win": "npm run build:services && npm run cleanup:win && npm run electron:build-win",
     "electron:clean-build-win-full": "npm run cleanup:win && node scripts/build-config.cjs full && npm run electron:build-win && node scripts/build-config.cjs full",
     "electron:clean-build-win-barebone": "npm run cleanup:win && node scripts/build-config.cjs barebone && npm run electron:build-win && node scripts/cleanup-barebone.cjs",
     "package": "npm run build && electron-builder build --publish always",

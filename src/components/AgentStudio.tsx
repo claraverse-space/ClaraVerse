@@ -502,7 +502,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                   <Zap className="w-4 h-4" />
                   Create Node
                 </button>
-                                  <button 
+                                  {/* <button 
                   onClick={() => setIsUIBuilderOpen(true)}
                   disabled={!currentFlow}
                   className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
@@ -510,7 +510,7 @@ const AgentStudioContent: React.FC<{ onPageChange: (page: string) => void; userN
                 >
                   <Layout className="w-4 h-4" />
                   Create UI
-                </button>
+                </button> */}
                 <button 
                   onClick={handleImport}
                   className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors"
