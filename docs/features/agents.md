@@ -1,12 +1,12 @@
 ---
-title: "LumaUI"
-description: "AI-powered web development environment"
+title: "Agents"
+description: "AI workflow automation"
 category: "features"
-order: 6
+order: 3
 lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 💻 LumaUI
+# 🤖 Agents
 
 Coming soon...

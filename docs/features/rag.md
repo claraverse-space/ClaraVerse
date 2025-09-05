@@ -1,12 +1,12 @@
 ---
-title: "LumaUI"
-description: "AI-powered web development environment"
+title: "RAG"
+description: "Retrieval Augmented Generation"
 category: "features"
-order: 6
+order: 5
 lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 💻 LumaUI
+# 🧠 RAG
 
 Coming soon...

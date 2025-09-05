@@ -1,12 +1,12 @@
 ---
-title: "LumaUI"
-description: "AI-powered web development environment"
+title: "Settings"
+description: "Configuration and customization"
 category: "features"
-order: 6
+order: 8
 lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 💻 LumaUI
+# ⚙️ Settings
 
 Coming soon...

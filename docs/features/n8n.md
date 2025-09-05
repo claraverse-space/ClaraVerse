@@ -1,12 +1,12 @@
 ---
-title: "LumaUI"
-description: "AI-powered web development environment"
+title: "N8N"
+description: "Workflow automation platform"
 category: "features"
-order: 6
+order: 4
 lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 💻 LumaUI
+# ⚡ N8N
 
 Coming soon...

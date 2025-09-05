@@ -1,455 +1,198 @@
 ---
 title: "Clara Assistant"
-description: "Your AI coding companion with autonomous capabilities"
+description: "Your portal to everything in ClaraVerse"
 category: "features"
-order: 4
-lastUpdated: "2024-01-15"
+order: 2
+lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 🤖 Clara Assistant
+# Clara Assistant
 
-Clara is your intelligent AI coding companion built into ClaraVerse. More than just a chatbot, Clara is a sophisticated assistant capable of autonomous work, file processing, code generation, and creative collaboration.
+<img width="399" height="599" alt="ChatGPT Image Sep 5, 2025, 10_38_33 PM (1)" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
 
-## 🌟 What Makes Clara Special?
+Clara Assistant is your portal to everything in ClaraVerse. It's not just a chatbot — it's the central hub that connects all features, tools, and capabilities to give you maximum customization and power.
 
-Clara combines the best of modern AI with practical development tools:
+## What Makes Clara Special
 
-- **Multi-Provider Support** - Works with OpenAI, Anthropic, Ollama, and OpenRouter
-- **Autonomous Execution** - Can work independently with tool calling
-- **File Intelligence** - Processes documents, images, and code files
-- **Background Operation** - Continues working while you focus elsewhere
-- **Artifact Generation** - Creates interactive charts, diagrams, and visualizations
-- **Voice Integration** - Text-to-Speech and Speech-to-Text capabilities
+Clara connects to every part of ClaraVerse: Tools, MCP, Agents, Notebooks, ImageGen, Memories, and Clara Core. This integration means you get a unified experience where everything works together seamlessly.
 
-## 🎯 Core Capabilities
+## Two Modes of Operation
 
-### 💬 Intelligent Conversation
+Clara operates in two distinct modes depending on what you need:
 
-**Natural Language Understanding:**
-- Context-aware responses
-- Multi-turn conversation memory
-- Technical and creative discussions
-- Code explanation and documentation
+### 💬 **Chat Mode**
+- **Pure conversation**: Focus on discussion, explanation, and guidance
+- **No tool access**: Clara can't modify files, run code, or access external systems
+- **Fast responses**: Lightweight interactions for quick questions and learning
+- **Perfect for**: Code explanations, learning concepts, planning, and brainstorming
 
-**Advanced Features:**
-```typescript
-// Clara understands context across conversations
-User: "I'm building a React app with authentication"
-Clara: "I'll help you implement authentication. What type of auth do you prefer?"
+### 🛠️ **Agent Mode**
+- **Full tool access**: Clara can execute code, modify files, and use all available tools
+- **Autonomous work**: Can complete complex tasks independently
+- **MCP integration**: Automatically activates Clara's MCP server for enhanced capabilities
+- **Perfect for**: Building projects, file operations, research, and hands-on development
 
-User: "JWT tokens"
-Clara: "Perfect! I'll create a JWT auth system with login/signup forms..."
+**Switching modes**: Toggle between Chat and Agent mode anytime based on whether you need Clara to take action or just provide guidance.
 
-// Later in the conversation
-User: "Add password reset functionality"
-Clara: "I'll extend the existing JWT auth system with password reset..."
-```
+## Connected Features
 
-### 🛠️ Code Understanding and Generation
+### 🛠️ **Tools**
+Create your own custom tools to extend Clara's capabilities.
 
-**Code Analysis:**
-- Review code quality and performance
-- Identify bugs and security issues
-- Suggest optimizations and refactoring
-- Explain complex algorithms
+**How it works:**
+- Go to Settings and generate your own tools
+- Any webhook-based workflow in N8N can become your tool
+- Connect email systems, dashboard data, sales data, or any custom service
+- Clara automatically uses these tools when needed
 
-**Code Generation:**
-```typescript
-// Clara can generate complete components
-User: "Create a reusable modal component with animations"
+**Examples:**
+- "Check my email for urgent messages" (uses your email tool)
+- "Get today's sales numbers" (uses your sales dashboard tool)
+- "Send a notification to Slack" (uses your custom Slack tool)
 
-Clara: "I'll create a flexible modal component with Framer Motion animations..."
-// Generates complete TypeScript React component with props, animations, and styling
-```
+### 🔌 **MCP (Model Context Protocol)**
+Connect Clara to any MCP tools running on your system.
 
-**Supported Languages:**
-- JavaScript/TypeScript
-- Python
-- React/Vue/Angular
-- HTML/CSS
-- Node.js
-- And 50+ more languages
+**Clara's Built-in MCP Server:**
+When you switch to Agent mode, Clara automatically activates its built-in MCP server with powerful capabilities:
 
-### 📁 File Processing
+- **🐍 Python Environment**: Execute Python code in an isolated virtual environment
+- **📁 Workspace Management**: Create, read, write, and organize files in a dedicated workspace
+- **📄 Document Processing**: Read PDFs, Word docs, Excel files, PowerPoint, and more
+- **🔍 Web Search Engine**: Docker-powered SearXNG for unlimited, free web research
+- **🌐 Web Scraping**: Extract content from any website using Playwright automation
+- **📊 PDF Creation**: Generate professional PDFs from your content
 
-**Document Analysis:**
-- PDF document summarization
-- Markdown parsing and conversion
-- Text extraction and analysis
-- Code file understanding
+**Free Unlimited Web Research:**
+If you have Docker installed, Clara's MCP automatically spawns a private SearXNG search engine:
+- **No API keys needed**: Completely free and unlimited searches
+- **Privacy-focused**: Your searches stay private, no tracking
+- **Multiple engines**: Searches across Google, Bing, DuckDuckGo, Wikipedia, and more
+- **Research-ready**: Perfect for gathering information, fact-checking, and exploration
 
-**Image Processing:**
-- Image description and analysis
-- Extract text from images (OCR)
-- Visual content understanding
-- Design feedback and suggestions
-
-**Code File Operations:**
-- Multi-file project analysis
-- Dependency tracking
-- Architecture recommendations
-- Refactoring suggestions
-
-## 🎨 Artifact System
-
-Clara's artifact system automatically creates interactive visualizations and components when they enhance understanding:
-
-### 📊 Data Visualizations
-
-**Automatic Chart Generation:**
-```javascript
-User: "Show me the sales data as a chart"
-Clara: "I'll create an interactive chart for your sales data..."
-
-// Clara generates:
-{
-  "type": "bar",
-  "data": {
-    "labels": ["January", "February", "March", "April"],
-    "datasets": [{
-      "label": "Sales ($)",
-      "data": [12000, 15000, 18000, 22000],
-      "backgroundColor": ["#3B82F6", "#10B981", "#F59E0B", "#EF4444"]
-    }]
-  }
-}
-```
-
-### 🔄 Mermaid Diagrams
-
-**Process Flows and Architecture:**
-```mermaid
-graph TD
-    A[User Request] --> B{Clara Analysis}
-    B -->|Code| C[Generate Code]
-    B -->|Data| D[Create Chart]
-    B -->|Process| E[Draw Diagram]
-    C --> F[Interactive Artifact]
-    D --> F
-    E --> F
-```
-
-### 📋 Interactive Tables
-
-**Data Organization:**
-```csv
-Feature,Status,Priority,Assignee
-Authentication,Complete,High,John
-Dashboard,In Progress,Medium,Sarah
-API Integration,Pending,High,Mike
-Testing,Planned,Low,Team
-```
-
-## 🚀 Autonomous Mode
-
-Clara can work independently to complete complex tasks:
-
-### How Autonomous Mode Works
-
-1. **Task Planning**: Clara breaks down complex requests into steps
-2. **Tool Execution**: Uses available tools to complete each step
-3. **Progress Monitoring**: Tracks progress and adapts to challenges
-4. **Result Validation**: Verifies work quality before completion
-
-**Example Autonomous Task:**
-```
-User: "Build a complete todo application with React and TypeScript"
-
-Clara's Autonomous Process:
-1. 📋 Plan application structure
-2. 🎨 Create component hierarchy
-3. 💾 Implement state management
-4. 🎯 Add CRUD operations
-5. 🎨 Style with Tailwind CSS
-6. 🧪 Add basic testing
-7. ✅ Validate and document
-```
-
-### Tool Integration
-
-**Available Tools:**
-- File creation and editing
-- Code execution and testing
-- Web research and data gathering
-- Image generation and processing
-- API calls and integrations
-
-**Tool Call Example:**
-```typescript
-// Clara can chain multiple tools
-1. create_file("components/TodoList.tsx", todoListCode)
-2. create_file("hooks/useTodos.ts", customHookCode)
-3. edit_file("App.tsx", integrateComponents)
-4. run_command("npm test")
-5. create_file("README.md", documentation)
-```
-
-## 🔊 Voice Integration
-
-### Text-to-Speech (TTS)
-
-**Natural Voice Output:**
-- Multiple voice options
-- Adjustable speed and pitch
-- Background reading capability
-- Code pronunciation optimization
+**External MCP Tools:**
+- Works with local MCP tools only (HTTP-based coming soon)
+- Quick access through Clara Command Center (your input box)
+- Seamlessly integrates external tools into conversations
 
 **Usage:**
-```typescript
-// Clara reads responses aloud
-User: "Explain async/await in JavaScript"
-Clara: [Provides detailed explanation with voice narration]
+- **Agent mode**: Clara's MCP tools activate automatically
+- **External tools**: Type `/` in the chat to see available MCP tools
 
-// Configure TTS settings
-Settings → Voice → Enable TTS
-- Voice: Natural/Professional/Friendly
-- Speed: 0.5x to 2.0x
-- Pitch: -10 to +10
-```
+### 📁 **Files & Context**
+Upload any file and Clara will use it as context for better answers.
 
-### Speech-to-Text (STT)
+**Supported formats:**
+- PDFs, CSVs, text files, code files
+- Images (for analysis and description)
+- Documents of any type
 
-**Voice Input:**
-- Hands-free interaction
-- Code dictation
-- Natural language commands
-- Multi-language support
+**How it works:**
+- Drag and drop files into the chat
+- Clara reads and understands the content
+- Uses file information to provide more accurate responses
 
-**Voice Commands:**
-```
-"Clara, create a new React component called UserProfile"
-"Explain the code in the current file"
-"Generate a function to sort an array of objects"
-"Add error handling to this API call"
-```
+### 📓 **Notebooks**
+Create knowledge bases for Clara to reference while working.
 
-## 🎛️ Customization
+**Use cases:**
+- Attach coding style guides for consistent code generation
+- Add project documentation for better context
+- Create reference materials for specific domains
+- Build custom RAG (Retrieval Augmented Generation) systems
 
-### System Prompts
+**Example:**
+"Here's my company's API documentation. Help me build a client library following these patterns."
 
-**Custom Behavior:**
-Clara's behavior can be customized with system prompts:
+### 🎨 **ImageGen**
+Generate images directly through Clara when ComfyUI is configured.
 
-```typescript
-// Professional mode
-"You are a senior software engineer focused on best practices, performance, and maintainable code."
+**Requirements:**
+- ComfyUI server must be configured
+- Feature automatically enables when server is detected
 
-// Creative mode
-"You are a creative developer who thinks outside the box and suggests innovative solutions."
+**Usage:**
+"Generate an image of a sunset over mountains"
+Clara will use your ComfyUI setup to create the image.
 
-// Teaching mode
-"You are a patient coding instructor who explains concepts clearly with examples."
-```
+### 🧠 **Memories**
+Clara's adaptive memory system that learns about you over time.
 
-### Provider Configuration
+**How it's different:**
+- Stores facts about you, not random conversation snippets
+- Intelligently injects relevant context when needed
+- Adapts and improves the more you use Clara
+- Focuses on meaningful information that enhances future interactions
 
-**Multi-Provider Setup:**
-```typescript
-// Local AI (Ollama)
-- Model: llama2, codellama, mistral
-- Endpoint: http://localhost:11434
-- Benefits: Privacy, no cost, offline capable
+**Examples of what Clara remembers:**
+- Your preferred coding style and frameworks
+- Project patterns you commonly use
+- Tools and workflows you rely on
+- Domain-specific knowledge relevant to your work
 
-// OpenAI
-- Models: GPT-4, GPT-3.5-turbo
-- Features: Function calling, vision
-- Benefits: High quality, fast responses
+### ⚡ **Clara Core**
+Local LLM engine powered by llama.cpp with intelligent optimization.
 
-// Anthropic (Claude)
-- Models: Claude-3.5-Sonnet, Claude-3-Haiku
-- Features: Long context, reasoning
-- Benefits: Excellent code understanding
+**Features:**
+- Runs completely local models for privacy
+- Built-in optimizer manages models based on your hardware
+- Automatically selects the best model configuration
+- No internet required once models are downloaded
 
-// OpenRouter
-- Access to 100+ models
-- Pay-per-use pricing
-- Benefits: Model variety, cost flexibility
-```
+**Benefits:**
+- Complete privacy — nothing leaves your machine
+- No API costs or rate limits
+- Works offline
+- Optimized performance for your specific setup
 
-## 📚 Advanced Features
+### 🎤 **Voice**
+Live voice interactions with Clara (available with RAG container).
 
-### Session Management
+**Requirements:**
+- Download the RAG container to enable voice features
+- Once installed, voice interactions become available
 
-**Conversation Persistence:**
-- Automatic session saving
-- Cross-session context
-- Conversation history
-- Session export/import
+**Capabilities:**
+- Talk to Clara naturally
+- Get spoken responses
+- Hands-free coding assistance
+- Real-time voice conversations
 
-**Session Types:**
-```typescript
-// Quick Chat: Ephemeral conversations
-// Project Session: Tied to specific projects
-// Research Session: For exploration and learning
-// Debug Session: For troubleshooting
-```
+## Command Center
 
-### Background Operation
+Clara's input box is your command center. Use it to:
+- Access MCP tools with `/` commands
+- Upload files by dragging and dropping
+- Start voice interactions
+- Connect to any integrated feature
 
-**Continuous Operation:**
-Clara can continue working while you focus on other tasks:
+## Getting Started
 
-- **Background Processing**: Long-running tasks continue
-- **Progress Notifications**: Updates on task completion
-- **Queue Management**: Multiple tasks in sequence
-- **Resource Management**: Efficient system usage
+1. **Choose your mode**: Start in Chat mode for questions, switch to Agent mode for hands-on work
+2. **Start simple**: "Hello Clara, what can you help me with?"
+3. **Try Agent mode**: Switch to Agent mode and ask Clara to "create a Python script that analyzes data"
+4. **Upload files**: Drag documents into the chat for context
+5. **Research anything**: In Agent mode, ask Clara to "search for the latest developments in AI"
+6. **Create tools**: Go to Settings → Tools to add custom capabilities
+7. **Add notebooks**: Create reference materials for better assistance
+8. **Configure voice**: Download RAG container for voice interactions
 
-### Model Context Protocol (MCP)
+### Quick Mode Comparison
 
-**External Tool Integration:**
-Clara can integrate with external tools and services:
+**Chat Mode Examples:**
+- "Explain how React hooks work"
+- "What's the best approach for this architecture?"
+- "Help me understand this error message"
 
-```typescript
-// Available MCP Tools
-- File system operations
-- Git version control
-- Database queries
-- API testing
-- Cloud services
-- Development tools
-```
+**Agent Mode Examples:**
+- "Create a Python script to analyze this CSV file"
+- "Search for recent papers on machine learning and summarize the findings"
+- "Build a simple web scraper to extract product prices"
+- "Generate a PDF report from this data"
 
-## 🎯 Best Practices
+## The Power of Integration
 
-### Effective Communication
+Clara becomes more powerful as you connect more features. Your custom tools, uploaded files, notebooks, and memories all work together to create a personalized AI assistant that truly understands your workflow and preferences.
 
-**Clear Instructions:**
-```
-✅ Good: "Create a React component for a user profile card with name, email, avatar, and edit button"
-
-❌ Vague: "Make a user component"
-```
-
-**Context Provision:**
-```
-✅ Good: "In this React TypeScript project using Tailwind CSS, add dark mode toggle to the navigation bar"
-
-❌ Limited: "Add dark mode"
-```
-
-### Task Optimization
-
-**Breaking Down Complex Tasks:**
-```typescript
-// Instead of: "Build a complete e-commerce site"
-// Try: 
-1. "Create product listing component"
-2. "Add shopping cart functionality"
-3. "Implement checkout process"
-4. "Add user authentication"
-```
-
-**Iterative Development:**
-```typescript
-// Progressive refinement
-1. "Create basic todo app structure"
-2. "Add styling and animations"
-3. "Implement data persistence"
-4. "Add advanced features"
-```
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-**Clara Not Responding:**
-- Check AI provider connection
-- Verify API keys in settings
-- Test with different provider
-- Restart ClaraVerse if needed
-
-**Poor Response Quality:**
-- Use more specific prompts
-- Provide more context
-- Try different models
-- Check model configuration
-
-**Autonomous Mode Issues:**
-- Ensure tool permissions are enabled
-- Check file system access
-- Verify WebContainer is running
-- Review error logs in debug mode
-
-### Performance Optimization
-
-**Response Speed:**
-- Use faster models (GPT-3.5 vs GPT-4)
-- Reduce context length
-- Enable response streaming
-- Use local models (Ollama)
-
-**Memory Usage:**
-- Clear conversation history regularly
-- Limit file attachments size
-- Use efficient prompt strategies
-- Monitor system resources
-
-## 🎉 Getting Started with Clara
-
-### Quick Start Checklist
-
-1. **Basic Setup**
-   - [ ] Configure at least one AI provider
-   - [ ] Test connection with simple question
-   - [ ] Explore the chat interface
-
-2. **File Processing**
-   - [ ] Upload a document for analysis
-   - [ ] Try image description
-   - [ ] Process a code file
-
-3. **Code Assistance**
-   - [ ] Ask for code review
-   - [ ] Request function generation
-   - [ ] Get debugging help
-
-4. **Advanced Features**
-   - [ ] Try autonomous mode
-   - [ ] Experiment with artifacts
-   - [ ] Configure custom system prompt
-
-### Example Conversations
-
-**Getting Started:**
-```
-User: "Hi Clara! What can you help me with?"
-Clara: "Hello! I'm your AI coding assistant. I can help with..."
-
-User: "I'm new to React. Can you teach me?"
-Clara: "I'd love to help you learn React! Let's start with..."
-```
-
-**Code Review:**
-```
-User: [Uploads React component]
-Clara: "I've analyzed your component. Here are some suggestions..."
-
-User: "How can I improve performance?"
-Clara: "I see several optimization opportunities..."
-```
-
-**Project Development:**
-```
-User: "Help me build a weather app"
-Clara: "I'll help you create a weather app! What features do you want?"
-
-User: "Current weather, 5-day forecast, location search"
-Clara: "Perfect! I'll create a complete weather app with those features..."
-```
-
----
-
-## 🌟 Clara's Superpowers
-
-- **🧠 Intelligent**: Understands context and nuance
-- **🔧 Practical**: Provides actionable solutions
-- **🎨 Creative**: Thinks outside the box
-- **⚡ Fast**: Quick responses and execution
-- **🛡️ Private**: Your conversations stay local (when using local models)
-- **🔄 Continuous**: Works in background
-- **📈 Adaptive**: Learns from your preferences
-
-**Ready to meet your new AI coding companion?** Open Clara Assistant in ClaraVerse and start your first conversation!
-
-*Join our [Discord community](https://discord.gg/j633fsrAne) to share Clara tips and get help from other users.* 
+This isn't just AI chat — it's your complete AI-powered workspace that grows with you.
