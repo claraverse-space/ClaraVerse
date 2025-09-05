@@ -3,6 +3,7 @@ import { Client, BasePipe, EfficientPipe, } from '@stable-canvas/comfyui-client'
 import Sidebar from './Sidebar';
 import ImageGenHeader from './ImageGenHeader';
 import { db } from '../db';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 import ComfyUIManager from './ComfyUIManager';
 import ImageModelManager from './ImageModelManager';
 import { claraApiService } from '../services/claraApiService';
@@ -787,9 +788,20 @@ const ImageGen: React.FC<ImageGenProps> = ({ onPageChange }) => {
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();

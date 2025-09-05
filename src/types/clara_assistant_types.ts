@@ -189,6 +189,12 @@ export interface ClaraMessageMetadata {
   /** Whether this is a voice message */
   isVoiceMessage?: boolean;
   
+  /** Notebook context used for this message */
+  notebookContext?: {
+    notebookName: string;
+    content: string;
+  };
+  
   /** Whether this message is related to image generation */
   imageGeneration?: boolean;
   

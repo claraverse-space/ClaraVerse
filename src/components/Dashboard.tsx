@@ -46,6 +46,7 @@ import {
   X
 } from 'lucide-react';
 import { db } from '../db';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 import axios from 'axios';
 import api from '../services/api';
 import WebhookWidget from './widget-components/WebhookWidget';
@@ -273,9 +274,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();

@@ -18,6 +18,7 @@ import PythonStartupModal from '../PythonStartupModal';
 import { claraNotebookService, NotebookResponse, ProviderConfig } from '../../services/claraNotebookService';
 import { ProvidersProvider } from '../../contexts/ProvidersContext';
 import { db } from '../../db';
+import { getDefaultWallpaper } from '../../utils/uiPreferences';
 import { useClaraCoreAutostart } from '../../hooks/useClaraCoreAutostart';
 import ClaraCoreStatusBanner from './ClaraCoreStatusBanner';
 
@@ -54,9 +55,20 @@ const NotebooksContent: React.FC<{ onPageChange: (page: string) => void; userNam
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();

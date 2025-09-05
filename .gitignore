@@ -144,3 +144,4 @@ docs-internal-agents
 searXNG-Clara
 searxng-config
 .bmad-infrastructure-devops
+clara-mcp/mcp_workspace/*

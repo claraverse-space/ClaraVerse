@@ -7,6 +7,7 @@ import { AdvancedOptions } from './Clara_Components/clara_assistant_input';
 import Sidebar from './Sidebar';
 import { db } from '../db';
 import { claraDB } from '../db/claraDatabase';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 
 // Import Clara types and API service
 import { 
@@ -933,9 +934,20 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();
@@ -1645,15 +1657,45 @@ Now tell me what is the result "`;
     // For AI processing, use the processed content (including prefix if it's a voice message)
     const aiContent = isVoiceMessage ? processedContent : processedContent;
 
-    // Create user message with display content (without voice prefix)
+    // **NEW**: Extract notebook context if present
+    let notebookContext = null;
+    let cleanDisplayContent = displayContent;
+    let cleanAiContent = aiContent;
+    
+    // Check for notebook context metadata
+    const notebookContextMatch = displayContent.match(/\[NOTEBOOK_CONTEXT:(.*?)\]\n\n/s);
+    if (notebookContextMatch) {
+      try {
+        notebookContext = JSON.parse(notebookContextMatch[1]);
+        // Remove the metadata from display content
+        cleanDisplayContent = displayContent.replace(/\[NOTEBOOK_CONTEXT:.*?\]\n\n/s, '');
+        
+        // For AI, we can choose to include or exclude the context
+        // For now, let's include it in a cleaner format for AI processing
+        if (notebookContext) {
+          const contextForAI = `Context from notebook "${notebookContext.notebookName}": ${notebookContext.content}\n\nUser question: `;
+          cleanAiContent = `${contextForAI}${cleanDisplayContent}`;
+        } else {
+          cleanAiContent = aiContent.replace(/\[NOTEBOOK_CONTEXT:.*?\]\n\n/s, '');
+        }
+      } catch (error) {
+        console.error('Failed to parse notebook context:', error);
+        // If parsing fails, just remove the metadata
+        cleanDisplayContent = displayContent.replace(/\[NOTEBOOK_CONTEXT:.*?\]\n\n/s, '');
+        cleanAiContent = aiContent.replace(/\[NOTEBOOK_CONTEXT:.*?\]\n\n/s, '');
+      }
+    }
+
+    // Create user message with display content (without voice prefix and notebook metadata)
     const userMessage: ClaraMessage = {
       id: generateId(),
       role: 'user',
-      content: displayContent, // Display without voice prefix
+      content: cleanDisplayContent, // Clean display content
       timestamp: new Date(),
       attachments: attachments,
       metadata: {
-        isVoiceMessage: isVoiceMessage // Mark as voice message for potential styling
+        isVoiceMessage: isVoiceMessage, // Mark as voice message for potential styling
+        notebookContext: notebookContext // Include notebook context for UI display
       }
     };
 
@@ -1791,10 +1833,10 @@ Now tell me what is the result "`;
       clearErrorNotifications();
 
       // Send message with streaming callback and conversation context
-      // Use aiContent (with voice prefix) for AI processing
+      // Use cleanAiContent (processed content with notebook context properly formatted)
       // IMPORTANT: Use enforcedConfig to ensure streaming mode settings are applied
       const aiMessage = await claraApiService.sendChatMessage(
-        aiContent, // Send full content including voice prefix to AI
+        cleanAiContent, // Send clean AI content (includes notebook context if present)
         enforcedConfig, // Use enforced config instead of original sessionConfig.aiConfig
         attachments,
         systemPrompt,

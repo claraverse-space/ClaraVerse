@@ -375,7 +375,7 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
       // Check if settings store exists - memory uses settings store with prefixed keys
       await indexedDBService.getAll('settings');
     } catch (error) {
-      console.log('🧠 Memory store will be created on first use');
+      // console.log('🧠 Memory store will be created on first use');
     }
   };
 
@@ -395,37 +395,37 @@ const ClaraSweetMemory: React.FC<ClaraSweetMemoryProps> = ({
   ): boolean => {
     // Check if feature is enabled
     if (!isEnabled) {
-      console.log('🧠 DEBUG: Feature disabled');
+      // console.log('🧠 DEBUG: Feature disabled');
       return false;
     }
 
     // Check word count - skip if too short or too long
     const wordCount = countWords(userMessage);
     if (wordCount < MIN_WORD_COUNT) {
-      console.log(`🧠 DEBUG: Message too short (${wordCount} words, min: ${MIN_WORD_COUNT}), skipping memory extraction`);
+      // console.log(`🧠 DEBUG: Message too short (${wordCount} words, min: ${MIN_WORD_COUNT}), skipping memory extraction`);
       return false;
     }
     
     if (wordCount > MAX_WORD_COUNT) {
-      console.log(`🧠 DEBUG: Message too long (${wordCount} words, max: ${MAX_WORD_COUNT}), skipping memory extraction`);
+      // console.log(`🧠 DEBUG: Message too long (${wordCount} words, max: ${MAX_WORD_COUNT}), skipping memory extraction`);
       return false;
     }
 
     // Check if we're already processing this message
     const messageId = assistantMessage.id;
     if (processingRef.current.has(messageId)) {
-      console.log('🧠 DEBUG: Already processing this message:', messageId);
+      // console.log('🧠 DEBUG: Already processing this message:', messageId);
       return false;
     }
 
     // Rate limiting - reduced to allow more frequent memory extraction in conversations
     const now = Date.now();
     if (now - lastProcessedRef.current < RATE_LIMIT_INTERVAL) {
-      console.log(`🧠 DEBUG: Rate limiting memory extraction (last processed: ${lastProcessedRef.current}, now: ${now}, interval: ${RATE_LIMIT_INTERVAL}ms)`);
+      // console.log(`🧠 DEBUG: Rate limiting memory extraction (last processed: ${lastProcessedRef.current}, now: ${now}, interval: ${RATE_LIMIT_INTERVAL}ms)`);
       return false;
     }
 
-    console.log('🧠 DEBUG: All checks passed - should process memory');
+    // console.log('🧠 DEBUG: All checks passed - should process memory');
     return true;
   };
 

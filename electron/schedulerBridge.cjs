@@ -89,14 +89,9 @@ class SchedulerBridge {
               try {
                 // Check if schedulerStorage is available
                 if (typeof window !== 'undefined' && window.schedulerStorage) {
-                  console.log('📋 Loading tasks due for execution...');
-                  console.log('🔍 Available on window:', Object.keys(window).filter(k => k.includes('agent') || k.includes('scheduler')));
-                  console.log('🔍 agentWorkflowStorage type:', typeof window.agentWorkflowStorage);
-                  console.log('🔍 agentWorkflowStorage methods:', window.agentWorkflowStorage ? Object.getOwnPropertyNames(Object.getPrototypeOf(window.agentWorkflowStorage)) : 'none');
                   
                   // Get tasks that are due
                   const tasksDue = await window.schedulerStorage.getTasksDueForExecution();
-                  console.log('📊 Found', tasksDue.length, 'tasks due for execution');
                   
                   if (tasksDue.length > 0) {
                     // Notify about overdue tasks
@@ -116,7 +111,6 @@ class SchedulerBridge {
                     // Execute each task
                     for (const task of tasksDue) {
                       try {
-                        console.log('🚀 Executing scheduled task:', task.agentName);
                         
                         // Try to execute manually using available globals
                         if (window.ClaraFlowRunner && window.agentWorkflowStorage) {

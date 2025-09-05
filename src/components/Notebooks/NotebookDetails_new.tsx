@@ -23,11 +23,15 @@ import {
   Sparkles,
   PieChart,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Maximize2
 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
-import NotebookChat from './NotebookChat';
+import CreateDocumentModal from './CreateDocumentModal';
+import FileViewerModal from './FileViewerModal';
+import NotebookChat from './NotebookChat_clara';
 import GraphViewer from './GraphViewer';
+import GraphViewerModal from './GraphViewerModal';
 import { 
   claraNotebookService, 
   NotebookResponse, 
@@ -38,6 +42,7 @@ import { claraApiService } from '../../services/claraApiService';
 import { ClaraModel } from '../../types/clara_assistant_types';
 import { useClaraCoreAutostart } from '../../hooks/useClaraCoreAutostart';
 import ClaraCoreStatusBanner from './ClaraCoreStatusBanner';
+import { notebookFileStorage } from '../../services/notebookFileStorage';
 
 interface ChatMessage {
   id: string;
@@ -70,7 +75,12 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showCreateDocModal, setShowCreateDocModal] = useState(false);
+  const [showFileViewerModal, setShowFileViewerModal] = useState(false);
+  const [selectedDocumentForViewing, setSelectedDocumentForViewing] = useState<NotebookDocumentResponse | null>(null);
+  const [localFileAvailability, setLocalFileAvailability] = useState<Record<string, boolean>>({});
   const [showGraphModal, setShowGraphModal] = useState(false);
+  const [showGraphViewerModal, setShowGraphViewerModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isEditingLLM, setIsEditingLLM] = useState(false);
   const [selectedLLMProvider, setSelectedLLMProvider] = useState('');
@@ -96,6 +106,11 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
   useEffect(() => {
     loadDocuments();
   }, [notebook.id]);
+
+  // Check local file availability when documents change
+  useEffect(() => {
+    checkLocalFileAvailability();
+  }, [documents]);
 
   // Load models when providers change
   useEffect(() => {
@@ -156,6 +171,61 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
       setModels(allModels);
     } catch (error) {
       console.error('Failed to load models:', error);
+    }
+  };
+
+  const checkLocalFileAvailability = async () => {
+    if (documents.length === 0) return;
+
+    try {
+      const availability: Record<string, boolean> = {};
+      
+      // Check each document's availability in parallel
+      const availabilityPromises = documents.map(async (doc) => {
+        const isAvailable = await notebookFileStorage.isFileAvailable(doc.id);
+        availability[doc.id] = isAvailable;
+        return { id: doc.id, available: isAvailable };
+      });
+
+      await Promise.all(availabilityPromises);
+      setLocalFileAvailability(availability);
+    } catch (error) {
+      console.error('Failed to check local file availability:', error);
+    }
+  };
+
+  const handleDocumentClick = (document: NotebookDocumentResponse) => {
+    setSelectedDocumentForViewing(document);
+    setShowFileViewerModal(true);
+  };
+
+  const storeFileLocally = async (file: File, documentId: string) => {
+    try {
+      await notebookFileStorage.storeFile(documentId, notebook.id, file);
+      
+      // Update availability state
+      setLocalFileAvailability(prev => ({
+        ...prev,
+        [documentId]: true
+      }));
+    } catch (error) {
+      console.error('Failed to store file locally:', error);
+      // Don't throw error - local storage is optional
+    }
+  };
+
+  const storeTextFileLocally = async (filename: string, content: string, documentId: string) => {
+    try {
+      await notebookFileStorage.storeTextFile(documentId, notebook.id, filename, content);
+      
+      // Update availability state
+      setLocalFileAvailability(prev => ({
+        ...prev,
+        [documentId]: true
+      }));
+    } catch (error) {
+      console.error('Failed to store text file locally:', error);
+      // Don't throw error - local storage is optional
     }
   };
 
@@ -229,6 +299,20 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
     try {
       const uploadedDocs = await claraNotebookService.uploadDocuments(notebook.id, files);
       
+      // Store files locally in IndexedDB (in parallel with upload)
+      const storePromises = files.map((file, index) => {
+        const doc = uploadedDocs[index];
+        if (doc) {
+          return storeFileLocally(file, doc.id);
+        }
+        return Promise.resolve();
+      });
+      
+      // Don't await - let local storage happen in background
+      Promise.all(storePromises).catch(error => {
+        console.warn('Some files could not be stored locally:', error);
+      });
+      
       // Add new documents to the list
       setDocuments(prev => [...uploadedDocs, ...prev]);
       
@@ -240,6 +324,7 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
       onNotebookUpdated(updatedNotebook);
       
       setShowUploadModal(false);
+      setShowCreateDocModal(false);
     } catch (error) {
       console.error('Upload failed:', error);
       throw error; // Re-throw so the modal can handle it
@@ -259,8 +344,20 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
     try {
       await claraNotebookService.deleteDocument(notebook.id, documentId);
       
+      // Remove from local storage (don't await - it's optional)
+      notebookFileStorage.deleteFile(documentId).catch(error => {
+        console.warn('Failed to delete file from local storage:', error);
+      });
+      
       // Remove from local state
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      
+      // Update availability state
+      setLocalFileAvailability(prev => {
+        const updated = { ...prev };
+        delete updated[documentId];
+        return updated;
+      });
       
       // Update notebook document count
       const updatedNotebook = {
@@ -420,8 +517,15 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
                 </h3>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => setShowCreateDocModal(true)}
+                    className="glassmorphic bg-white/60 dark:bg-gray-800/60 px-3 py-1.5 rounded-lg border border-white/30 dark:border-gray-700/30 shadow-md flex items-center space-x-1.5 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all"
+                  >
+                    <FileText className="h-3 w-3 text-xs font-semibold text-sakura-600 dark:text-sakura-400" />
+                    <span className="text-xs font-semibold text-sakura-700 dark:text-sakura-300">Create Doc</span>
+                  </button>
+                  <button
                     onClick={() => setShowUploadModal(true)}
-                    className="glassmorphic bg-white/60 dark:bg-gray-800/60 px-3 py-1.5 rounded-lg border border-white/30 dark:border-gray-700/30 shadow-md flex items-center space-x-1.5"
+                    className="glassmorphic bg-white/60 dark:bg-gray-800/60 px-3 py-1.5 rounded-lg border border-white/30 dark:border-gray-700/30 shadow-md flex items-center space-x-1.5 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all"
                   >
                     <Upload className="h-3 w-3 text-xs font-semibold text-gray-700 dark:text-gray-300" />
                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Upload Docs</span>
@@ -480,13 +584,22 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
                       }
                     </p>
                     {documents.length === 0 && (
-                      <button
-                        onClick={() => setShowUploadModal(true)}
-                        className="inline-flex items-center gap-1 glassmorphic bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 shadow-md hover:shadow-lg border border-white/20"
-                      >
-                        <Upload className="h-2.5 w-2.5" />
-                        Upload Documents
-                      </button>
+                      <div className="flex items-center gap-2 justify-center">
+                        <button
+                          onClick={() => setShowCreateDocModal(true)}
+                          className="inline-flex items-center gap-1 glassmorphic bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 shadow-md hover:shadow-lg border border-white/20"
+                        >
+                          <FileText className="h-2.5 w-2.5" />
+                          Create Document
+                        </button>
+                        <button
+                          onClick={() => setShowUploadModal(true)}
+                          className="inline-flex items-center gap-1 glassmorphic bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 shadow-md hover:shadow-lg border border-white/20"
+                        >
+                          <Upload className="h-2.5 w-2.5" />
+                          Upload Documents
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -495,7 +608,6 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
                   {filteredDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => setSelectedDocument(doc)}
                       className={`glassmorphic rounded-lg cursor-pointer transition-all duration-200 border backdrop-blur-xl shadow-md hover:shadow-lg ${
                         selectedDocument?.id === doc.id 
                           ? 'ring-1 ring-blue-500/50 bg-blue-50/80 dark:bg-blue-900/30 border-blue-200/50 dark:border-blue-700/30' 
@@ -504,19 +616,39 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
                     >
                       <div className="p-3">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3 flex-1 min-w-0">
-                            <div className="p-1.5 glassmorphic bg-white/60 dark:bg-gray-700/60 rounded-lg border border-white/30 dark:border-gray-600/30">
+                          <div 
+                            className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer"
+                            onClick={() => {
+                              setSelectedDocument(doc);
+                              handleDocumentClick(doc);
+                            }}
+                          >
+                            <div className="relative p-1.5 glassmorphic bg-white/60 dark:bg-gray-700/60 rounded-lg border border-white/30 dark:border-gray-600/30">
                               {getFileIcon(doc.filename)}
+                              {/* Local availability indicator */}
+                              {localFileAvailability[doc.id] && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800 shadow-sm" title="Available locally" />
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-900 dark:text-white truncate mb-1">
-                                {doc.filename}
-                              </p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                                  {doc.filename}
+                                </p>
+                                {localFileAvailability[doc.id] && (
+                                  <span className="text-[8px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded-full font-medium">
+                                    LOCAL
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2 mb-1">
                                 {getStatusBadge(doc.status, doc.error)}
                               </div>
                               <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
                                 {formatDate(doc.uploaded_at)}
+                                {localFileAvailability[doc.id] && (
+                                  <span className="ml-2 text-green-600 dark:text-green-400">• Click to view</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -595,12 +727,33 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
 
       case 'graph':
         return (
-          <div className="h-full p-6">
-            <div className="h-full glassmorphic rounded-2xl overflow-hidden bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl border border-white/30 dark:border-gray-700/30 shadow-xl">
-              <div className="h-full bg-gradient-to-br from-white/80 to-white/40 dark:from-gray-900/80 dark:to-gray-900/40 backdrop-blur-sm">
-                <GraphViewer 
-                  notebookId={notebook.id}
-                />
+          <div className="h-full flex flex-col">
+            {/* Graph Header with Full View Button */}
+            <div className="flex-shrink-0 p-4 border-b border-white/20 dark:border-gray-800/30">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 dark:from-green-400 dark:to-emerald-400 bg-clip-text text-transparent flex items-center gap-2">
+                  <Network className="w-5 h-5 text-green-500" />
+                  Knowledge Graph
+                </h3>
+                <button
+                  onClick={() => setShowGraphViewerModal(true)}
+                  className="glassmorphic bg-white/60 dark:bg-gray-800/60 px-3 py-1.5 rounded-lg border border-white/30 dark:border-gray-700/30 shadow-md flex items-center space-x-1.5 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all"
+                >
+                  <Maximize2 className="h-3 w-3 text-green-600 dark:text-green-400" />
+                  <span className="text-xs font-semibold text-green-700 dark:text-green-300">Open 3D View</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Graph Content */}
+            <div className="flex-1 p-1">
+              <div className="h-full glassmorphic rounded-2xl overflow-hidden bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl border border-white/30 dark:border-gray-700/30 shadow-xl">
+                <div className="h-full bg-gradient-to-br from-white/80 to-white/40 dark:from-gray-900/80 dark:to-gray-900/40 backdrop-blur-sm">
+                  <GraphViewer 
+                    notebookId={notebook.id}
+                    onViewFull={() => setShowGraphViewerModal(true)}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -910,10 +1063,40 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
         />
       )}
 
+      {showCreateDocModal && (
+        <CreateDocumentModal 
+          onClose={() => setShowCreateDocModal(false)}
+          onUpload={handleDocumentUpload}
+          onTextFileCreated={(filename, content, documentId) => {
+            // Store text file locally after it's uploaded
+            storeTextFileLocally(filename, content, documentId);
+          }}
+        />
+      )}
+
+      {showFileViewerModal && selectedDocumentForViewing && (
+        <FileViewerModal 
+          documentId={selectedDocumentForViewing.id}
+          filename={selectedDocumentForViewing.filename}
+          onClose={() => {
+            setShowFileViewerModal(false);
+            setSelectedDocumentForViewing(null);
+          }}
+        />
+      )}
+
       {showGraphModal && (
         <GraphViewer 
           notebookId={notebook.id}
           onClose={() => setShowGraphModal(false)}
+        />
+      )}
+
+      {showGraphViewerModal && (
+        <GraphViewerModal
+          notebookId={notebook.id}
+          onClose={() => setShowGraphViewerModal(false)}
+          initialViewMode="html"
         />
       )}
 

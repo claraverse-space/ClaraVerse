@@ -91,6 +91,15 @@ export const WALLPAPER_SIZE_OPTIONS = [
   { value: 'tile', label: 'Tile', description: 'Repeat image as tiles' },
 ];
 
+// Default wallpaper configuration
+export const DEFAULT_WALLPAPER_ID = 'gradient-aurora';
+
+// Helper function to get default wallpaper
+export function getDefaultWallpaper() {
+  const defaultWallpaper = BUILTIN_WALLPAPERS.find(w => w.id === DEFAULT_WALLPAPER_ID);
+  return defaultWallpaper?.url || null;
+}
+
 // Built-in wallpaper collection
 export const BUILTIN_WALLPAPERS = [
   {

@@ -4,6 +4,7 @@ import LumaUILiteProjectModal from './lumauilite_components/LumaUILiteProjectMod
 import LumaUILiteEditor from './lumauilite_components/LumaUILiteEditor';
 import LumaUILiteAppPreview from './lumauilite_components/LumaUILiteAppPreview';
 import { db } from '../db';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 
 export interface LiteProjectFile {
   id: string;
@@ -53,9 +54,20 @@ const LumaUILite: React.FC = () => {
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();

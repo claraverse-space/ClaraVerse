@@ -445,16 +445,16 @@ export class ClaraDatabaseService {
   private async recordToMessage(record: ClaraMessageRecord): Promise<ClaraMessage> {
     const attachments = await this.getMessageFiles(record.id);
     
-    console.log('📦 Loading message from database:', {
-      messageId: record.id,
-      role: record.role,
-      contentLength: record.content.length,
-      attachmentsCount: attachments.length,
-      attachmentIds: attachments.map(att => att.id),
-      attachmentTypes: attachments.map(att => att.type),
-      hasImageAttachments: attachments.some(att => att.type === 'image'),
-      contentPreview: record.content.substring(0, 100) + (record.content.length > 100 ? '...' : '')
-    });
+    // console.log('📦 Loading message from database:', {
+    //   messageId: record.id,
+    //   role: record.role,
+    //   contentLength: record.content.length,
+    //   attachmentsCount: attachments.length,
+    //   attachmentIds: attachments.map(att => att.id),
+    //   attachmentTypes: attachments.map(att => att.type),
+    //   hasImageAttachments: attachments.some(att => att.type === 'image'),
+    //   contentPreview: record.content.substring(0, 100) + (record.content.length > 100 ? '...' : '')
+    // });
     
     return {
       ...record,

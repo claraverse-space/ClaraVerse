@@ -8,6 +8,7 @@ import { Plus, Trash2, Check, X,  AlertCircle,  ExternalLink, RefreshCcw, Termin
 import type { ElectronAPI, SetupStatus } from '../types/electron';
 import type { WebviewTag } from 'electron';
 import { db } from '../db';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 import { prefetchAndStoreWorkflows } from './n8n_components/utils/workflowsDB';
 
 // Define the expected structure for service ports
@@ -197,9 +198,20 @@ const N8N: React.FC<N8NProps> = ({ onPageChange }) => {
         const wallpaper = await db.getWallpaper();
         if (wallpaper) {
           setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
         }
       } catch (error) {
         console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
       }
     };
     loadWallpaper();

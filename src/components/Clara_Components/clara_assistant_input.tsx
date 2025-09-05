@@ -54,7 +54,8 @@ import {
   Cpu,
   RefreshCw,
   MessageSquare,
-  MoreHorizontal
+  MoreHorizontal,
+  BookOpen
 } from 'lucide-react';
 
 // Import types
@@ -92,6 +93,9 @@ import { claraDB } from '../../db/claraDatabase';
 
 // Import API service
 import { claraApiService } from '../../services/claraApiService';
+
+// Import notebook service
+import { claraNotebookService } from '../../services/claraNotebookService';
 
 
 // Import notification service
@@ -750,6 +754,10 @@ const OverflowMenu: React.FC<{
   isPythonStarting?: boolean;
   onVoiceModeToggle?: () => void;
   onStartPythonBackend?: () => void;
+  // Notebook-related props
+  isNotebookMode?: boolean;
+  selectedNotebook?: any | null;
+  onNotebookModeToggle?: () => void;
   // Settings
   showAdvancedOptionsPanel?: boolean;
   onAdvancedOptionsToggle?: (show?: boolean) => void;
@@ -765,6 +773,9 @@ const OverflowMenu: React.FC<{
   isPythonStarting = false,
   onVoiceModeToggle,
   onStartPythonBackend,
+  isNotebookMode = false,
+  selectedNotebook = null,
+  onNotebookModeToggle,
   showAdvancedOptionsPanel = false,
   onAdvancedOptionsToggle,
   triggerRef
@@ -903,6 +914,47 @@ const OverflowMenu: React.FC<{
             </div>
             {isScreenSharing && (
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            )}
+          </button>
+
+          {/* Notebook Mode */}
+          <button
+            onClick={() => {
+              onNotebookModeToggle?.();
+              onClose();
+            }}
+            className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
+              isNotebookMode 
+                ? 'bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-900/50' 
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
+              isNotebookMode 
+                ? 'bg-purple-200 dark:bg-purple-800/50' 
+                : 'bg-purple-100 dark:bg-purple-900/30'
+            }`}>
+              <BookOpen className={`w-4 h-4 ${
+                isNotebookMode 
+                  ? 'text-purple-700 dark:text-purple-400' 
+                  : 'text-purple-600 dark:text-purple-400'
+              }`} />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Notebook Mode {isNotebookMode && selectedNotebook && (
+                  <span className="text-xs text-purple-600 dark:text-purple-400">({selectedNotebook.name})</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {isNotebookMode 
+                  ? `Using "${selectedNotebook?.name}" for enhanced responses` 
+                  : 'Use notebook content to enhance responses'
+                }
+              </div>
+            </div>
+            {isNotebookMode && (
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
             )}
           </button>
 
@@ -1069,6 +1121,130 @@ const ScreenSourcePicker: React.FC<{
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-500 dark:text-gray-400">
               💡 Tip: Choose "Entire Screen" to share everything, or select a specific window for privacy
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Notebook Picker Component - Shows available notebooks for selection
+ */
+const NotebookPicker: React.FC<{
+  show: boolean;
+  notebooks: any[];
+  onSelect: (notebook: any) => void;
+  onClose: () => void;
+  isLoading: boolean;
+}> = ({ show, notebooks, onSelect, onClose, isLoading }) => {
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (show) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [show, onClose]);
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div 
+        ref={pickerRef}
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Choose Notebook for Enhanced Responses
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Select a notebook to use its content to enhance Clara's responses
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 max-h-96 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600 dark:text-gray-400">Loading notebooks...</span>
+            </div>
+          ) : notebooks.length === 0 ? (
+            <div className="text-center py-8">
+              <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                No notebooks available
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-4">
+                Create a notebook first using the Notebooks section.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {notebooks.map((notebook) => (
+                <button
+                  key={notebook.id}
+                  onClick={() => onSelect(notebook)}
+                  className="flex items-center gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200 text-left"
+                >
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white text-xl flex-shrink-0">
+                    📚
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                      {notebook.name}
+                    </h3>
+                    {notebook.description && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {notebook.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{notebook.document_count} documents</span>
+                      <span>{new Date(notebook.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="text-blue-600 dark:text-blue-400">
+                    <ChevronDown className="w-5 h-5 rotate-270" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              💡 Tip: Notebook mode enhances Clara's responses with relevant content from your selected notebook
             </div>
             <button
               onClick={onClose}
@@ -3692,6 +3868,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null); // For click-outside detection
   const overflowMenuTriggerRef = useRef<HTMLButtonElement>(null); // For overflow menu trigger
+  const notebookDropdownRef = useRef<HTMLDivElement>(null); // For notebook dropdown click-outside detection
+  const screenDropdownRef = useRef<HTMLDivElement>(null); // For screen dropdown click-outside detection
 
   // Model preloading state
   const [hasPreloaded, setHasPreloaded] = useState(false);
@@ -3751,6 +3929,17 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   // Screen source picker state
   const [showScreenPicker, setShowScreenPicker] = useState(false);
   const [availableSources, setAvailableSources] = useState<Array<{ id: string; name: string; thumbnail: string }>>([]);
+  const [showScreenDropdown, setShowScreenDropdown] = useState(false);
+  const [currentScreenSource, setCurrentScreenSource] = useState<{ id: string; name: string; thumbnail: string } | null>(null);
+
+  // Notebook selection state
+  const [isNotebookMode, setIsNotebookMode] = useState(false);
+  const [selectedNotebook, setSelectedNotebook] = useState<any | null>(null);
+  const [availableNotebooks, setAvailableNotebooks] = useState<any[]>([]);
+  const [showNotebookPicker, setShowNotebookPicker] = useState(false);
+  const [showNotebookDropdown, setShowNotebookDropdown] = useState(false);
+  const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(false);
+  const [isQueryingNotebook, setIsQueryingNotebook] = useState(false);
 
   // Progress tracking state for context loading feedback
   const [progressState, setProgressState] = useState<{
@@ -3775,17 +3964,17 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       return;
     }
 
-    console.log('🔧 Setting up progress event listeners...');
-    console.log('📡 Electron API available:', !!electron);
-    console.log('📡 Electron receive function:', !!electron?.receive);
+    // console.log('🔧 Setting up progress event listeners...');
+    // console.log('📡 Electron API available:', !!electron);
+    // console.log('📡 Electron receive function:', !!electron?.receive);
 
     const handleProgressUpdate = (progressData: any) => {
-      console.log('📊 Progress Update Received:', progressData);
-      console.log('  Type:', progressData.type);
-      console.log('  Progress:', progressData.progress);
-      console.log('  Message:', progressData.message);
-      console.log('  Details:', progressData.details);
-      console.log('  Current isLoading:', isLoading);
+      // console.log('📊 Progress Update Received:', progressData);
+      // console.log('  Type:', progressData.type);
+      // console.log('  Progress:', progressData.progress);
+      // console.log('  Message:', progressData.message);
+      // console.log('  Details:', progressData.details);
+      // console.log('  Current isLoading:', isLoading);
       
       // Show progress for message sending, model loading, and other important operations
       // Allow progress for model loading/preloading even when not actively sending messages
@@ -3796,7 +3985,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       );
       
       if (!isLoading && !isAllowedOperation) {
-        console.log('📊 Ignoring progress update - not actively sending message and not an allowed operation');
+        // console.log('📊 Ignoring progress update - not actively sending message and not an allowed operation');
         return;
       }
       
@@ -3808,7 +3997,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           message: progressData.message,
           details: progressData.details
         };
-        console.log('  Setting new progressState (message send active):', newState);
+        // console.log('  Setting new progressState (message send active):', newState);
         return newState;
       });
 
@@ -3816,13 +4005,13 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       if (progressData.progress === -1) {
         // Indeterminate progress - hide after 3 seconds
         setTimeout(() => {
-          console.log('📊 Auto-hiding indeterminate progress after 3s');
+          // console.log('📊 Auto-hiding indeterminate progress after 3s');
           setProgressState(prev => ({ ...prev, isActive: false }));
         }, 3000);
       } else if (progressData.progress >= 100) {
         // Progress complete - hide after 1.5 seconds to show completion
         setTimeout(() => {
-          console.log('📊 Auto-hiding completed progress (100%) after 1.5s');
+          // console.log('📊 Auto-hiding completed progress (100%) after 1.5s');
           setProgressState(prev => ({ ...prev, isActive: false }));
         }, 1500);
       } else if (progressData.progress > 0) {
@@ -3830,24 +4019,24 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         // This gets reset with each new progress update
         clearTimeout((window as any).progressAutoHideTimeout);
         (window as any).progressAutoHideTimeout = setTimeout(() => {
-          console.log('📊 Auto-hiding stale progress after 10s timeout');
+          // console.log('📊 Auto-hiding stale progress after 10s timeout');
           setProgressState(prev => ({ ...prev, isActive: false }));
         }, 10000);
       }
     };
 
     const handleProgressComplete = () => {
-      console.log('📊 Progress Complete - hiding progress indicator');
+      // console.log('📊 Progress Complete - hiding progress indicator');
       setProgressState(prev => ({ ...prev, isActive: false }));
     };
 
     // Enhanced logging wrapper
     const debugHandleProgressUpdate = (progressData: any) => {
-      console.log('🔥 RAW IPC Event Received:', {
-        progressData,
-        timestamp: new Date().toISOString(),
-        isLoading: isLoading // Include loading state in logs
-      });
+      // console.log('🔥 RAW IPC Event Received:', {
+      //   progressData,
+      //   timestamp: new Date().toISOString(),
+      //   isLoading: isLoading // Include loading state in logs
+      // });
       handleProgressUpdate(progressData);
     };
 
@@ -3944,9 +4133,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     (window as any).testProgressUI = testProgressUI;
     (window as any).testContextProgress = testContextProgress;
     
-    console.log('🔧 Progress UI test functions available:');
-    console.log('  - testProgressUI() - Test model loading progress');
-    console.log('  - testContextProgress() - Test context processing progress');
     
     return () => {
       delete (window as any).testProgressUI;
@@ -3957,7 +4143,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   // Auto-hide progress when loading completes
   useEffect(() => {
     if (!isLoading && progressState.isActive) {
-      console.log('📊 Loading completed - auto-hiding progress after 1s');
       const timeout = setTimeout(() => {
         setProgressState(prev => ({ ...prev, isActive: false }));
       }, 1000);
@@ -3996,7 +4181,6 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       
       // If we're in agent mode and have no MCP servers enabled, automatically enable python-mcp
       if (!hasPythonMCP && !hasOtherServers) {
-        console.log('🐍 Auto-enabling python-mcp server for agent mode (no other servers detected)');
         
         const updatedConfig = {
           ...sessionConfig.aiConfig,
@@ -4095,6 +4279,28 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       
+      // Handle notebook dropdown
+      if (showNotebookDropdown) {
+        // Don't close if clicking inside the notebook dropdown or its button
+        const clickedElement = target as Element;
+        if (clickedElement.closest && clickedElement.closest('[data-notebook-dropdown]')) {
+          return;
+        }
+        setShowNotebookDropdown(false);
+        return;
+      }
+      
+      // Handle screen dropdown
+      if (showScreenDropdown) {
+        // Don't close if clicking inside the screen dropdown or its button
+        const clickedElement = target as Element;
+        if (clickedElement.closest && clickedElement.closest('[data-screen-dropdown]')) {
+          return;
+        }
+        setShowScreenDropdown(false);
+        return;
+      }
+      
       // Only close if advanced options panel is open
       if (showAdvancedOptionsPanel && onAdvancedOptionsToggle) {
         // Don't close if clicking inside the input container
@@ -4123,7 +4329,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       }
     };
 
-    if (showAdvancedOptionsPanel) {
+    if (showAdvancedOptionsPanel || showNotebookDropdown || showScreenDropdown) {
       // Add a small delay to prevent immediate closing when opening
       const timeoutId = setTimeout(() => {
         document.addEventListener('mousedown', handleClickOutside);
@@ -4134,7 +4340,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showAdvancedOptionsPanel, onAdvancedOptionsToggle]);
+  }, [showAdvancedOptionsPanel, showNotebookDropdown, showScreenDropdown, onAdvancedOptionsToggle]);
 
   // Handle typing with model preloading
   const handleInputChange = useCallback((value: string) => {
@@ -4758,6 +4964,69 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       }
     }
     
+    // Query notebook if notebook mode is active
+    if (isNotebookMode && selectedNotebook) {
+      try {
+        console.log('📔 Querying notebook before sending message...');
+        setIsQueryingNotebook(true);
+        
+        // Show notebook querying indicator
+        addInfoNotification(
+          'Querying Notebook',
+          `Searching "${selectedNotebook.name}" for relevant context...`,
+          2000
+        );
+        
+        // Query the notebook using claraNotebookService
+        const notebookResponse = await claraNotebookService.sendChatMessage(selectedNotebook.id, {
+          question: input.trim(),
+          mode: 'hybrid',
+          response_type: 'Multiple Paragraphs',
+          top_k: 60,
+          use_chat_history: false
+        });
+        
+        if (notebookResponse.answer) {
+          console.log('📔 Notebook query successful, storing context for UI display...');
+          
+          // Instead of modifying the prompt, we'll store the notebook context
+          // and let the parent component handle it in the UI
+          const notebookContext = {
+            notebookName: selectedNotebook.name,
+            content: notebookResponse.answer,
+            citations: notebookResponse.citations || [],
+            userQuestion: input.trim()
+          };
+          
+          // Add notebook context to display metadata for UI rendering
+          const displayInfo = `[NOTEBOOK_CONTEXT:${JSON.stringify(notebookContext)}]`;
+          enhancedPrompt = `${displayInfo}\n\n${input}`;
+          
+          addInfoNotification(
+            'Context Found',
+            `Relevant information found in "${selectedNotebook.name}".`,
+            3000
+          );
+        } else {
+          console.warn('No relevant context found in notebook');
+          addInfoNotification(
+            'No Relevant Context',
+            'No specific information found in the notebook for your query.',
+            2000
+          );
+        }
+      } catch (error) {
+        console.error('Error querying notebook:', error);
+        addErrorNotification(
+          'Notebook Query Error',
+          'Failed to query notebook. Sending message without context.',
+          3000
+        );
+      } finally {
+        setIsQueryingNotebook(false);
+      }
+    }
+
     // Send enhanced prompt to AI for processing, but original input for display
     // Store the original input and display attachments in the enhanced prompt metadata
     if (displayAttachments.length > 0) {
@@ -4791,7 +5060,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     
     // Focus the textarea after sending for immediate next input
     focusTextarea();
-  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea, isScreenSharing]);
+  }, [input, files, onSendMessage, convertFilesToAttachments, adjustTextareaHeight, focusTextarea, isScreenSharing, isNotebookMode, selectedNotebook, addInfoNotification, addErrorNotification]);
 
   // Handle AI config changes
   const handleAIConfigChange = useCallback((newConfig: Partial<ClaraAIConfig>) => {
@@ -5608,6 +5877,62 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     };
   }, []);
 
+  // Notebook management functions
+  const loadAvailableNotebooks = useCallback(async () => {
+    setIsLoadingNotebooks(true);
+    try {
+      const notebooks = await claraNotebookService.listNotebooks();
+      setAvailableNotebooks(notebooks);
+      return notebooks;
+    } catch (error) {
+      console.error('Failed to load notebooks:', error);
+      addErrorNotification(
+        'Notebook Loading Failed',
+        'Could not load available notebooks. Make sure the notebook backend is running.',
+        5000
+      );
+      return [];
+    } finally {
+      setIsLoadingNotebooks(false);
+    }
+  }, []);
+
+  const handleNotebookModeToggle = useCallback(async () => {
+    if (isNotebookMode) {
+      // Disable notebook mode
+      setIsNotebookMode(false);
+      setSelectedNotebook(null);
+      addInfoNotification(
+        'Notebook Mode Disabled',
+        'Clara will now respond normally without notebook context.',
+        3000
+      );
+    } else {
+      // Enable notebook mode - show picker
+      const notebooks = await loadAvailableNotebooks();
+      if (notebooks.length === 0) {
+        addErrorNotification(
+          'No Notebooks Available',
+          'Create a notebook first using the Notebooks section before enabling notebook mode.',
+          5000
+        );
+        return;
+      }
+      setShowNotebookPicker(true);
+    }
+  }, [isNotebookMode, loadAvailableNotebooks]);
+
+  const handleNotebookSelect = useCallback((notebook: any) => {
+    setSelectedNotebook(notebook);
+    setIsNotebookMode(true);
+    setShowNotebookPicker(false);
+    addInfoNotification(
+      'Notebook Mode Enabled',
+      `Clara will now use "${notebook.name}" notebook context to enhance responses.`,
+      4000
+    );
+  }, []);
+
   // Screen share handler
   const handleScreenShare = useCallback(async () => {
     try {
@@ -5859,7 +6184,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
         // Get ComfyUI service status using the specific ComfyUI status handler
         const comfyuiStatus = await (window as any).electronAPI.invoke('comfyui-status');
         
-        console.log('🎨 ComfyUI Status Check:', comfyuiStatus);
+        // console.log('🎨 ComfyUI Status Check:', comfyuiStatus);
         
         // Check if ComfyUI is running (status.running should be true)
         if (comfyuiStatus.running) {
@@ -6002,9 +6327,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       }
     };
     
-    console.log('🔧 Image generation debug functions available:');
-    console.log('  - debugImageGeneration() - Show current status');
-    console.log('  - testImageGenConnection() - Test ComfyUI connection');
+    // console.log('🔧 Image generation debug functions available:');
+    // console.log('  - debugImageGeneration() - Show current status');
+    // console.log('  - testImageGenConnection() - Test ComfyUI connection');
     
     // Cleanup
     return () => {
@@ -6255,6 +6580,16 @@ You can right-click on the image to save it or use it in your projects.`;
     try {
       setShowScreenPicker(false);
 
+      // Stop existing stream if any
+      if (screenStream) {
+        console.log('🛑 Stopping existing screen stream before switching sources');
+        screenStream.getTracks().forEach(track => track.stop());
+        setScreenStream(null);
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = null;
+        }
+      }
+
       // Use Electron's desktopCapturer with the selected source
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -6295,11 +6630,13 @@ You can right-click on the image to save it or use it in your projects.`;
 
       setScreenStream(stream);
       setIsScreenSharing(true);
+      setCurrentScreenSource(selectedSource); // Store the current screen source
 
       // Listen for stream end
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         setIsScreenSharing(false);
         setScreenStream(null);
+        setCurrentScreenSource(null);
         if (screenVideoRef.current) {
           screenVideoRef.current.srcObject = null;
         }
@@ -6318,13 +6655,22 @@ You can right-click on the image to save it or use it in your projects.`;
 
     } catch (error: any) {
       console.error('Failed to start screen sharing with selected source:', error);
+      
+      // Reset state if stream creation failed
+      setIsScreenSharing(false);
+      setScreenStream(null);
+      setCurrentScreenSource(null);
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = null;
+      }
+      
       addErrorNotification(
         'Screen Sharing Failed',
         `Failed to start screen sharing: ${error?.message || 'Unknown error'}`,
         5000
       );
     }
-  }, []);
+  }, [screenStream, addInfoNotification, addErrorNotification]);
 
   // Check if Clara's Pocket is currently starting
   const isServiceStarting = offlineProvider?.type === 'claras-pocket' && 
@@ -6421,6 +6767,244 @@ You can right-click on the image to save it or use it in your projects.`;
                   onFileRemoved={handleFileRemoved}
                   isProcessing={isLoading}
                 />
+
+                {/* Notebook Mode Indicator with Dropdown */}
+                {isNotebookMode && selectedNotebook && (
+                  <div className="mt-3 mb-2 px-3 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-700/30 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="p-1 bg-blue-500 rounded">
+                          <BookOpen className="w-3 h-3 text-white" />
+                        </div>
+                        
+                        {/* Notebook Selection Dropdown */}
+                        <div className="relative flex-1 max-w-xs" data-notebook-dropdown>
+                          <button
+                            onClick={() => {
+                              if (availableNotebooks.length === 0) {
+                                loadAvailableNotebooks().then(notebooks => {
+                                  setAvailableNotebooks(notebooks);
+                                  setShowNotebookDropdown(!showNotebookDropdown);
+                                });
+                              } else {
+                                setShowNotebookDropdown(!showNotebookDropdown);
+                              }
+                            }}
+                            className="flex items-center gap-2 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800/30 rounded transition-colors max-w-[200px] w-full"
+                          >
+                            <span className="truncate min-w-0 flex-1">
+                              Notebook: <span className="font-semibold">{selectedNotebook.name}</span>
+                            </span>
+                            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                          </button>
+                          
+                          {/* Dropdown Menu */}
+                          {showNotebookDropdown && (
+                            <div 
+                              ref={notebookDropdownRef}
+                              className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-[200px] overflow-y-auto"
+                            >
+                              {isLoadingNotebooks ? (
+                                <div className="flex items-center justify-center py-3">
+                                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                  <span className="ml-2 text-xs text-gray-600 dark:text-gray-400">Loading...</span>
+                                </div>
+                              ) : availableNotebooks.length === 0 ? (
+                                <div className="p-3 text-xs text-gray-500 dark:text-gray-400 text-center">
+                                  No other notebooks available
+                                </div>
+                              ) : (
+                                availableNotebooks.map((notebook) => (
+                                  <button
+                                    key={notebook.id}
+                                    onClick={() => {
+                                      setSelectedNotebook(notebook);
+                                      setShowNotebookDropdown(false);
+                                      addInfoNotification(
+                                        'Notebook Switched',
+                                        `Now using "${notebook.name}" notebook context.`,
+                                        3000
+                                      );
+                                    }}
+                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                      selectedNotebook.id === notebook.id 
+                                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                        : 'text-gray-700 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="truncate font-medium">{notebook.name}</span>
+                                      {selectedNotebook.id === notebook.id && (
+                                        <CheckCircle className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                                      )}
+                                    </div>
+                                    {notebook.description && (
+                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                                        {notebook.description}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {/* Querying Indicator */}
+                        {isQueryingNotebook && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+                            <div className="w-3 h-3 animate-spin rounded-full border border-blue-500 border-t-transparent"></div>
+                            <span>Reading...</span>
+                          </div>
+                        )}
+                        
+                        {/* Turn Off Notebook Mode Button */}
+                        <button
+                          onClick={() => {
+                            setIsNotebookMode(false);
+                            setSelectedNotebook(null);
+                            setShowNotebookDropdown(false);
+                            addInfoNotification(
+                              'Notebook Mode Disabled',
+                              'Clara will no longer use notebook context.',
+                              3000
+                            );
+                          }}
+                          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors group"
+                          title="Turn off Notebook Mode"
+                        >
+                          <X className="w-3 h-3 text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Screen Sharing Mode Indicator with Dropdown */}
+                {isScreenSharing && currentScreenSource && (
+                  <div className="mt-3 mb-2 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700/30 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="p-1 bg-green-500 rounded">
+                          <Monitor className="w-3 h-3 text-white" />
+                        </div>
+                        
+                        {/* Screen Source Selection Dropdown */}
+                        <div className="relative flex-1 max-w-xs" data-screen-dropdown>
+                          <button
+                            onClick={() => {
+                              if (availableSources.length === 0) {
+                                // Load available sources if not already loaded
+                                const loadSources = async () => {
+                                  const isElectron = typeof window !== 'undefined' && window.electronScreenShare;
+                                  if (isElectron) {
+                                    try {
+                                      const sources = await window.electronScreenShare?.getDesktopSources();
+                                      if (sources) {
+                                        setAvailableSources(sources);
+                                        setShowScreenDropdown(!showScreenDropdown);
+                                      }
+                                    } catch (error) {
+                                      console.error('Failed to load screen sources:', error);
+                                    }
+                                  }
+                                };
+                                loadSources();
+                              } else {
+                                setShowScreenDropdown(!showScreenDropdown);
+                              }
+                            }}
+                            className="flex items-center gap-2 px-2 py-1 text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-800/30 rounded transition-colors max-w-[200px] w-full"
+                          >
+                            <span className="truncate min-w-0 flex-1">
+                              Screen: <span className="font-semibold">{currentScreenSource.name}</span>
+                            </span>
+                            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                          </button>
+                          
+                          {/* Dropdown Menu */}
+                          {showScreenDropdown && (
+                            <div 
+                              ref={screenDropdownRef}
+                              className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-[200px] overflow-y-auto"
+                            >
+                              {availableSources.length === 0 ? (
+                                <div className="flex items-center justify-center py-3">
+                                  <Loader2 className="w-4 h-4 animate-spin text-green-600" />
+                                  <span className="ml-2 text-xs text-gray-600 dark:text-gray-400">Loading...</span>
+                                </div>
+                              ) : (
+                                availableSources.map((source) => (
+                                  <button
+                                    key={source.id}
+                                    onClick={async () => {
+                                      setShowScreenDropdown(false);
+                                      
+                                      // Add small delay to ensure dropdown closes first
+                                      setTimeout(async () => {
+                                        try {
+                                          await handleScreenSourceSelect(source);
+                                          addInfoNotification(
+                                            'Screen Source Switched',
+                                            `Now sharing "${source.name}".`,
+                                            3000
+                                          );
+                                        } catch (error) {
+                                          console.error('Failed to switch screen source:', error);
+                                        }
+                                      }, 100);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                      currentScreenSource.id === source.id 
+                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' 
+                                        : 'text-gray-700 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="truncate font-medium">{source.name}</span>
+                                      {currentScreenSource.id === source.id && (
+                                        <CheckCircle className="w-3 h-3 text-green-600 flex-shrink-0" />
+                                      )}
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {/* Turn Off Screen Sharing Button */}
+                        <button
+                          onClick={() => {
+                            if (screenStream) {
+                              screenStream.getTracks().forEach(track => track.stop());
+                            }
+                            setIsScreenSharing(false);
+                            setScreenStream(null);
+                            setCurrentScreenSource(null);
+                            setShowScreenDropdown(false);
+                            if (screenVideoRef.current) {
+                              screenVideoRef.current.srcObject = null;
+                            }
+                            addInfoNotification(
+                              'Screen Sharing Disabled',
+                              'Screen sharing has been turned off.',
+                              3000
+                            );
+                          }}
+                          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors group"
+                          title="Turn off Screen Sharing"
+                        >
+                          <X className="w-3 h-3 text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Input Field */}
                 <div className={files.length > 0 ? 'mt-3' : ''}>
@@ -6863,6 +7447,9 @@ You can right-click on the image to save it or use it in your projects.`;
                         pythonBackendStatus={pythonBackendStatus}
                         isPythonStarting={isPythonStarting}
                         onStartPythonBackend={handleStartPythonBackend}
+                        isNotebookMode={isNotebookMode}
+                        selectedNotebook={selectedNotebook}
+                        onNotebookModeToggle={handleNotebookModeToggle}
                       />
                     </div>
 
@@ -6882,11 +7469,20 @@ You can right-click on the image to save it or use it in your projects.`;
                       <Tooltip content="Send message (Enter)" position="top">
                         <button
                           onClick={handleSend}
-                          disabled={!input.trim() && files.length === 0}
+                          disabled={!input.trim() && files.length === 0 || isQueryingNotebook}
                           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sakura-500 text-white hover:bg-sakura-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
                         >
-                          <Send className="w-4 h-4" />
-                          <span>Send</span>
+                          {isQueryingNotebook ? (
+                            <>
+                              <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                              <span>Querying Notebook...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-4 h-4" />
+                              <span>Send</span>
+                            </>
+                          )}
                         </button>
                       </Tooltip>
                     )}
@@ -6986,6 +7582,15 @@ You can right-click on the image to save it or use it in your projects.`;
         sources={availableSources}
         onSelect={handleScreenSourceSelect}
         onClose={() => setShowScreenPicker(false)}
+      />
+
+      {/* Notebook Picker */}
+      <NotebookPicker
+        show={showNotebookPicker}
+        notebooks={availableNotebooks}
+        onSelect={handleNotebookSelect}
+        onClose={() => setShowNotebookPicker(false)}
+        isLoading={isLoadingNotebooks}
       />
 
       {/* Image Generation Widget */}

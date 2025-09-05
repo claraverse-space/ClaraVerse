@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Network, ZoomIn, ZoomOut, RefreshCw, AlertCircle, Globe, Grid3X3 } from 'lucide-react';
+import { Network, ZoomIn, ZoomOut, RefreshCw, AlertCircle, Globe, Grid3X3, Maximize2 } from 'lucide-react';
 import { claraNotebookService, GraphData } from '../../services/claraNotebookService';
 
 interface GraphViewerProps {
   notebookId: string;
   onClose?: () => void;
+  onViewFull?: () => void;
 }
 
 // Helper function to safely render unknown values
@@ -20,7 +21,7 @@ const renderSafeValue = (value: unknown): string => {
   }
 };
 
-const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId }) => {
+const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId, onViewFull }) => {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,35 +153,42 @@ const GraphViewer: React.FC<GraphViewerProps> = ({ notebookId }) => {
             <h3 className="text-sm font-medium text-gray-900 dark:text-white">Graph</h3>
           </div>
           
-          {/* Compact Controls */}
-          <div className="flex items-center gap-1">
-            {/* View Mode Toggle */}
-            <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+            {/* Compact Controls */}
+            <div className="flex items-center gap-1">
+              {/* View Full Button */}
               <button
-                onClick={() => setViewMode('nodes')}
-                className={`p-1 rounded text-xs transition-colors ${
-                  viewMode === 'nodes'
-                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400'
-                }`}
-                title="Grid View"
+                onClick={() => onViewFull?.()}
+                className="p-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition-colors"
+                title="View Full Graph"
               >
-                <Grid3X3 className="w-3 h-3" />
+                <Maximize2 className="w-3 h-3" />
               </button>
-              <button
-                onClick={() => setViewMode('html')}
-                className={`p-1 rounded text-xs transition-colors ${
-                  viewMode === 'html'
-                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400'
-                }`}
-                title="Interactive View"
-              >
-                <Globe className="w-3 h-3" />
-              </button>
-            </div>
-
-            {viewMode === 'nodes' && (
+              
+              {/* View Mode Toggle */}
+              <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+                <button
+                  onClick={() => setViewMode('nodes')}
+                  className={`p-1 rounded text-xs transition-colors ${
+                    viewMode === 'nodes'
+                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Grid View"
+                >
+                  <Grid3X3 className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => setViewMode('html')}
+                  className={`p-1 rounded text-xs transition-colors ${
+                    viewMode === 'html'
+                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}
+                  title="Interactive View"
+                >
+                  <Globe className="w-3 h-3" />
+                </button>
+              </div>            {viewMode === 'nodes' && (
               <>
                 {/* Type Filter */}
                 <select

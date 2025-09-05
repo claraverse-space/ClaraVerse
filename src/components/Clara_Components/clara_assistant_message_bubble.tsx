@@ -30,7 +30,8 @@ import {
   Clock,
   AlertCircle,
   MessageSquare,
-
+  ChevronDown,
+  ChevronUp,
   X,
   Eye,
   FileCode,
@@ -65,6 +66,51 @@ import TTSControlPanel from './TTSControlPanel';
 
 // Import centralized thinking configuration
 import { parseThinkingContent as parseThinkingContentUtil } from '../../utils/thinkingTagsConfig';
+
+/**
+ * Notebook context display component
+ */
+const NotebookContextDisplay: React.FC<{
+  notebookContext: {
+    notebookName: string;
+    content: string;
+  };
+}> = ({ notebookContext }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div className="mb-4 border border-blue-200 dark:border-blue-700 rounded-lg bg-blue-50/50 dark:bg-blue-900/20 overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-blue-100/50 dark:hover:bg-blue-800/30 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            📔 Got it from notebook "{notebookContext.notebookName}"
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          )}
+        </div>
+      </button>
+      
+      {/* Expandable Content */}
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-blue-200 dark:border-blue-700 bg-blue-25/30 dark:bg-blue-950/30">
+          <div className="mt-3 text-sm text-blue-800 dark:text-blue-200 font-mono bg-blue-100/50 dark:bg-blue-900/30 rounded p-3 whitespace-pre-wrap">
+            {notebookContext.content}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Thinking content parser and utilities
@@ -1212,6 +1258,11 @@ const ClaraMessageBubble: React.FC<ClaraMessageBubbleProps> = ({
               ))}
             </div>
           ) : null}
+
+          {/* Notebook Context Display for user messages */}
+          {isUser && message.metadata?.notebookContext && (
+            <NotebookContextDisplay notebookContext={message.metadata.notebookContext} />
+          )}
 
           {/* Message Text Content */}
           {/* Show thinking content for assistant messages */}
