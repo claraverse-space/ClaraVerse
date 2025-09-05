@@ -772,8 +772,105 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                 console.error('Failed to save service configurations:', error);
             }
         }
+    };
 
-        onComplete();
+    // New function to handle the complete launch process with waiting for initialization
+    const handleLaunchClara = async () => {
+        setLoading(true);
+        
+        try {
+            // Step 1: Save all preferences and configurations
+            setInitializationStatus('Saving preferences...');
+            setInitializationProgress(5);
+            setInitializationDetails(['Saving user preferences and configurations']);
+            
+            await handleSubmit();
+            
+            setInitializationStatus('Preferences saved');
+            setInitializationProgress(10);
+            setInitializationDetails(prev => [...prev, 'Preferences saved successfully']);
+            
+            // Step 2: Request backend initialization and wait for completion
+            setInitializationStatus('Initializing Clara Core...');
+            setInitializationDetails(prev => [...prev, 'Starting backend initialization']);
+            
+            // Trigger backend initialization if not already started
+            if ((window as any).electronAPI?.requestInitialization) {
+                const initResult = await (window as any).electronAPI.requestInitialization();
+                if (initResult.success) {
+                    setInitializationDetails(prev => [...prev, `Initialization ${initResult.status}`]);
+                }
+            }
+            
+            // Set up a timeout to prevent indefinite waiting
+            const maxWaitTime = 120000; // 2 minutes
+            
+            // Create a promise that resolves when initialization is complete
+            const waitForInitialization = new Promise<boolean>((resolve) => {
+                let statusCheckInterval: NodeJS.Timeout;
+                let timeoutId: NodeJS.Timeout;
+                
+                // Check initialization status every 1 second
+                statusCheckInterval = setInterval(async () => {
+                    try {
+                        if ((window as any).electronAPI?.getInitializationStatus) {
+                            const status = await (window as any).electronAPI.getInitializationStatus();
+                            
+                            if (status.success && status.complete) {
+                                clearInterval(statusCheckInterval);
+                                clearTimeout(timeoutId);
+                                resolve(true);
+                            } else if (status.success && status.inProgress) {
+                                // Update progress based on service status updates we're receiving
+                                const currentProgress = Math.min(90, initializationProgress + 1);
+                                setInitializationProgress(currentProgress);
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Error checking initialization status:', error);
+                    }
+                }, 1000);
+                
+                // Timeout after maxWaitTime
+                timeoutId = setTimeout(() => {
+                    clearInterval(statusCheckInterval);
+                    resolve(false); // Timeout, but don't fail
+                }, maxWaitTime);
+            });
+            
+            const initializationComplete = await waitForInitialization;
+            
+            if (initializationComplete) {
+                setInitializationStatus('Clara is ready!');
+                setInitializationProgress(100);
+                setInitializationDetails(prev => [...prev, 'Clara initialization complete']);
+                
+                // Wait a moment to show the completion message
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+                // Timeout - but still proceed to avoid blocking the user
+                setInitializationStatus('Launching Clara (initialization continuing in background)...');
+                setInitializationProgress(80);
+                setInitializationDetails(prev => [...prev, 'Initialization taking longer than expected, proceeding with launch']);
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            // Complete onboarding
+            onComplete();
+            
+        } catch (error) {
+            console.error('Error during Clara launch:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            setInitializationStatus('Error occurred, but launching anyway...');
+            setInitializationDetails(prev => [...prev, `Error: ${errorMessage}`]);
+            
+            // Still proceed to avoid blocking the user
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            onComplete();
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleNextSection = (nextSection: 'welcome' | 'setup') => {
@@ -2012,20 +2109,8 @@ const Onboarding = ({onComplete}: OnboardingProps) => {
                                     if (step < 8) {
                                         setStep(step + 1);
                                     } else {
-                                        // Launch Clara - just save preferences, don't start services
-                                        setLoading(true);
-                                        try {
-                                            // Only save preferences during onboarding
-                                            await handleSubmit();
-                                            // Complete onboarding - services will be started by the main app
-                                            onComplete();
-                                        } catch (error) {
-                                            console.error('Error saving preferences:', error);
-                                            // Still complete onboarding even if there are preference save errors
-                                            onComplete();
-                                        } finally {
-                                            setLoading(false);
-                                        }
+                                        // Launch Clara with proper initialization waiting
+                                        await handleLaunchClara();
                                     }
                                 }}
                                 disabled={

@@ -3894,6 +3894,9 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const [mcpServers, setMcpServers] = useState<ClaraMCPServer[]>([]);
   const [togglingServers, setTogglingServers] = useState<Set<string>>(new Set());
 
+  // Auto-start python-mcp state
+  const [shouldAutoStartPythonMcp, setShouldAutoStartPythonMcp] = useState(false);
+
   // Quick recording state for mic button
   const [isQuickRecording, setIsQuickRecording] = useState(false);
   const [quickRecordingProgress, setQuickRecordingProgress] = useState(0);
@@ -4177,10 +4180,11 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     if (isAgentMode) {
       const currentServers = sessionConfig.aiConfig.mcp?.enabledServers || [];
       const hasPythonMCP = currentServers.includes('python-mcp');
-      const hasOtherServers = currentServers.length > 0;
       
-      // If we're in agent mode and have no MCP servers enabled, automatically enable python-mcp
-      if (!hasPythonMCP && !hasOtherServers) {
+      // If we're in agent mode and python-mcp is not selected, automatically enable it
+      // This ensures python-mcp is always available when switching to agent mode OR on initial load
+      if (!hasPythonMCP) {
+        console.log('🐍 Auto-enabling python-mcp for agent mode (no python-mcp currently selected)');
         
         const updatedConfig = {
           ...sessionConfig.aiConfig,
@@ -4190,11 +4194,14 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
             autoDiscoverTools: sessionConfig.aiConfig.mcp?.autoDiscoverTools ?? true,
             maxToolCalls: sessionConfig.aiConfig.mcp?.maxToolCalls ?? 5,
             ...sessionConfig.aiConfig.mcp,
-            enabledServers: ['python-mcp']
+            enabledServers: currentServers.length === 0 ? ['python-mcp'] : ['python-mcp', ...currentServers]
           }
         };
         
         onConfigChange({ aiConfig: updatedConfig });
+        
+        // Also trigger auto-start for initial loads (minimal addition)
+        setShouldAutoStartPythonMcp(true);
       }
     }
   }, [
@@ -5287,6 +5294,17 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     }
     
     handleAIConfigChange(newConfig);
+    
+    // Auto-start python-mcp server when switching to agent mode
+    if (!newStreamingMode) {
+      const currentServers = currentAIConfig.mcp?.enabledServers || [];
+      const hasPythonMCP = currentServers.includes('python-mcp');
+      
+      if (!hasPythonMCP) {
+        // Set flag to auto-start python-mcp (will be handled by useEffect)
+        setShouldAutoStartPythonMcp(true);
+      }
+    }
   }, [isStreamingMode, currentAIConfig, handleAIConfigChange]);
 
   // MCP helper functions
@@ -5401,6 +5419,23 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       });
     }
   }, [currentAIConfig.mcp, handleAIConfigChange]);
+
+  // Auto-start python-mcp when flag is set
+  useEffect(() => {
+    if (shouldAutoStartPythonMcp && !isStreamingMode) {
+      console.log('🚀 Auto-starting python-mcp server for agent mode');
+      handleMcpServerToggle('python-mcp', true)
+        .then(() => {
+          console.log('✅ Successfully auto-started python-mcp');
+        })
+        .catch(error => {
+          console.error('❌ Failed to auto-start python-mcp:', error);
+        })
+        .finally(() => {
+          setShouldAutoStartPythonMcp(false); // Reset the flag
+        });
+    }
+  }, [shouldAutoStartPythonMcp, isStreamingMode, handleMcpServerToggle]);
 
   // Filtered MCP servers for search
   const filteredMcpServers = useMemo(() => {
@@ -7255,10 +7290,13 @@ You can right-click on the image to save it or use it in your projects.`;
                         isStreamingMode 
                           ? "MCP available with Agent mode only" 
                           : (() => {
+                              const enabledCount = currentAIConfig.mcp?.enabledServers?.length ?? 0;
                               const activeCount = mcpServers.filter(server => 
                                 server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
                               ).length;
-                              return `MCP Servers (${activeCount} active)`;
+                              return enabledCount > 0 
+                                ? `MCP Servers (${enabledCount} enabled, ${activeCount} active)`
+                                : "Click to configure MCP servers";
                             })()
                       } position="top">
                         <button
@@ -7267,10 +7305,12 @@ You can right-click on the image to save it or use it in your projects.`;
                             isStreamingMode
                               ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
                               : (() => {
-                                  const activeCount = mcpServers.filter(server => 
-                                    server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
-                                  ).length;
-                                  return activeCount > 0
+                                  // Check if MCP is enabled and has any servers configured
+                                  const mcpEnabled = currentAIConfig.features.enableMCP && !isStreamingMode;
+                                  const hasEnabledServers = (currentAIConfig.mcp?.enabledServers?.length ?? 0) > 0;
+                                  
+                                  // Show as active if MCP is enabled with servers, even if not all are running yet
+                                  return (mcpEnabled && hasEnabledServers)
                                     ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400'
                                     : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400';
                                 })()
@@ -7294,17 +7334,13 @@ You can right-click on the image to save it or use it in your projects.`;
                           
                           {/* Server count badge */}
                           {!isStreamingMode && (() => {
-                            const activeCount = mcpServers.filter(server => 
-                              server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
-                            ).length;
-                            return activeCount > 0;
+                            const enabledCount = currentAIConfig.mcp?.enabledServers?.length ?? 0;
+                            return enabledCount > 0;
                           })() && (
                             <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
                               {(() => {
-                                const activeCount = mcpServers.filter(server => 
-                                  server.isRunning && (currentAIConfig.mcp?.enabledServers?.includes(server.name) ?? false)
-                                ).length;
-                                return activeCount > 9 ? '9+' : activeCount;
+                                const enabledCount = currentAIConfig.mcp?.enabledServers?.length ?? 0;
+                                return enabledCount > 9 ? '9+' : enabledCount;
                               })()}
                             </span>
                           )}

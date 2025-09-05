@@ -204,7 +204,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('service-status-update', subscription);
     return () => ipcRenderer.removeListener('service-status-update', subscription);
-  }
+  },
+  
+  // Request initialization
+  requestInitialization: () => ipcRenderer.invoke('request-initialization'),
+  
+  // Get initialization status
+  getInitializationStatus: () => ipcRenderer.invoke('get-initialization-status')
 });
 
 // Add llama-swap service API

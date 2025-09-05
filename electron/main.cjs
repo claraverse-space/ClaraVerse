@@ -275,6 +275,8 @@ let updateService;
 let comfyUIModelService;
 let widgetService;
 let schedulerService;
+let initializationInProgress = false;
+let initializationComplete = false;
 
 // NEW: Enhanced service management (Coexists with existing services)
 let serviceConfigManager;
@@ -791,6 +793,49 @@ function registerLlamaSwapHandlers() {
       return { success: true, filePath: consentFile };
     } catch (error) {
       log.error('Error creating user consent file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Request initialization handler
+  ipcMain.handle('request-initialization', async () => {
+    try {
+      log.info('Frontend requested initialization trigger');
+      
+      // If initialization is already complete, just return success
+      if (initializationComplete) {
+        log.info('Initialization already complete');
+        return { success: true, status: 'complete' };
+      }
+      
+      // If initialization hasn't started or completed, trigger it
+      if (!initializationInProgress) {
+        log.info('Triggering background initialization from frontend request');
+        // Start initialization in the background
+        initializeInBackground().catch(error => {
+          log.error('Background initialization failed:', error);
+        });
+      } else {
+        log.info('Initialization already in progress, no action needed');
+      }
+      
+      return { success: true, status: initializationInProgress ? 'in-progress' : 'started' };
+    } catch (error) {
+      log.error('Error handling initialization request:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get initialization status
+  ipcMain.handle('get-initialization-status', async () => {
+    try {
+      return { 
+        success: true, 
+        inProgress: initializationInProgress,
+        complete: initializationComplete 
+      };
+    } catch (error) {
+      log.error('Error getting initialization status:', error);
       return { success: false, error: error.message };
     }
   });
@@ -5286,6 +5331,9 @@ async function initialize() {
  * Background initialization function that runs after main window is shown
  */
 async function initializeInBackground(selectedFeatures) {
+  // Set initialization flag
+  initializationInProgress = true;
+  
   try {
     // Send status update
     const sendStatusUpdate = (status, details = {}) => {
@@ -5428,8 +5476,13 @@ async function initializeInBackground(selectedFeatures) {
     
     sendStatusUpdate('ready', { message: 'All services initialized' });
     
+    // Mark initialization as complete
+    initializationComplete = true;
+    initializationInProgress = false;
+    
   } catch (error) {
     log.error('Background initialization error:', error);
+    initializationInProgress = false; // Reset flag even on error
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('service-status-update', { 
         status: 'error', 
