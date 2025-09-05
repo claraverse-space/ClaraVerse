@@ -29,12 +29,12 @@ FROM python:3.11-slim as production
 
 # Add labels for the image
 LABEL org.opencontainers.image.title="Clara Backend Optimized"
-LABEL org.opencontainers.image.description="Clara AI Assistant Backend Service (All Features, Optimized Build)"
+LABEL org.opencontainers.image.description="Clara AI Assistant Backend Service (Extended Format Support, GPU Optimized)"
 LABEL org.opencontainers.image.authors="Clara Team"
 LABEL org.opencontainers.image.source="https://github.com/clara17verse/clara"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="Clara"
-LABEL org.opencontainers.image.version="1.0.0-optimized"
+LABEL org.opencontainers.image.version="1.0.0-optimized-extended"
 
 WORKDIR /app
 
@@ -46,6 +46,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     # Keep espeak for TTS fallback
     espeak espeak-data \
+    # Extended document format support
+    antiword \
+    unrtf \
+    poppler-utils \
+    tesseract-ocr \
+    # XML/HTML processing
+    libxml2-dev \
+    libxslt1-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -84,6 +92,15 @@ if ! python -c "import spacy; spacy.load(\"en_core_web_sm\")" 2>/dev/null; then\
     echo "📥 SpaCy model not found, downloading..."\n\
     python -m spacy download en_core_web_sm || echo "SpaCy model download failed, continuing anyway..."\n\
 fi\n\
+\n\
+# Document format support verification\n\
+echo "📄 Document format support:"\n\
+echo "  ✅ PDF, TXT, MD, CSV, JSON, XML, HTML (built-in)"\n\
+python -c "import docx; print(\"  ✅ Word documents (DOCX, DOC)\")" 2>/dev/null || echo "  ❌ Word documents - python-docx missing"\n\
+python -c "import pandas; import openpyxl; print(\"  ✅ Excel files (XLSX, XLS)\")" 2>/dev/null || echo "  ❌ Excel files - pandas/openpyxl missing"\n\
+python -c "import pptx; print(\"  ✅ PowerPoint (PPTX, PPT)\")" 2>/dev/null || echo "  ❌ PowerPoint - python-pptx missing"\n\
+python -c "from striprtf.striprtf import rtf_to_text; print(\"  ✅ RTF files\")" 2>/dev/null || echo "  ❌ RTF files - striprtf missing"\n\
+command -v antiword >/dev/null && echo "  ✅ Textract system tools available" || echo "  ❌ Textract system tools missing"\n\
 \n\
 echo "🚀 Starting Clara Backend with $([ \"$CUDA_AVAILABLE\" = \"1\" ] && echo \"GPU\" || echo \"CPU\") acceleration"\n\
 exec "$@"' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh

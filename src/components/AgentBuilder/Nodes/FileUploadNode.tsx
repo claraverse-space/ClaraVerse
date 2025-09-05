@@ -290,7 +290,7 @@ const FileUploadNode = memo<FileUploadNodeProps>((props) => {
                 type="text"
                 value={acceptedTypes}
                 onChange={(e) => data.onUpdate({ data: { ...data, acceptedTypes: e.target.value } })}
-                placeholder="*/* or image/*,.pdf,.txt"
+                placeholder="*/* or image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.html,.htm,.xml,.csv,.json,.odt,.ods,.odp,.md"
                 className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>

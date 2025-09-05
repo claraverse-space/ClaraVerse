@@ -1,0 +1,32 @@
+# Extended document format support for LightRAG
+# Basic requirements (already included in main requirements.txt)
+PyPDF2>=3.0.0
+fastapi>=0.68.0
+uvicorn>=0.15.0
+
+# Enhanced document processing libraries
+python-docx>=0.8.11          # Word documents (.docx, .doc)
+python-pptx>=0.6.21          # PowerPoint presentations (.pptx, .ppt)
+pandas>=1.3.0                # Excel files (.xlsx, .xls) and CSV processing
+openpyxl>=3.0.9              # Excel .xlsx support
+xlrd>=2.0.1                  # Excel .xls support (legacy)
+striprtf>=0.0.26             # RTF file support (.rtf)
+beautifulsoup4>=4.10.0       # HTML/XML parsing
+lxml>=4.6.0                  # XML parser backend for BeautifulSoup
+
+# Optional: Advanced format support via textract
+# Note: textract requires system dependencies (antiword, unrtf, tesseract, etc.)
+# Uncomment the line below if you want to install textract
+# textract>=1.6.5
+
+# Additional libraries for better text processing
+chardet>=4.0.0               # Character encoding detection
+markdown>=3.3.0              # Better markdown processing
+
+# Note: To install all extended dependencies, run:
+# pip install -r requirements_extended.txt
+
+# For textract installation on different systems:
+# Ubuntu/Debian: sudo apt-get install antiword unrtf poppler-utils tesseract-ocr
+# macOS: brew install antiword unrtf poppler tesseract
+# Windows: Install individual tools manually or use conda-forge

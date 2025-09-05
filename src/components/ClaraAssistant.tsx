@@ -48,6 +48,12 @@ import ClaraSweetMemory, { ClaraSweetMemoryAPI } from './ClaraSweetMemory';
 import ClaraMemoryToast from './Clara_Components/ClaraMemoryToast';
 import { claraMemoryToastService, type MemoryToastState } from '../services/claraMemoryToastService';
 
+// Import First Time Setup Modal
+import FirstTimeSetupModal from './FirstTimeSetupModal';
+
+// Import first-time setup utilities for testing
+import '../utils/firstTimeSetupUtils';
+
 // Import the new memory integration service
 import { claraMemoryIntegration } from '../services/ClaraMemoryIntegration';
 
@@ -487,6 +493,10 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
   // No models modal state
   const [showNoModelsModal, setShowNoModelsModal] = useState(false);
+
+  // First-time setup modal state
+  const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   // Service startup state tracking
   const [serviceStartupStatus, setServiceStartupStatus] = useState<{
@@ -1264,6 +1274,38 @@ const ClaraAssistant: React.FC<ClaraAssistantProps> = ({ onPageChange }) => {
 
     loadProvidersAndModels();
   }, [userInfo]);
+
+  // Check if this is a first-time user and show setup modal when Clara Core is ready
+  useEffect(() => {
+    const checkFirstTimeUser = async () => {
+      try {
+        // Check if the user has completed setup before
+        const hasCompletedSetup = localStorage.getItem('clara-setup-completed');
+        
+        if (!hasCompletedSetup && !isLoadingProviders) {
+          // Check if Clara Core is running successfully
+          const llamaSwap = (window as any).llamaSwap;
+          if (llamaSwap) {
+            const configInfo = await llamaSwap.getConfigurationInfo();
+            if (configInfo.success && configInfo.serviceStatus?.isRunning) {
+              console.log('🎯 First-time user detected with Clara Core running - showing setup modal');
+              setIsFirstTimeUser(true);
+              setShowFirstTimeSetup(true);
+            } else {
+              console.log('⏳ Clara Core not ready yet, waiting...');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking first-time user status:', error);
+      }
+    };
+
+    // Only check after providers are loaded and not during loading
+    if (!isLoadingProviders) {
+      checkFirstTimeUser();
+    }
+  }, [isLoadingProviders, models.length]);
 
   // Monitor models availability to show/hide no models modal
   useEffect(() => {
@@ -2973,6 +3015,159 @@ You can:
     // For cloud providers (OpenAI, etc.), no preload needed
   }, [sessionConfig.aiConfig, messages]);
 
+  // Handle first-time setup completion
+  const handleFirstTimeSetupComplete = useCallback(async (config: {
+    backendType: string;
+    workloadProfile: string;
+    settings: any;
+  }) => {
+    console.log('🎯 First-time setup completed:', config);
+    
+    try {
+      const llamaSwap = (window as any).llamaSwap;
+      if (!llamaSwap) {
+        throw new Error('LlamaSwap service not available');
+      }
+
+      // Step 1: Set the backend if not auto
+      if (config.backendType !== 'auto') {
+        console.log('🔄 Setting backend to:', config.backendType);
+        addInfoNotification(
+          'Configuring Backend',
+          `Setting up ${config.backendType} acceleration...`,
+          3000
+        );
+        const backendResult = await llamaSwap.setBackendOverride(config.backendType);
+        if (!backendResult.success) {
+          throw new Error(`Failed to set backend: ${backendResult.error}`);
+        }
+      }
+
+      // Step 2: Get current configuration and apply workload settings
+      addInfoNotification(
+        'Applying Workload Settings',
+        `Optimizing for ${config.workloadProfile} workloads...`,
+        3000
+      );
+      const configInfo = await llamaSwap.getConfigurationInfo();
+      if (!configInfo.success) {
+        throw new Error('Failed to get current configuration');
+      }
+
+      const currentConfig = configInfo.configuration;
+      if (currentConfig && currentConfig.models) {
+        // Apply workload settings to all models
+        for (const [, modelData] of Object.entries(currentConfig.models)) {
+          const data = modelData as any;
+          if (data.cmd) {
+            // Update model parameters based on workload profile
+            const settings = config.settings;
+            
+            // Create a clean command line with new parameters
+            let updatedCmd = data.cmd;
+            
+            // Update GPU layers (keep existing if present)
+            // Update context size
+            updatedCmd = updatedCmd.replace(/--ctx-size\s+\d+/g, '') + ` --ctx-size ${settings.contextSize}`;
+            
+            // Update batch size
+            updatedCmd = updatedCmd.replace(/--batch-size\s+\d+/g, '') + ` --batch-size ${settings.batchSize}`;
+            
+            // Update flash attention
+            if (settings.flashAttention) {
+              if (!updatedCmd.includes('--flash-attn')) {
+                updatedCmd += ' --flash-attn';
+              }
+            } else {
+              updatedCmd = updatedCmd.replace(/--flash-attn/g, '');
+            }
+            
+            // Update continuous batching
+            if (settings.continuousBatching) {
+              if (!updatedCmd.includes('--cont-batching')) {
+                updatedCmd += ' --cont-batching';
+              }
+            } else {
+              updatedCmd = updatedCmd.replace(/--cont-batching/g, '');
+            }
+            
+            // Update cache types
+            updatedCmd = updatedCmd.replace(/--cache-type-k\s+\w+/g, '') + ` --cache-type-k ${settings.cacheTypeK}`;
+            updatedCmd = updatedCmd.replace(/--cache-type-v\s+\w+/g, '') + ` --cache-type-v ${settings.cacheTypeV}`;
+            
+            // Clean up extra spaces
+            updatedCmd = updatedCmd.replace(/\s+/g, ' ').trim();
+            
+            data.cmd = updatedCmd;
+          }
+        }
+
+        // Step 3: Save the updated configuration
+        console.log('💾 Saving optimized configuration...');
+        addInfoNotification(
+          'Saving Configuration',
+          'Finalizing your personalized settings...',
+          3000
+        );
+        const saveResult = await llamaSwap.saveConfigFromJson(JSON.stringify(currentConfig));
+        if (!saveResult.success) {
+          throw new Error(`Failed to save configuration: ${saveResult.error}`);
+        }
+
+        // Step 4: Restart the service with new configuration
+        console.log('🔄 Restarting Clara Core with new configuration...');
+        addInfoNotification(
+          'Restarting Clara Core',
+          'Applying your configuration and starting optimized AI service...',
+          5000
+        );
+        const restartResult = await llamaSwap.restartWithOverrides();
+        if (!restartResult.success) {
+          throw new Error(`Failed to restart service: ${restartResult.error}`);
+        }
+
+        // Mark setup as completed
+        localStorage.setItem('clara-setup-completed', 'true');
+        localStorage.setItem('clara-setup-timestamp', new Date().toISOString());
+        localStorage.setItem('clara-setup-config', JSON.stringify(config));
+
+        console.log('✅ First-time setup completed successfully!');
+        addInfoNotification(
+          'Setup Complete!',
+          `Clara has been optimized for ${config.workloadProfile} workloads and is ready to go!`,
+          5000
+        );
+      }
+    } catch (error) {
+      console.error('❌ First-time setup failed:', error);
+      addErrorNotification(
+        'Setup Failed',
+        error instanceof Error ? error.message : 'Failed to complete setup. You can configure Clara manually in Backend Configuration.',
+        8000
+      );
+      // Re-throw the error so the modal can handle the loading state
+      throw error;
+    } finally {
+      setShowFirstTimeSetup(false);
+      setIsFirstTimeUser(false);
+    }
+  }, []);
+
+  // Handle first-time setup skip
+  const handleFirstTimeSetupSkip = useCallback(() => {
+    console.log('⏭️ First-time setup skipped by user');
+    localStorage.setItem('clara-setup-completed', 'skipped');
+    localStorage.setItem('clara-setup-timestamp', new Date().toISOString());
+    setShowFirstTimeSetup(false);
+    setIsFirstTimeUser(false);
+    
+    addInfoNotification(
+      'Setup Skipped',
+      'You can configure Clara anytime in Backend Configuration settings.',
+      4000
+    );
+  }, []);
+
   // Handle session config changes
   const handleConfigChange = useCallback((newConfig: Partial<ClaraSessionConfig>) => {
     setSessionConfig(prev => {
@@ -4228,6 +4423,13 @@ ${data.timezone ? `• **Timezone:** ${data.timezone}` : ''}`;
 
   return (
     <div className="flex h-screen w-full relative" data-clara-container>
+      {/* First-Time Setup Modal */}
+      <FirstTimeSetupModal
+        isOpen={showFirstTimeSetup}
+        onComplete={handleFirstTimeSetupComplete}
+        onSkip={handleFirstTimeSetupSkip}
+      />
+      
       {/* Wallpaper */}
       {wallpaperUrl && (
         <div 

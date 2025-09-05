@@ -1,0 +1,14 @@
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "create_pdf",
+        "arguments": {
+            "filename": "test-document.pdf",
+            "title": "Clara MCP Test Document",
+            "author": "Test User",
+            "content": "# Welcome to Clara MCP PDF Creation\n\nThis is a test document created using the new PDF creation tool in Clara MCP.\n\n## Features\n\n- **Markdown formatting** support\n- Automatic *text formatting*\n- Header hierarchy\n- Bullet points:\n  - Item 1\n  - Item 2\n  - Item 3\n\n### Numbered Lists\n\n1. First item\n2. Second item\n3. Third item\n\n## Conclusion\n\nThis PDF was generated from markdown content using Go and the gofpdf library. The file will be saved to the MCP workspace and can be opened directly from the file system.\n\nThank you for testing Clara MCP's PDF creation capabilities!"
+        }
+    }
+}

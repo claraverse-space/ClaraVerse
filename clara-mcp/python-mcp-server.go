@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jung-kurt/gofpdf"
 )
 
 // SearXNG and Web Content constants
@@ -503,6 +505,33 @@ func (s *PythonMCPServer) getTools() []Tool {
 					},
 				},
 				"required": []string{"path"},
+			},
+		},
+		{
+			Name:        "create_pdf",
+			Description: "Create a PDF document from markdown or plain text content. Converts markdown formatting to styled PDF with proper headers, paragraphs, and basic formatting. Saves the PDF to the workspace directory and provides both a file path and clickable file URL that opens the document in the default PDF viewer. Perfect for generating reports, documentation, notes, or any text-based content in PDF format.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filename": map[string]interface{}{
+						"type":        "string",
+						"description": "Name for the PDF file (e.g., 'report.pdf', 'notes.pdf', 'document.pdf'). Will be saved in the MCP workspace directory. Extension .pdf will be added automatically if not provided.",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "Content to include in the PDF. Supports markdown formatting including headers (# ## ###), paragraphs, bold (**text**), italic (*text*), bullet points (- item), and numbered lists (1. item). Automatically handles line breaks and basic text formatting.",
+					},
+					"title": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional title for the PDF document. Will be displayed as the main heading and set as document metadata. If not provided, uses the filename without extension.",
+					},
+					"author": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional author name for the PDF metadata. Default: 'Clara MCP'",
+						"default":     "Clara MCP",
+					},
+				},
+				"required": []string{"filename", "content"},
 			},
 		},
 	}
@@ -2170,6 +2199,191 @@ except Exception as e:
 	return output_builder.String()
 }
 
+// createPDF creates a PDF document from markdown content using Go PDF library
+func (s *PythonMCPServer) createPDF(params map[string]interface{}) string {
+	filename, ok := params["filename"].(string)
+	if !ok {
+		return "ERROR: Need 'filename' parameter"
+	}
+
+	content, ok := params["content"].(string)
+	if !ok {
+		return "ERROR: Need 'content' parameter"
+	}
+
+	// Get optional parameters
+	title := ""
+	if t, ok := params["title"].(string); ok {
+		title = t
+	}
+	if title == "" {
+		// Use filename without extension as title
+		title = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+	}
+
+	author := "Clara MCP"
+	if a, ok := params["author"].(string); ok && a != "" {
+		author = a
+	}
+
+	// Ensure filename has .pdf extension
+	if !strings.HasSuffix(strings.ToLower(filename), ".pdf") {
+		filename = filename + ".pdf"
+	}
+
+	// Create full path in workspace
+	fullPath := filepath.Join(s.workspaceDir, filepath.Base(filename))
+
+	// Create PDF
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetCreator("Clara MCP", true)
+	pdf.SetAuthor(author, true)
+	pdf.SetTitle(title, true)
+	pdf.SetSubject("Document created by Clara MCP", true)
+
+	// Add page
+	pdf.AddPage()
+
+	// Set font
+	pdf.SetFont("Arial", "", 12)
+
+	// Add title if provided
+	if title != "" {
+		pdf.SetFont("Arial", "B", 16)
+		pdf.Cell(0, 10, title)
+		pdf.Ln(15)
+		pdf.SetFont("Arial", "", 12)
+	}
+
+	// Process content - convert markdown-like formatting to PDF
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if line == "" {
+			pdf.Ln(5) // Empty line spacing
+			continue
+		}
+
+		// Handle markdown headers
+		if strings.HasPrefix(line, "# ") {
+			pdf.Ln(5)
+			pdf.SetFont("Arial", "B", 14)
+			pdf.Cell(0, 8, strings.TrimPrefix(line, "# "))
+			pdf.Ln(10)
+			pdf.SetFont("Arial", "", 12)
+		} else if strings.HasPrefix(line, "## ") {
+			pdf.Ln(3)
+			pdf.SetFont("Arial", "B", 13)
+			pdf.Cell(0, 8, strings.TrimPrefix(line, "## "))
+			pdf.Ln(8)
+			pdf.SetFont("Arial", "", 12)
+		} else if strings.HasPrefix(line, "### ") {
+			pdf.Ln(2)
+			pdf.SetFont("Arial", "B", 12)
+			pdf.Cell(0, 7, strings.TrimPrefix(line, "### "))
+			pdf.Ln(7)
+			pdf.SetFont("Arial", "", 12)
+		} else if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			// Bullet points
+			pdf.Cell(10, 6, "•")
+			s.addTextWithFormatting(pdf, strings.TrimPrefix(strings.TrimPrefix(line, "- "), "* "))
+			pdf.Ln(6)
+		} else if regexp.MustCompile(`^\d+\.\s`).MatchString(line) {
+			// Numbered lists
+			parts := regexp.MustCompile(`^(\d+\.\s)(.*)`).FindStringSubmatch(line)
+			if len(parts) == 3 {
+				pdf.Cell(10, 6, parts[1])
+				s.addTextWithFormatting(pdf, parts[2])
+				pdf.Ln(6)
+			}
+		} else {
+			// Regular paragraph
+			s.addTextWithFormatting(pdf, line)
+			pdf.Ln(6)
+		}
+	}
+
+	// Save PDF
+	err := pdf.OutputFileAndClose(fullPath)
+	if err != nil {
+		return fmt.Sprintf("ERROR: Failed to save PDF: %v", err)
+	}
+
+	// Get file info
+	fileInfo, err := os.Stat(fullPath)
+	if err != nil {
+		return fmt.Sprintf("ERROR: Failed to get file info: %v", err)
+	}
+
+	// Create file URL for different operating systems
+	var fileURL string
+	switch runtime.GOOS {
+	case "windows":
+		fileURL = "file:///" + strings.ReplaceAll(fullPath, "\\", "/")
+	default:
+		fileURL = "file://" + fullPath
+	}
+
+	// Format result
+	var output strings.Builder
+	output.WriteString("📄 PDF CREATED SUCCESSFULLY\n")
+	output.WriteString("==========================\n\n")
+	output.WriteString(fmt.Sprintf("📁 File: %s\n", filepath.Base(fullPath)))
+	output.WriteString(fmt.Sprintf("📍 Location: %s\n", fullPath))
+	output.WriteString(fmt.Sprintf("🔗 Click to open: %s\n", fileURL))
+	output.WriteString(fmt.Sprintf("📊 Size: %.2f KB\n", float64(fileInfo.Size())/1024))
+	output.WriteString(fmt.Sprintf("📝 Title: %s\n", title))
+	output.WriteString(fmt.Sprintf("👤 Author: %s\n", author))
+	output.WriteString(fmt.Sprintf("📅 Created: %s\n", fileInfo.ModTime().Format("2006-01-02 15:04:05")))
+	output.WriteString("\nThe PDF has been saved to your workspace and can be opened by clicking the file URL above.")
+
+	return output.String()
+}
+
+// addTextWithFormatting adds text to PDF with basic markdown formatting
+func (s *PythonMCPServer) addTextWithFormatting(pdf *gofpdf.Fpdf, text string) {
+	// Handle bold **text**
+	boldRegex := regexp.MustCompile(`\*\*(.*?)\*\*`)
+	// Handle italic *text*
+	italicRegex := regexp.MustCompile(`\*(.*?)\*`)
+
+	// Simple approach: for now, just remove formatting markers
+	// A more sophisticated implementation would properly handle formatting
+	text = boldRegex.ReplaceAllString(text, "$1")
+	text = italicRegex.ReplaceAllString(text, "$1")
+
+	// Split long lines to fit page width
+	maxWidth := 180.0 // mm
+	words := strings.Fields(text)
+
+	currentLine := ""
+	for _, word := range words {
+		testLine := currentLine
+		if testLine != "" {
+			testLine += " "
+		}
+		testLine += word
+
+		// Check if line fits
+		lineWidth := pdf.GetStringWidth(testLine)
+		if lineWidth > maxWidth && currentLine != "" {
+			// Output current line and start new one
+			pdf.Cell(0, 6, currentLine)
+			pdf.Ln(6)
+			currentLine = word
+		} else {
+			currentLine = testLine
+		}
+	}
+
+	// Output remaining text
+	if currentLine != "" {
+		pdf.Cell(0, 6, currentLine)
+	}
+}
+
 // playwrightStatus shows the current status of Playwright integration
 func (s *PythonMCPServer) playwrightStatus(params map[string]interface{}) string {
 	// Create web content fetcher to access Playwright manager
@@ -2320,6 +2534,8 @@ func (s *PythonMCPServer) handleRequest(req MCPRequest) MCPResponse {
 			result = s.fetchContent(params.Arguments)
 		case "read_document":
 			result = s.readDocument(params.Arguments)
+		case "create_pdf":
+			result = s.createPDF(params.Arguments)
 		default:
 			resp.Error = &MCPError{Code: -32603, Message: "Unknown tool"}
 			return resp

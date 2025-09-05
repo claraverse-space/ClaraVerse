@@ -2,7 +2,7 @@
 REM Production optimized Docker build for Clara Backend
 setlocal enabledelayedexpansion
 
-echo Building Production Optimized Clara Backend Image...
+echo Building Production Optimized Clara Backend Image with Extended Format Support...
 
 REM Change to the backend directory
 cd /d "%~dp0\..\py_backend"
@@ -56,15 +56,23 @@ if errorlevel 1 (
 
 echo.
 echo ====================================
-echo Production optimized Docker image built and pushed successfully!
+echo Production optimized Docker image built and pushed successfully with Extended Format Support!
 echo ====================================
+echo.
+echo Supported document formats:
+echo   ✅ PDF, TXT, MD, CSV, JSON, XML, HTML (built-in)
+echo   ✅ Word documents (DOCX, DOC)
+echo   ✅ Excel files (XLSX, XLS)  
+echo   ✅ PowerPoint (PPTX, PPT)
+echo   ✅ RTF files
+echo   ✅ Advanced formats via textract
 echo.
 echo Images pushed to Docker Hub:
 echo - clara17verse/clara-backend:latest (multi-arch optimized)
 echo - clara17verse/clara-backend:latest-amd64 (AMD64 optimized)
 echo - clara17verse/clara-backend:latest-arm64 (ARM64 optimized)
 echo.
-echo Production images are ready for deployment with GPU support!
+echo Production images are ready for deployment with GPU support and extended document processing!
 echo dockerSetup.cjs will automatically handle GPU enable/disable based on target system.
 echo.
 pause

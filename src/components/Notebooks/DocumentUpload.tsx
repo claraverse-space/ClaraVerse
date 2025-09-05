@@ -13,8 +13,19 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
   const [errors, setErrors] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const supportedTypes = ['pdf', 'txt'];
-  const maxFileSize = 20 * 1024 * 1024; // 20MB
+  const supportedTypes = [
+    // Text formats
+    'pdf', 'txt', 'md', 'rtf',
+    // Microsoft Office formats
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    // LibreOffice formats
+    'odt', 'ods', 'odp',
+    // Web formats
+    'html', 'htm', 'xml',
+    // Data formats
+    'csv', 'json'
+  ];
+  const maxFileSize = 50 * 1024 * 1024; // 50MB (increased for larger documents)
 
   const validateFile = (file: File): string | null => {
     const extension = file.name.split('.').pop()?.toLowerCase();
@@ -24,7 +35,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
     }
     
     if (file.size > maxFileSize) {
-      return `${file.name}: File too large. Maximum size is 20MB`;
+      return `${file.name}: File too large. Maximum size is 50MB`;
     }
     
     return null;
@@ -157,10 +168,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
               Drop files here or click to select
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Supported formats: {supportedTypes.join(', ').toUpperCase()}
+              Supported formats: PDF, TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, RTF, HTML, CSV, JSON
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
-              Maximum file size: 20MB
+              Maximum file size: 50MB
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -172,23 +183,26 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({ onClose, onUpload }) =>
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.txt"
+              accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.html,.htm,.xml,.csv,.json,.odt,.ods,.odp,.md"
               onChange={handleFileSelect}
               className="hidden"
             />
           </div>
 
-          {/* PDF Warning */}
+          {/* Document Processing Info */}
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <div>
                 <h4 className="font-medium text-blue-800 dark:text-blue-400 mb-1">
-                  Important Note About PDF Files
+                  Document Processing Information
                 </h4>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Image-based PDFs (scanned documents) might not be read properly. For best results, use text-based PDFs or convert scanned documents to text format before uploading.
-                </p>
+                <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                  <li>• <strong>PDF files:</strong> Text-based PDFs work best. Scanned documents may have limited text extraction.</li>
+                  <li>• <strong>Office documents:</strong> DOC, DOCX, XLS, XLSX, PPT, PPTX are fully supported.</li>
+                  <li>• <strong>Web files:</strong> HTML and XML content will be processed with text extraction.</li>
+                  <li>• <strong>LibreOffice files:</strong> ODT, ODS, ODP may require conversion for best results.</li>
+                </ul>
               </div>
             </div>
           </div>

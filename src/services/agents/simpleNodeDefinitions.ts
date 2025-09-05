@@ -633,7 +633,7 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
         name: 'Accepted File Types',
         type: 'string',
         defaultValue: '*/*',
-        description: 'MIME types or extensions (e.g., image/*, .pdf, .txt, or */* for all)'
+        description: 'MIME types or extensions (e.g., image/*, .pdf, .txt, .doc, .docx, .xls, .xlsx, .ppt, .pptx, .rtf, .html, .csv, .json, or */* for all)'
       },
       {
         id: 'maxSize',
@@ -664,7 +664,7 @@ export const simpleNodeDefinitions: NodeDefinition[] = [
           description: 'Upload text documents and output content as plain text',
           config: {
             outputFormat: 'text',
-            acceptedTypes: '.txt,.md,.csv',
+            acceptedTypes: '.txt,.md,.csv,.doc,.docx,.pdf,.rtf,.html,.htm,.xml,.json',
             maxSize: 2
           }
         },

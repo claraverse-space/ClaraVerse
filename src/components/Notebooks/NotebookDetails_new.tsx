@@ -24,7 +24,12 @@ import {
   PieChart,
   RefreshCw,
   AlertTriangle,
-  Maximize2
+  Maximize2,
+  File,
+  FileSpreadsheet,
+  Presentation,
+  Globe,
+  FileImage
 } from 'lucide-react';
 import DocumentUpload from './DocumentUpload';
 import CreateDocumentModal from './CreateDocumentModal';
@@ -243,12 +248,51 @@ const NotebookDetails_new: React.FC<NotebookDetailsNewProps> = ({
     switch (extension) {
       case 'pdf':
         return <FileText className="w-4 h-4 text-red-600" />;
+      
+      // Text formats
       case 'txt':
       case 'md':
+      case 'rtf':
         return <FileText className="w-4 h-4 text-blue-600" />;
+      
+      // Microsoft Office Document formats
+      case 'doc':
+      case 'docx':
+      case 'odt':
+        return <File className="w-4 h-4 text-blue-700" />;
+      
+      // Spreadsheet formats
+      case 'xls':
+      case 'xlsx':
+      case 'ods':
+        return <FileSpreadsheet className="w-4 h-4 text-green-600" />;
+      
+      // Presentation formats
+      case 'ppt':
+      case 'pptx':
+      case 'odp':
+        return <Presentation className="w-4 h-4 text-orange-600" />;
+      
+      // Web formats
+      case 'html':
+      case 'htm':
+      case 'xml':
+        return <Globe className="w-4 h-4 text-purple-600" />;
+      
+      // Data formats
       case 'csv':
       case 'json':
         return <FileType className="w-4 h-4 text-green-600" />;
+      
+      // Image formats (for reference, though not processed as documents)
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'svg':
+        return <FileImage className="w-4 h-4 text-pink-600" />;
+      
       default:
         return <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400" />;
     }

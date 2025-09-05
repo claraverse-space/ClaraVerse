@@ -253,7 +253,7 @@ const FileUploadArea: React.FC<{
         multiple
         onChange={handleFileSelect}
         className="hidden"
-        accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java"
+        accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.html,.htm,.xml,.odt,.ods,.odp"
       />
 
       {/* Drop area */}
@@ -4450,7 +4450,8 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
       if (['.js', '.ts', '.tsx', '.jsx', '.py', '.cpp', '.c', '.java'].some(ext => file.name.endsWith(ext))) return 'code';
       if (['.json'].some(ext => file.name.endsWith(ext))) return 'json';
       if (['.csv'].some(ext => file.name.endsWith(ext))) return 'csv';
-      if (['.md', '.txt', '.markdown'].some(ext => file.name.endsWith(ext))) return 'text';
+      if (['.md', '.txt', '.markdown', '.rtf'].some(ext => file.name.endsWith(ext))) return 'text';
+      if (['.doc', '.docx', '.odt', '.pdf', '.xls', '.xlsx', '.ods', '.ppt', '.pptx', '.odp', '.html', '.htm', '.xml'].some(ext => file.name.endsWith(ext))) return 'document';
       return 'document';
     };
 
@@ -4487,6 +4488,72 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
     };
 
     const attachments: ClaraFileAttachment[] = [];
+    
+    // **NEW**: Backend document text extraction with frontend fallback
+    const extractTextViaBackend = async (file: File): Promise<string | null> => {
+      try {
+        // Check if backend is available by trying a health check first
+        const healthResponse = await fetch('http://localhost:5001/health', { 
+          method: 'GET',
+          signal: AbortSignal.timeout(2000) // 2 second timeout
+        });
+        
+        if (!healthResponse.ok) {
+          console.log('🔄 Backend not available, falling back to frontend processing');
+          return null;
+        }
+        
+        console.log(`🚀 Attempting backend text extraction for: ${file.name}`);
+        
+        // Create FormData for file upload
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Send to backend extraction endpoint
+        const response = await fetch('http://localhost:5001/extract-text', {
+          method: 'POST',
+          body: formData,
+          signal: AbortSignal.timeout(30000) // 30 second timeout for large files
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.text();
+          console.warn(`⚠️ Backend extraction failed (${response.status}): ${errorData}`);
+          return null;
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'success' && result.extracted_text) {
+          console.log(`✅ Backend extraction successful for ${file.name}:`, {
+            fileType: result.file_type,
+            textLength: result.extracted_text.length,
+            wordCount: result.text_stats.word_count,
+            fileSizeMB: result.file_size_mb
+          });
+          
+          return result.extracted_text;
+        } else {
+          console.warn('⚠️ Backend extraction returned no text content');
+          return null;
+        }
+        
+      } catch (error) {
+        // Handle timeout or network errors gracefully
+        if (error instanceof Error) {
+          if (error.name === 'TimeoutError') {
+            console.warn('⏱️ Backend extraction timeout, falling back to frontend');
+          } else if (error.name === 'AbortError') {
+            console.warn('🛑 Backend extraction aborted, falling back to frontend');
+          } else {
+            console.warn('🔄 Backend extraction error, falling back to frontend:', error.message);
+          }
+        } else {
+          console.warn('🔄 Unknown backend extraction error, falling back to frontend');
+        }
+        return null;
+      }
+    };
     
     // PDF processing functions
     const extractTextFromPDF = async (file: File): Promise<string> => {
@@ -4565,52 +4632,76 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
           // For images, convert to base64 for vision models
           base64 = await readFileAsBase64(file);
         } else if (fileType === 'text' || fileType === 'code' || fileType === 'json' || fileType === 'csv') {
-          // For text-based files, read as text content
-          extractedText = await readFileAsText(file);
+          // For text-based files, try backend first, then fallback to frontend
+          extractedText = await extractTextViaBackend(file);
+          if (!extractedText) {
+            console.log(`🔄 Using frontend text extraction for: ${file.name}`);
+            extractedText = await readFileAsText(file);
+          }
+        } else if (fileType === 'document') {
+          // **NEW**: For document types (DOC, DOCX, XLS, XLSX, PPT, PPTX, RTF, HTML, XML), try backend first
+          extractedText = await extractTextViaBackend(file);
+          if (!extractedText) {
+            console.log(`🔄 Backend extraction failed for document ${file.name}, storing as base64`);
+            base64 = await readFileAsBase64(file);
+          } else {
+            console.log(`✅ Backend successfully extracted text from document: ${file.name}`);
+          }
         } else if (fileType === 'pdf') {
-          // For PDFs, try to extract text first, then fallback to converting to images
-          try {
-            extractedText = await extractTextFromPDF(file);
-            console.log(`Successfully extracted text from PDF: ${file.name}`);
-          } catch (textError) {
-            console.warn(`Could not extract text from PDF, converting to images: ${textError}`);
+          // For PDFs, try backend first, then frontend PDF extraction, then image conversion
+          extractedText = await extractTextViaBackend(file);
+          if (!extractedText) {
+            console.log(`🔄 Backend PDF extraction failed, trying frontend PDF extraction for: ${file.name}`);
             try {
-              // Convert PDF to images as fallback
-              const pdfImages = await convertPDFToImages(file);
-              if (pdfImages.length > 0) {
-                // Create multiple image attachments for each page
-                for (let pageIndex = 0; pageIndex < pdfImages.length; pageIndex++) {
-                  const pageAttachment: ClaraFileAttachment = {
-                    id: `file-${Date.now()}-${index}-page-${pageIndex + 1}`,
-                    name: `${file.name} - Page ${pageIndex + 1}`,
-                    type: 'image',
-                    size: file.size / pdfImages.length, // Approximate size per page
-                    mimeType: 'image/png',
-                    base64: pdfImages[pageIndex],
-                    processed: true,
-                    processingResult: {
-                      success: true,
-                      metadata: {
-                        originalFile: file.name,
-                        pageNumber: pageIndex + 1,
-                        totalPages: pdfImages.length,
-                        convertedFromPDF: true
+              extractedText = await extractTextFromPDF(file);
+              console.log(`✅ Frontend successfully extracted text from PDF: ${file.name}`);
+            } catch (textError) {
+              console.warn(`Could not extract text from PDF, converting to images: ${textError}`);
+              try {
+                // Convert PDF to images as fallback
+                const pdfImages = await convertPDFToImages(file);
+                if (pdfImages.length > 0) {
+                  // Create multiple image attachments for each page
+                  for (let pageIndex = 0; pageIndex < pdfImages.length; pageIndex++) {
+                    const pageAttachment: ClaraFileAttachment = {
+                      id: `file-${Date.now()}-${index}-page-${pageIndex + 1}`,
+                      name: `${file.name} - Page ${pageIndex + 1}`,
+                      type: 'image',
+                      size: file.size / pdfImages.length, // Approximate size per page
+                      mimeType: 'image/png',
+                      base64: pdfImages[pageIndex],
+                      processed: true,
+                      processingResult: {
+                        success: true,
+                        metadata: {
+                          originalFile: file.name,
+                          pageNumber: pageIndex + 1,
+                          totalPages: pdfImages.length,
+                          convertedFromPDF: true,
+                          backendFallback: false
+                        }
                       }
-                    }
-                  };
-                  attachments.push(pageAttachment);
+                    };
+                    attachments.push(pageAttachment);
+                  }
+                  continue; // Skip the main attachment creation since we added page attachments
                 }
-                continue; // Skip the main attachment creation since we added page attachments
+              } catch (imageError) {
+                console.error(`Failed to convert PDF to images: ${imageError}`);
+                // Fall back to base64 as last resort (though this likely won't be useful)
+                base64 = await readFileAsBase64(file);
               }
-            } catch (imageError) {
-              console.error(`Failed to convert PDF to images: ${imageError}`);
-              // Fall back to base64 as last resort (though this likely won't be useful)
-              base64 = await readFileAsBase64(file);
             }
+          } else {
+            console.log(`✅ Backend successfully extracted text from PDF: ${file.name}`);
           }
         } else {
-          // For other document types, read as base64
-          base64 = await readFileAsBase64(file);
+          // For other file types, try backend first, then base64 fallback
+          extractedText = await extractTextViaBackend(file);
+          if (!extractedText) {
+            console.log(`🔄 Backend extraction failed for ${file.name}, storing as base64`);
+            base64 = await readFileAsBase64(file);
+          }
         }
 
         const attachment: ClaraFileAttachment = {
@@ -5539,7 +5630,7 @@ const ClaraAssistantInput: React.FC<ClaraInputProps> = ({
   const triggerFileUpload = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java';
+    input.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.cpp,.c,.java,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.html,.htm,.xml,.odt,.ods,.odp';
     input.multiple = true;
     input.onchange = (e) => {
       const target = e.target as HTMLInputElement;

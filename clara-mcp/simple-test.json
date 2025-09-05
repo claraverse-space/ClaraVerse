@@ -1,0 +1,1 @@
+{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "create_pdf", "arguments": {"filename": "test.pdf", "title": "Test Document", "content": "# Hello World\n\nThis is a test PDF created by Clara MCP.\n\n## Features\n\n- PDF creation from markdown\n- Automatic formatting\n- File system integration\n\nThank you for testing!"}}}

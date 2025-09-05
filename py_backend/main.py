@@ -413,6 +413,378 @@ if LIGHTRAG_AVAILABLE:
             logger.error(f"Error extracting text from PDF: {e}")
             raise HTTPException(status_code=400, detail=f"Error processing PDF: {str(e)}")
 
+    # Additional format support endpoint
+    @app.get("/notebooks/supported-formats")
+    async def get_supported_formats():
+        """Get information about supported file formats for notebook documents"""
+        basic_formats = [
+            {"extension": "pdf", "description": "PDF documents", "library": "PyPDF2 (built-in)"},
+            {"extension": "txt", "description": "Plain text files", "library": "built-in"},
+            {"extension": "md", "description": "Markdown files", "library": "built-in"},
+            {"extension": "csv", "description": "Comma-separated values", "library": "built-in"},
+            {"extension": "json", "description": "JSON data files", "library": "built-in"},
+            {"extension": "xml", "description": "XML documents", "library": "built-in"},
+            {"extension": "html", "description": "HTML documents", "library": "built-in"},
+            {"extension": "htm", "description": "HTML documents", "library": "built-in"}
+        ]
+        
+        enhanced_formats = [
+            {"extension": "docx", "description": "Word documents (newer)", "library": "python-docx", "install": "pip install python-docx"},
+            {"extension": "doc", "description": "Word documents (legacy)", "library": "python-docx", "install": "pip install python-docx"},
+            {"extension": "xlsx", "description": "Excel spreadsheets (newer)", "library": "pandas + openpyxl", "install": "pip install pandas openpyxl"},
+            {"extension": "xls", "description": "Excel spreadsheets (legacy)", "library": "pandas + xlrd", "install": "pip install pandas xlrd"},
+            {"extension": "pptx", "description": "PowerPoint presentations (newer)", "library": "python-pptx", "install": "pip install python-pptx"},
+            {"extension": "ppt", "description": "PowerPoint presentations (legacy)", "library": "python-pptx", "install": "pip install python-pptx"},
+            {"extension": "rtf", "description": "Rich Text Format", "library": "striprtf", "install": "pip install striprtf"}
+        ]
+        
+        textract_formats = [
+            {"extension": "epub", "description": "eBook format", "library": "textract", "install": "pip install textract"},
+            {"extension": "odt", "description": "OpenDocument Text", "library": "textract", "install": "pip install textract"},
+            {"extension": "ods", "description": "OpenDocument Spreadsheet", "library": "textract", "install": "pip install textract"},
+            {"extension": "odp", "description": "OpenDocument Presentation", "library": "textract", "install": "pip install textract"}
+        ]
+        
+        return {
+            "basic_support": [f".{fmt['extension']}" for fmt in basic_formats],
+            "enhanced_support": [f".{fmt['extension']}" for fmt in enhanced_formats],
+            "textract_support": [f".{fmt['extension']}" for fmt in textract_formats],
+            "details": {
+                "basic": basic_formats,
+                "enhanced": enhanced_formats,
+                "textract": textract_formats
+            },
+            "installation_notes": {
+                "basic": "These formats are supported out of the box",
+                "enhanced": "Install additional libraries for enhanced document support",
+                "textract": "Install textract for additional format support (requires system dependencies)"
+            },
+            "recommended_libraries": [
+                "pip install python-docx python-pptx pandas openpyxl xlrd striprtf beautifulsoup4",
+                "pip install textract  # Optional for additional formats"
+            ]
+        }
+
+    async def extract_text_from_file(filename: str, file_content: bytes) -> str:
+        """Extract text from various file formats supported by LightRAG"""
+        try:
+            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+            
+            # PDF files
+            if file_ext == 'pdf':
+                return extract_text_from_pdf_lightrag(file_content)
+            
+            # Plain text files
+            elif file_ext in ['txt', 'md', 'markdown', 'rst']:
+                return file_content.decode('utf-8')
+            
+            # CSV files
+            elif file_ext == 'csv':
+                return file_content.decode('utf-8')
+            
+            # JSON files
+            elif file_ext == 'json':
+                import json
+                json_data = json.loads(file_content.decode('utf-8'))
+                return json.dumps(json_data, indent=2)
+            
+            # XML/HTML files
+            elif file_ext in ['xml', 'html', 'htm']:
+                content = file_content.decode('utf-8')
+                try:
+                    from bs4 import BeautifulSoup
+                    if file_ext in ['html', 'htm']:
+                        soup = BeautifulSoup(content, 'html.parser')
+                        return soup.get_text(separator='\n', strip=True)
+                    else:
+                        soup = BeautifulSoup(content, 'xml')
+                        return soup.get_text(separator='\n', strip=True)
+                except ImportError:
+                    # Fallback to raw content if BeautifulSoup not available
+                    return content
+            
+            # Word documents
+            elif file_ext in ['docx', 'doc']:
+                try:
+                    import docx
+                    from io import BytesIO
+                    doc = docx.Document(BytesIO(file_content))
+                    content_parts = []
+                    for para in doc.paragraphs:
+                        text = para.text.strip()
+                        if text:
+                            content_parts.append(text)
+                    return "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("python-docx not available, cannot process Word documents")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Word document processing requires python-docx library. Install with: pip install python-docx"
+                    )
+            
+            # Excel files
+            elif file_ext in ['xlsx', 'xls']:
+                try:
+                    import pandas as pd
+                    from io import BytesIO
+                    excel_file = pd.ExcelFile(BytesIO(file_content))
+                    content_parts = []
+                    for sheet_name in excel_file.sheet_names:
+                        df = pd.read_excel(BytesIO(file_content), sheet_name=sheet_name)
+                        content_parts.append(f"Sheet: {sheet_name}\n{df.to_string(index=False)}")
+                    return "\n\n" + "="*50 + "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("pandas not available, cannot process Excel files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Excel processing requires pandas and openpyxl libraries. Install with: pip install pandas openpyxl xlrd"
+                    )
+            
+            # PowerPoint files
+            elif file_ext in ['pptx', 'ppt']:
+                try:
+                    from pptx import Presentation
+                    from io import BytesIO
+                    prs = Presentation(BytesIO(file_content))
+                    content_parts = []
+                    for i, slide in enumerate(prs.slides):
+                        slide_text = []
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_text.append(shape.text)
+                        if slide_text:
+                            content_parts.append(f"--- Slide {i + 1} ---\n" + "\n".join(slide_text))
+                    return "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("python-pptx not available, cannot process PowerPoint files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="PowerPoint processing requires python-pptx library. Install with: pip install python-pptx"
+                    )
+            
+            # RTF files
+            elif file_ext == 'rtf':
+                try:
+                    from striprtf.striprtf import rtf_to_text
+                    rtf_content = file_content.decode('utf-8')
+                    return rtf_to_text(rtf_content)
+                except ImportError:
+                    logger.warning("striprtf not available, cannot process RTF files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="RTF processing requires striprtf library. Install with: pip install striprtf"
+                    )
+            
+            # LibreOffice formats - basic support
+            elif file_ext in ['odt', 'ods', 'odp']:
+                logger.warning(f"LibreOffice format {file_ext} requires conversion to supported format")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"LibreOffice {file_ext.upper()} files are not directly supported. Please convert to DOCX, PDF, or TXT format."
+                )
+            
+            # Use textract as fallback for other formats if available
+            else:
+                try:
+                    import textract
+                    from tempfile import NamedTemporaryFile
+                    import os
+                    
+                    # Create temporary file
+                    with NamedTemporaryFile(suffix=f'.{file_ext}', delete=False) as temp_file:
+                        temp_file.write(file_content)
+                        temp_file.flush()
+                        
+                        try:
+                            # Use textract to extract text
+                            extracted_text = textract.process(temp_file.name)
+                            return extracted_text.decode('utf-8')
+                        finally:
+                            # Clean up temporary file
+                            os.unlink(temp_file.name)
+                            
+                except ImportError:
+                    logger.warning("textract not available for additional format support")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Unsupported file type: {filename}. Supported formats: PDF, TXT, MD, CSV, JSON, XML, HTML, DOCX, DOC, XLSX, XLS, PPTX, PPT, RTF. For more formats, install: pip install textract"
+                    )
+                except Exception as e:
+                    logger.error(f"Error processing file with textract: {e}")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Error processing file {filename}: {str(e)}"
+                    )
+        
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error processing file {filename}: {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Unexpected error processing file: {str(e)}"
+            )
+        """Extract text from various file formats supported by LightRAG"""
+        try:
+            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+            
+            # PDF files
+            if file_ext == 'pdf':
+                return extract_text_from_pdf_lightrag(file_content)
+            
+            # Plain text files
+            elif file_ext in ['txt', 'md', 'markdown', 'rst']:
+                return file_content.decode('utf-8')
+            
+            # CSV files
+            elif file_ext == 'csv':
+                return file_content.decode('utf-8')
+            
+            # JSON files
+            elif file_ext == 'json':
+                import json
+                json_data = json.loads(file_content.decode('utf-8'))
+                return json.dumps(json_data, indent=2)
+            
+            # XML/HTML files
+            elif file_ext in ['xml', 'html', 'htm']:
+                content = file_content.decode('utf-8')
+                try:
+                    from bs4 import BeautifulSoup
+                    if file_ext in ['html', 'htm']:
+                        soup = BeautifulSoup(content, 'html.parser')
+                        return soup.get_text(separator='\n', strip=True)
+                    else:
+                        soup = BeautifulSoup(content, 'xml')
+                        return soup.get_text(separator='\n', strip=True)
+                except ImportError:
+                    # Fallback to raw content if BeautifulSoup not available
+                    return content
+            
+            # Word documents
+            elif file_ext in ['docx', 'doc']:
+                try:
+                    import docx
+                    from io import BytesIO
+                    doc = docx.Document(BytesIO(file_content))
+                    content_parts = []
+                    for para in doc.paragraphs:
+                        text = para.text.strip()
+                        if text:
+                            content_parts.append(text)
+                    return "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("python-docx not available, cannot process Word documents")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Word document processing requires python-docx library"
+                    )
+            
+            # Excel files
+            elif file_ext in ['xlsx', 'xls']:
+                try:
+                    import pandas as pd
+                    from io import BytesIO
+                    excel_file = pd.ExcelFile(BytesIO(file_content))
+                    content_parts = []
+                    for sheet_name in excel_file.sheet_names:
+                        df = pd.read_excel(BytesIO(file_content), sheet_name=sheet_name)
+                        content_parts.append(f"Sheet: {sheet_name}\n{df.to_string(index=False)}")
+                    return "\n\n" + "="*50 + "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("pandas not available, cannot process Excel files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Excel processing requires pandas and openpyxl libraries"
+                    )
+            
+            # PowerPoint files
+            elif file_ext in ['pptx', 'ppt']:
+                try:
+                    from pptx import Presentation
+                    from io import BytesIO
+                    prs = Presentation(BytesIO(file_content))
+                    content_parts = []
+                    for i, slide in enumerate(prs.slides):
+                        slide_text = []
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_text.append(shape.text)
+                        if slide_text:
+                            content_parts.append(f"--- Slide {i + 1} ---\n" + "\n".join(slide_text))
+                    return "\n\n".join(content_parts)
+                except ImportError:
+                    logger.warning("python-pptx not available, cannot process PowerPoint files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="PowerPoint processing requires python-pptx library"
+                    )
+            
+            # RTF files
+            elif file_ext == 'rtf':
+                try:
+                    from striprtf.striprtf import rtf_to_text
+                    rtf_content = file_content.decode('utf-8')
+                    return rtf_to_text(rtf_content)
+                except ImportError:
+                    logger.warning("striprtf not available, cannot process RTF files")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="RTF processing requires striprtf library"
+                    )
+            
+            # LibreOffice formats - basic support
+            elif file_ext in ['odt', 'ods', 'odp']:
+                logger.warning(f"LibreOffice format {file_ext} requires conversion to supported format")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"LibreOffice {file_ext.upper()} files are not directly supported. Please convert to DOCX, PDF, or TXT format."
+                )
+            
+            # Use textract as fallback for other formats if available
+            else:
+                try:
+                    import textract
+                    from tempfile import NamedTemporaryFile
+                    
+                    # Create temporary file
+                    with NamedTemporaryFile(suffix=f'.{file_ext}', delete=False) as temp_file:
+                        temp_file.write(file_content)
+                        temp_file.flush()
+                        
+                        try:
+                            # Use textract to extract text
+                            extracted_text = textract.process(temp_file.name)
+                            return extracted_text.decode('utf-8')
+                        finally:
+                            # Clean up temporary file
+                            import os
+                            os.unlink(temp_file.name)
+                            
+                except ImportError:
+                    logger.warning("textract not available for additional format support")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Unsupported file type: {filename}. Supported formats: PDF, TXT, MD, CSV, JSON, XML, HTML, DOCX, DOC, XLSX, XLS, PPTX, PPT, RTF"
+                    )
+                except Exception as e:
+                    logger.error(f"Error processing file with textract: {e}")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Error processing file {filename}: {str(e)}"
+                    )
+        
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error processing file {filename}: {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Unexpected error processing file: {str(e)}"
+            )
+
     async def create_lightrag_instance(notebook_id: str, llm_provider_config: Dict[str, Any], embedding_provider_config: Dict[str, Any]) -> LightRAG:
         """Create a new LightRAG instance for a notebook with specified provider configurations"""
         working_dir = LIGHTRAG_STORAGE_PATH / notebook_id
@@ -1230,23 +1602,7 @@ if LIGHTRAG_AVAILABLE:
                 file_content = await file.read()
                 
                 # Extract text based on file type
-                if file.filename.lower().endswith('.pdf'):
-                    text_content = extract_text_from_pdf_lightrag(file_content)
-                elif file.filename.lower().endswith(('.txt', '.md')):
-                    text_content = file_content.decode('utf-8')
-                elif file.filename.lower().endswith('.csv'):
-                    # For CSV, convert to text representation
-                    text_content = file_content.decode('utf-8')
-                elif file.filename.lower().endswith('.json'):
-                    # For JSON, convert to readable text
-                    import json
-                    json_data = json.loads(file_content.decode('utf-8'))
-                    text_content = json.dumps(json_data, indent=2)
-                else:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Unsupported file type: {file.filename}"
-                    )
+                text_content = await extract_text_from_file(file.filename, file_content)
                 
                 # Validate text content
                 if not text_content.strip():
@@ -2552,6 +2908,63 @@ if LIGHTRAG_AVAILABLE:
         
         # Execute using the chat endpoint for consistency
         return await chat_with_notebook(notebook_id, query_request)
+
+# Document Text Extraction Endpoint
+@app.post("/extract-text")
+async def extract_document_text(file: UploadFile = File(...)):
+    """
+    Extract text from a document file without creating a notebook.
+    Supports: PDF, TXT, MD, RTF, DOC, DOCX, XLS, XLSX, PPT, PPTX, HTML, HTM, XML, CSV, JSON
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    
+    # Check file size (50MB limit)
+    max_file_size = 50 * 1024 * 1024  # 50MB
+    file_content = await file.read()
+    
+    if len(file_content) > max_file_size:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File too large. Maximum size is 50MB, received {len(file_content) / (1024*1024):.1f}MB"
+        )
+    
+    if not file_content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    
+    try:
+        # Extract text using the existing function
+        extracted_text = await extract_text_from_file(file.filename, file_content)
+        
+        # Get file statistics
+        file_extension = file.filename.lower().split('.')[-1] if '.' in file.filename else 'unknown'
+        text_length = len(extracted_text)
+        word_count = len(extracted_text.split()) if extracted_text else 0
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "file_type": file_extension.upper(),
+            "file_size_bytes": len(file_content),
+            "file_size_mb": round(len(file_content) / (1024*1024), 2),
+            "extracted_text": extracted_text,
+            "text_stats": {
+                "character_count": text_length,
+                "word_count": word_count,
+                "line_count": extracted_text.count('\n') + 1 if extracted_text else 0
+            }
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like unsupported file types)
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting text from {file.filename}: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing document: {str(e)}"
+        )
 
 # Audio transcription endpoint
 @app.post("/transcribe")
