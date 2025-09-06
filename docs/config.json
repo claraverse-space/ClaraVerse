@@ -2,6 +2,7 @@
   "categories": [
     "getting-started",
     "features",
+    "ideas",
     "troubleshooting"
   ],
   "files": {
@@ -60,6 +61,55 @@
       "category": "features",
       "order": 8,
       "filePath": "features/settings.md"
+    },
+    "ideas": {
+      "title": "Ideas: How People Use ClaraVerse",
+      "description": "Real workflows and practical use cases",
+      "category": "ideas",
+      "order": 1,
+      "filePath": "ideas/README.md"
+    },
+    "ai-development-workflow": {
+      "title": "AI-Powered Development Workflow",
+      "description": "From idea to deployed app using the full ecosystem",
+      "category": "ideas",
+      "order": 2,
+      "filePath": "ideas/ai-development-workflow.md"
+    },
+    "content-factory": {
+      "title": "Content Factory",
+      "description": "Automated content creation and publishing pipeline",
+      "category": "ideas",
+      "order": 3,
+      "filePath": "ideas/content-factory.md"
+    },
+    "research-assistant": {
+      "title": "Research Assistant",
+      "description": "Academic research with AI analysis and 3D knowledge mapping",
+      "category": "ideas",
+      "order": 4,
+      "filePath": "ideas/research-assistant.md"
+    },
+    "customer-support": {
+      "title": "Customer Support Bot",
+      "description": "Intelligent support using your company knowledge",
+      "category": "ideas",
+      "order": 5,
+      "filePath": "ideas/customer-support.md"
+    },
+    "personal-brand": {
+      "title": "Personal Brand Builder",
+      "description": "Automated brand development and content creation",
+      "category": "ideas",
+      "order": 6,
+      "filePath": "ideas/personal-brand.md"
+    },
+    "local-code-review": {
+      "title": "Local AI Code Review",
+      "description": "Private code analysis without cloud dependencies",
+      "category": "ideas",
+      "order": 7,
+      "filePath": "ideas/local-code-review.md"
     }
   }
 } 
