@@ -1,264 +1,130 @@
 ---
 title: "Agents"
-description: "AI workflow automation"
+description: "Build your own AI automation blocks"
 category: "features"
 order: 3
-lastUpdated: "2025-09-05"
+lastUpdated: "2025-09-06"
 contributors: ["badboysm890"]
 ---
 
-# Agent Studio
+# Agents
 
-<img width="600" height="400" alt="Agent Studio Interface" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
+<img src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/203bdcbe08ee6644378e1fc4cfcb88b0c6dc95f4/public/mascot/Agents.png" alt="Clara with LEGO blocks representing agent nodes" width="400" />
 
-Agent Studio is your visual AI workflow builder that turns complex automation into simple drag-and-drop workflows. Build, test, and schedule intelligent agents without writing a single line of code.
+Agents are like LEGO blocks in ClaraVerse. Just as Clara Assistant connects everything into one place to give you maximum features, Agents let you build your own automated workflows exactly how you want them. You get a whole toolbox of nodes to create custom agents that can run on schedule, be triggered on demand, or work as standalone apps. Don't sleep on this feature — it's incredibly powerful in the right hands.
 
-## What Makes Agent Studio Special
+## ✨ New in v0.1.45: Task Scheduling
 
-Agent Studio isn't just another workflow tool — it's a complete AI automation platform that connects visual design with powerful execution. Create sophisticated AI agents by connecting nodes, each handling specific tasks like data processing, AI inference, API calls, and decision-making.
+Every agent can now become a scheduled task! As long as ClaraVerse is running on your PC, your agents will execute automatically based on your schedule. This means you can:
 
-## Two Ways to Work
+- **Set up recurring workflows**: Daily reports, weekly data processing, monthly cleanup tasks
+- **Background automation**: Let agents work while you focus on other things
+- **Reliable execution**: Agents run exactly when you need them to
 
-### 🎨 **Visual Builder**
-- **Drag & Drop Interface**: Build workflows by connecting nodes on a visual canvas
-- **Real-time Preview**: See your workflow structure as you build
-- **Node Library**: 20+ pre-built nodes for every automation need
-- **Custom Nodes**: Create your own specialized components
-- **Perfect for**: Visual learners, complex workflows, team collaboration
+**How it works:**
+1. **Schedule in Agents**: When creating or editing an agent, set up its schedule directly in Agent Studio
+2. **Manage in Tasks**: Head to the Tasks feature (located above Settings) to view and manage all your scheduled agents
+3. **Monitor execution**: Track when tasks run, see their results, and adjust schedules as needed
 
-### ⚡ **Agent Executor**
-- **Direct Instructions**: Tell the AI what you want in plain English
-- **Autonomous Execution**: AI figures out the steps and executes them
-- **Multi-step Processing**: Handles complex tasks with planning and validation
-- **Perfect for**: Quick automation, one-off tasks, rapid prototyping
+This transforms your agents from manual tools into true automation powerhouses that work around the clock.
 
-## Visual Workflow Builder
+## Two Main Parts
 
-### 🧩 **Available Node Types**
+### 🎨 Agent Studio
+This is where the magic happens. Agent Studio is your visual workspace for creating, testing, and managing agents.
 
-**Input & Output Nodes:**
-- **Input Node**: Accept text, numbers, JSON data, or files
-- **Output Node**: Display results and final outputs
-- **File Upload Node**: Handle file inputs with drag & drop
-- **Image Input Node**: Process images and visual content
-- **PDF Input Node**: Extract text from PDF documents
+**What you can do:**
+- **Create agents**: Drag and drop nodes to build workflows
+- **Test everything**: Run your agents safely to see how they work
+- **Manage your creations**: Keep track of all your agents in one place
 
-**AI & Intelligence Nodes:**
-- **LLM Node**: Connect to any language model (GPT-4, Claude, local models)
-- **Structured LLM Node**: Get formatted JSON responses from AI
-- **Agent Executor Node**: Full autonomous AI agents with tool access
-- **Whisper Transcription Node**: Convert speech to text
-- **ComfyUI Image Gen Node**: Generate images with Stable Diffusion
+### ⚡ Agent Runner SDK
+The execution engine that brings your agents to life. It provides standalone apps you can use directly from the UI, plus SDK structure for building your own web applications with Clara SDK. 
 
-**Data Processing Nodes:**
-- **JSON Parse Node**: Parse and manipulate JSON data
-- **Text Combine Node**: Merge multiple text inputs
-- **Math Node**: Perform calculations and data analysis
-- **API Request Node**: Connect to external services and APIs
-- **Text to Speech Node**: Convert text to spoken audio
+**Important note**: This isn't meant for frontend use since the JSON outputs contain your API keys — keep it backend only.
 
-**Logic & Control Nodes:**
-- **If/Else Node**: Create conditional logic and branching
-- **Static Text Node**: Provide fixed text values
-- **Notebook Writer Node**: Save outputs to organized notebooks
+## How Agents Work: Nodes and Acyclic Graphs
 
-**Custom Nodes:**
-- **Node Creator**: Build your own specialized nodes
-- **Custom Logic**: Implement any functionality you need
-- **Reusable Components**: Share nodes across workflows
+The real power comes from the massive collection of nodes you can use. Think of each node as a specialized tool that does one thing really well. Here's what you've got to work with:
 
-### 🎛️ **Canvas Features**
+### Available Node Types
 
-**Visual Design:**
-- **Infinite Canvas**: Zoom, pan, and organize large workflows
-- **Node Connections**: Visual wires show data flow between nodes
-- **Color Coding**: Different node categories have distinct colors
-- **Mini Map**: Navigate large workflows easily
-- **Grid Snap**: Align nodes perfectly
+**Basic Building Blocks:**
+- **Input/Output**: Get data in and send results out
+- **Static Text**: Store and format text content
+- **JSON Parse**: Handle JSON data like a pro
+- **If/Else**: Add smart decision-making to your flows
 
-**Workflow Management:**
-- **Save & Load**: Persistent workflow storage
-- **Version Control**: Track changes and iterations
-- **Export/Import**: Share workflows with others
-- **Copy/Paste**: Duplicate nodes and sections
-- **Undo/Redo**: Experiment safely
+**AI-Powered Nodes:**
+- **LLM**: Tap into language models for text generation
+- **Structured LLM**: Get properly formatted JSON responses
+- **Agent Executor**: Run autonomous AI agents within your workflow
+- **Whisper Transcription**: Convert audio to text
 
-## Task Scheduling & Automation
+**Media Processing:**
+- **Image Input**: Work with images and visual data
+- **PDF Input**: Extract text from PDF documents
+- **ComfyUI Image Gen**: Generate images using ComfyUI
+- **Text-to-Speech**: Convert text to natural-sounding audio
 
-### ⏰ **Flexible Scheduling**
+**Integration & Automation:**
+- **API Request**: Connect to any web service
+- **File Upload**: Handle file operations
+- **Combine Text**: Merge and format text from multiple sources
+- **Notebook Writer**: Save results to your knowledge base
 
-**Time-based Execution:**
-- **Every 30 seconds**: High-frequency monitoring
-- **Every minute**: Real-time processing
-- **Custom minutes**: 5, 10, 15, 30 minute intervals
-- **Hourly**: Regular maintenance tasks
-- **Daily**: At specific times (e.g., 9:00 AM)
-- **Weekly**: Recurring weekly tasks
+### Why Acyclic Graphs?
 
-**Smart Scheduling:**
-- **Next Run Calculation**: Automatic scheduling based on intervals
-- **Overdue Detection**: Tracks missed executions
-- **Status Monitoring**: Idle, running, error states
-- **Execution History**: Complete log of all runs
+All these nodes connect using Directed Acyclic Graphs (DAGs). Here's why this matters:
 
-### 🎯 **Task Management**
+**No Loops = No Problems**
+- Your workflows flow in one direction only
+- No risk of infinite loops eating your resources
+- Predictable execution every single time
 
-**Execution Tracking:**
-- **Real-time Monitoring**: Watch tasks execute in real-time
-- **Execution Logs**: Detailed step-by-step execution records
-- **Success/Failure Tracking**: Monitor task reliability
-- **Duration Metrics**: Performance monitoring
-- **Error Handling**: Automatic retry and error recovery
+**Rock-Solid Reliability**
+- Workflows always finish (no getting stuck forever)
+- Easy to debug when something goes wrong
+- Clear data flow from start to finish
 
-**Task Configuration:**
-- **Input Pre-filling**: Set default values for scheduled runs
-- **Conditional Execution**: Run tasks based on conditions
-- **Multi-step Validation**: Ensure quality before completion
-- **Resource Management**: Control CPU and memory usage
+**Scales Like Crazy**
+- Add more nodes without worrying about complexity
+- Build massive workflows that stay manageable
+- Perfect for enterprise-level automation
 
-## Agent Templates
-
-### 🎭 **Pre-built Specialists**
-
-**Data Analyst Agent:**
-- **Purpose**: Analyze datasets and generate insights
-- **Tools**: Python environment, statistical libraries, visualization
-- **Use Cases**: Sales analysis, trend detection, report generation
-
-**Code Developer Agent:**
-- **Purpose**: Write, debug, and optimize code
-- **Tools**: Multiple programming languages, testing frameworks
-- **Use Cases**: Feature development, bug fixes, code reviews
-
-**Content Creator Agent:**
-- **Purpose**: Generate engaging content for various platforms
-- **Tools**: Web research, image processing, writing optimization
-- **Use Cases**: Blog posts, social media, documentation
-
-**Automation Specialist Agent:**
-- **Purpose**: Create efficient workflows and processes
-- **Tools**: File system access, database connections, API integrations
-- **Use Cases**: Data migration, process optimization, system integration
-
-### 🔧 **Agent Configuration**
-
-**AI Provider Settings:**
-- **Clara's Pocket** (Local): Llama3.2, privacy-focused, no costs
-- **OpenAI**: GPT-4, fast responses, cloud-based
-- **Anthropic**: Claude 3.5 Sonnet, excellent reasoning
-- **Custom Models**: Connect any compatible model
-
-**Execution Parameters:**
-- **Temperature**: Control creativity vs consistency (0.1-2.0)
-- **Max Tokens**: Response length limits (1K-100K)
-- **Tool Calls**: Maximum number of tool executions (1-50)
-- **Timeout**: Execution time limits (30s-30min)
-- **Retry Logic**: Automatic error recovery
-
-## Real-world Use Cases
-
-### 📊 **Business Automation**
-- **Daily Reports**: Automatically generate and send daily business reports
-- **Data Processing**: Clean and analyze incoming data files
-- **Customer Support**: Process and route customer inquiries
-- **Inventory Management**: Monitor stock levels and reorder products
-
-### 🔍 **Research & Analysis**
-- **Market Research**: Gather and analyze competitor information
-- **Content Monitoring**: Track mentions and sentiment across platforms
-- **Price Tracking**: Monitor product prices and market changes
-- **News Aggregation**: Collect and summarize relevant news
-
-### 🛠️ **Development & Testing**
-- **Code Quality**: Automated code reviews and testing
-- **Deployment**: Automated build and deployment pipelines
-- **Monitoring**: System health checks and alerting
-- **Documentation**: Generate and update technical documentation
-
-### 🎨 **Creative Workflows**
-- **Content Generation**: Automated blog posts and articles
-- **Image Processing**: Batch image optimization and tagging
-- **Social Media**: Schedule and optimize social media posts
-- **Design Assets**: Generate marketing materials and graphics
+**Resource Friendly**
+- No memory leaks from circular dependencies
+- Efficient execution paths
+- Optimal performance even with complex flows
 
 ## Getting Started
 
-### 🚀 **Your First Agent**
+**Step 1: Open Agent Studio**
+Jump into the visual builder and start experimenting.
 
-**Method 1: Visual Builder**
-1. **Open Agent Studio** from the ClaraVerse sidebar
-2. **Drag an Input node** onto the canvas
-3. **Add an LLM node** and connect them
-4. **Add an Output node** to complete the flow
-5. **Configure the LLM** with your preferred model
-6. **Test your workflow** with the play button
+**Step 2: Pick Your Nodes**
+Choose from the huge library of available nodes based on what you want to accomplish.
 
-**Method 2: Agent Executor**
-1. **Drop an Agent Executor node** onto the canvas
-2. **Write instructions**: "Analyze this text and provide insights"
-3. **Configure AI settings** (model, temperature, tools)
-4. **Connect inputs and outputs**
-5. **Run the agent** and watch it work autonomously
+**Step 3: Connect the Dots**
+Drag connections between nodes to create your workflow logic.
 
-### ⏰ **Your First Scheduled Task**
+**Step 4: Test and Deploy**
+Run your agent to make sure it works, then set it loose.
 
-1. **Build a workflow** using either method above
-2. **Click the Schedule button** in the toolbar
-3. **Set your timing**: Daily at 9:00 AM
-4. **Configure inputs**: Provide default values
-5. **Save and activate** the schedule
-6. **Monitor execution** in the task manager
+## Real Power Examples
 
-### 🎯 **Quick Tips**
+**Data Processing Pipeline:**
+PDF Input → Extract text → LLM analysis → Structured output → API request to save results
 
-**Start Simple:**
-- Begin with 2-3 nodes to understand the flow
-- Use templates for common patterns
-- Test frequently as you build
+**Content Generation Workflow:**
+Static text prompt → LLM generation → Text formatting → Combine with templates → File output
 
-**Optimize Performance:**
-- Use appropriate models for each task
-- Set reasonable timeouts
-- Monitor execution logs for bottlenecks
+**Media Processing Chain:**
+Image input → AI analysis → Text description → Text-to-speech → Audio output
 
-**Scale Gradually:**
-- Start with manual execution
-- Add scheduling once workflows are stable
-- Use custom nodes for repeated patterns
+**Research Automation:**
+User query → API requests → Data aggregation → LLM summarization → Notebook storage
 
-## Advanced Features
+The beauty is in the combinations — each node does one thing well, but together they can handle incredibly complex tasks automatically.
 
-### 🔗 **Integration Capabilities**
-
-**External Services:**
-- **APIs**: REST, GraphQL, webhook integrations
-- **Databases**: Connect to SQL and NoSQL databases
-- **File Systems**: Local and cloud storage access
-- **Email**: Send notifications and reports
-- **Slack/Discord**: Team communication integration
-
-**Clara Ecosystem:**
-- **Clara's MCP**: Python execution, web search, document processing
-- **ComfyUI**: Advanced image generation workflows
-- **N8N**: Extended automation capabilities
-- **Voice Integration**: Speech input and output
-
-### 📊 **Monitoring & Analytics**
-
-**Execution Metrics:**
-- **Success Rate**: Track workflow reliability
-- **Execution Time**: Performance monitoring
-- **Resource Usage**: CPU and memory consumption
-- **Error Analysis**: Identify common failure points
-
-**Reporting:**
-- **Execution History**: Complete audit trail
-- **Performance Trends**: Track improvements over time
-- **Usage Statistics**: Understand workflow patterns
-- **Custom Dashboards**: Build monitoring interfaces
-
----
-
-Agent Studio transforms complex AI automation from intimidating code into intuitive visual workflows. Whether you're building simple data processing pipelines or sophisticated multi-agent systems, Agent Studio gives you the tools to automate anything.
-
-Your workflows can run on schedule, respond to events, or execute on demand — all while providing complete visibility into every step of the process.
+Ready to build something amazing? Dive into Agent Studio and start connecting those nodes!

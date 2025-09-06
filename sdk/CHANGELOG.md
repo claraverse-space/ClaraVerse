@@ -1,5 +1,122 @@
 # Changelog
 
+## [2.1.0] - 2025-01-09
+
+### 🚀 Major Features Added
+
+#### 🔹 Advanced Node Types
+- **Agent Executor Node**: Autonomous AI agent with MCP tool access and multi-step execution capabilities
+- **Notebook Writer Node**: Create and manage notebook documents with structured content
+- **Whisper Transcription Node**: Audio-to-text transcription using OpenAI Whisper models
+- **Image Input Node**: Process and analyze image inputs with vision models
+- **PDF Input Node**: Extract and process content from PDF documents
+- **File Upload Node**: Handle file uploads and processing workflows
+
+#### 🔹 Enhanced TypeScript Integration
+- **Full TypeScript Support**: Complete TypeScript definitions and interfaces
+- **Type-Safe Execution**: Enhanced type safety for flow execution and node management
+- **Modern API Design**: Updated ClaraFlowRunner with TypeScript-first approach
+
+#### 🔹 Advanced AI Capabilities
+- **Multi-Model Support**: Support for text, vision, and code models in agent execution
+- **MCP Protocol Integration**: Model Context Protocol server integration for tool access
+- **Self-Correction**: AI agents with self-correction and chain-of-thought reasoning
+- **Tool Guidance**: Intelligent tool selection and execution guidance
+
+#### 🔹 Enterprise Features
+- **Confidence Thresholds**: Configurable confidence levels for AI decision making
+- **Advanced Retry Logic**: Sophisticated retry mechanisms with exponential backoff
+- **Tool Call Limits**: Configurable limits for tool execution to prevent runaway processes
+- **Comprehensive Logging**: Enhanced logging with structured execution tracking
+
+### ✨ Technical Improvements
+
+**Node Execution Engine:**
+- Redesigned node executor with modular architecture
+- Enhanced error handling and recovery mechanisms
+- Support for asynchronous and synchronous node execution
+- Improved input/output mapping and validation
+
+**Flow Management:**
+- Better flow validation and dependency resolution
+- Enhanced custom node registration and management
+- Improved execution order optimization
+- Advanced debugging and monitoring capabilities
+
+**API Enhancements:**
+- Streamlined API surface with better developer experience
+- Enhanced configuration options and defaults
+- Improved error messages and debugging information
+- Better integration with Clara ecosystem
+
+### 🌐 Compatibility
+
+**Maintains Full Backward Compatibility:**
+- All v2.0.0 workflows continue to work unchanged
+- Existing API methods preserved and enhanced
+- Custom nodes from v2.0.0 fully supported
+- No breaking changes to core functionality
+
+**New Capabilities:**
+- Enhanced node types for complex workflows
+- Advanced AI agent capabilities
+- Better integration with Clara ecosystem
+- Improved TypeScript development experience
+
+### 📦 Distribution Updates
+
+**Enhanced Build System:**
+- Updated build process for new node types
+- Improved TypeScript compilation
+- Better tree-shaking for smaller bundles
+- Enhanced browser compatibility
+
+**Bundle Sizes:**
+- Node.js: 22KB (uncompressed) - includes new node types
+- Browser: 25KB (uncompressed), 12KB (minified)
+- Zero additional dependencies for core functionality
+
+### 🎯 What's New for Developers
+
+**Agent Workflows:**
+```javascript
+// New agent executor node for autonomous AI workflows
+const workflow = {
+  nodes: [{
+    type: 'agent-executor',
+    data: {
+      provider: 'openai',
+      textModel: 'gpt-4',
+      instructions: 'Analyze the data and create a report',
+      enabledMCPServers: ['filesystem', 'browser'],
+      maxToolCalls: 10
+    }
+  }]
+};
+```
+
+**TypeScript Development:**
+```typescript
+import { ClaraFlowRunner, FlowData } from 'clara-flow-sdk';
+
+const runner = new ClaraFlowRunner();
+const result = await runner.executeFlow(flowData, inputs);
+```
+
+**Advanced Node Types:**
+```javascript
+// Whisper transcription
+{ type: 'whisper-transcription', data: { model: 'whisper-1' } }
+
+// PDF processing
+{ type: 'pdf-input', data: { extractImages: true, pageRange: '1-5' } }
+
+// Notebook creation
+{ type: 'notebook-writer', data: { format: 'jupyter', title: 'Analysis Report' } }
+```
+
+---
+
 ## [2.0.0] - 2024-01-26
 
 ### 🚀 Complete Rewrite
