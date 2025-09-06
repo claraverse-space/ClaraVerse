@@ -9,7 +9,7 @@ contributors: ["badboysm890"]
 
 # 🧠 RAG (Notebooks)
 
-![Mascot](https://raw.githubusercontent.com/badboysm890/ClaraVerse/main/assets/icons/notebook-mascot.png)
+<img src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/935d0659b468f2d896f7acf2878725c35500cbe6/public/mascot/Rag.png" alt="Clara with notebooks and knowledge visualization" width="400" />
 
 **What if your documents could think, connect, and answer questions like a research assistant who never forgets?**
 

@@ -9,7 +9,7 @@ contributors: ["badboysm890"]
 
 # 🤖 Clara Assistant
 
-<img width="399" height="599" alt="ChatGPT Image Sep 5, 2025, 10_38_33 PM (1)" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
+<img width="399" height="599" alt="Assistant" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
 
 **Meet Clara: Your AI-powered command center that makes the impossible feel effortless.**
 
