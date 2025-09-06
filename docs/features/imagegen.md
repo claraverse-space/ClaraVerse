@@ -1,12 +1,12 @@
 ---
-title: "LumaUI"
-description: "AI-powered web development environment"
+title: "ImageGen"
+description: "AI image generation with ComfyUI"
 category: "features"
-order: 6
+order: 7
 lastUpdated: "2025-09-05"
 contributors: ["badboysm890"]
 ---
 
-# 💻 LumaUI
+# 🎨 ImageGen
 
 Coming soon...
