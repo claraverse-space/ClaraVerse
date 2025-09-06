@@ -31,6 +31,8 @@ import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import { useTheme } from '../hooks/useTheme';
 
 // Types
@@ -473,6 +475,23 @@ const Help = () => {
         {children}
         <ExternalLink size={14} />
       </a>
+    ),
+    img: ({ src, alt, width, height, ...props }) => (
+      <div className="my-6 flex justify-center">
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className="max-w-full h-auto rounded-lg shadow-lg"
+          loading="lazy"
+          onError={(e) => {
+            console.error('Failed to load image:', src);
+            e.currentTarget.style.display = 'none';
+          }}
+          {...props}
+        />
+      </div>
     )
   };
 
@@ -772,7 +791,11 @@ const Help = () => {
                 {/* Document Content */}
                 <div className="glassmorphic p-8 rounded-2xl">
                   <div className="prose dark:prose-invert prose-lg max-w-none prose-sakura">
-                    <ReactMarkdown components={MarkdownComponents}>
+                    <ReactMarkdown 
+                      components={MarkdownComponents}
+                      rehypePlugins={[rehypeRaw]}
+                      remarkPlugins={[remarkGfm]}
+                    >
                       {docs[selectedDoc].content}
                     </ReactMarkdown>
                   </div>
