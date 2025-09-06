@@ -7,9 +7,9 @@ lastUpdated: "2025-09-06"
 contributors: ["badboysm890"]
 ---
 
-# 🤖 Agents
+# Agents
 
-<img src="https://github.com/user-attachments/assets/your-permalink-here" alt="Clara with LEGO blocks representing agent nodes" width="400" />
+<img src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/203bdcbe08ee6644378e1fc4cfcb88b0c6dc95f4/public/mascot/Agents.png" alt="Clara with LEGO blocks representing agent nodes" width="400" />
 
 Agents are like LEGO blocks in ClaraVerse. Just as Clara Assistant connects everything into one place to give you maximum features, Agents let you build your own automated workflows exactly how you want them. You get a whole toolbox of nodes to create custom agents that can run on schedule, be triggered on demand, or work as standalone apps. Don't sleep on this feature — it's incredibly powerful in the right hands.
 
