@@ -23,6 +23,8 @@
   </a>
 </p>
 
+<a href="https://www.buymeacoffee.com/claraverse"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=claraverse&button_colour=FFDD00&font_colour=000000&font_family=Poppins&outline_colour=000000&coffee_colour=ffffff" /></a>
+
 <br/>
 
 [![GitHub Stars](https://img.shields.io/github/stars/badboysm890/ClaraVerse?style=flat&logo=github&color=gold&labelColor=1e1e2e)](https://github.com/badboysm890/ClaraVerse/stargazers)
@@ -49,10 +51,7 @@
 <a href="https://claraverse.space/">
   <img src="https://img.shields.io/badge/Try_Demo-🌐-5352ED?style=for-the-badge&labelColor=1e1e2e" alt="Demo" height="40"/>
 </a>
-&nbsp;
-<a href="https://buymeacoffee.com/claraverse">
-  <img src="https://img.shields.io/badge/Support_Us-☕-FFDD00?style=for-the-badge&labelColor=1e1e2e" alt="Support" height="40"/>
-</a>
+
 
 </div>
 
