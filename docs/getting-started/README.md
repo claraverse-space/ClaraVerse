@@ -8,66 +8,153 @@ contributors: ["badboysm890"]
 ---
 
 
-
-# 🚀 Getting Started
-
 <img width="399" height="599" alt="Hello Welcome Clara" src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/main/public/mascot/Hi_Welcome_Clara.png" />
 
-This page only covers what you need and how to install ClaraVerse.
+# Getting Started
 
-## 📋 Requirements
+Quick setup guide to get ClaraVerse running.
 
-- **OS**: macOS, Windows, or Linux
-- **RAM**: 8 GB minimum (16 GB recommended)
-- **Disk space**:
-  - **Base app + basic model**: ~3 GB
-  - **Optional RAG**:
-    - macOS: +2 GB
-    - Windows: +8 GB (CUDA assets)
-- **GPU (optional)**: Recommended for image generation; not required for core features
+## System Requirements
 
-## ⬇️ Download & Install
+### Minimum
+- **OS**: Windows 10+, macOS 11+, or Linux (Ubuntu 20.04+)
+- **RAM**: 8GB (will be slow)
+- **Storage**: 5GB for app + first model
+- **CPU**: Any x64 processor
 
-1. Go to the releases page:
-   - `https://github.com/badboysm890/claraverse/releases`
-2. Download the installer for your OS:
-   - Windows: `ClaraVerse-win-x64.exe`
-   - macOS: `ClaraVerse-mac-universal.dmg`
-   - Linux: `ClaraVerse-linux-x64.AppImage`
-3. Install and launch:
-   - Windows: run the `.exe`
-   - macOS: open the `.dmg` and drag to Applications
-   - Linux: `chmod +x` the AppImage, then run it
+### Recommended
+- **RAM**: 16GB or more
+- **GPU**: 4GB+ VRAM for image generation
+- **Storage**: 50GB+ for multiple models
+- **Docker**: Required for N8N, RAG, and bundled services
 
-That’s it — ClaraVerse is ready.
-Note: You will need to install Docker if you want to use the bundled N8N, RAG and ComfyUI.
+## Installation
 
-## 🖼️ ComfyUI (Image Generation)
+### Step 1: Download
+Get the latest release from:
+```
+https://github.com/badboysm890/claraverse/releases
+```
 
-- **Bundled instance**: Windows only (optimized CUDA build)
-- **Bring your own**: You can point ClaraVerse to any external ComfyUI server (all OSes)
+Choose your platform:
+- **Windows**: `ClaraVerse-win-x64.exe`
+- **macOS**: `ClaraVerse-mac-universal.dmg`  
+- **Linux**: `ClaraVerse-linux-x64.AppImage`
 
-## N8N (Automation)
+### Step 2: Install
 
-- **Bundled instance**: Windows, macOS, Linux (Docker 2GB+)
-- **Bring your own**: You can point ClaraVerse to any external N8N server (all OSes)
+**Windows:**
+1. Run the `.exe` installer
+2. Windows Defender may warn - click "More info" → "Run anyway"
+3. Launch from Start Menu
 
-## 🧠 RAG (Local Knowledge)
+**macOS:**
+1. Open the `.dmg` file
+2. Drag ClaraVerse to Applications
+3. First launch: Right-click → Open (bypass Gatekeeper)
+4. If blocked: System Preferences → Security → "Open Anyway"
 
-- Additional storage: macOS +2 GB, Windows +8 GB (due to CUDA assets)
-- Optional — only install if you need local document search/augmentation
+**Linux:**
+```bash
+chmod +x ClaraVerse-linux-x64.AppImage
+./ClaraVerse-linux-x64.AppImage
+```
 
-## 🛠️ Under Active Work
+### Step 3: First Launch
+1. ClaraVerse opens in your browser
+2. Download a starter model:
+   - Go to Settings → Local Models
+   - Download `JanNano128K-4B` (3GB)
+3. Start chatting with Clara!
 
-- **Remote/server mode**: Planned for the future with a peer‑to‑peer approach. For now, focus is stability and polish. This is a single‑developer effort — thank you for your patience and support.
-- If you need a pure server UI today, consider: OpenWebUI, LobeChat, LibreChat.
-- Cross‑platform ComfyUI packaging improvements.
-- Ongoing performance and GPU enhancements.
+## Optional Services
 
-## 💡 Why Clara?
+### Docker (Highly Recommended)
+Needed for N8N, RAG, and some features:
 
-Your computer deserves to be more than just a tool — it should be your creative partner. Clara transforms your machine into a living AI studio where you can automate the mundane, have meaningful conversations that remember your context, create stunning visuals, and build amazing things. Everything stays private, everything stays yours, and everything stays local. 
+**Windows/Mac**: Download Docker Desktop from docker.com
+**Linux**: 
+```bash
+sudo apt install docker.io docker-compose
+sudo usermod -aG docker $USER
+```
 
-This is computing that feels personal and fun again..
+### N8N (Automation)
+- **With Docker**: Auto-installs when you first open N8N tab
+- **Without Docker**: Point to external N8N instance in Settings
 
-I might not resonate with you but that's okay no worries claraverse will continue to grow to your liking soon. 
+### ComfyUI (Image Generation)
+- **Windows**: Bundled CUDA version available (one-click install)
+- **Mac/Linux**: Bring your own ComfyUI instance
+- **Setup**: Settings → ImageGen → Configure endpoint
+
+### RAG (Document Chat)
+- **Storage needed**: 
+  - macOS: +2GB
+  - Windows: +8GB (includes CUDA)
+- **Install**: Notebooks tab → Follow setup prompts
+
+## Quick Test
+
+1. **Test Clara Chat**:
+   ```
+   "Hello Clara, what can you do?"
+   ```
+
+2. **Test Agent Mode** (if Docker installed):
+   ```
+   Switch to Agent Mode
+   "Search for Python tutorials"
+   ```
+
+3. **Test Image Generation** (if ComfyUI configured):
+   ```
+   "Generate an image of a sunset"
+   ```
+
+## Common First-Time Issues
+
+### "Model not found"
+→ Download a model in Settings → Local Models
+
+### "Clara not responding"
+→ Check Settings → Services → Clara Core is running
+
+### "Docker not found"
+→ Install Docker Desktop and ensure it's running
+
+### "Permission denied" (Linux)
+→ Add user to docker group and reboot
+
+### "Windows protected your PC"
+→ Click "More info" → "Run anyway" (it's not signed)
+
+## Storage Locations
+
+- **App config**: `~/.claraverse/`
+- **Models**: `~/.claraverse/models/`
+- **Docker volumes**: Managed by Docker
+- **Browser data**: IndexedDB (don't clear!)
+
+## What's Next?
+
+1. **Explore Clara Assistant** - Your main interface
+2. **Try Notebooks** - Upload PDFs and chat with them
+3. **Build an Agent** - Visual automation workflows
+4. **Connect N8N** - External integrations
+5. **Generate Images** - If you have a GPU
+
+## Need Help?
+
+- **Discord**: Most active community support
+- **GitHub Issues**: Bug reports and features
+- **Email**: praveensm890@gmail.com (expect delays - solo dev!)
+
+## Quick Reality Check
+
+- This is v0.1.x software - expect rough edges
+- Local AI is slower than cloud services
+- You'll need patience and some technical knowledge
+- But you'll own everything and pay nothing
+
+Ready? Open ClaraVerse and let's build something cool!
