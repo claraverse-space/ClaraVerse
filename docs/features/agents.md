@@ -7,177 +7,199 @@ lastUpdated: "2025-09-06"
 contributors: ["badboysm890"]
 ---
 
-# 🤖 Agents
-
 <img src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/203bdcbe08ee6644378e1fc4cfcb88b0c6dc95f4/public/mascot/Agents.png" alt="Clara with LEGO blocks representing agent nodes" width="400" />
 
-**What if you could build enterprise-grade automation workflows with the simplicity of playing with LEGO blocks?**
+# Agents
 
-Agents transform complex automation into visual, drag-and-drop simplicity. While companies pay thousands for automation platforms like Zapier Enterprise or Microsoft Power Automate, you get unlimited workflow creation that runs locally, privately, and completely free.
+Visual workflow automation using node-based programming.
 
-**This isn't just automation—it's automation that works exactly how you think.**
+## What Agents Are
 
-## ✨ New in v0.1.45: Task Scheduling
+Agents are automated workflows you build by connecting nodes (think visual programming). Each node does one specific task, and you chain them together to create complex automations. No coding required, but you need to understand basic logic flow.
 
-Every agent can now become a scheduled task! As long as ClaraVerse is running on your PC, your agents will execute automatically based on your schedule. This means you can:
+## System Requirements
 
-- **Set up recurring workflows**: Daily reports, weekly data processing, monthly cleanup tasks
-- **Background automation**: Let agents work while you focus on other things
-- **Reliable execution**: Agents run exactly when you need them to
+- Same as base ClaraVerse (8GB RAM minimum)
+- Additional services may increase requirements
+- ComfyUI node needs GPU with 4GB+ VRAM
 
-**How it works:**
-1. **Schedule in Agents**: When creating or editing an agent, set up its schedule directly in Agent Studio
-2. **Manage in Tasks**: Head to the Tasks feature (located above Settings) to view and manage all your scheduled agents
-3. **Monitor execution**: Track when tasks run, see their results, and adjust schedules as needed
+## How It Works
 
-This transforms your agents from manual tools into true automation powerhouses that work around the clock.
+### Node System
+Agents use Directed Acyclic Graphs (DAGs) - fancy term meaning "no loops allowed". This prevents infinite loops and makes workflows predictable.
 
-## Two Main Parts
+**Why no loops?** 
+- Prevents system crashes
+- Guarantees workflows complete
+- Makes debugging possible
+- Resource-efficient
 
-### 🎨 Agent Studio
-This is where the magic happens. Agent Studio is your visual workspace for creating, testing, and managing agents.
+### Available Nodes
 
-**What you can do:**
-- **Create agents**: Drag and drop nodes to build workflows
-- **Test everything**: Run your agents safely to see how they work
-- **Manage your creations**: Keep track of all your agents in one place
+**Input/Output**
+- Input: Get data into your workflow
+- Output: Send results somewhere
+- Static Text: Store text templates
+- File Upload: Process files
 
-### ⚡ Agent Runner SDK
-The execution engine that brings your agents to life. It provides standalone apps you can use directly from the UI, plus SDK structure for building your own web applications with Clara SDK. 
+**AI Nodes**
+- LLM: Generate text using your chosen model
+- Structured LLM: Get JSON responses
+- Agent Executor: Run Clara Assistant within workflow
+- Whisper: Speech-to-text (requires model download)
 
-**Important note**: This isn't meant for frontend use since the JSON outputs contain your API keys — keep it backend only.
+**Processing**
+- JSON Parse: Handle JSON data
+- Combine Text: Merge multiple text sources
+- If/Else: Conditional logic
+- API Request: Call external services
 
-## How Agents Work: Nodes and Acyclic Graphs
+**Integration Nodes**
+- Notebook Writer: Save to your knowledge base
+- ComfyUI: Generate images
+- Text-to-Speech: Create audio output
+- PDF Input: Extract text from PDFs
 
-The real power comes from the massive collection of nodes you can use. Think of each node as a specialized tool that does one thing really well. Here's what you've got to work with:
+## Building Your First Agent
 
-### Available Node Types
+### Example: Email Summary Agent
+```
+1. API Request (fetch emails)
+   ↓
+2. JSON Parse (extract content)
+   ↓
+3. LLM Node (summarize)
+   ↓
+4. Notebook Writer (save summary)
+```
 
-**Basic Building Blocks:**
-- **Input/Output**: Get data in and send results out
-- **Static Text**: Store and format text content
-- **JSON Parse**: Handle JSON data like a pro
-- **If/Else**: Add smart decision-making to your flows
+### Step-by-Step:
+1. Open Agent Studio
+2. Drag nodes from sidebar
+3. Connect outputs to inputs
+4. Configure each node (click to edit)
+5. Test with "Run Agent"
+6. Save when it works
 
-**AI-Powered Nodes:**
-- **LLM**: Tap into language models for text generation
-- **Structured LLM**: Get properly formatted JSON responses
-- **Agent Executor**: Run autonomous AI agents within your workflow
-- **Whisper Transcription**: Convert audio to text
+## Scheduling (v0.1.45+)
 
-**Media Processing:**
-- **Image Input**: Work with images and visual data
-- **PDF Input**: Extract text from PDF documents
-- **ComfyUI Image Gen**: Generate images using ComfyUI
-- **Text-to-Speech**: Convert text to natural-sounding audio
+Agents can run automatically on schedules:
+1. Create agent in Agent Studio
+2. Set schedule (hourly, daily, weekly)
+3. Manage in Tasks tab (above Settings)
+4. ClaraVerse must be running for scheduled tasks
 
-**Integration & Automation:**
-- **API Request**: Connect to any web service
-- **File Upload**: Handle file operations
-- **Combine Text**: Merge and format text from multiple sources
-- **Notebook Writer**: Save results to your knowledge base
+**Common Schedules:**
+- Daily email summary at 9 AM
+- Weekly report generation
+- Hourly data backups
 
-### Why Acyclic Graphs?
+## Real Use Cases
 
-All these nodes connect using Directed Acyclic Graphs (DAGs). Here's why this matters:
+### Document Processor
+```
+PDF Input → Extract Text → LLM (analyze) → Structured Output → API (save to database)
+```
 
-**No Loops = No Problems**
-- Your workflows flow in one direction only
-- No risk of infinite loops eating your resources
-- Predictable execution every single time
+### Content Pipeline
+```
+Static Prompt → LLM (generate) → ComfyUI (create image) → Combine → File Output
+```
 
-**Rock-Solid Reliability**
-- Workflows always finish (no getting stuck forever)
-- Easy to debug when something goes wrong
-- Clear data flow from start to finish
+### Research Automation
+```
+Input Query → API (search) → LLM (summarize) → Notebook Writer
+```
 
-**Scales Like Crazy**
-- Add more nodes without worrying about complexity
-- Build massive workflows that stay manageable
-- Perfect for enterprise-level automation
+## Node Configuration Tips
 
-**Resource Friendly**
-- No memory leaks from circular dependencies
-- Efficient execution paths
-- Optimal performance even with complex flows
+### LLM Nodes
+- **Model**: Use smaller models for simple tasks
+- **Temperature**: 0.7 for creative, 0.1 for factual
+- **Max Tokens**: Limit to what you need (saves time)
+
+### API Request Node
+- **Method**: GET for reading, POST for sending data
+- **Headers**: Include authentication if needed
+- **Timeout**: Set reasonable limits (default 30s)
+
+### Notebook Writer
+- **Notebook**: Must exist before using
+- **Append vs Replace**: Choose wisely
+- **Format**: Markdown recommended
+
+## Performance Expectations
+
+- Simple workflow (3-4 nodes): 5-10 seconds
+- Complex workflow (10+ nodes): 30-60 seconds
+- Image generation: 30-120 seconds depending on GPU
+- API calls: Depends on external service
+
+## Common Issues & Solutions
+
+**Agent Won't Run**
+- Check all nodes are connected
+- Verify required services running (ComfyUI for image nodes)
+- Look for red error indicators on nodes
+
+**Slow Performance**
+- Use smaller models where possible
+- Reduce parallel API calls
+- Check system resources
+
+**Output Not As Expected**
+- Test each node individually
+- Check data formatting between nodes
+- Verify LLM prompts are clear
+
+## Integration with Other Features
+
+### With Clara Assistant
+Clara can trigger agents: "Run my daily summary agent"
+
+### With N8N
+- Use N8N for external integrations
+- Trigger agents from N8N webhooks
+- Combine for complex automations
+
+### With Notebooks
+- Read from notebooks for context
+- Write results back to notebooks
+- Build knowledge over time
+
+## Limitations
+
+1. **No Loops**: Can't do "for each" or "while" operations
+2. **Memory**: Large workflows may hit memory limits
+3. **Error Handling**: Limited - workflow stops on error
+4. **Debugging**: No step-through debugging yet
+5. **Version Control**: No built-in versioning
+
+## Pro Tips
+
+1. Start simple - test with 2-3 nodes first
+2. Name your nodes clearly
+3. Test after adding each node
+4. Save working versions before major changes
+5. Use Static Text nodes for prompt templates
+6. Keep LLM prompts concise and specific
+
+## Export Options
+
+Agents can be exported as JavaScript code:
+1. Settings → Export as Code
+2. Select your agent
+3. Get standalone JS module
+4. Note: Contains API keys - backend use only
 
 ## Getting Started
 
-**Step 1: Open Agent Studio**
-Jump into the visual builder and start experimenting.
+1. Open Agent Studio
+2. Create "Hello World" agent:
+   - Static Text ("Hello")
+   - Combine Text (add "World")
+   - Output node
+3. Run and verify output
+4. Build from there
 
-**Step 2: Pick Your Nodes**
-Choose from the huge library of available nodes based on what you want to accomplish.
-
-**Step 3: Connect the Dots**
-Drag connections between nodes to create your workflow logic.
-
-**Step 4: Test and Deploy**
-Run your agent to make sure it works, then set it loose.
-
-## Real Power Examples
-
-**Data Processing Pipeline:**
-PDF Input → Extract text → LLM analysis → Structured output → API request to save results
-
-**Content Generation Workflow:**
-Static text prompt → LLM generation → Text formatting → Combine with templates → File output
-
-**Media Processing Chain:**
-Image input → AI analysis → Text description → Text-to-speech → Audio output
-
-**Research Automation:**
-User query → API requests → Data aggregation → LLM summarization → Notebook storage
-
-The beauty is in the combinations — each node does one thing well, but together they can handle incredibly complex tasks automatically.
-
-## 🔗 Integration with ClaraVerse Ecosystem
-
-Agents aren't just standalone automation—they're the connective tissue that makes your entire ClaraVerse workspace intelligent and responsive.
-
-### 🤖 **Clara Assistant Integration**
-- **Agent Executor Node**: Run Clara's full AI capabilities within your workflows
-- **Natural Language Control**: Ask Clara to "run my daily report agent" and watch it execute
-- **Context Sharing**: Agents can access Clara's memory and conversation history for smarter automation
-
-### 📚 **Notebooks Integration** 
-- **Notebook Writer Node**: Automatically save agent results to your knowledge base
-- **Research Workflows**: Agents can query your notebooks, extract insights, and generate reports
-- **Auto-Documentation**: Set up agents to process new documents and update your notebooks automatically
-
-### 🎨 **ImageGen Integration**
-- **ComfyUI Image Gen Node**: Generate images as part of larger workflows
-- **Batch Processing**: Create agents that generate multiple images with different prompts
-- **Content Pipelines**: Combine text generation, image creation, and document formatting in one flow
-
-### 💻 **LumaUI Integration**
-- **Backend Automation**: Use agents as the backend for your LumaUI applications
-- **Content Generation**: Automatically generate website content, images, and data for your projects
-- **Deployment Workflows**: Create agents that build, test, and deploy your web applications
-
-### ⚡ **N8N Integration**
-- **Hybrid Workflows**: Combine Agent nodes with N8N's extensive integration library
-- **Tool Creation**: Turn agent workflows into Clara Assistant tools through N8N webhooks
-- **Complex Automation**: Use N8N for external integrations, Agents for AI processing
-
-### 🔄 **Real Ecosystem Examples**
-
-**Content Creation Pipeline:**
-1. **N8N** monitors your RSS feeds for new articles
-2. **Agent** processes articles, extracts key insights using LLM nodes
-3. **Notebook Writer** saves insights to your research notebook
-4. **ImageGen Node** creates relevant illustrations
-5. **LumaUI** displays everything in a beautiful dashboard
-6. **Clara** can reference all this data in conversations
-
-**Automated Research Assistant:**
-1. **Agent** queries your notebooks for existing research
-2. **API Request nodes** gather new data from external sources
-3. **LLM nodes** analyze and synthesize findings
-4. **ComfyUI node** generates visual summaries
-5. **N8N integration** sends results to your team via Slack
-6. **Clara** remembers everything for future questions
-
-This is the power of true integration—every feature amplifies every other feature.
-
-Ready to build something amazing? Dive into Agent Studio and start connecting those nodes!
+Remember: Agents are powerful but require logical thinking. Start simple, test often, and gradually increase complexity.

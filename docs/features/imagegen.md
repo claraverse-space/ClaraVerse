@@ -7,180 +7,290 @@ lastUpdated: "2025-09-06"
 contributors: ["badboysm890"]
 ---
 
-# 🎨 ImageGen
-
 <img src="https://raw.githubusercontent.com/badboysm890/ClaraVerse/203bdcbe08ee6644378e1fc4cfcb88b0c6dc95f4/public/mascot/ImageGen.png" alt="Clara creating AI-generated images" width="400" />
 
-**What if you could generate unlimited professional images without ever worrying about credits, subscriptions, or monthly bills?**
+# ImageGen
 
-While Midjourney charges $10-60/month and DALL-E burns through credits, ImageGen gives you unlimited AI image generation running locally on your hardware. We've wrapped ComfyUI—the gold standard of AI image generation—into a seamless, one-click experience.
+Local AI image generation using ComfyUI.
 
-**Professional AI art generation. Zero ongoing costs. Complete creative freedom.**
+## What ImageGen Is
 
-## What You Get
+ImageGen wraps ComfyUI (the standard for local Stable Diffusion) into ClaraVerse. Generate unlimited images on your hardware with no credits or subscriptions.
 
-ImageGen brings the power of ComfyUI directly into ClaraVerse without the usual setup headaches. Whether you're creating art, designing concepts, or generating visual content for your projects, ImageGen has you covered.
+## System Requirements
 
-## Windows CUDA Container
+- **Minimum**: 4GB VRAM GPU
+- **Recommended**: 8GB+ VRAM GPU  
+- **Storage**: 10-50GB for models
+- **RAM**: 16GB recommended
 
-If you're on Windows, you're in luck! We provide a ready-to-go container with Windows CUDA support. This means:
+Without GPU: Possible but extremely slow (2-10 minutes per image)
 
-- **One-click setup**: Download and you're ready to generate images
-- **Optimized performance**: Built specifically for Windows with CUDA acceleration
-- **No configuration hassles**: Everything works out of the box
-- **Full feature access**: All the power of ComfyUI without the complexity
+## Setup Options
 
-## Bring Your Own ComfyUI
+### Option 1: Windows CUDA Container
+Easiest setup for Windows users with NVIDIA GPUs:
+1. Download container from ClaraVerse
+2. Auto-installs with CUDA support
+3. Includes basic models
+4. Ready to use
 
-Not using Windows or prefer your own setup? No problem! You can always bring your own ComfyUI instance:
+### Option 2: Bring Your Own ComfyUI
+Already have ComfyUI? Just point ClaraVerse to it:
+```
+Settings → ImageGen → ComfyUI URL
+Default: http://localhost:8188
+```
 
-- **Use your existing setup**: Connect to your current ComfyUI installation
-- **Custom configurations**: Keep your preferred models and workflows
-- **Flexible deployment**: Local, remote, or cloud instances all work
-- **Easy integration**: Just modify the settings to point to your ComfyUI endpoint
+### Option 3: Manual Setup
+Install ComfyUI yourself and configure.
 
-## How to Get Started
+## Two Interfaces
 
-**Option 1: Use Our Container (Windows)**
-1. Download the Windows CUDA container from the interface
-2. Let it install and configure automatically
-3. Start generating images immediately
-
-**Option 2: Connect Your Own ComfyUI**
-1. Make sure your ComfyUI instance is running
-2. Go to Settings in ClaraVerse
-3. Update the ComfyUI endpoint URL
-4. Test the connection and you're good to go
-
-## Two UI Options
-
-You get to choose how you want to create images:
-
-### Clara's Simple UI
-Perfect for getting started and everyday use:
-- **Basic controls**: Model selection, LoRA, and essential settings
-- **Smart prompting**: Uses Clara Core to enhance your prompts automatically
-- **Built-in gallery**: Store and organize all your generated images
-- **Beginner-friendly**: Clean interface that doesn't overwhelm
+### Simple UI (Clara's Interface)
+Best for quick generation:
+- Model selection dropdown
+- Basic LoRA support
+- Prompt enhancement via Clara
+- Built-in gallery
+- Batch generation
 
 ### ComfyUI Interface
-For power users who want full control:
-- **Advanced workflows**: Build complex generation pipelines
-- **Complete customization**: Access every parameter and node
-- **Professional features**: Perfect for heavy workflow users
-- **Full ComfyUI power**: Everything you love about ComfyUI, integrated
+Full ComfyUI power:
+- Complex workflows
+- All parameters exposed
+- Custom nodes
+- Advanced techniques
 
-## Model Manager
+## Models
 
-When you use our packaged container, you get access to a powerful model manager:
+### Getting Models
 
-### Direct Downloads from CivitAI
-- **Browse and download**: Get models directly from CivitAI without leaving ClaraVerse
-- **Automatic installation**: Models are installed and ready to use immediately
-- **Community models**: Access thousands of community-created models
+**From CivitAI:**
+1. Browse models in Model Manager
+2. Click download
+3. Auto-installs to correct folder
 
-### NSFW Content Access
-- **API key required**: Add your CivitAI API key in settings to download uncensored models
-- **Age verification**: Respects CivitAI's content policies
-- **Optional feature**: Only needed if you want access to mature content
+**NSFW Models:**
+- Need CivitAI API key
+- Add in Settings → ImageGen
+- Respects age verification
 
-### Settings & Management
-The ImageGen settings give you complete control:
-- **Model management**: Add, remove, and organize your models
-- **Storage options**: Choose where to store downloaded models
-- **Performance tuning**: Adjust settings for your hardware
-- **Connection settings**: Configure ComfyUI endpoints
+**Manual Installation:**
+```
+Place models in:
+ComfyUI/models/checkpoints/
+```
 
-## Known Issues & Tips
+### Recommended Models
 
-### LoRA Limitations
-- **Don't overload**: Adding too many LoRAs can cause stability issues
-- **Start simple**: Use 1-2 LoRAs at first, then experiment
-- **Monitor performance**: Watch for memory issues with multiple LoRAs
+**For Beginners:**
+- SD 1.5 base (fast, reliable)
+- DreamShaper (good all-around)
 
-### Flux Model Compatibility
-- **No LoRA support**: Flux models don't work with LoRAs currently
-- **Use base models**: Stick to base Flux models without LoRA combinations
-- **Future updates**: We're working on better Flux integration
+**For Quality:**
+- SDXL models (need 8GB+ VRAM)
+- Juggernaut XL
 
-## Integration with Clara
+**For Speed:**
+- LCM models (5-10 steps)
+- Turbo models
 
-ImageGen works seamlessly with other ClaraVerse features:
+## Common Workflows
 
-- **Clara Assistant**: Ask Clara to generate images through natural conversation
-- **Agents**: Use the ComfyUI node in your automated workflows
-- **File handling**: Generated images integrate with your project files
-- **Batch processing**: Generate multiple images through agent workflows
+### Basic Generation
+```
+1. Select model
+2. Enter prompt
+3. Click generate
+4. Wait 20-60 seconds
+5. Image appears in gallery
+```
 
-## What Makes It Special
+### With LoRA
+```
+1. Download LoRA model
+2. Select in LoRA dropdown
+3. Adjust weight (0.5-1.0)
+4. Generate as normal
+```
 
-Unlike standalone ComfyUI setups, ImageGen gives you:
+### Batch Generation
+```
+Simple UI:
+- Set batch count
+- Generates variations
 
-- **Visual integration**: Images appear directly in your ClaraVerse interface
-- **Workflow automation**: Generate images as part of larger processes
-- **Easy sharing**: Generated content integrates with your projects
-- **No terminal commands**: Everything happens through the UI
+ComfyUI:
+- Use batch nodes
+- More control
+```
 
-## 🔗 Integration with ClaraVerse Ecosystem
+## Clara Integration
 
-ImageGen isn't just about creating pretty pictures—it's a visual content engine that enhances every aspect of your ClaraVerse workspace.
+### Natural Language
+```
+You: "Generate a sunset over mountains"
+Clara: [Enhances prompt, triggers generation]
+```
 
-### 🤖 **Clara Assistant Integration**
-- **Natural Language Generation**: Ask Clara to "create a logo for my project" and she'll handle the prompting and generation
-- **Contextual Creation**: Clara uses conversation context to generate relevant images automatically
-- **Iterative Improvement**: Clara helps refine prompts and settings based on your feedback
+### In Agent Workflows
+```
+Text Input → LLM (create prompt) → 
+ComfyUI Node → Image Output
+```
 
-### 🤖 **Agents Integration**
-- **ComfyUI Image Gen Node**: Automate image generation as part of larger workflows
-- **Batch Processing**: Create agents that generate multiple variations or process image requests automatically
-- **Content Pipelines**: Combine research, text generation, and image creation in automated workflows
+## Performance
 
-### 📚 **Notebooks Integration**
-- **Visual Documentation**: Automatically generate diagrams, charts, and illustrations for your notebook content
-- **Concept Visualization**: Create visual representations of complex ideas stored in your notebooks
-- **Research Enhancement**: Generate images that support and illustrate your research findings
+### Generation Times (512x512)
+- **4GB VRAM**: 30-60 seconds
+- **8GB VRAM**: 15-30 seconds
+- **12GB+ VRAM**: 10-20 seconds
 
-### 💻 **LumaUI Integration**
-- **Website Assets**: Generate custom images, logos, and graphics for your web projects
-- **Dynamic Content**: Create web apps that generate images on-demand based on user input
-- **Portfolio Galleries**: Build stunning galleries showcasing AI-generated artwork
+### VRAM Usage
+- **SD 1.5**: 3-4GB
+- **SDXL**: 6-8GB
+- **With LoRAs**: +0.5-1GB each
 
-### ⚡ **N8N Integration**
-- **Social Media Automation**: Set up workflows that generate and post images to social platforms
-- **Content Marketing**: Create automated pipelines for generating blog images and marketing materials
-- **E-commerce Automation**: Generate product images or variations automatically
+## Common Issues
 
-### 🔄 **Real Ecosystem Examples**
+### Out of Memory (VRAM)
+```
+Solutions:
+1. Use smaller models (SD 1.5 instead of SDXL)
+2. Reduce batch size to 1
+3. Lower resolution
+4. Close other GPU applications
+```
 
-**Content Creator Workflow:**
-1. **Notebooks** store article ideas and research
-2. **Clara** helps brainstorm visual concepts based on notebook content
-3. **ImageGen** creates custom illustrations and graphics
-4. **LumaUI** builds a beautiful portfolio website
-5. **N8N** automatically posts content to social media
-6. **Agents** manage the entire content pipeline on a schedule
+### LoRA Problems
+```
+Issues:
+- Too many LoRAs = crashes
+- Incompatible LoRAs = artifacts
+- High weights = distorted images
 
-**Business Presentation Pipeline:**
-1. **Clara** analyzes business data and suggests presentation themes
-2. **ImageGen** generates custom charts, diagrams, and slide graphics
-3. **Notebooks** store all presentation content and research
-4. **LumaUI** creates an interactive presentation website
-5. **Agents** automatically update visuals when data changes
+Fix:
+- Use 1-2 LoRAs max
+- Keep weights under 1.0
+- Match LoRA to base model version
+```
 
-**Research Visualization:**
-1. **Notebooks** contain complex research data and findings
-2. **Clara** identifies key concepts that need visualization
-3. **ImageGen** creates diagrams, flowcharts, and concept illustrations
-4. **Agents** automatically generate visual summaries of new research
-5. **LumaUI** presents everything in an interactive research dashboard
+### Flux Models
+```
+Known issue: LoRAs don't work with Flux
+Workaround: Use Flux without LoRAs
+Status: Fix in development
+```
 
-**Game Development Assets:**
-1. **Clara** helps brainstorm character and environment concepts
-2. **ImageGen** generates sprites, textures, and concept art
-3. **Agents** create variations and process batches of assets
-4. **LumaUI** builds game prototypes and showcases
-5. **Notebooks** organize all game design documentation
+### Slow Generation
+```
+Check:
+1. GPU being used (not CPU)
+2. Model size appropriate for VRAM
+3. No other GPU tasks running
+4. Sampling steps (20-30 is enough)
+```
 
-This is professional image generation that integrates seamlessly with your entire creative and productive workflow.
+## Quality Tips
 
-Ready to create some amazing images? Download the container or connect your ComfyUI instance and start generating!
+### Better Prompts
+```
+Good: "photograph of mountain landscape at golden hour, 
+       professional photography, high detail"
+
+Bad: "mountain"
+```
+
+### Negative Prompts
+```
+Always include: "low quality, blurry, distorted, 
+                deformed, ugly, bad anatomy"
+```
+
+### Settings
+- **Steps**: 20-30 (more isn't always better)
+- **CFG Scale**: 6-8 (too high = fried)
+- **Sampler**: DPM++ 2M Karras (reliable)
+
+## Advanced Features
+
+### Custom Workflows
+In ComfyUI interface:
+- Build complex pipelines
+- Save/load workflows
+- Share with community
+
+### Upscaling
+```
+Generate at 512x512 → Upscale to 2048x2048
+Saves VRAM, improves quality
+```
+
+### Img2Img
+```
+Upload image → Modify with prompt
+Great for variations
+```
+
+## Storage Management
+
+Models take space:
+- **SD 1.5 models**: 2-4GB each
+- **SDXL models**: 6-7GB each
+- **LoRAs**: 10-200MB each
+
+Clean up:
+```
+Settings → ImageGen → Manage Models
+Delete unused models
+```
+
+## Integration Examples
+
+### Content Pipeline
+```
+Notebook (article) → Clara (extract key points) → 
+ImageGen (create illustrations) → Save to project
+```
+
+### Social Media Automation
+```
+Agent scheduled daily:
+Generate prompt → Create image → 
+Post to social platforms
+```
+
+### Design Variations
+```
+Upload logo → Generate variations → 
+Save best to gallery
+```
+
+## Limitations
+
+1. **Hardware Dependent**: Quality/speed depends on GPU
+2. **Model Size**: Good models are large (2-7GB)
+3. **Learning Curve**: ComfyUI can be complex
+4. **VRAM Limits**: Bigger isn't always possible
+5. **Consistency**: Hard to get exact same image twice
+
+## Getting Started
+
+1. Ensure GPU drivers updated
+2. Download SD 1.5 model (start small)
+3. Try simple prompt: "cat sitting on desk"
+4. Experiment with settings
+5. Download LoRAs for style
+6. Try ComfyUI interface for advanced work
+
+## Pro Tips
+
+1. **Start with SD 1.5** - Faster and easier
+2. **Learn prompting** - Makes huge difference
+3. **Save good prompts** - Reuse what works
+4. **Batch generate** - Then pick best
+5. **Use Clara** - For prompt enhancement
+6. **Monitor VRAM** - Stay within limits
+
+Remember: Local generation means no censorship, no credits, no limits - but requires patience and good hardware.
