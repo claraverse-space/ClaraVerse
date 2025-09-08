@@ -591,6 +591,12 @@ export interface ClaraAIConfig {
     enableErrorLearning: boolean;
   };
   
+  /** Custom provider configuration (for non-stored providers) */
+  customProvider?: {
+    baseUrl: string;
+    apiKey?: string;
+  };
+  
   /** Context window size */
   contextWindow?: number;
 }

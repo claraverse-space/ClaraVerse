@@ -938,10 +938,23 @@ export class NodeRegistry {
         enableChainOfThought = true,
         enableToolGuidance = true,
         maxToolCalls = 10,
-        confidenceThreshold = 0.7
+        confidenceThreshold = 0.7,
+        
+        // Custom Provider Support
+        useCustomProvider = false,
+        customProviderUrl = '',
+        customProviderKey = '',
+        customProviderModel = ''
       } = node.data;
 
-      const instructions = inputs.instructions || '';
+        console.log('🔍 NodeRegistry Agent Executor - Raw node.data:', JSON.stringify(node.data, null, 2));
+        console.log('🔍 NodeRegistry - Custom Provider Fields:', {
+          useCustomProvider,
+          customProviderUrl,
+          customProviderKey: customProviderKey ? '[REDACTED]' : 'undefined',
+          customProviderModel,
+          textModel
+        });      const instructions = inputs.instructions || '';
       const contextInput = inputs.context || '';
       const attachments = inputs.attachments || [];
 
@@ -961,24 +974,35 @@ export class NodeRegistry {
           context.log(`🔧 MCP Servers enabled: ${enabledMCPServers.join(', ')}`);
         }
 
+        // Build execution config with custom provider support
+        const executionConfig = {
+          provider: useCustomProvider ? 'custom' : provider,
+          textModel: useCustomProvider ? customProviderModel || textModel : textModel,
+          visionModel: useCustomProvider ? customProviderModel || visionModel : visionModel,
+          codeModel: useCustomProvider ? customProviderModel || codeModel : codeModel,
+          enabledMCPServers,
+          temperature,
+          maxTokens,
+          maxRetries,
+          enableSelfCorrection,
+          enableChainOfThought,
+          enableToolGuidance,
+          maxToolCalls,
+          confidenceThreshold,
+          
+          // Custom provider fields
+          ...(useCustomProvider ? {
+            customProviderUrl,
+            customProviderKey
+          } : {})
+        };
+
+        console.log('🚀 NodeRegistry Agent Execution Config:', JSON.stringify(executionConfig, null, 2));
+
         // Execute the agent
         const result = await agentService.executeAgent(
           instructions,
-          {
-            provider,
-            textModel,
-            visionModel,
-            codeModel,
-            enabledMCPServers,
-            temperature,
-            maxTokens,
-            maxRetries,
-            enableSelfCorrection,
-            enableChainOfThought,
-            enableToolGuidance,
-            maxToolCalls,
-            confidenceThreshold
-          },
+          executionConfig,
           contextInput,
           attachments
         );

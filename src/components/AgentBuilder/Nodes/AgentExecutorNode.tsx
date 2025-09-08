@@ -49,6 +49,13 @@ interface AgentExecutorNodeData {
   codeModel?: string;
   enabledMCPServers: string[];
   
+  // Custom Provider Support
+  useCustomProvider?: boolean;
+  customProviderName?: string;
+  customProviderUrl?: string;
+  customProviderKey?: string;
+  customProviderModel?: string;
+  
   // Agent Behavior
   instructions: string;
   maxRetries: number;
@@ -87,6 +94,19 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
   const [instructions, setInstructions] = useState(data.instructions || '');
   const [enabledMCPServers, setEnabledMCPServers] = useState<string[]>(data.enabledMCPServers || []);
   
+  // Custom provider state
+  const [useCustomProvider, setUseCustomProvider] = useState(data.useCustomProvider || false);
+  const [customProvider, setCustomProvider] = useState({
+    name: data.customProviderName || '',
+    baseUrl: data.customProviderUrl || '',
+    apiKey: data.customProviderKey || '',
+    model: data.customProviderModel || ''
+  });
+  const [customProviderModels, setCustomProviderModels] = useState<string[]>([]);
+  const [isLoadingCustomModels, setIsLoadingCustomModels] = useState(false);
+  const [customProviderError, setCustomProviderError] = useState<string | null>(null);
+  const [requiresApiKey, setRequiresApiKey] = useState(!!data.customProviderKey);
+  
   // AI Parameters
   const [temperature, setTemperature] = useState(data.temperature || 0.7);
   const [maxTokens, setMaxTokens] = useState(data.maxTokens || 4000);
@@ -102,8 +122,6 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
   // UI state
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showMCPConfig, setShowMCPConfig] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
   
   // Phase 2: Enhanced execution state
   const [isExecuting, setIsExecuting] = useState(data.isExecuting || false);
@@ -111,77 +129,7 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
   const [lastResult, setLastResult] = useState(data.lastExecutionResult || null);
   const [currentSteps, setCurrentSteps] = useState<ExecutionStep[]>(data.currentSteps || []);
   const [executionHistory, setExecutionHistory] = useState<ExecutionHistory[]>(data.executionHistory || []);
-  const [enableMultiStep, setEnableMultiStep] = useState(data.enableMultiStep !== false);
-  const [enableRealTimeMonitoring, setEnableRealTimeMonitoring] = useState(data.enableRealTimeMonitoring !== false);
-  
-  // Phase 2: Agent templates
-  const [agentTemplates] = useState<AgentTemplate[]>([
-    {
-      id: 'data-analyst',
-      name: 'Data Analyst',
-      description: 'Analyze data, create visualizations, and generate insights',
-      category: 'analysis',
-      instructions: 'You are a data analyst. Analyze the provided data and create comprehensive insights with visualizations.',
-      config: {
-        provider: 'claras-pocket',
-        textModel: 'llama3.2:latest',
-        enabledMCPServers: ['filesystem', 'python-executor'],
-        temperature: 0.3,
-        maxTokens: 6000,
-        enableChainOfThought: true,
-        maxToolCalls: 15
-      }
-    },
-    {
-      id: 'code-reviewer',
-      name: 'Code Reviewer',
-      description: 'Review code for bugs, performance, and best practices',
-      category: 'coding',
-      instructions: 'You are a senior code reviewer. Analyze the code for bugs, security issues, performance problems, and suggest improvements.',
-      config: {
-        provider: 'claras-pocket',
-        textModel: 'llama3.2:latest',
-        codeModel: 'codellama:latest',
-        enabledMCPServers: ['filesystem', 'git-manager'],
-        temperature: 0.2,
-        maxTokens: 8000,
-        enableToolGuidance: true,
-        maxToolCalls: 20
-      }
-    },
-    {
-      id: 'content-creator',
-      name: 'Content Creator',
-      description: 'Generate high-quality content for various platforms',
-      category: 'content',
-      instructions: 'You are a creative content creator. Generate engaging, high-quality content tailored to the target audience and platform.',
-      config: {
-        provider: 'claras-pocket',
-        textModel: 'llama3.2:latest',
-        enabledMCPServers: ['web-search', 'image-processor'],
-        temperature: 0.8,
-        maxTokens: 5000,
-        enableChainOfThought: true,
-        maxToolCalls: 10
-      }
-    },
-    {
-      id: 'automation-specialist',
-      name: 'Automation Specialist',
-      description: 'Automate tasks and create efficient workflows',
-      category: 'automation',
-      instructions: 'You are an automation specialist. Create efficient automated solutions and workflows for the given task.',
-      config: {
-        provider: 'claras-pocket',
-        textModel: 'llama3.2:latest',
-        enabledMCPServers: ['filesystem', 'python-executor', 'database'],
-        temperature: 0.4,
-        maxTokens: 7000,
-        enableSelfCorrection: true,
-        maxToolCalls: 25
-      }
-    }
-  ]);
+  const [enableRealTimeMonitoring] = useState(data.enableRealTimeMonitoring !== false);
   
   // Available providers and models (loaded from Clara services)
   const [availableProviders, setAvailableProviders] = useState<ClaraProvider[]>([]);
@@ -191,8 +139,13 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
 
   // Update data callback
   const updateData = useCallback((updates: Partial<AgentExecutorNodeData>) => {
+    console.log('🔄 AgentExecutorNode updateData called with:', updates);
     if (data.onUpdate) {
-      data.onUpdate({ data: { ...data, ...updates } });
+      const newData = { ...data, ...updates };
+      console.log('📝 Saving node data:', newData);
+      data.onUpdate({ data: newData });
+    } else {
+      console.warn('⚠️ No onUpdate callback available');
     }
   }, [data]);
 
@@ -315,14 +268,192 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
       }
     };
 
-    loadProvidersAndModels();
-  }, [provider, model, updateData]);
-
-  // Get models for selected provider
+        loadProvidersAndModels();
+      }, [provider, model, updateData]);  // Get models for selected provider
   const getProviderModels = useCallback((providerIdFilter?: string) => {
     const targetProvider = providerIdFilter || provider;
     return availableModels.filter(m => m.provider === targetProvider);
   }, [availableModels, provider]);
+
+  // Fetch models from custom provider
+  const fetchCustomProviderModels = useCallback(async (baseUrl: string, apiKey?: string) => {
+    if (!baseUrl.trim()) {
+      setCustomProviderModels([]);
+      setCustomProviderError(null);
+      return;
+    }
+
+    setIsLoadingCustomModels(true);
+    setCustomProviderError(null);
+    
+    try {
+      // Normalize the base URL - ensure it ends with /models
+      let modelsUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
+      if (!modelsUrl.endsWith('/models')) {
+        modelsUrl += '/models';
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Only add Authorization header if API key is provided and required
+      if (apiKey && requiresApiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const response = await fetch(modelsUrl, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Handle different API response formats
+      let models: string[] = [];
+      if (data.data && Array.isArray(data.data)) {
+        // OpenAI format: { data: [{ id: "model-name" }, ...] }
+        models = data.data.map((model: any) => model.id || model.name).filter(Boolean);
+      } else if (data.models && Array.isArray(data.models)) {
+        // Ollama format: { models: [{ name: "model-name" }, ...] }
+        models = data.models.map((model: any) => model.name || model.id).filter(Boolean);
+      } else if (Array.isArray(data)) {
+        // Direct array format
+        models = data.map((model: any) => {
+          if (typeof model === 'string') return model;
+          return model.id || model.name;
+        }).filter(Boolean);
+      }
+
+      if (models.length === 0) {
+        setCustomProviderError('No models found. Please check your API endpoint and key.');
+      } else {
+        setCustomProviderModels(models);
+        if (enableRealTimeMonitoring) {
+          setExecutionLogs(prev => [...prev, `🎯 Found ${models.length} models from custom provider`]);
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch models';
+      setCustomProviderError(errorMessage);
+      setCustomProviderModels([]);
+      console.error('Failed to fetch custom provider models:', error);
+    } finally {
+      setIsLoadingCustomModels(false);
+    }
+  }, [enableRealTimeMonitoring, setExecutionLogs]);
+
+  // Auto-fetch custom provider models on mount if data is available
+  useEffect(() => {
+    if (useCustomProvider && customProvider.baseUrl && customProviderModels.length === 0) {
+      // Fetch models if we have URL and either don't require API key or have one
+      if (!requiresApiKey || customProvider.apiKey) {
+        fetchCustomProviderModels(customProvider.baseUrl, customProvider.apiKey);
+      }
+    }
+  }, [useCustomProvider, customProvider.baseUrl, customProvider.apiKey, customProviderModels.length, fetchCustomProviderModels, requiresApiKey]);
+
+  // Handle custom provider toggle
+  const handleCustomProviderToggle = useCallback((enabled: boolean) => {
+    setUseCustomProvider(enabled);
+    if (enabled) {
+      // Clear regular provider when switching to custom
+      setProvider('custom');
+    } else {
+      // Reset custom provider data
+      setCustomProvider({
+        name: '',
+        baseUrl: '',
+        apiKey: '',
+        model: ''
+      });
+      // Reset to first available provider
+      if (availableProviders.length > 0) {
+        setProvider(availableProviders[0].id);
+      }
+    }
+    updateData({ 
+      useCustomProvider: enabled,
+      provider: enabled ? 'custom' : (availableProviders.length > 0 ? availableProviders[0].id : ''),
+      // Clear custom provider data when disabled
+      ...(enabled ? {} : {
+        customProviderName: '',
+        customProviderUrl: '',
+        customProviderKey: '',
+        customProviderModel: ''
+      })
+    });
+  }, [availableProviders, updateData]);
+
+  // Handle custom provider field updates
+  const handleCustomProviderUpdate = useCallback((field: string, value: string) => {
+    console.log(`🔧 Custom provider field update: ${field} = "${value}"`);
+    
+    const updatedProvider = { ...customProvider, [field]: value };
+    console.log('📦 Updated provider object:', updatedProvider);
+    setCustomProvider(updatedProvider);
+    
+    // Map field names to the correct data property names
+    const fieldMapping: Record<string, string> = {
+      name: 'customProviderName',
+      baseUrl: 'customProviderUrl',
+      apiKey: 'customProviderKey',
+      model: 'customProviderModel'
+    };
+    
+    const dataProperty = fieldMapping[field];
+    if (dataProperty) {
+      console.log(`📝 Mapping ${field} -> ${dataProperty}: "${value}"`);
+      const updates: any = { 
+        [dataProperty]: value
+      };
+      
+      // For model selection, also update textModel for consistency
+      if (field === 'model') {
+        updates.textModel = value;
+        console.log(`📝 Also updating textModel: "${value}"`);
+      }
+      
+      console.log('💾 Calling updateData with:', updates);
+      updateData(updates);
+    } else {
+      console.warn(`⚠️ Unknown field: ${field}`);
+    }
+
+    // Auto-fetch models when URL is provided (and API key if required)
+    if ((field === 'baseUrl' || field === 'apiKey') && updatedProvider.baseUrl) {
+      // Fetch models if we have URL and either don't require API key or have one
+      if (!requiresApiKey || updatedProvider.apiKey) {
+        fetchCustomProviderModels(updatedProvider.baseUrl, updatedProvider.apiKey);
+      }
+    }
+
+    // Clear models if URL is removed
+    if (field === 'baseUrl' && !updatedProvider.baseUrl) {
+      setCustomProviderModels([]);
+      setCustomProviderError(null);
+    }
+  }, [customProvider, updateData, fetchCustomProviderModels, requiresApiKey]);
+
+  // Handle API key requirement toggle
+  const handleApiKeyRequirementToggle = useCallback((required: boolean) => {
+    setRequiresApiKey(required);
+    if (!required) {
+      // Clear API key if not required
+      const updatedProvider = { ...customProvider, apiKey: '' };
+      setCustomProvider(updatedProvider);
+      updateData({ customProviderKey: '' });
+      
+      // Re-fetch models without API key if URL is available
+      if (updatedProvider.baseUrl) {
+        fetchCustomProviderModels(updatedProvider.baseUrl);
+      }
+    }
+  }, [customProvider, updateData, fetchCustomProviderModels]);
 
   // Handle provider change
   const handleProviderChange = useCallback((newProvider: string) => {
@@ -372,8 +503,37 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
 
   // Enhanced executeAgent with Phase 2 features - Multi-step execution and real-time monitoring
   const executeAgent = useCallback(async (taskInstructions: string) => {
-    if (!provider || !model || !taskInstructions.trim()) {
-      throw new Error('Provider, model, and instructions are required');
+    console.log('🚀 Starting Agent Execution');
+    console.log('📊 Current State:', {
+      useCustomProvider,
+      provider,
+      model,
+      customProvider: {
+        name: customProvider.name,
+        baseUrl: customProvider.baseUrl,
+        model: customProvider.model,
+        hasApiKey: !!customProvider.apiKey
+      },
+      savedData: {
+        customProviderName: data.customProviderName,
+        customProviderUrl: data.customProviderUrl,
+        customProviderModel: data.customProviderModel,
+        textModel: data.textModel
+      }
+    });
+
+    // Validate inputs based on provider type
+    if (useCustomProvider) {
+      if (!customProvider.baseUrl || !customProvider.model || !taskInstructions.trim()) {
+        throw new Error('Custom provider URL, model, and instructions are required');
+      }
+      if (requiresApiKey && !customProvider.apiKey) {
+        throw new Error('API key is required for this provider');
+      }
+    } else {
+      if (!provider || !model || !taskInstructions.trim()) {
+        throw new Error('Provider, model, and instructions are required');
+      }
     }
 
     setIsExecuting(true);
@@ -425,7 +585,23 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
       }
 
       // Create agent execution config
-      const agentConfig: AgentExecutionConfig = {
+      const agentConfig: AgentExecutionConfig = useCustomProvider ? {
+        provider: 'custom',
+        textModel: data.customProviderModel || customProvider.model,
+        visionModel: data.customProviderModel || customProvider.model,
+        codeModel: data.customProviderModel || customProvider.model,
+        customProviderUrl: data.customProviderUrl || customProvider.baseUrl,
+        customProviderKey: data.customProviderKey || customProvider.apiKey,
+        enabledMCPServers,
+        temperature,
+        maxTokens,
+        maxRetries,
+        enableSelfCorrection,
+        enableChainOfThought,
+        enableToolGuidance,
+        maxToolCalls,
+        confidenceThreshold
+      } : {
         provider,
         textModel: model,
         visionModel: model,
@@ -440,6 +616,25 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
         maxToolCalls,
         confidenceThreshold
       };
+
+      console.log('🎯 Agent Execution Config (useCustomProvider:', useCustomProvider, '):', {
+        provider: agentConfig.provider,
+        textModel: agentConfig.textModel,
+        customProviderUrl: agentConfig.customProviderUrl,
+        dataSources: {
+          'data.customProviderModel': data.customProviderModel,
+          'customProvider.model': customProvider.model,
+          'data.customProviderUrl': data.customProviderUrl,
+          'customProvider.baseUrl': customProvider.baseUrl
+        },
+        customProvider: useCustomProvider ? {
+          model: customProvider.model,
+          baseUrl: customProvider.baseUrl,
+          apiKey: customProvider.apiKey ? '[REDACTED]' : undefined
+        } : 'N/A'
+      });
+
+      console.log('🚨 CRITICAL DEBUG - Final Agent Config:', JSON.stringify(agentConfig, null, 2));
 
       updateStep('preparation', { status: 'completed', endTime: Date.now() });
       updateStep('execution', { status: 'running', startTime: Date.now() });
@@ -549,7 +744,7 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
       updateData({ isExecuting: false });
     }
   }, [
-    provider, model, enabledMCPServers,
+    provider, model, useCustomProvider, customProvider, requiresApiKey, enabledMCPServers,
     temperature, maxTokens, maxRetries, enableSelfCorrection,
     enableChainOfThought, enableToolGuidance, maxToolCalls,
     confidenceThreshold, updateData, enableRealTimeMonitoring,
@@ -602,39 +797,210 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               🏢 Provider
             </label>
-            <select
-              value={provider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
-            >
-              <option value="">Select Provider</option>
-              {availableProviders.map((prov) => (
-                <option key={prov.id} value={prov.id}>
-                  {prov.name} ({prov.type})
-                </option>
-              ))}
-            </select>
+            
+            {/* Provider Type Toggle */}
+            <div className="mb-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="providerType"
+                  checked={!useCustomProvider}
+                  onChange={() => handleCustomProviderToggle(false)}
+                  className="text-sakura-600 focus:ring-sakura-500"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">Use Settings Provider</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="providerType"
+                  checked={useCustomProvider}
+                  onChange={() => handleCustomProviderToggle(true)}
+                  className="text-sakura-600 focus:ring-sakura-500"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">Custom Provider</span>
+              </label>
+            </div>
+
+            {/* Settings Provider Selection */}
+            {!useCustomProvider && (
+              <select
+                value={provider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
+              >
+                <option value="">Select Provider</option>
+                {availableProviders.map((prov) => (
+                  <option key={prov.id} value={prov.id}>
+                    {prov.name} ({prov.type})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Custom Provider Configuration */}
+            {useCustomProvider && (
+              <div className="space-y-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div>
+                  <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                    Provider Name
+                  </label>
+                  <input
+                    type="text"
+                    value={customProvider.name}
+                    onChange={(e) => handleCustomProviderUpdate('name', e.target.value)}
+                    placeholder="e.g., My Custom Provider"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all border border-blue-300 dark:border-blue-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                    Base URL
+                  </label>
+                  <input
+                    type="url"
+                    value={customProvider.baseUrl}
+                    onChange={(e) => handleCustomProviderUpdate('baseUrl', e.target.value)}
+                    placeholder="https://api.example.com/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all border border-blue-300 dark:border-blue-700"
+                  />
+                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Examples: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">https://api.openai.com/v1</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">http://localhost:11434/v1</code>
+                  </div>
+                </div>
+                
+                {/* API Key Requirement Toggle */}
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={requiresApiKey}
+                      onChange={(e) => handleApiKeyRequirementToggle(e.target.checked)}
+                      className="rounded border-gray-300 text-sakura-600 focus:ring-sakura-500"
+                    />
+                    <span className="text-xs text-blue-700 dark:text-blue-300">Requires API Key</span>
+                  </label>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    (Uncheck for local APIs like Ollama)
+                  </span>
+                </div>
+                
+                {/* API Key Field */}
+                {requiresApiKey && (
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                      API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={customProvider.apiKey}
+                      onChange={(e) => handleCustomProviderUpdate('apiKey', e.target.value)}
+                      placeholder="Your API key"
+                      className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all border border-blue-300 dark:border-blue-700"
+                    />
+                  </div>
+                )}
+                
+                <div>
+                  <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                    Model Name
+                  </label>
+                  {customProviderModels.length > 0 ? (
+                    <select
+                      value={customProvider.model}
+                      onChange={(e) => handleCustomProviderUpdate('model', e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all border border-blue-300 dark:border-blue-700"
+                    >
+                      <option value="">Select a model</option>
+                      {customProviderModels.map((modelName) => (
+                        <option key={modelName} value={modelName}>
+                          {modelName}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={customProvider.model}
+                      onChange={(e) => handleCustomProviderUpdate('model', e.target.value)}
+                      placeholder="e.g., gpt-4, llama2, claude-3"
+                      className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all border border-blue-300 dark:border-blue-700"
+                    />
+                  )}
+                  {isLoadingCustomModels && (
+                    <div className="flex items-center gap-2 mt-1 text-xs text-blue-600 dark:text-blue-400">
+                      <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Loading models...</span>
+                    </div>
+                  )}
+                  {customProviderError && (
+                    <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      {customProviderError}
+                    </div>
+                  )}
+                  {customProviderModels.length > 0 && !isLoadingCustomModels && (
+                    <div className="mt-1 text-xs text-green-600 dark:text-green-400">
+                      ✅ Found {customProviderModels.length} models
+                    </div>
+                  )}
+                </div>
+                {customProvider.baseUrl && customProvider.apiKey && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => fetchCustomProviderModels(customProvider.baseUrl, requiresApiKey ? customProvider.apiKey : undefined)}
+                      disabled={isLoadingCustomModels}
+                      className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      {isLoadingCustomModels ? (
+                        <>
+                          <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          🔄 Refresh Models
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+                <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+                  💡 This provider will only be used for this specific node and won't be saved to your global settings.
+                  <br />
+                  🔄 Models will be automatically fetched when you provide the URL (and API key if required).
+                  <br />
+                  🏠 For local APIs like Ollama, uncheck "Requires API Key" and just provide the URL.
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Model Selection */}
-        {provider && !isLoadingConfig && (
+        {((provider && !useCustomProvider) || (useCustomProvider && customProvider.model)) && !isLoadingConfig && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               🧠 Model
             </label>
-            <select
-              value={model}
-              onChange={(e) => handleModelChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
-            >
-              <option value="">Select Model</option>
-              {textModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+            {useCustomProvider ? (
+              <div className="px-3 py-2 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                {customProvider.model || 'No model specified'}
+              </div>
+            ) : (
+              <select
+                value={model}
+                onChange={(e) => handleModelChange(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-gray-50/90 dark:bg-gray-700/90 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sakura-500 transition-all"
+              >
+                <option value="">Select Model</option>
+                {textModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 
@@ -832,10 +1198,35 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
           <div className="space-y-2">
             {isExecuting && (
               <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300 mb-2">
                   <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm font-medium">Executing Agent...</span>
                 </div>
+                {enableRealTimeMonitoring && currentSteps.length > 0 && (
+                  <div className="space-y-1">
+                    {currentSteps.map((step) => (
+                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                        {step.status === 'completed' ? (
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                        ) : step.status === 'running' ? (
+                          <div className="w-3 h-3 border border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                        ) : step.status === 'failed' ? (
+                          <AlertCircle className="w-3 h-3 text-red-500" />
+                        ) : (
+                          <div className="w-3 h-3 border border-gray-300 rounded-full" />
+                        )}
+                        <span className={`${
+                          step.status === 'completed' ? 'text-green-600 dark:text-green-400' :
+                          step.status === 'running' ? 'text-yellow-600 dark:text-yellow-400' :
+                          step.status === 'failed' ? 'text-red-600 dark:text-red-400' :
+                          'text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {step.description}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -874,7 +1265,9 @@ const AgentExecutorNode = memo<NodeProps<AgentExecutorNodeData>>((props) => {
         )}
 
         {/* Quick Test Button */}
-        {provider && model && instructions && !isExecuting && (
+        {((provider && model && !useCustomProvider) || 
+          (useCustomProvider && customProvider.baseUrl && customProvider.model && (!requiresApiKey || customProvider.apiKey))) && 
+          instructions && !isExecuting && (
           <button
             onClick={() => executeAgent(instructions)}
             className="w-full px-3 py-2.5 bg-gradient-to-r from-sakura-500 to-pink-500 hover:from-sakura-600 hover:to-pink-600 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"

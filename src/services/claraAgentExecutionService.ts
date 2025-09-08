@@ -12,7 +12,7 @@
  * - Task decomposition and validation
  */
 
-import { claraApiService } from './claraApiService';
+import { claraAgentApiService } from './claraAgentApiService';
 import { ClaraAIConfig, ClaraFileAttachment } from '../types/clara_assistant_types';
 
 // Enhanced interfaces for Phase 2
@@ -45,6 +45,10 @@ export interface AgentExecutionConfig {
   visionModel?: string;
   codeModel?: string;
   enabledMCPServers: string[];
+  
+  // Custom Provider Support
+  customProviderUrl?: string;
+  customProviderKey?: string;
   
   // AI Parameters
   temperature: number;
@@ -168,7 +172,7 @@ export class ClaraAgentExecutionService {
 
       // Execute the agent
       addLog('Sending request to AI service...');
-      const result = await claraApiService.sendChatMessage(
+      const result = await claraAgentApiService.sendChatMessage(
         fullInstructions,
         aiConfig,
         attachments || [],
@@ -229,6 +233,8 @@ export class ClaraAgentExecutionService {
   /**
    * Phase 2: Helper method to assess task complexity
    */
+  // Phase 2: Advanced execution methods (planned for future implementation)
+  /*
   private assessTaskComplexity(instructions: string, config: AgentExecutionConfig): 'simple' | 'moderate' | 'complex' {
     const indicators = {
       simple: ['get', 'find', 'show', 'list', 'what', 'who', 'when', 'where'],
@@ -260,10 +266,12 @@ export class ClaraAgentExecutionService {
     if (complexityScore <= 7) return 'moderate';
     return 'complex';
   }
+  */
 
   /**
    * Phase 2: Execute as single comprehensive task (fallback)
    */
+  /*
   private async executeSingleTask(
     instructions: string,
     config: AgentExecutionConfig,
@@ -298,10 +306,12 @@ export class ClaraAgentExecutionService {
       streamCallback
     );
   }
+  */
 
   /**
    * Phase 2: Validate execution results
    */
+  /*
   private async validateResults(
     result: any,
     originalInstructions: string,
@@ -319,6 +329,7 @@ export class ClaraAgentExecutionService {
       suggestions: basicScore < 90 ? ['Consider adding more detail'] : []
     };
   }
+  */
 
   /**
    * Create AI configuration from agent execution config
@@ -388,11 +399,30 @@ export class ClaraAgentExecutionService {
       }
     };
     
+    // Add custom provider configuration if using custom provider
+    if (config.provider === 'custom' && config.customProviderUrl) {
+      (aiConfig as any).customProvider = {
+        baseUrl: config.customProviderUrl,
+        apiKey: config.customProviderKey || undefined
+      };
+      console.log(`🔧 Added custom provider to AI config:`, {
+        baseUrl: config.customProviderUrl,
+        hasApiKey: !!config.customProviderKey
+      });
+    } else if (config.provider === 'custom') {
+      console.warn(`⚠️ Custom provider selected but missing URL. Config:`, {
+        provider: config.provider,
+        customProviderUrl: config.customProviderUrl,
+        customProviderKey: config.customProviderKey ? '[REDACTED]' : undefined
+      });
+    }
+    
     console.log(`📋 Created AI Config:`, {
       provider: aiConfig.provider,
       textModel: aiConfig.models.text,
       mcpEnabled: aiConfig.features.enableMCP,
-      mcpServers: aiConfig.mcp.enabledServers
+      mcpServers: aiConfig.mcp.enabledServers,
+      ...(config.provider === 'custom' ? { customProvider: true } : {})
     });
     
     return aiConfig;
@@ -403,7 +433,7 @@ export class ClaraAgentExecutionService {
    */
   async getAvailableProviders() {
     try {
-      return await claraApiService.getProviders();
+      return await claraAgentApiService.getProviders();
     } catch (error) {
       console.error('Failed to get providers:', error);
       return [];
@@ -415,7 +445,7 @@ export class ClaraAgentExecutionService {
    */
   async getAvailableModels(providerId: string) {
     try {
-      return await claraApiService.getModels(providerId);
+      return await claraAgentApiService.getModels(providerId);
     } catch (error) {
       console.error(`Failed to get models for provider ${providerId}:`, error);
       return [];
@@ -434,7 +464,7 @@ export class ClaraAgentExecutionService {
         return false;
       }
 
-      return await claraApiService.testProvider(provider);
+      return await claraAgentApiService.testProvider(provider);
     } catch (error) {
       console.error(`Failed to test provider ${providerId}:`, error);
       return false;
