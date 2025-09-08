@@ -249,7 +249,7 @@ const CustomNode = memo<CustomNodeProps>(({ nodeDefinition, ...props }) => {
             {nodeDefinition.version && (
               <span>v{nodeDefinition.version}</span>
             )}
-            {nodeDefinition.customMetadata.createdBy && (
+            {nodeDefinition.customMetadata?.createdBy && (
               <span>by {nodeDefinition.customMetadata.createdBy}</span>
             )}
           </div>

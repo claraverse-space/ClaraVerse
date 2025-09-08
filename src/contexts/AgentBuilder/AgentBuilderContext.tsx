@@ -775,10 +775,35 @@ const result = await flow.executeWithCallback(
               continue;
             }
             
-            // Register the custom node
-            customNodeManager.registerCustomNode(customNodeDef);
+            // Normalize and validate the custom node definition
+            const normalizedNodeDef = {
+              ...customNodeDef,
+              // Ensure customMetadata exists with default values
+              customMetadata: {
+                isUserCreated: true,
+                createdBy: customNodeDef.customMetadata?.createdBy || 'Unknown',
+                createdAt: customNodeDef.customMetadata?.createdAt || new Date().toISOString(),
+                sharedWith: customNodeDef.customMetadata?.sharedWith || [],
+                published: customNodeDef.customMetadata?.published || false,
+                downloadCount: customNodeDef.customMetadata?.downloadCount || 0,
+                rating: customNodeDef.customMetadata?.rating || 0,
+                ...customNodeDef.customMetadata
+              },
+              // Ensure required fields exist
+              inputs: customNodeDef.inputs || [],
+              outputs: customNodeDef.outputs || [],
+              properties: customNodeDef.properties || [],
+              version: customNodeDef.version || '1.0.0',
+              metadata: {
+                tags: [],
+                ...customNodeDef.metadata
+              }
+            };
+            
+            // Register the normalized custom node
+            customNodeManager.registerCustomNode(normalizedNodeDef);
             registeredCount++;
-            console.log(`Registered custom node: ${customNodeDef.name}`);
+            console.log(`Registered custom node: ${normalizedNodeDef.name}`);
           } catch (error) {
             console.error(`Failed to register custom node "${customNodeDef.name}":`, error);
             skippedCount++;

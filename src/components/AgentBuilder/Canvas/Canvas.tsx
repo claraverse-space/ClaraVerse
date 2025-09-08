@@ -94,17 +94,25 @@ const baseNodeTypes: NodeTypes = {
 console.log('Base node types defined:', baseNodeTypes);
 
 // Wrapper component for custom nodes that provides the node definition
-const CustomNodeWrapper: React.FC<any> = (props) => {
+const CustomNodeWrapper: React.FC<any> = React.memo((props) => {
   const { customNodes } = useAgentBuilder();
   const nodeDefinition = customNodes.find(def => def.type === props.type);
   
   if (!nodeDefinition) {
-    console.error(`Custom node definition not found for type: ${props.type}`);
-    return <div>Custom node definition not found</div>;
+    console.error(`Custom node definition not found for type: ${props.type}`, {
+      availableTypes: customNodes.map(n => n.type),
+      requestedType: props.type
+    });
+    return (
+      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="text-red-800 text-sm font-medium">Custom node definition not found</div>
+        <div className="text-red-600 text-xs mt-1">Type: {props.type}</div>
+      </div>
+    );
   }
   
   return <CustomNode {...props} nodeDefinition={nodeDefinition} />;
-};
+});
 
 interface CanvasProps {
   className?: string;
@@ -136,31 +144,23 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
     timestamp: number;
   } | null>(null);
 
-  // Create dynamic node types that include custom nodes - use useState for immediate initialization
-  const [nodeTypes, setNodeTypes] = useState<NodeTypes>(() => {
+  // Create dynamic node types that include custom nodes - use useMemo for proper memoization
+  const nodeTypes = useMemo<NodeTypes>(() => {
     const dynamicNodeTypes = { ...baseNodeTypes };
     
-    console.log('Base node types registered:', Object.keys(baseNodeTypes));
-    console.log('Base node type details:', baseNodeTypes);
-    
-    console.log('Initial dynamic node types available:', Object.keys(dynamicNodeTypes));
-    console.log('Initial nodeTypes object:', dynamicNodeTypes);
-    return dynamicNodeTypes;
-  });
-
-  // Update nodeTypes when customNodes change
-  useEffect(() => {
-    const dynamicNodeTypes = { ...baseNodeTypes };
+    console.log('🔧 Creating nodeTypes - Base node types:', Object.keys(baseNodeTypes));
+    console.log('🔧 Available custom nodes:', customNodes.map(n => ({ type: n.type, name: n.name })));
     
     // Add all custom nodes to the nodeTypes
     customNodes.forEach(customNodeDef => {
       dynamicNodeTypes[customNodeDef.type] = CustomNodeWrapper;
-      console.log(`Registered custom node type: ${customNodeDef.type}`);
+      console.log(`✅ Registered custom node type: ${customNodeDef.type} -> CustomNodeWrapper`);
     });
     
-    console.log('Updated dynamic node types available:', Object.keys(dynamicNodeTypes));
-    console.log('Updated nodeTypes object:', dynamicNodeTypes);
-    setNodeTypes(dynamicNodeTypes);
+    const finalTypes = Object.keys(dynamicNodeTypes);
+    console.log(`🎯 Final nodeTypes (${finalTypes.length}):`, finalTypes);
+    console.log('🎯 Final nodeTypes object:', dynamicNodeTypes);
+    return dynamicNodeTypes;
   }, [customNodes]);
 
   // Convert our internal format to ReactFlow format
@@ -378,7 +378,9 @@ const CanvasContent: React.FC<CanvasProps> = ({ className = '' }) => {
 
   // Debug: Log nodeTypes being passed to ReactFlow whenever nodeTypes changes
   useEffect(() => {
-    console.log('ReactFlow nodeTypes being passed:', Object.keys(nodeTypes));
+    const nodeTypeKeys = Object.keys(nodeTypes);
+    console.log(`🚀 ReactFlow nodeTypes being passed (${nodeTypeKeys.length}):`, nodeTypeKeys);
+    console.log('🚀 Custom nodes in nodeTypes:', nodeTypeKeys.filter(key => !Object.keys(baseNodeTypes).includes(key)));
   }, [nodeTypes]);
 
   // Copy selected node to clipboard
