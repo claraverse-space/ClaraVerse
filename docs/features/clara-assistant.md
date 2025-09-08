@@ -1,198 +1,194 @@
 ---
 title: "Clara Assistant"
-description: "Your portal to everything in ClaraVerse"
+description: "Your AI-powered command center that connects everything"
 category: "features"
 order: 2
-lastUpdated: "2025-09-05"
+lastUpdated: "2025-09-06"
 contributors: ["badboysm890"]
 ---
 
+<img width="399" height="599" alt="Assistant" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
+
 # Clara Assistant
 
-<img width="399" height="599" alt="ChatGPT Image Sep 5, 2025, 10_38_33 PM (1)" src="https://github.com/user-attachments/assets/ab0c92ab-6b23-48c6-b592-9050153ea532" />
+Your local AI assistant that orchestrates your entire workspace.
 
-Clara Assistant is your portal to everything in ClaraVerse. It's not just a chatbot — it's the central hub that connects all features, tools, and capabilities to give you maximum customization and power.
+## What Clara Actually Does
 
-## What Makes Clara Special
+Clara is an AI assistant that runs on your computer and connects to everything else in ClaraVerse. Think of it as your command center - you can chat, research, generate content, and automate tasks all from one interface.
 
-Clara connects to every part of ClaraVerse: Tools, MCP, Agents, Notebooks, ImageGen, Memories, and Clara Core. This integration means you get a unified experience where everything works together seamlessly.
+## System Requirements
 
-## Two Modes of Operation
+- **Minimum**: 8GB RAM, any GPU helps
+- **Recommended**: 16GB RAM, 4GB+ VRAM GPU
+- **Best Experience**: 32GB RAM, 8GB+ VRAM GPU
 
-Clara operates in two distinct modes depending on what you need:
+## Two Operating Modes
 
-### 💬 **Chat Mode**
-- **Pure conversation**: Focus on discussion, explanation, and guidance
-- **No tool access**: Clara can't modify files, run code, or access external systems
-- **Fast responses**: Lightweight interactions for quick questions and learning
-- **Perfect for**: Code explanations, learning concepts, planning, and brainstorming
+### Chat Mode (Default)
+Fast, lightweight conversations without system access.
 
-### 🛠️ **Agent Mode**
-- **Full tool access**: Clara can execute code, modify files, and use all available tools
-- **Autonomous work**: Can complete complex tasks independently
-- **MCP integration**: Automatically activates Clara's MCP server for enhanced capabilities
-- **Perfect for**: Building projects, file operations, research, and hands-on development
-
-**Switching modes**: Toggle between Chat and Agent mode anytime based on whether you need Clara to take action or just provide guidance.
-
-## Connected Features
-
-### 🛠️ **Tools**
-Create your own custom tools to extend Clara's capabilities.
-
-**How it works:**
-- Go to Settings and generate your own tools
-- Any webhook-based workflow in N8N can become your tool
-- Connect email systems, dashboard data, sales data, or any custom service
-- Clara automatically uses these tools when needed
-
-**Examples:**
-- "Check my email for urgent messages" (uses your email tool)
-- "Get today's sales numbers" (uses your sales dashboard tool)
-- "Send a notification to Slack" (uses your custom Slack tool)
-
-### 🔌 **MCP (Model Context Protocol)**
-Connect Clara to any MCP tools running on your system.
-
-**Clara's Built-in MCP Server:**
-When you switch to Agent mode, Clara automatically activates its built-in MCP server with powerful capabilities:
-
-- **🐍 Python Environment**: Execute Python code in an isolated virtual environment
-- **📁 Workspace Management**: Create, read, write, and organize files in a dedicated workspace
-- **📄 Document Processing**: Read PDFs, Word docs, Excel files, PowerPoint, and more
-- **🔍 Web Search Engine**: Docker-powered SearXNG for unlimited, free web research
-- **🌐 Web Scraping**: Extract content from any website using Playwright automation
-- **📊 PDF Creation**: Generate professional PDFs from your content
-
-**Free Unlimited Web Research:**
-If you have Docker installed, Clara's MCP automatically spawns a private SearXNG search engine:
-- **No API keys needed**: Completely free and unlimited searches
-- **Privacy-focused**: Your searches stay private, no tracking
-- **Multiple engines**: Searches across Google, Bing, DuckDuckGo, Wikipedia, and more
-- **Research-ready**: Perfect for gathering information, fact-checking, and exploration
-
-**External MCP Tools:**
-- Works with local MCP tools only (HTTP-based coming soon)
-- Quick access through Clara Command Center (your input box)
-- Seamlessly integrates external tools into conversations
-
-**Usage:**
-- **Agent mode**: Clara's MCP tools activate automatically
-- **External tools**: Type `/` in the chat to see available MCP tools
-
-### 📁 **Files & Context**
-Upload any file and Clara will use it as context for better answers.
-
-**Supported formats:**
-- PDFs, CSVs, text files, code files
-- Images (for analysis and description)
-- Documents of any type
-
-**How it works:**
-- Drag and drop files into the chat
-- Clara reads and understands the content
-- Uses file information to provide more accurate responses
-
-### 📓 **Notebooks**
-Create knowledge bases for Clara to reference while working.
-
-**Use cases:**
-- Attach coding style guides for consistent code generation
-- Add project documentation for better context
-- Create reference materials for specific domains
-- Build custom RAG (Retrieval Augmented Generation) systems
+**Use for:**
+- Code explanations
+- Planning and brainstorming  
+- General questions
+- Learning concepts
 
 **Example:**
-"Here's my company's API documentation. Help me build a client library following these patterns."
+```
+You: How do React hooks work?
+Clara: [Explains hooks without accessing any tools]
+```
 
-### 🎨 **ImageGen**
-Generate images directly through Clara when ComfyUI is configured.
+### Agent Mode
+Full system access with MCP tools. Slower but can actually do things.
 
-**Requirements:**
-- ComfyUI server must be configured
-- Feature automatically enables when server is detected
+**Use for:**
+- Web research
+- File operations
+- Code generation and execution
+- Document processing
 
-**Usage:**
-"Generate an image of a sunset over mountains"
-Clara will use your ComfyUI setup to create the image.
+**Example:**
+```
+You: Research the latest AI papers and create a summary PDF
+Clara: [Searches web, analyzes papers, generates PDF]
+```
 
-### 🧠 **Memories**
-Clara's adaptive memory system that learns about you over time.
+## Core Features
 
-**How it's different:**
-- Stores facts about you, not random conversation snippets
-- Intelligently injects relevant context when needed
-- Adapts and improves the more you use Clara
-- Focuses on meaningful information that enhances future interactions
+### Web Research (Agent Mode + Docker)
+If you have Docker installed, Clara gets unlimited web search through SearXNG:
+- No API keys needed
+- Searches Google, Bing, DuckDuckGo simultaneously
+- Completely private
 
-**Examples of what Clara remembers:**
-- Your preferred coding style and frameworks
-- Project patterns you commonly use
-- Tools and workflows you rely on
-- Domain-specific knowledge relevant to your work
+**Setup:** Just have Docker running. Clara handles the rest.
 
-### ⚡ **Clara Core**
-Local LLM engine powered by llama.cpp with intelligent optimization.
+### File Processing
+Drag and drop any file into chat:
+- PDFs, Word docs, Excel sheets
+- Code files (any language)
+- Images for analysis
+- CSVs for data work
 
-**Features:**
-- Runs completely local models for privacy
-- Built-in optimizer manages models based on your hardware
-- Automatically selects the best model configuration
-- No internet required once models are downloaded
+**Limitation:** Large files (>10MB) may be slow to process.
 
-**Benefits:**
-- Complete privacy — nothing leaves your machine
-- No API costs or rate limits
-- Works offline
-- Optimized performance for your specific setup
+### Custom Tools via N8N
+Create webhooks in N8N, convert them to Clara tools:
+1. Build workflow in N8N
+2. Create webhook trigger
+3. Go to Settings → Tools
+4. Add webhook URL as new tool
 
-### 🎤 **Voice**
-Live voice interactions with Clara (available with RAG container).
+**Example tools users have built:**
+- Email checker
+- Database queries  
+- Slack notifications
+- Calendar management
 
-**Requirements:**
-- Download the RAG container to enable voice features
-- Once installed, voice interactions become available
+### Notebooks Integration
+Attach notebooks for Clara to reference:
+```
+You: [Attach company_guidelines notebook]
+You: Write code following our standards
+Clara: [Uses notebook context for accurate responses]
+```
 
-**Capabilities:**
-- Talk to Clara naturally
-- Get spoken responses
-- Hands-free coding assistance
-- Real-time voice conversations
+### Memory System
+Clara remembers facts about you between conversations:
+- Your tech stack preferences
+- Project patterns
+- Common workflows
 
-## Command Center
+**Note:** Memory is stored in browser IndexedDB. Clearing browser data loses memories.
 
-Clara's input box is your command center. Use it to:
-- Access MCP tools with `/` commands
-- Upload files by dragging and dropping
-- Start voice interactions
-- Connect to any integrated feature
+## Model Recommendations
+
+### Starter Model
+**JanNano128K-4B**: Fast, runs on most hardware, good for basic tasks
+
+### Power User Models  
+**GPT-OSS-20B**: Balanced performance and quality
+**SeedOSS-ByteDance-36B**: Best quality, needs beefy hardware
+
+### Vision Model
+**InterVL-14B**: For image understanding tasks
+
+## Common Workflows
+
+### Daily Email Summary
+```
+1. Switch to Agent Mode
+2. "Check my email and create a summary"
+3. Clara uses email tool to fetch messages
+4. Generates summary and saves to notebook
+```
+
+### Research Task
+```
+1. Agent Mode
+2. "Research [topic] and create a report"
+3. Clara searches web, analyzes sources
+4. Creates formatted report
+5. Optional: Save to notebook for future reference
+```
+
+### Code Project
+```
+1. Upload project files for context
+2. "Help me add authentication to this app"
+3. Clara analyzes code, suggests implementation
+4. Agent Mode: Can write and test code directly
+```
+
+## Performance Expectations
+
+- **Chat Mode**: Instant to 5 seconds depending on model
+- **Agent Mode with search**: 10-30 seconds per search
+- **File processing**: 5-20 seconds depending on size
+- **Code execution**: 2-10 seconds
+
+## Limitations & Known Issues
+
+1. **Model Quality**: Clara is only as good as your chosen model
+2. **Local Processing**: Slower than cloud services like ChatGPT
+3. **Memory Limits**: Long conversations may hit context limits
+4. **MCP Tools**: Currently only local MCP tools work (HTTP support coming)
+5. **Voice**: Requires RAG container (additional 8GB download)
+
+## Troubleshooting
+
+**Clara not responding?**
+- Check if model is loaded in Settings
+- Verify Clara Core service is running
+- Try refreshing the page
+
+**Agent Mode not working?**
+- Ensure Docker is running for web search
+- Check MCP server status in logs
+- Switch to Chat Mode and back
+
+**Memory issues?**
+- Use smaller models (4B or 7B)
+- Close other applications
+- Restart Clara Core service
+
+## Pro Tips
+
+1. Start with Chat Mode to plan, switch to Agent for execution
+2. Use notebooks for any reference material you'll need repeatedly
+3. Create N8N tools for repetitive tasks
+4. Upload files rather than pasting long content
+5. Use specific models for specific tasks (small for chat, large for complex reasoning)
 
 ## Getting Started
 
-1. **Choose your mode**: Start in Chat mode for questions, switch to Agent mode for hands-on work
-2. **Start simple**: "Hello Clara, what can you help me with?"
-3. **Try Agent mode**: Switch to Agent mode and ask Clara to "create a Python script that analyzes data"
-4. **Upload files**: Drag documents into the chat for context
-5. **Research anything**: In Agent mode, ask Clara to "search for the latest developments in AI"
-6. **Create tools**: Go to Settings → Tools to add custom capabilities
-7. **Add notebooks**: Create reference materials for better assistance
-8. **Configure voice**: Download RAG container for voice interactions
+1. Install ClaraVerse and Docker
+2. Download JanNano128K-4B model
+3. Start with Chat Mode - ask anything
+4. Try Agent Mode - "search for Python tutorials"
+5. Create your first N8N tool
+6. Build a notebook for your project
 
-### Quick Mode Comparison
-
-**Chat Mode Examples:**
-- "Explain how React hooks work"
-- "What's the best approach for this architecture?"
-- "Help me understand this error message"
-
-**Agent Mode Examples:**
-- "Create a Python script to analyze this CSV file"
-- "Search for recent papers on machine learning and summarize the findings"
-- "Build a simple web scraper to extract product prices"
-- "Generate a PDF report from this data"
-
-## The Power of Integration
-
-Clara becomes more powerful as you connect more features. Your custom tools, uploaded files, notebooks, and memories all work together to create a personalized AI assistant that truly understands your workflow and preferences.
-
-This isn't just AI chat — it's your complete AI-powered workspace that grows with you.
+Remember: Clara runs entirely on your machine. No data leaves your computer unless you explicitly configure external services.
