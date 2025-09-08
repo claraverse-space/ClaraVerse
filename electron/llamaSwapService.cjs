@@ -4144,9 +4144,21 @@ ${cmdLine}`;
   }
 
   /**
-   * Get macOS GPU information using system_profiler
+   * Get macOS GPU information using Metal APIs and system_profiler
    */
   async getMacOSGPUInfo() {
+    // Try Metal API detection first (most accurate)
+    try {
+      const metalInfo = await this.getMetalGPUInfo();
+      if (metalInfo && metalInfo.gpuMemoryMB > 0) {
+        log.info('GPU detected via Metal API:', metalInfo);
+        return metalInfo;
+      }
+    } catch (error) {
+      log.debug('Metal API detection failed:', error.message);
+    }
+
+    // Fallback to system_profiler
     return new Promise((resolve) => {
       const { spawn } = require('child_process');
       
@@ -4174,11 +4186,13 @@ ${cmdLine}`;
             
             let maxMemoryMB = 0;
             let gpuType = 'integrated';
+            let gpuName = 'Unknown GPU';
             
             displays.forEach(display => {
               // Check for VRAM information
               if (display.sppci_model && display.sppci_model.includes('Apple')) {
                 gpuType = 'apple_silicon';
+                gpuName = display.sppci_model || 'Apple Silicon GPU';
                 // For Apple Silicon, estimate based on unified memory
                 // Apple Silicon shares memory, so use a portion of system memory
                 const systemMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
@@ -4191,6 +4205,7 @@ ${cmdLine}`;
                 }
               } else if (display.sppci_vram) {
                 // Dedicated GPU with VRAM
+                gpuName = display.sppci_model || 'Dedicated GPU';
                 const vramStr = display.sppci_vram;
                 const vramMatch = vramStr.match(/(\d+)/);
                 if (vramMatch) {
@@ -4206,7 +4221,8 @@ ${cmdLine}`;
             resolve({
               hasGPU: maxMemoryMB > 0,
               gpuMemoryMB: maxMemoryMB,
-              gpuType
+              gpuType,
+              gpuName
             });
           } else {
             throw new Error('Failed to get system profiler data');
@@ -4222,6 +4238,170 @@ ${cmdLine}`;
         process.kill();
         resolve(this.estimateGPUCapabilities());
       }, 5000);
+    });
+  }
+
+  /**
+   * Get GPU information using Metal APIs (macOS only)
+   */
+  async getMetalGPUInfo() {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      
+      // Create a temporary Swift script to query Metal GPU info
+      const fs = require('fs');
+      const path = require('path');
+      const tmpDir = require('os').tmpdir();
+      const scriptPath = path.join(tmpDir, 'metal_gpu_info.swift');
+      
+      const swiftScript = `import Metal
+import Foundation
+
+func getGPUInfo() {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        print("ERROR: No Metal device available")
+        exit(1)
+    }
+    
+    let gpuInfo = [
+        "name": device.name,
+        "hasUnifiedMemory": device.hasUnifiedMemory,
+        "recommendedMaxWorkingSetSize": device.recommendedMaxWorkingSetSize,
+        "maxThreadsPerThreadgroup": device.maxThreadsPerThreadgroup.width * device.maxThreadsPerThreadgroup.height * device.maxThreadsPerThreadgroup.depth,
+        "supportsFamily": [
+            "apple1": device.supportsFamily(.apple1),
+            "apple2": device.supportsFamily(.apple2),
+            "apple3": device.supportsFamily(.apple3),
+            "apple4": device.supportsFamily(.apple4),
+            "apple5": device.supportsFamily(.apple5),
+            "apple6": device.supportsFamily(.apple6),
+            "apple7": device.supportsFamily(.apple7)
+        ]
+    ] as [String : Any]
+    
+    // Convert to JSON
+    do {
+        let jsonData = try JSONSerialization.data(withJSONObject: gpuInfo, options: .prettyPrinted)
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print(jsonString)
+        }
+    } catch {
+        print("ERROR: Failed to serialize JSON: \\(error)")
+        exit(1)
+    }
+}
+
+getGPUInfo()
+`;
+
+      try {
+        // Write the Swift script
+        fs.writeFileSync(scriptPath, swiftScript);
+        
+        // Execute the Swift script
+        const process = spawn('swift', [scriptPath], {
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+        
+        process.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        process.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        process.on('close', (code) => {
+          // Clean up the temporary script
+          try {
+            fs.unlinkSync(scriptPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+
+          if (code === 0 && stdout) {
+            try {
+              const metalInfo = JSON.parse(stdout);
+              
+              // Calculate GPU memory based on Metal info
+              let gpuMemoryMB = 0;
+              let gpuType = 'apple_silicon';
+              
+              if (metalInfo.hasUnifiedMemory) {
+                // For unified memory, use recommendedMaxWorkingSetSize as a guide
+                const recommendedBytes = metalInfo.recommendedMaxWorkingSetSize || 0;
+                if (recommendedBytes > 0) {
+                  gpuMemoryMB = Math.round(recommendedBytes / (1024 * 1024));
+                } else {
+                  // Fallback: estimate based on system memory and GPU family
+                  const systemMemoryGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+                  
+                  // More sophisticated estimation based on Apple Silicon generation
+                  if (metalInfo.supportsFamily?.apple7 || metalInfo.supportsFamily?.apple6) {
+                    // M2/M3 generation - can use more memory
+                    gpuMemoryMB = Math.min(systemMemoryGB * 512, 24576); // Up to 24GB or half system memory
+                  } else if (metalInfo.supportsFamily?.apple5 || metalInfo.supportsFamily?.apple4) {
+                    // M1 generation
+                    gpuMemoryMB = Math.min(systemMemoryGB * 384, 16384); // Up to 16GB or 3/8 system memory
+                  } else {
+                    // Older or unknown Apple Silicon
+                    gpuMemoryMB = Math.min(systemMemoryGB * 256, 8192); // Up to 8GB or 1/4 system memory
+                  }
+                }
+              } else {
+                // Discrete GPU - this shouldn't happen on modern Macs but handle it
+                gpuType = 'dedicated';
+                gpuMemoryMB = 4096; // Conservative estimate
+              }
+
+              resolve({
+                hasGPU: true,
+                gpuMemoryMB: Math.max(gpuMemoryMB, 1024), // Minimum 1GB
+                gpuType,
+                gpuName: metalInfo.name,
+                metalInfo: {
+                  hasUnifiedMemory: metalInfo.hasUnifiedMemory,
+                  recommendedMaxWorkingSetSize: metalInfo.recommendedMaxWorkingSetSize,
+                  maxThreadsPerThreadgroup: metalInfo.maxThreadsPerThreadgroup,
+                  supportedFamilies: Object.keys(metalInfo.supportsFamily || {}).filter(key => metalInfo.supportsFamily[key])
+                }
+              });
+            } catch (parseError) {
+              log.warn('Failed to parse Metal GPU info:', parseError.message);
+              reject(parseError);
+            }
+          } else {
+            reject(new Error(`Swift script failed with code ${code}: ${stderr}`));
+          }
+        });
+
+        process.on('error', (error) => {
+          // Clean up the temporary script
+          try {
+            fs.unlinkSync(scriptPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          reject(error);
+        });
+
+        // Timeout after 3 seconds
+        setTimeout(() => {
+          process.kill();
+          try {
+            fs.unlinkSync(scriptPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          reject(new Error('Metal GPU detection timeout'));
+        }, 3000);
+        
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
