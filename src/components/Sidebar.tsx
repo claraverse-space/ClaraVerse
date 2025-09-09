@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, Bot, Settings, HelpCircle, ImageIcon, Network, BrainCircuit, Download, X, Zap, Code2, BookOpen, Calendar } from 'lucide-react';
+import { Home, Bot, Settings, HelpCircle, ImageIcon, Network, BrainCircuit, Download, X, Zap, Code2, BookOpen, Calendar, Users } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 // interface HuggingFaceModel {
@@ -384,7 +384,8 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
       icon: Network, 
       label: 'Workflows', 
       id: 'n8n'
-    }] : [])
+    }] : []),
+    { icon: Users, label: 'Community', id: 'community' }
   ];
 
   // Enhanced debug logging for service visibility

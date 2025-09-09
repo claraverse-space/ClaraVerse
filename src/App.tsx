@@ -17,6 +17,7 @@ import Lumaui from './components/Lumaui';
 import LumaUILite from './components/LumaUILite';
 import Notebooks from './components/Notebooks';
 import Tasks from './components/Tasks';
+import Community from './components/Community';
 import { db } from './db';
 import { ProvidersProvider } from './contexts/ProvidersContext';
 import ClaraAssistant from './components/ClaraAssistant';
@@ -228,6 +229,8 @@ function App() {
               switch (activePage) {
                 case 'tasks':
                   return <Tasks onPageChange={setActivePage} />;
+                case 'community':
+                  return <Community />;
                 case 'settings':
                   return <Settings />;
                 case 'debug':
