@@ -533,45 +533,57 @@ const Community: React.FC = () => {
     e.stopPropagation(); // Prevent opening detail modal
     
     // Check if user has already downloaded this resource
-    if (userDownloadedResources.has(resource.id)) {
+    const hasAlreadyDownloaded = userDownloadedResources.has(resource.id);
+    
+    if (hasAlreadyDownloaded) {
       showEnhancedFeedback({
-        title: 'Already Downloaded',
-        description: `You've already downloaded "${resource.title}". Each user can only download a resource once to ensure fair download counts.`,
+        title: 'Re-downloading Resource',
+        description: `Re-downloading "${resource.title}". Download count will not be incremented again for fair statistics.`,
         actions: [
           { 
-            label: 'View Resource', 
-            action: () => handleResourceClick(resource),
+            label: 'Continue', 
+            action: () => setToast(prev => ({ ...prev, show: false })),
             variant: 'primary' 
           },
           { 
-            label: 'Browse Similar', 
-            action: () => {
-              setSelectedCategory(resource.category);
-              setToast(prev => ({ ...prev, show: false }));
-            },
+            label: 'View Resource', 
+            action: () => handleResourceClick(resource),
             variant: 'secondary' 
           }
         ],
-        duration: 6000,
+        duration: 4000,
         type: 'info'
       });
-      return;
     }
     
     console.log('=== DOWNLOAD HANDLER CALLED ===');
     console.log('Resource:', resource);
     console.log('Resource category:', resource.category);
     console.log('Resource content:', resource.content);
+    console.log('Already downloaded:', hasAlreadyDownloaded);
     
     try {
       setDownloadingResources(prev => new Set(prev).add(resource.id));
       
-      // Track download
-      await CommunityService.incrementDownloads(resource.id);
-      console.log('Download count incremented');
-      
-      // Save this download to user's history
-      saveUserDownload(resource.id);
+      // Only increment download count if user hasn't downloaded before
+      if (!hasAlreadyDownloaded) {
+        await CommunityService.incrementDownloads(resource.id);
+        console.log('Download count incremented');
+        
+        // Save this download to user's history
+        saveUserDownload(resource.id);
+        
+        // Update download count in the list
+        setSharedResources(prev => 
+          prev.map(r => 
+            r.id === resource.id 
+              ? { ...r, downloads_count: r.downloads_count + 1 }
+              : r
+          )
+        );
+      } else {
+        console.log('Download count NOT incremented - user already downloaded this resource');
+      }
       
       // Handle different content types
       if (resource.category === 'custom-node' && resource.content) {
@@ -814,15 +826,6 @@ const Community: React.FC = () => {
           type: 'success'
         });
       }
-      
-      // Update download count in the list
-      setSharedResources(prev => 
-        prev.map(r => 
-          r.id === resource.id 
-            ? { ...r, downloads_count: r.downloads_count + 1 }
-            : r
-        )
-      );
       
     } catch (error) {
       console.error('=== ERROR DOWNLOADING RESOURCE ===');
@@ -1588,24 +1591,24 @@ const Community: React.FC = () => {
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex items-center gap-2 mt-auto">
+                            <div className="grid grid-cols-3 gap-2 mt-auto">
                               {/* Preview/Details Button */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleResourceClick(resource);
                                 }}
-                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white/60 dark:bg-gray-700/60 hover:bg-white/80 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md"
+                                className="flex items-center justify-center gap-1 px-3 py-2 bg-white/60 dark:bg-gray-700/60 hover:bg-white/80 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md"
                                 title="Preview and view details"
                               >
                                 <Eye className="w-4 h-4" />
-                                <span>Preview</span>
+                                <span className="hidden sm:inline">Preview</span>
                               </button>
 
                               {/* Like Button */}
                               <button
                                 onClick={(e) => handleResourceLike(e, resource.id)}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md ${
+                                className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md ${
                                   isLiked
                                     ? 'bg-red-500 text-white shadow-md'
                                     : 'bg-white/60 dark:bg-gray-700/60 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-700 dark:text-gray-300 hover:text-red-500'
@@ -1613,22 +1616,23 @@ const Community: React.FC = () => {
                                 title={isLiked ? 'Unlike' : 'Like'}
                               >
                                 <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+                                <span className="hidden sm:inline">{isLiked ? 'Liked' : 'Like'}</span>
                               </button>
 
                               {/* Download Button */}
                               <button
                                 onClick={(e) => handleResourceDownload(e, resource)}
-                                disabled={isDownloading || userDownloadedResources.has(resource.id)}
-                                className={`px-4 py-2 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none ${
+                                disabled={isDownloading}
+                                className={`flex items-center justify-center gap-1 px-3 py-2 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none ${
                                   userDownloadedResources.has(resource.id)
-                                    ? 'bg-gray-500 dark:bg-gray-600'
+                                    ? 'bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-500'
                                     : isDownloading
                                     ? 'bg-gray-400'
                                     : 'bg-sakura-500 hover:bg-sakura-600'
                                 }`}
                                 title={
                                   userDownloadedResources.has(resource.id)
-                                    ? 'Already downloaded by you'
+                                    ? 'Already downloaded - click to re-download'
                                     : isDownloading
                                     ? 'Downloading...'
                                     : 'Download and install'
@@ -1636,13 +1640,19 @@ const Community: React.FC = () => {
                               >
                                 {userDownloadedResources.has(resource.id) ? (
                                   <>
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Downloaded
+                                    <Download className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Downloaded</span>
                                   </>
                                 ) : isDownloading ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span className="hidden sm:inline">Downloading</span>
+                                  </>
                                 ) : (
-                                  <Download className="w-4 h-4" />
+                                  <>
+                                    <Download className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Download</span>
+                                  </>
                                 )}
                               </button>
                             </div>
