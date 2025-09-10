@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Upload, 
-  MessageSquare, 
   Package, 
   Image, 
   FileText, 
@@ -24,6 +23,8 @@ import { CommunityService, LocalUserManager, CommunityResource } from '../servic
 import UserSetupModal from './UserSetupModal';
 import ResourceDetailModal from './ResourceDetailModal';
 import { localContentService, LocalContent } from '../services/localContentService';
+import { db } from '../db';
+import { getDefaultWallpaper } from '../utils/uiPreferences';
 
 const Community: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -55,6 +56,7 @@ const Community: React.FC = () => {
   const [likedResources, setLikedResources] = useState<Set<string>>(new Set());
   const [downloadingResources, setDownloadingResources] = useState<Set<string>>(new Set());
   const [downloadedResources, setDownloadedResources] = useState<Set<string>>(new Set());
+  const [userDownloadedResources, setUserDownloadedResources] = useState<Set<string>>(new Set());
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,6 +66,9 @@ const Community: React.FC = () => {
 
   // Filter state
   const [showDownloaded, setShowDownloaded] = useState(false);
+  
+  // Wallpaper state
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
   
   // Toast state
   const [toast, setToast] = useState<{
@@ -96,6 +101,32 @@ const Community: React.FC = () => {
     };
 
     checkSetup();
+  }, []);
+
+  // Load wallpaper from database
+  useEffect(() => {
+    const loadWallpaper = async () => {
+      try {
+        const wallpaper = await db.getWallpaper();
+        if (wallpaper) {
+          setWallpaperUrl(wallpaper);
+        } else {
+          // Set Aurora Borealis as default wallpaper when none is set
+          const defaultWallpaper = getDefaultWallpaper();
+          if (defaultWallpaper) {
+            setWallpaperUrl(defaultWallpaper);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper:', error);
+        // Fallback to default wallpaper on error
+        const defaultWallpaper = getDefaultWallpaper();
+        if (defaultWallpaper) {
+          setWallpaperUrl(defaultWallpaper);
+        }
+      }
+    };
+    loadWallpaper();
   }, []);
 
   // Load content based on active tab
@@ -135,6 +166,27 @@ const Community: React.FC = () => {
     
     return () => window.removeEventListener('customNodesUpdated', handleCustomNodesUpdate);
   }, []);
+
+  // Load user-specific download tracking to prevent duplicate downloads
+  useEffect(() => {
+    const loadUserDownloadHistory = () => {
+      if (!currentUser) {
+        setUserDownloadedResources(new Set());
+        return;
+      }
+      
+      try {
+        const userDownloadKey = `userDownloads_${currentUser.id}`;
+        const userDownloads = JSON.parse(localStorage.getItem(userDownloadKey) || '[]');
+        setUserDownloadedResources(new Set(userDownloads));
+      } catch (error) {
+        console.error('Error loading user download history:', error);
+        setUserDownloadedResources(new Set());
+      }
+    };
+    
+    loadUserDownloadHistory();
+  }, [currentUser]);
 
   // Auto-hide toast
   useEffect(() => {
@@ -461,8 +513,50 @@ const Community: React.FC = () => {
     }
   };
 
+  // Function to save user download to localStorage
+  const saveUserDownload = (resourceId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      const userDownloadKey = `userDownloads_${currentUser.id}`;
+      const currentDownloads = Array.from(userDownloadedResources);
+      const updatedDownloads = [...currentDownloads, resourceId];
+      
+      localStorage.setItem(userDownloadKey, JSON.stringify(updatedDownloads));
+      setUserDownloadedResources(new Set(updatedDownloads));
+    } catch (error) {
+      console.error('Error saving user download:', error);
+    }
+  };
+
   const handleResourceDownload = async (e: React.MouseEvent, resource: CommunityResource) => {
     e.stopPropagation(); // Prevent opening detail modal
+    
+    // Check if user has already downloaded this resource
+    if (userDownloadedResources.has(resource.id)) {
+      showEnhancedFeedback({
+        title: 'Already Downloaded',
+        description: `You've already downloaded "${resource.title}". Each user can only download a resource once to ensure fair download counts.`,
+        actions: [
+          { 
+            label: 'View Resource', 
+            action: () => handleResourceClick(resource),
+            variant: 'primary' 
+          },
+          { 
+            label: 'Browse Similar', 
+            action: () => {
+              setSelectedCategory(resource.category);
+              setToast(prev => ({ ...prev, show: false }));
+            },
+            variant: 'secondary' 
+          }
+        ],
+        duration: 6000,
+        type: 'info'
+      });
+      return;
+    }
     
     console.log('=== DOWNLOAD HANDLER CALLED ===');
     console.log('Resource:', resource);
@@ -475,6 +569,9 @@ const Community: React.FC = () => {
       // Track download
       await CommunityService.incrementDownloads(resource.id);
       console.log('Download count incremented');
+      
+      // Save this download to user's history
+      saveUserDownload(resource.id);
       
       // Handle different content types
       if (resource.category === 'custom-node' && resource.content) {
@@ -875,88 +972,105 @@ const Community: React.FC = () => {
   const filteredContent = getFilteredContent();
 
   return (
-    <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.1))] bg-white dark:bg-black flex flex-col overflow-hidden">
-      {/* Fixed Header */}
+    <div className="h-[calc(100vh-theme(spacing.16)-theme(spacing.1))] bg-white dark:bg-black flex flex-col overflow-hidden relative">
+      {/* Wallpaper */}
+      {wallpaperUrl && (
+        <div 
+          className="fixed top-0 left-0 right-0 bottom-0 z-0"
+          style={{
+            backgroundImage: `url(${wallpaperUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.1,
+            filter: 'blur(1px)',
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+
+      {/* Content with relative z-index */}
+      <div className="relative z-10 flex flex-col h-full overflow-hidden">{/* Fixed Header */}
       <div className="glassmorphic border-b border-white/20 dark:border-gray-800/50 flex-shrink-0 z-10">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="px-6 py-3">
+          <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Users className="w-6 h-6 text-sakura-500" />
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-sakura-500" />
                 Community
               </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
+              <p className="text-gray-600 dark:text-gray-400 text-sm">
                 Discover, share, and collaborate on Clara resources
               </p>
             </div>
-            <div className="flex gap-3">
-              {supabaseConnected && activeTab === 'local' && selectedContent.length > 0 && (
-                <button 
-                  onClick={handleShareSelected}
-                  disabled={isSharing}
-                  className="px-4 py-2 glassmorphic bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSharing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Sharing...
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-4 h-4" />
-                      Share Selected ({selectedContent.length})
-                    </>
-                  )}
-                </button>
-              )}
+            <div className="flex gap-2">
               <button 
                 onClick={handleShareResource}
                 disabled={!supabaseConnected}
-                className="px-4 py-2 glassmorphic bg-sakura-500 text-white rounded-xl hover:bg-sakura-600 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 glassmorphic bg-sakura-500 text-white rounded-lg hover:bg-sakura-600 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
-                <Upload className="w-4 h-4" />
+                <Upload className="w-3 h-3" />
                 Share Resource
               </button>
               <button 
-                disabled={!supabaseConnected}
-                className="px-4 py-2 glassmorphic border border-white/20 dark:border-gray-600/30 rounded-xl hover:bg-white/10 dark:hover:bg-gray-700/30 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  // Try to open Discord app first, fallback to web
+                  const discordAppUrl = 'discord://discord.com/invite/j633fsrAne';
+                  const discordWebUrl = 'https://discord.gg/j633fsrAne';
+                  
+                  // Create a hidden iframe to try opening the Discord app
+                  const iframe = document.createElement('iframe');
+                  iframe.style.display = 'none';
+                  iframe.src = discordAppUrl;
+                  document.body.appendChild(iframe);
+                  
+                  // Set a timeout to open web version if app doesn't open
+                  setTimeout(() => {
+                    document.body.removeChild(iframe);
+                    window.open(discordWebUrl, '_blank');
+                  }, 1000);
+                }}
+                className="px-3 py-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl text-sm"
+                title="Join our Discord community - will try to open Discord app first"
               >
-                <MessageSquare className="w-4 h-4" />
-                Discussions
+                {/* Discord Logo SVG */}
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419-.0002 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9554 2.4189-2.1568 2.4189Z"/>
+                </svg>
+                Discord
               </button>
             </div>
           </div>
 
           {/* Tabs */}
           {supabaseConnected && (
-            <div className="flex gap-1 bg-white/20 dark:bg-gray-800/30 rounded-xl p-1 mb-4">
+            <div className="flex gap-1 bg-white/20 dark:bg-gray-800/30 rounded-lg p-1 mb-3">
               <button
                 onClick={() => setActiveTab('local')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                   activeTab === 'local'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-md'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                <Package className="w-4 h-4" />
+                <Package className="w-3 h-3" />
                 My Content ({localContent.length})
               </button>
               <button
                 onClick={() => setActiveTab('shared')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                   activeTab === 'shared'
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-md'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                <Users className="w-4 h-4" />
+                <Users className="w-3 h-3" />
                 Community Shared
               </button>
             </div>
           )}
 
           {/* Search and Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
@@ -965,14 +1079,14 @@ const Community: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 disabled={!supabaseConnected}
-                className="w-full pl-10 pr-4 py-2.5 glassmorphic border border-white/20 dark:border-gray-600/30 rounded-xl bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full pl-10 pr-4 py-2 glassmorphic border border-white/20 dark:border-gray-600/30 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-sakura-500 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               />
             </div>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               disabled={!supabaseConnected}
-              className="px-4 py-2.5 glassmorphic border border-white/20 dark:border-gray-600/30 rounded-xl bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-sakura-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 glassmorphic border border-white/20 dark:border-gray-600/30 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-sakura-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
               <option value="recent">Most Recent</option>
               <option value="popular">Most Popular</option>
@@ -985,9 +1099,9 @@ const Community: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <div className="w-80 shrink-0 p-4">
-          <div className="glassmorphic rounded-xl p-4 space-y-4 sticky top-4 h-[calc(100vh-10rem)] flex flex-col">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex-shrink-0">Categories</h3>
+        <div className="w-64 shrink-0 p-3">
+          <div className="glassmorphic rounded-xl p-3 space-y-3 sticky top-4 h-[calc(100vh-8rem)] flex flex-col">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex-shrink-0">Categories</h3>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 pb-4">
               <div className="space-y-1 mb-6">
@@ -1083,7 +1197,7 @@ const Community: React.FC = () => {
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="h-full overflow-y-auto custom-scrollbar">
-            <div className="p-6">
+            <div className="p-4">
               {loading ? (
                 /* Loading State */
                 <div className="flex items-center justify-center py-20">
@@ -1183,12 +1297,21 @@ const Community: React.FC = () => {
                                 {selectedContent.length} item{selectedContent.length !== 1 ? 's' : ''} selected for sharing
                               </span>
                             </div>
-                            <button
-                              onClick={() => setSelectedContent([])}
-                              className="text-xs text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
-                            >
-                              Clear selection
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={handleShareSelected}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                              >
+                                <Share2 className="w-4 h-4" />
+                                Share Selected
+                              </button>
+                              <button
+                                onClick={() => setSelectedContent([])}
+                                className="text-xs text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
+                              >
+                                Clear selection
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1495,11 +1618,28 @@ const Community: React.FC = () => {
                               {/* Download Button */}
                               <button
                                 onClick={(e) => handleResourceDownload(e, resource)}
-                                disabled={isDownloading}
-                                className="px-4 py-2 bg-sakura-500 hover:bg-sakura-600 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none"
-                                title="Download and install"
+                                disabled={isDownloading || userDownloadedResources.has(resource.id)}
+                                className={`px-4 py-2 text-white rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none ${
+                                  userDownloadedResources.has(resource.id)
+                                    ? 'bg-gray-500 dark:bg-gray-600'
+                                    : isDownloading
+                                    ? 'bg-gray-400'
+                                    : 'bg-sakura-500 hover:bg-sakura-600'
+                                }`}
+                                title={
+                                  userDownloadedResources.has(resource.id)
+                                    ? 'Already downloaded by you'
+                                    : isDownloading
+                                    ? 'Downloading...'
+                                    : 'Download and install'
+                                }
                               >
-                                {isDownloading ? (
+                                {userDownloadedResources.has(resource.id) ? (
+                                  <>
+                                    <Download className="w-4 h-4 mr-2" />
+                                    Downloaded
+                                  </>
+                                ) : isDownloading ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
                                   <Download className="w-4 h-4" />
@@ -1619,6 +1759,7 @@ const Community: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

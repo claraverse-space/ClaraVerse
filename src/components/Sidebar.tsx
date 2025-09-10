@@ -384,8 +384,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
       icon: Network, 
       label: 'Workflows', 
       id: 'n8n'
-    }] : []),
-    { icon: Users, label: 'Community', id: 'community' }
+    }] : [])
   ];
 
   // Enhanced debug logging for service visibility
@@ -402,6 +401,7 @@ const Sidebar = ({ activePage = 'dashboard', onPageChange, alphaFeaturesEnabled 
   // });
 
   const bottomMenuItems: MenuItem[] = [
+    { icon: Users, label: 'Community', id: 'community' },
     { icon: Calendar, label: 'Tasks', id: 'tasks' },
     { icon: Settings, label: 'Settings', id: 'settings' },
     { icon: HelpCircle, label: 'Help', id: 'help' },
