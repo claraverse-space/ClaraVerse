@@ -768,6 +768,83 @@ const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
             type: 'error'
           });
         }
+      } else if (resource.category === 'tool' && resource.content) {
+        console.log('Processing tool download...');
+        // Add tool to the user's local tools
+        try {
+          // Parse the tool definition
+          const toolDefinition = JSON.parse(resource.content);
+          console.log('Parsed tool definition:', toolDefinition);
+          
+          // Add to the database using the same method as ToolBelt
+          await db.addTool({
+            name: toolDefinition.name || resource.title,
+            description: toolDefinition.description || resource.description,
+            parameters: toolDefinition.parameters || [],
+            implementation: toolDefinition.implementation || '',
+            isEnabled: true // Enable by default when downloaded
+          });
+          
+          console.log('Tool successfully added to database');
+          
+          showEnhancedFeedback({
+            title: 'Tool Downloaded!',
+            description: `"${resource.title}" has been added to your tools. You can find it in the Tool Belt.`,
+            actions: [
+              { 
+                label: 'Open Tool Belt', 
+                action: () => {
+                  setToast(prev => ({ ...prev, show: false }));
+                  // Could add navigation to Tool Belt here if needed
+                },
+                variant: 'primary' 
+              },
+              { 
+                label: 'View More Tools', 
+                action: () => {
+                  setSelectedCategory('tool');
+                  setToast(prev => ({ ...prev, show: false }));
+                },
+                variant: 'secondary' 
+              }
+            ],
+            duration: 8000,
+            type: 'success'
+          });
+        } catch (error) {
+          console.error('Error adding tool to database:', error);
+          
+          showEnhancedFeedback({
+            title: 'Tool Download Failed',
+            description: `Failed to install "${resource.title}". The tool format may be invalid.`,
+            actions: [
+              { 
+                label: 'Download File', 
+                action: () => {
+                  // Fallback: download as file
+                  const content = resource.content || '';
+                  const blob = new Blob([content], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `${resource.title}.json`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                },
+                variant: 'primary' 
+              },
+              { 
+                label: 'Get Help', 
+                action: () => handleResourceClick(resource),
+                variant: 'secondary' 
+              }
+            ],
+            duration: 10000,
+            type: 'error'
+          });
+        }
       } else if (resource.content_type === 'image/base64' && resource.content) {
         // Download image
         const link = document.createElement('a');

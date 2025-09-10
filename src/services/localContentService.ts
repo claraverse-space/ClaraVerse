@@ -19,7 +19,7 @@ export interface LocalContent {
   id: string;
   title: string;
   description: string;
-  category: 'custom-node' | 'image'; // TODO: Add back 'prompt' | 'wallpaper' | 'workflow' | 'template' | 'mcp-server' | 'tutorial' when ready
+  category: 'custom-node' | 'image' | 'tool'; // TODO: Add back 'prompt' | 'wallpaper' | 'workflow' | 'template' | 'mcp-server' | 'tutorial' when ready
   content?: string;
   metadata?: any;
   lastModified: string;
@@ -58,6 +58,14 @@ class LocalContentDetectionService {
       // 1. Get Custom Nodes
       const customNodes = await this.getCustomNodes();
       content.push(...customNodes);
+
+      // 2. Get Tools
+      const tools = await this.getTools();
+      content.push(...tools);
+
+      // 3. Get Generated Images
+      const images = await this.getGeneratedImages();
+      content.push(...images);
 
       // Sort by last modified (newest first)
       content.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
@@ -122,6 +130,53 @@ class LocalContentDetectionService {
       return customNodeContent;
     } catch (error) {
       console.error('Error getting custom nodes:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get tools from database
+   */
+  private async getTools(): Promise<LocalContent[]> {
+    try {
+      const tools = await db.getAllTools();
+      console.log('Tools from database:', tools);
+      
+      const toolContent = await Promise.all(tools.map(async (tool) => {
+        const id = `tool-${tool.id}`;
+        
+        // Convert tool to shareable content
+        const content = JSON.stringify({
+          id: tool.id,
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+          implementation: tool.implementation,
+          isEnabled: tool.isEnabled
+        }, null, 2);
+        
+        console.log(`Processing tool ${tool.name}:`, { content: content.substring(0, 100) + '...', tool });
+        
+        return {
+          id,
+          title: tool.name || 'Untitled Tool',
+          description: tool.description || 'Custom tool for Clara',
+          category: 'tool' as const,
+          content: content,
+          metadata: {
+            parameters: tool.parameters,
+            isEnabled: tool.isEnabled,
+            parameterCount: tool.parameters?.length || 0,
+            type: 'custom-tool'
+          },
+          lastModified: new Date().toISOString(), // Tools don't have timestamps, use current time
+          isShared: await this.isShared(id)
+        };
+      }));
+      
+      return toolContent;
+    } catch (error) {
+      console.error('Error getting tools:', error);
       return [];
     }
   }
