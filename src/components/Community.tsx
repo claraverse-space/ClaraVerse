@@ -26,7 +26,11 @@ import { localContentService, LocalContent } from '../services/localContentServi
 import { db } from '../db';
 import { getDefaultWallpaper } from '../utils/uiPreferences';
 
-const Community: React.FC = () => {
+interface CommunityProps {
+  onPageChange?: (page: string) => void;
+}
+
+const Community: React.FC<CommunityProps> = ({ onPageChange }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'downloads'>('recent');
@@ -685,14 +689,14 @@ const Community: React.FC = () => {
               actions: [
                 { 
                   label: 'Try it now', 
-                  action: () => window.location.href = '#/agents',
+                  action: () => onPageChange?.('agents'),
                   variant: 'primary' 
                 },
                 { 
                   label: 'View in Studio', 
                   action: () => {
                     setToast(prev => ({ ...prev, show: false }));
-                    // Could add navigation to Agent Studio here
+                    onPageChange?.('agents');
                   },
                   variant: 'secondary' 
                 }
@@ -711,7 +715,7 @@ const Community: React.FC = () => {
               actions: [
                 { 
                   label: 'Open Agent Studio', 
-                  action: () => window.location.href = '#/agents',
+                  action: () => onPageChange?.('agents'),
                   variant: 'primary' 
                 },
                 { 

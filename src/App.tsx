@@ -230,7 +230,7 @@ function App() {
                 case 'tasks':
                   return <Tasks onPageChange={setActivePage} />;
                 case 'community':
-                  return <Community />;
+                  return <Community onPageChange={setActivePage} />;
                 case 'settings':
                   return <Settings />;
                 case 'debug':
